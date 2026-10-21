@@ -1,11 +1,11 @@
 //! The ports the tasks application needs from outside, beyond annals' own
 //! store port: which project a call is about, where its store is, how ids
-//! are minted, whether its store can purge a stream, what time it is, how
-//! to wait, what is configured, Go taskloom's logs to import, what a
-//! directory's identity rests on, to show and repair it, whether a
-//! project's database is sound, and agents' MCP configurations, to register
-//! a server in. Each is a trait a driven adapter (or the composition
-//! root) implements; nothing here does I/O.
+//! are minted, whether its store can purge a stream or say whether
+//! anything changed, what time it is, how to wait, what is configured, Go
+//! taskloom's logs to import, what a directory's identity rests on, to show
+//! and repair it, whether a project's database is sound, and agents' MCP
+//! configurations, to register a server in. Each is a trait a driven
+//! adapter (or the composition root) implements; nothing here does I/O.
 //!
 //! Every future a port returns is `Send`, as annals requires of its async
 //! store port, so a server on a multi-threaded runtime can spawn a use case
@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use annals::next::v1::Uuid;
 use annals::next::{
-    AsyncPurge, AsyncReadStore, AsyncStore, AsyncUnitOfWork, StoreError, Timestamp,
+    AsyncPurge, AsyncReadStore, AsyncStore, AsyncUnitOfWork, ChangeToken, StoreError, Timestamp,
 };
 use annals_diagnostic::Report;
 
@@ -90,6 +90,35 @@ pub trait TaskStores {
         &mut self,
         project: &Project,
     ) -> impl Future<Output = Result<Option<&mut Self::Store>, StoreError>> + Send;
+}
+
+/// What a project's store answers a watcher: annals' [`ChangeToken`],
+/// and which handle on the store answered it. annals compares tokens only
+/// from one handle (another connection to the same database counts
+/// differently), so a token from a store opened again since is never
+/// equal to one from before, whatever their change tokens say.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct HeldToken {
+    /// The handle that answered: a new one each time a store is opened.
+    pub handle: u64,
+    /// What that handle answered.
+    pub change: ChangeToken,
+}
+
+/// Task stores whose stores say cheaply whether anything was committed:
+/// what a watch needs of [`TaskStores`], to read every stream again only
+/// when something moved. Opt-in, as annals' watch is.
+pub trait WatchedStores: TaskStores {
+    /// The token of `project`'s store, read through the store held for it
+    /// or opened as [`TaskStores::open_existing`] opens one (nothing
+    /// created) and held after, so the next read is through the handle
+    /// that answered; `None` while the project has no store. Equal tokens
+    /// mean nothing was committed between them, through any handle; a new
+    /// token may come with nothing new to read.
+    fn change_token(
+        &mut self,
+        project: &Project,
+    ) -> impl Future<Output = Result<Option<HeldToken>, StoreError>> + Send;
 }
 
 /// A task store that can purge a stream, in a unit of work: what a prune

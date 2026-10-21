@@ -12,10 +12,13 @@ use std::time::Duration;
 use annals::next::v1::{Cover, EventPage, Snapshot, Uuid};
 use annals::next::{
     AsyncEventStore, AsyncPurge, AsyncReadStore, AsyncReadUnit, AsyncStore, AsyncUnitOfWork,
-    InMemoryRead, InMemoryStore, InMemoryTx, Ready, Slice, StoreError, Timestamp,
+    AsyncWatch, InMemoryRead, InMemoryStore, InMemoryTx, Ready, Slice, StoreError, Timestamp,
 };
 use annals_diagnostic::Report;
-use ports::{Clock, CommandIds, Delay, Jitter, Names, Project, ProjectIdentity, TaskStores};
+use ports::{
+    Clock, CommandIds, Delay, HeldToken, Jitter, Names, Project, ProjectIdentity, TaskStores,
+    WatchedStores,
+};
 
 /// Run a future whose every await is ready at once.
 pub fn ready<F: Future>(future: F) -> F::Output {
@@ -113,6 +116,8 @@ pub struct Flaky {
     /// in a read-only one: what a stream purged mid-read can look like
     /// from a store whose reads are not held to one moment.
     pub hollow: bool,
+    /// Read-only units begun: how often every stream was read.
+    pub reads: u32,
 }
 
 impl Default for Flaky {
@@ -124,6 +129,7 @@ impl Default for Flaky {
             open_fails: false,
             meanwhile: None,
             hollow: false,
+            reads: 0,
         }
     }
 }
@@ -197,6 +203,7 @@ impl AsyncReadStore for Flaky {
     type Reads<'s> = FlakyRead<'s>;
 
     async fn begin_read(&mut self) -> FlakyRead<'_> {
+        self.reads += 1;
         FlakyRead {
             inner: self.inner.begin_read().await,
             hollow: self.hollow,
@@ -305,7 +312,9 @@ impl AsyncUnitOfWork for FlakyUnit<'_> {
 /// One store, whichever project is asked for, but a project in `others`,
 /// which has its own: absent until a write opens it, if `absent`. The
 /// projects opened to write (`opened`) and to read (`looked`) are
-/// recorded.
+/// recorded. Its tokens are the in-memory store's under `handle`, which a
+/// test changes to stand for the store opened again; `before_token` is
+/// done to the store as a token is next asked for, before it is read.
 #[derive(Default)]
 pub struct FakeStores {
     pub store: Flaky,
@@ -313,6 +322,23 @@ pub struct FakeStores {
     pub opened: Vec<String>,
     pub looked: Vec<String>,
     pub others: std::collections::BTreeMap<String, Flaky>,
+    pub handle: u64,
+    pub before_token: Option<Meanwhile>,
+}
+
+impl WatchedStores for FakeStores {
+    async fn change_token(&mut self, project: &Project) -> Result<Option<HeldToken>, StoreError> {
+        let handle = self.handle;
+        let before = self.before_token.take();
+        let Some(store) = self.open_existing(project).await? else {
+            return Ok(None);
+        };
+        if let Some(meanwhile) = before {
+            meanwhile(&mut store.inner.0);
+        }
+        let change = store.inner.change_token().await?;
+        Ok(Some(HeldToken { handle, change }))
+    }
 }
 
 impl TaskStores for FakeStores {

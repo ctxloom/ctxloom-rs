@@ -154,10 +154,12 @@ and angzarr here.
   (see "Decided", 7).
 - `core/application/tasks-application`'s `WatchService` (its own trait
   beside `TaskService`): a watch resolves its project as a read does and
-  holds the task-list projector over every task; each poll catches it up
-  from the store and answers the changes past its cursor, the projector's
-  own sequence. A project with no store yet answers nothing until one
-  appears.
+  holds the task-list projector over every task; each poll asks the
+  store's change token first (`WatchedStores`, opt-in on `TaskStores`:
+  annals' `ChangeToken` and the handle that answered it), and only when
+  it moved catches the projector up and answers the changes past its
+  cursor, the projector's own sequence. A project with no store yet
+  answers nothing until one appears (a look at the filesystem each poll).
 - `adapters/driving/tasks-watch`: `taskloom watch` (hidden, as Go's), Go's
   line `{"event":"changed","kind":"tasks","project":<id>}` as JSON Lines
   (presentation's `write_json_line`), once at the start and once per burst
@@ -427,11 +429,11 @@ Where the skeleton differs from Go, or from this plan:
   `--tag-query` takes infix as well as Go's postfix. `--write-upgrades` is
   not ported: there is no config version to upgrade from.
 - `watch` sources changes from the store, not the filesystem: each tick
-  re-runs the projector's catch-up, which re-reads every task stream (the
-  projector skips what it has seen). That is a read of every stream ten
-  times a second for as long as a GUI subscribes. A cheap test first
-  (SQLite's `PRAGMA data_version`) needs an annals-store-sql call it does
-  not offer (see "Open"). A burst's line comes 100-200ms after its last
+  reads the store's change token (annals-store-sql's `PRAGMA
+  data_version` with `total_changes()`, on the one connection the watch
+  holds), and only when it moved re-runs the projector's catch-up, which
+  re-reads every task stream (the projector skips what it has seen). A
+  token that moves with nothing new answers nothing, so no line. A burst's line comes 100-200ms after its last
   commit (Go's: 100ms after its last file event). `watch` also ends when
   its stdin closes, which Go's does not; a subscriber that starts it with
   stdin closed (`< /dev/null`) gets one line and an exit.
@@ -476,11 +478,6 @@ not filed as a task.
   same. Settle before MCP serves sessions: `taskloom mcp` is built (step
   4) but not yet registered as ctxloom's companion, and this waits on a
   human decision (how a write, and repoint, keep the two clones apart).
-- **`watch` polls by re-reading every stream.** annals-store-sql should
-  offer a cheap "has anything been committed since" (SQLite's `PRAGMA
-  data_version`, or the events table's highest rowid), so a poll catches
-  the projector up only when it answers yes. An annals change; then the
-  watch use case asks it first.
 - **`manage` keeps no records and takes no lock.** Writing Go's records
   needs hew's reversal text (a port of hew, or hew in Rust); taking Go's
   sidecar lock needs ctxloom's lock protocol (the reap interlock) ported,
@@ -519,7 +516,7 @@ and step 3, tags on tagma, are done (see "Where it stands"); step 2 leaves
 7. **`manage`, `watch` and `run`** are done (see "Where it stands").
    What remains is the cutover, the human's: registering the Rust binary
    as ctxloom's companion (step 4), and the decisions under "Open" for
-   `manage`'s records and lock and `watch`'s poll.
+   `manage`'s records and lock.
 
 ## Tags on tagma
 

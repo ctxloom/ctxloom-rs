@@ -8,7 +8,7 @@ use annals::next::v1::event_meta::Causation;
 use annals::next::v1::{Cover, EventMeta, EventPage, Uuid};
 use annals::next::{Any, AsyncEventStore};
 use annals_diagnostic::Diagnostic;
-use ports::{Checked, Project, StoreCheck, TaskStores};
+use ports::{Checked, Project, StoreCheck, TaskStores, WatchedStores};
 
 use annals_store_sql::sqlite::SqliteStore;
 
@@ -279,6 +279,109 @@ fn test_a_read_that_fails_fails_with_the_read_only_opens_error() {
         .map(|found| found.is_some())
         .unwrap_err();
     assert_eq!(error.to_string(), read_only.to_string());
+}
+
+// ------------------------------------------------------------ watching
+
+/// A stream of its own for each `n`.
+fn stream(n: u8) -> Cover {
+    Cover {
+        domain: "tasks".to_string(),
+        root: Some(Uuid::from_bytes([n; 16])),
+        edition: None,
+    }
+}
+
+#[test]
+fn test_a_token_where_there_is_no_database_is_none_and_creates_nothing() {
+    let home = tempfile::tempdir().unwrap();
+    let mut stores = SqliteStores::default();
+    let project = project("tpyo", store_in(home.path(), "tpyo"));
+    let token = block_on(stores.change_token(&project)).unwrap();
+    assert_eq!(token, None);
+    assert!(!home.path().join(".ctxloom").exists(), "nothing made");
+    assert!(stores.held.is_none());
+}
+
+#[test]
+fn test_a_token_holds_until_another_handle_commits_and_then_holds_again() {
+    let home = tempfile::tempdir().unwrap();
+    let project = project(
+        "jolly-mute-magma",
+        store_in(home.path(), "jolly-mute-magma"),
+    );
+    let mut writer = SqliteStores::default();
+    let mut watcher = SqliteStores::default();
+    block_on(async {
+        writer.open(&project).await.unwrap();
+        let first = watcher
+            .change_token(&project)
+            .await
+            .unwrap()
+            .expect("a store");
+        assert!(!watcher.held.as_ref().unwrap().writable, "opened to read");
+        let again = watcher.change_token(&project).await.unwrap();
+        assert_eq!(again, Some(first), "nothing committed");
+
+        let store = writer.open(&project).await.unwrap();
+        store.append(&stream(1), 0, &[event(0, 1)]).await.unwrap();
+        let moved = watcher.change_token(&project).await.unwrap().unwrap();
+        assert_ne!(moved, first, "another handle's commit moves it");
+        assert_eq!(moved.handle, first.handle, "through the one handle");
+        let still = watcher.change_token(&project).await.unwrap();
+        assert_eq!(still, Some(moved));
+    });
+}
+
+#[test]
+fn test_a_token_is_read_through_the_store_the_next_read_is_through() {
+    let home = tempfile::tempdir().unwrap();
+    let path = store_in(home.path(), "jolly-mute-magma");
+    let project = project("jolly-mute-magma", path.clone());
+    let mut stores = SqliteStores::default();
+    block_on(async {
+        SqliteStores::default().open(&project).await.unwrap();
+        stores
+            .change_token(&project)
+            .await
+            .unwrap()
+            .expect("a store");
+        std::fs::remove_file(&path).unwrap();
+        let held = stores.open_existing(&project).await.unwrap();
+        assert!(
+            held.is_some(),
+            "the handle that answered, though the file is gone"
+        );
+    });
+}
+
+#[test]
+fn test_a_store_opened_again_answers_a_token_of_another_handle() {
+    let home = tempfile::tempdir().unwrap();
+    let project = project(
+        "jolly-mute-magma",
+        store_in(home.path(), "jolly-mute-magma"),
+    );
+    let mut stores = SqliteStores::default();
+    block_on(async {
+        SqliteStores::default().open(&project).await.unwrap();
+        let read = stores.change_token(&project).await.unwrap().unwrap();
+        // Opened again to write: a new connection, counting afresh.
+        stores.open(&project).await.unwrap();
+        let written = stores.change_token(&project).await.unwrap().unwrap();
+        assert_ne!(read.handle, written.handle);
+        assert_ne!(read, written);
+        let held = stores.change_token(&project).await.unwrap().unwrap();
+        assert_eq!(held.handle, written.handle, "held after");
+    });
+}
+
+#[test]
+fn test_the_token_future_is_send_so_a_server_can_spawn_it() {
+    fn is_send<T: Send>(_: &T) {}
+    let project = project("jolly-mute-magma", PathBuf::from("/nowhere/state.db"));
+    let mut stores = SqliteStores::default();
+    is_send(&stores.change_token(&project));
 }
 
 // ------------------------------------------------------------ the check

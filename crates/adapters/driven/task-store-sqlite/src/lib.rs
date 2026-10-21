@@ -9,6 +9,9 @@
 //!
 //! The store purges a stream (a prune's), on its own or in a unit of work,
 //! through annals-store-sql's purge, so it is a [`ports::PurgingStore`].
+//! It answers a watch annals-store-sql's change token
+//! ([`WatchedStores`]), paired with which opening of the store answered
+//! it, since tokens compare only from one connection.
 //!
 //! [`StoreCheck`] checks a project's database whole (SQLite's `PRAGMA
 //! integrity_check`, through annals-store-sql), opened afresh and
@@ -19,11 +22,11 @@ mod error;
 
 use std::path::{Path, PathBuf};
 
-use annals::next::StoreError;
+use annals::next::{AsyncWatch, StoreError};
 use annals_diagnostic::Report;
 use annals_store_sql::sqlite::SqliteStore;
 use annals_store_sql::Integrity;
-use ports::{Checked, Project, StoreCheck, TaskStores};
+use ports::{Checked, HeldToken, Project, StoreCheck, TaskStores, WatchedStores};
 
 pub use error::{diagnostic_samples, StoreOpenError, EN_US};
 
@@ -31,6 +34,8 @@ pub use error::{diagnostic_samples, StoreOpenError, EN_US};
 #[derive(Default)]
 pub struct SqliteStores {
     held: Option<Held>,
+    /// How many stores have been opened: the last one's handle.
+    opened: u64,
 }
 
 /// A store held open, and for what.
@@ -38,7 +43,36 @@ struct Held {
     path: PathBuf,
     /// Opened to write (created and migrated if need be), not read-only.
     writable: bool,
+    /// Which opening this is, for its tokens ([`HeldToken::handle`]).
+    handle: u64,
     store: SqliteStore,
+}
+
+impl SqliteStores {
+    /// `store`, just opened, held for `path` under a handle of its own.
+    fn hold(&mut self, path: &Path, writable: bool, store: SqliteStore) -> Held {
+        self.opened += 1;
+        Held {
+            path: path.to_path_buf(),
+            writable,
+            handle: self.opened,
+            store,
+        }
+    }
+
+    /// The store held for `project`, or the one at its path opened
+    /// read-only and held; `None` if there is none.
+    async fn hold_existing(&mut self, project: &Project) -> Result<Option<&mut Held>, StoreError> {
+        let held = self.held.take().filter(|held| held.path == project.store);
+        let held = match held {
+            Some(held) => held,
+            None => match SqliteStore::open_existing(&project.store).await? {
+                Some(store) => self.hold(&project.store, false, store),
+                None => return Ok(None),
+            },
+        };
+        Ok(Some(self.held.insert(held)))
+    }
 }
 
 impl TaskStores for SqliteStores {
@@ -53,11 +87,8 @@ impl TaskStores for SqliteStores {
             Some(held) => held,
             None => {
                 create_parent(&project.store).map_err(unavailable)?;
-                Held {
-                    path: project.store.clone(),
-                    writable: true,
-                    store: SqliteStore::open(&project.store).await?,
-                }
+                let store = SqliteStore::open(&project.store).await?;
+                self.hold(&project.store, true, store)
             }
         };
         Ok(&mut self.held.insert(held).store)
@@ -67,19 +98,26 @@ impl TaskStores for SqliteStores {
         &mut self,
         project: &Project,
     ) -> Result<Option<&mut SqliteStore>, StoreError> {
-        let held = self.held.take().filter(|held| held.path == project.store);
-        let held = match held {
-            Some(held) => held,
-            None => match SqliteStore::open_existing(&project.store).await? {
-                Some(store) => Held {
-                    path: project.store.clone(),
-                    writable: false,
-                    store,
-                },
-                None => return Ok(None),
-            },
+        Ok(self
+            .hold_existing(project)
+            .await?
+            .map(|held| &mut held.store))
+    }
+}
+
+impl WatchedStores for SqliteStores {
+    /// The held store's `PRAGMA data_version` and `total_changes()`
+    /// (annals-store-sql's token), under the handle of its opening. Where
+    /// there is no database, finding so is one look at the filesystem, so
+    /// a watch of a project not yet written polls for its store cheaply.
+    async fn change_token(&mut self, project: &Project) -> Result<Option<HeldToken>, StoreError> {
+        let Some(held) = self.hold_existing(project).await? else {
+            return Ok(None);
         };
-        Ok(Some(&mut self.held.insert(held).store))
+        Ok(Some(HeldToken {
+            handle: held.handle,
+            change: held.store.change_token().await?,
+        }))
     }
 }
 
