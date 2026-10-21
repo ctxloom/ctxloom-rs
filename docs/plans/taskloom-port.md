@@ -594,10 +594,17 @@ new task minted on the freed harp, whose stream starts again at sequence 0
 (appended at expected 0), would be skipped as already seen. A long-lived
 projector that re-reads a pruned stream before its purge lands projects its
 events again (the task back, then removed again): the end state is right,
-the deltas between are not. A prune that lands whole between two
-catch-ups (the usual case for a watch polling every 100ms) is seen from
-the stream's absence: the catch-up drops each task whose stream the
-store no longer holds, with a removal delta, and forgets the stream.
+the deltas between are not. `watch` (step 7) holds such a projector,
+and reads the streams only when the store's change token moved. A prune
+that lands whole between two polls (the usual case at 100ms) is seen
+from the stream's absence: the catch-up drops each task whose stream the
+store no longer holds, with a removal delta, and forgets the stream. A
+poll between the removal and the purge answers the removal, and the
+purge's poll finds nothing new: one line, as a whole prune's. Only a
+second read between them (the token moved for a commit no task sees, or
+landed between a poll's token and its read) projects the task back and
+removed again, one extra `changed` line, and no list a subscriber reads
+is wrong. The binary's in-process watch tests force each, tick by tick.
 
 ## Project identity: heal and repoint
 
