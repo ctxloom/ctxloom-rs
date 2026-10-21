@@ -1,0 +1,33 @@
+hew-record: 1
+applied_at: "2026-10-21T07:10:03.973443434Z"
+patch:
+  source: '-'
+  digest: sha256:53f8c78ecce0b857c056728a3269c951c8a60db412b5d2c43bc404884a3d6f0c
+targets:
+  - target: $TARGET
+    format: json
+    before: sha256:c0f7d7063ce6ce5c3a30cf9babf05c0dd3a256476ef99f818d1628f3270672c0
+    after: sha256:1957274e1bfcbd704894d90df468da281bb2234023dc15701de5983c393e1924
+    committed: true
+    transforms:
+      - op: add
+        path: /mcpServers/taskloom
+        on_conflict: replace
+        value:
+          args:
+            - mcp
+          command: taskloom
+    inverse:
+      - op: test
+        path: /mcpServers/taskloom
+        value: {"args": ["mcp"], "command": "taskloom"}
+      - op: remove
+        path: /mcpServers/taskloom
+reversal: |
+  hew: 1
+
+  --- $HOME/.claude.json format=json
+
+  @@ /mcpServers @@
+  ~ x
+  - taskloom: {"args": ["mcp"], "command": "taskloom"}

@@ -9,6 +9,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+agent-configs.workspace = true
 annals.workspace = true
 annals-store-sql.workspace = true
 clap.workspace = true
@@ -18,13 +19,18 @@ presentation.workspace = true
 project-application.workspace = true
 project-cli.workspace = true
 project-registry.workspace = true
+registration-application.workspace = true
+registration-cli.workspace = true
 system.workspace = true
 task-store-sqlite.workspace = true
 tasks-application.workspace = true
 tasks-cli.workspace = true
 tasks-config.workspace = true
 tasks-mcp.workspace = true
-tokio.workspace = true
+tasks-run.workspace = true
+tasks-watch.workspace = true
+# `signal`: watch stops on SIGINT or SIGTERM, as Go's does.
+tokio = { workspace = true, features = ["signal"] }
 
 [dev-dependencies]
 annals-diagnostic.workspace = true

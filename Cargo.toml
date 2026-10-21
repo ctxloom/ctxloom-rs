@@ -27,17 +27,22 @@ task-lists = { path = "crates/core/read-model/task-lists" }
 ports = { path = "crates/core/ports/ports" }
 tasks-application = { path = "crates/core/application/tasks-application" }
 project-application = { path = "crates/core/application/project-application" }
+registration-application = { path = "crates/core/application/registration-application" }
 project-registry = { path = "crates/adapters/driven/project-registry" }
 harp-names = { path = "crates/adapters/driven/harp-names" }
 task-store-sqlite = { path = "crates/adapters/driven/task-store-sqlite" }
 go-task-log = { path = "crates/adapters/driven/go-task-log" }
 tasks-config = { path = "crates/adapters/driven/tasks-config" }
+agent-configs = { path = "crates/adapters/driven/agent-configs" }
 system = { path = "crates/adapters/driven/system" }
 tasks-cli = { path = "crates/adapters/driving/tasks-cli" }
 presentation = { path = "crates/adapters/driving/presentation" }
 tasks-presentation = { path = "crates/adapters/driving/tasks-presentation" }
 tasks-mcp = { path = "crates/adapters/driving/tasks-mcp" }
+tasks-watch = { path = "crates/adapters/driving/tasks-watch" }
+tasks-run = { path = "crates/adapters/driving/tasks-run" }
 project-cli = { path = "crates/adapters/driving/project-cli" }
+registration-cli = { path = "crates/adapters/driving/registration-cli" }
 
 # tagma: the tag grammar and query engine (tagma-core) and its Tag message
 # (tagma-proto), from tagma's `tag-proto` worktree while the two change

@@ -1,6 +1,6 @@
 //! The tasks use cases: add a task, move, edit or retag one, read a
-//! project's tasks (or every project's), prune old finished ones, and
-//! import Go taskloom's logs.
+//! project's tasks (or every project's), watch them change, prune old
+//! finished ones, and import Go taskloom's logs.
 //!
 //! Each resolves its project through [`ProjectIdentity`], opens the
 //! project's store through [`TaskStores`], and runs its command through
@@ -19,6 +19,7 @@ mod schema;
 mod semver;
 mod tags;
 mod view;
+mod watch;
 
 use std::future::Future;
 
@@ -54,6 +55,7 @@ pub use view::{
     is_active, is_terminal, text_hash, Row, Shown, StatusInfo, Task, ARCHIVED, DEFAULT_STATUSES,
     DONE, IN_PROGRESS, OPEN, STATUS_CLASSES, TERMINAL,
 };
+pub use watch::{Changed, Watch, WatchRequest, WatchService};
 
 /// How many task ids an add mints before giving up, each refused because a
 /// task already holds it: Go's `harp.UniqueFrom`.

@@ -9,6 +9,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
+name = "agent-configs"
+version = "0.1.0"
+dependencies = [
+ "annals-diagnostic 0.1.0",
+ "fluent-syntax",
+ "ports",
+ "serde",
+ "serde_norway",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1656,6 +1669,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
+name = "registration-application"
+version = "0.1.0"
+dependencies = [
+ "annals-diagnostic 0.1.0",
+ "fluent-syntax",
+ "ports",
+]
+
+[[package]]
+name = "registration-cli"
+version = "0.1.0"
+dependencies = [
+ "annals-diagnostic 0.1.0",
+ "clap",
+ "fluent-syntax",
+ "mutants",
+ "ports",
+ "presentation",
+ "registration-application",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rmcp"
 version = "3.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1926,6 +1963,16 @@ name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
+
+[[package]]
+name = "signal-hook-registry"
+version = "1.4.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4db69cba1110affc0e9f7bcd48bbf87b3f4fc7c61fc9155afd4c469eb3d6c1b"
+dependencies = [
+ "errno",
+ "libc",
+]
 
 [[package]]
 name = "signature"
@@ -2283,6 +2330,7 @@ dependencies = [
 name = "taskloom"
 version = "0.1.0"
 dependencies = [
+ "agent-configs",
  "annals",
  "annals-diagnostic 0.1.0",
  "annals-store-sql",
@@ -2294,6 +2342,8 @@ dependencies = [
  "project-application",
  "project-cli",
  "project-registry",
+ "registration-application",
+ "registration-cli",
  "serde",
  "serde_json",
  "system",
@@ -2304,6 +2354,8 @@ dependencies = [
  "tasks-cli",
  "tasks-config",
  "tasks-mcp",
+ "tasks-run",
+ "tasks-watch",
  "tempfile",
  "time",
  "tokio",
@@ -2403,6 +2455,34 @@ dependencies = [
  "prost",
  "prost-types",
  "tagma-proto",
+]
+
+[[package]]
+name = "tasks-run"
+version = "0.1.0"
+dependencies = [
+ "annals-diagnostic 0.1.0",
+ "clap",
+ "fluent-syntax",
+ "mutants",
+ "presentation",
+ "serde_json",
+ "tasks-application",
+ "tempfile",
+]
+
+[[package]]
+name = "tasks-watch"
+version = "0.1.0"
+dependencies = [
+ "annals-diagnostic 0.1.0",
+ "clap",
+ "fluent-syntax",
+ "presentation",
+ "serde",
+ "serde_json",
+ "tasks-application",
+ "tokio",
 ]
 
 [[package]]
@@ -2515,6 +2595,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",

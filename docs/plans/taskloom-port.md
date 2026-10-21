@@ -138,6 +138,45 @@ and angzarr here.
   carrying it. Each call runs on a service of its own, made by the
   composition root with taskloom's configuration, on a blocking thread
   (see "Decided", 7).
+- `core/application/tasks-application`'s `WatchService` (its own trait
+  beside `TaskService`): a watch resolves its project as a read does and
+  holds the task-list projector over every task; each poll catches it up
+  from the store and answers the changes past its cursor, the projector's
+  own sequence. A project with no store yet answers nothing until one
+  appears.
+- `adapters/driving/tasks-watch`: `taskloom watch` (hidden, as Go's), Go's
+  line `{"event":"changed","kind":"tasks","project":<id>}` as JSON Lines
+  (presentation's `write_json_line`), once at the start and once per burst
+  of commits: the use case is polled each tick (100ms, Go's
+  `watchDebounce`) and a burst gets its line at its first quiet tick, or
+  ten ticks in when it does not stop, as Go's debounce and ceiling. It
+  ends at SIGINT or SIGTERM (tokio's `signal` feature), or when its stdin
+  closes, and with why when a line cannot be written. Its tests drive
+  every tick and script every poll.
+- `adapters/driving/tasks-run`: `taskloom run [harp] [--no-start]`: the
+  task named (any status), or Go's line-buffered picker on a terminal,
+  handed to `ctxloom run [--session <origin>] --seed-task <harp>
+  [--seed-status "To Do"] --prompt "Work on this task (`<harp>`): <text>"`,
+  Go's argv, through a `Launch`; the binary's runs the `ctxloom` on PATH
+  with the process's stdio. Tests run only stub scripts alone on a PATH.
+- `core/application/registration-application`, over the `AgentConfigs`
+  port: `manage install|uninstall|check` (Go's `manage`), choosing the
+  agent `--engine` names or every one in use at the scope.
+- `adapters/driven/agent-configs`: Claude Code's `~/.claude.json` and
+  `<dir>/.mcp.json` behind `AgentConfigs`. One member is written or taken
+  out by splicing bytes as hew (Go's patcher) does, so every other byte
+  stays; an entry already there is taken out first only when it runs
+  taskloom (Go's `exectoken`), and one running anything else is refused.
+  A file that is not JSON is copied to `<path>.corrupt-<unix>` and left
+  alone. `scripts/go-manage-fixtures.sh` runs Go's binary over 29 files in
+  temporary homes (`fixtures/go-manage`); the parity tests hold the adapter
+  to Go's bytes, refusals and copies, for install, recordless uninstall,
+  uninstall after Go's install, and check.
+- `adapters/driving/registration-cli`: the `manage` group. The binary
+  mounts it with its words unparsed, and it reads them with its own
+  parser: Go's `--project` is a switch there and a project id elsewhere.
+  Notices on stderr as Go's (text and JSON); in JSON one document on
+  stdout; `check` Go's table in text.
 - `adapters/driving/project-cli`: the `project` group (`show`, `heal
   [--yes]`, `repoint <project-id> [--share] [--yes]`, `orphans`, `orphans
   remove <id>... [--yes]`), text or one JSON document each, its errors and
@@ -145,9 +184,9 @@ and angzarr here.
   does, and ctxloom can, since it names no tasks crate.
 - `root/bin/taskloom`: the binary, over annals-store-sql's SQLite store at
   `~/.ctxloom/projects/<project-id>/state.db` (CLAUDE.md, "Storage").
-  It mounts the `project` group over the project registry, and `mcp`,
+  It mounts the `project` group over the project registry, `mcp`,
   served once the command line is read, each call's service the CLI's own
-  wiring made fresh.
+  wiring made fresh, and `watch`, `run` and `manage` (step 7).
   Its tests are Go's `crossprocess_test.go` ported, each process separate
   on one database, and they build the binary themselves: 40 concurrent adds
   at a project's first sight (racing the mint and the migration; one
@@ -369,6 +408,34 @@ Where the skeleton differs from Go, or from this plan:
   no key is refused (Go wrote it, and then its schema refused it).
   `--tag-query` takes infix as well as Go's postfix. `--write-upgrades` is
   not ported: there is no config version to upgrade from.
+- `watch` sources changes from the store, not the filesystem: each tick
+  re-runs the projector's catch-up, which re-reads every task stream (the
+  projector skips what it has seen). That is a read of every stream ten
+  times a second for as long as a GUI subscribes. A cheap test first
+  (SQLite's `PRAGMA data_version`) needs an annals-store-sql call it does
+  not offer (see "Open"). A burst's line comes 100-200ms after its last
+  commit (Go's: 100ms after its last file event). `watch` also ends when
+  its stdin closes, which Go's does not; a subscriber that starts it with
+  stdin closed (`< /dev/null`) gets one line and an exit.
+- `run` hands the task to Go ctxloom's `run --seed-task`, which marks the
+  task In Progress in Go's jsonl log, not the Rust store (Decided 1
+  accepts the loss); it does not yet propagate the child's exit code
+  (Go's does not either).
+- `manage` writes no application records (hew's §9.7 records, Go's
+  memory of what it wrote): Rust has no hew. It reads Go's newest record
+  for one fact, whether Go made the `mcpServers` object itself, and then
+  an uninstall that empties it takes it out, as Go's would. Without that,
+  Go's next install refuses the file as drifted (shown against Go's
+  binary). With no Go record, an install and an uninstall leave
+  `"mcpServers": {}` where the file had none, as Go's does without its
+  record. It takes no lock on the file: Go takes ctxloom's sidecar lock
+  under `~/.ctxloom/locks` with its reap interlock (lock protocol 2), so a
+  write racing a Go or ctxloom write to the same file can lose one; the
+  write itself is atomic. An entry under the name that runs another
+  program is refused (Go replaces it in place, then usually refuses on a
+  byte mismatch). A parse error's detail is this parser's words, not
+  Go's `encoding/json`'s, and names the file's own name where Go's says
+  `.mcp.json` for every file.
 - angzarr-build maps only angzarr's own packages by absolute path
   (`extern_path`), so `tasks-proto` nests its generated module as its
   package is (`ctxloom::tasks::v1`) and re-exports tagma-proto's `v1` at
@@ -391,6 +458,17 @@ not filed as a task.
   same. Settle before MCP serves sessions: `taskloom mcp` is built (step
   4) but not yet registered as ctxloom's companion, and this waits on a
   human decision (how a write, and repoint, keep the two clones apart).
+- **`watch` polls by re-reading every stream.** annals-store-sql should
+  offer a cheap "has anything been committed since" (SQLite's `PRAGMA
+  data_version`, or the events table's highest rowid), so a poll catches
+  the projector up only when it answers yes. An annals change; then the
+  watch use case asks it first.
+- **`manage` keeps no records and takes no lock.** Writing Go's records
+  needs hew's reversal text (a port of hew, or hew in Rust); taking Go's
+  sidecar lock needs ctxloom's lock protocol (the reap interlock) ported,
+  which `version`'s `lock_protocol` then has to vouch for. A human
+  decision: port them, keep a record of Rust's own (a new on-disk format),
+  or accept the gaps above.
 - **JSON escapes no HTML** where Go's encoder escapes `<`, `>` and `&`:
   normalize it when comparing the Go and Rust binaries for parity ("Parity
   and cutover").
@@ -423,7 +501,10 @@ and step 3, tags on tagma, are done (see "Where it stands"); step 2 leaves
 6. **Priority**: choosing or writing the formula evaluator. It is isolated
    from everything else, so it can move earlier if the evaluator looks
    risky.
-7. **`manage`, `watch` and `run`**, then cutover.
+7. **`manage`, `watch` and `run`** are done (see "Where it stands").
+   What remains is the cutover, the human's: registering the Rust binary
+   as ctxloom's companion (step 4), and the decisions under "Open" for
+   `manage`'s records and lock and `watch`'s poll.
 
 ## Tags on tagma
 
@@ -566,7 +647,7 @@ it as the `project` group; ctxloom can mount the same. `show`, `heal`,
   fragment), and `version --format json` with `lock_protocol`, which
   ctxloom's boot probe parses.
 - `manage install|uninstall|check`, `watch` (a JSONL change stream,
-  debounced), `run` (execs `ctxloom run --seed-task`).
+  debounced) and `run` (`ctxloom run --seed-task`): done (step 7).
 
 ## Parity and cutover
 

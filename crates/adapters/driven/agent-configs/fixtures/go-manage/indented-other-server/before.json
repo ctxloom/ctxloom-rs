@@ -1,0 +1,10 @@
+{
+  "numStartups": 5,
+  "mcpServers": {
+    "other": {
+      "command": "npx",
+      "args": ["foo"]
+    }
+  },
+  "zeta": true
+}

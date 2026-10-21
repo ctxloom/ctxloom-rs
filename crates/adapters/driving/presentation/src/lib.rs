@@ -10,7 +10,7 @@
 //!
 //! - [`Format`]: which format, from flags and whether stdout is a terminal.
 //! - [`render`] and [`write_json`]: one JSON document per call, fields in a
-//!   fixed order.
+//!   fixed order; [`write_json_line`], one line of a JSON Lines stream.
 //! - [`Catalog`]: a diagnostic's message from each crate's embedded en-US
 //!   catalog, and its JSON [`Envelope`] with nested causes.
 //! - [`text`]: display-width columns and headlines.
@@ -55,6 +55,14 @@ pub fn render(out: &mut dyn Write, format: Format, view: &impl Render) -> io::Re
 pub fn write_json<T: Serialize + ?Sized>(out: &mut dyn Write, value: &T) -> io::Result<()> {
     serde_json::to_writer_pretty(&mut *out, value)?;
     writeln!(out)
+}
+
+/// `value` as one line of a JSON Lines stream (one compact document and a
+/// newline), flushed, so a reader following the stream sees it at once.
+pub fn write_json_line<T: Serialize + ?Sized>(out: &mut dyn Write, value: &T) -> io::Result<()> {
+    serde_json::to_writer(&mut *out, value)?;
+    writeln!(out)?;
+    out.flush()
 }
 
 #[cfg(test)]

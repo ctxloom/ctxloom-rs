@@ -6,8 +6,12 @@
 //! the task commands, and hands the command line to the CLI. The `project`
 //! group runs over the registry and the SQLite store's integrity check;
 //! `mcp` serves the task tools over stdio, each call on a service of its
-//! own. It holds no logic of its own.
+//! own; `watch` streams the project's changes until SIGINT, SIGTERM or
+//! stdin closes; `run` hands a task to the `ctxloom` on PATH; `manage`
+//! registers `taskloom mcp` in the agents' configurations under HOME. It
+//! holds no logic of its own.
 
+use std::future::Future;
 use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -32,11 +36,16 @@ fn catalog() -> Result<presentation::Catalog, presentation::CatalogError> {
         annals_store_sql::EN_US,
         project_cli::EN_US,
         project_application::EN_US,
+        registration_cli::EN_US,
+        registration_application::EN_US,
+        agent_configs::EN_US,
         project_registry::EN_US,
         task_store_sqlite::EN_US,
         go_task_log::EN_US,
         tasks_config::EN_US,
         tasks_mcp::EN_US,
+        tasks_run::EN_US,
+        tasks_watch::EN_US,
     ])
 }
 
@@ -47,6 +56,19 @@ enum Mounted {
     Project(project_cli::Group),
     #[command(flatten)]
     Mcp(tasks_mcp::Group),
+    #[command(flatten)]
+    Watch(tasks_watch::Group),
+    #[command(flatten)]
+    Run(tasks_run::Group),
+    #[command(flatten)]
+    Manage(registration_cli::Group),
+}
+
+/// What runs once the command line has been read, on the runtime.
+enum After {
+    Mcp(Option<String>),
+    Watch(tasks_watch::Settings),
+    Run(tasks_run::Group, tasks_run::Settings),
 }
 
 /// The tasks use cases over the real adapters, configured from the work
@@ -100,9 +122,125 @@ fn serve_mcp(
     }
 }
 
+/// Resolves at SIGINT or SIGTERM (Ctrl-C alone off Unix), listening from
+/// the moment it is made, so a signal before the first await is not lost
+/// to the default disposition. Made on the runtime.
+fn interrupted() -> std::io::Result<impl std::future::Future<Output = ()>> {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut interrupt = signal(SignalKind::interrupt())?;
+        let mut terminate = signal(SignalKind::terminate())?;
+        Ok(std::future::poll_fn(move |cx| {
+            let interrupted = interrupt.poll_recv(cx).is_ready();
+            let terminated = terminate.poll_recv(cx).is_ready();
+            if interrupted || terminated {
+                std::task::Poll::Ready(())
+            } else {
+                std::task::Poll::Pending
+            }
+        }))
+    }
+    #[cfg(not(unix))]
+    {
+        Ok(async {
+            let _ = tokio::signal::ctrl_c().await;
+        })
+    }
+}
+
+/// `taskloom watch`: the project's changes on stdout, polled every
+/// debounce, until interrupted.
+fn watch<W: tasks_application::WatchService>(
+    runtime: &tokio::runtime::Runtime,
+    service: &mut W,
+    settings: &tasks_watch::Settings,
+    catalog: &presentation::Catalog,
+) -> ExitCode {
+    let code = runtime.block_on(async {
+        let stop = match interrupted() {
+            Ok(stop) => stop,
+            Err(e) => {
+                eprintln!("{}: cannot listen for signals: {e}", tasks_cli::PROG);
+                return 1;
+            }
+        };
+        // Stdin closing stops it too: a subscriber that dies takes its
+        // watch with it.
+        let mut signalled = std::pin::pin!(stop);
+        let mut closed = std::pin::pin!(tasks_watch::closed(io::stdin()));
+        let stop = std::future::poll_fn(move |cx| {
+            let signalled = signalled.as_mut().poll(cx).is_ready();
+            let closed = closed.as_mut().poll(cx).is_ready();
+            if signalled || closed {
+                std::task::Poll::Ready(())
+            } else {
+                std::task::Poll::Pending
+            }
+        });
+        let mut ticks = tasks_watch::Interval::every(tasks_watch::DEBOUNCE);
+        tasks_watch::run(
+            service,
+            settings,
+            &mut ticks,
+            stop,
+            catalog,
+            &mut io::stdout().lock(),
+            &mut io::stderr().lock(),
+        )
+        .await
+    });
+    ExitCode::from(code)
+}
+
+/// `taskloom manage`: `taskloom mcp` registered in the agents'
+/// configurations under `home`.
+fn manage(
+    words: Vec<String>,
+    format: presentation::Format,
+    home: Option<PathBuf>,
+    catalog: &presentation::Catalog,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> u8 {
+    let settings = registration_cli::Settings {
+        format,
+        stdout_is_terminal: io::stdout().is_terminal(),
+        prog: tasks_cli::PROG,
+    };
+    let configs = agent_configs::AgentConfigFiles {
+        home,
+        path: std::env::var_os("PATH"),
+    };
+    let mut registrations = registration_application::Registrations::taskloom(configs);
+    registration_cli::run(words, &settings, &mut registrations, catalog, out, err)
+}
+
+/// `taskloom run`: the task handed to the `ctxloom` on PATH.
+fn launch<S: tasks_application::TaskService>(
+    runtime: &tokio::runtime::Runtime,
+    service: &mut S,
+    group: tasks_run::Group,
+    settings: &tasks_run::Settings,
+    catalog: &presentation::Catalog,
+) -> ExitCode {
+    let mut ctxloom = tasks_run::Ctxloom {
+        path: std::env::var_os("PATH"),
+    };
+    ExitCode::from(runtime.block_on(tasks_run::run(
+        service,
+        group,
+        settings,
+        &mut ctxloom,
+        &mut io::stdin().lock(),
+        catalog,
+        &mut io::stderr().lock(),
+    )))
+}
+
 fn main() -> ExitCode {
     let runtime = match tokio::runtime::Builder::new_current_thread()
-        .enable_time()
+        .enable_all()
         .build()
     {
         Ok(runtime) => runtime,
@@ -136,9 +274,9 @@ fn main() -> ExitCode {
         version: env!("CARGO_PKG_VERSION").to_string(),
         lock_protocol: project_registry::LOCK_PROTOCOL,
     };
-    // `mcp` is served once the command line has been read, on the same
-    // runtime: the CLI's mounted commands are synchronous.
-    let mut mcp = None;
+    // `mcp`, `watch` and `run` run once the command line has been read, on the
+    // same runtime: the CLI's mounted commands are synchronous.
+    let mut after = None;
     let mounted = |group,
                    flags: tasks_cli::Mounted,
                    catalog: &presentation::Catalog,
@@ -152,8 +290,29 @@ fn main() -> ExitCode {
             };
             project_cli::run(group, &settings, catalog, &mut projects, out, err)
         }
+        Mounted::Manage(registration_cli::Group::Manage { words }) => {
+            manage(words, flags.format, env.home.clone(), catalog, out, err)
+        }
         Mounted::Mcp(tasks_mcp::Group::Mcp) => {
-            mcp = Some(flags.project);
+            after = Some(After::Mcp(flags.project));
+            0
+        }
+        Mounted::Run(group) => {
+            let settings = tasks_run::Settings {
+                format: flags.format,
+                project: flags.project,
+                prog: tasks_cli::PROG,
+                interactive: io::stdin().is_terminal() && io::stdout().is_terminal(),
+            };
+            after = Some(After::Run(group, settings));
+            0
+        }
+        Mounted::Watch(tasks_watch::Group::Watch) => {
+            after = Some(After::Watch(tasks_watch::Settings {
+                format: flags.format,
+                project: flags.project,
+                prog: tasks_cli::PROG,
+            }));
             0
         }
     };
@@ -166,8 +325,12 @@ fn main() -> ExitCode {
         &mut io::stdout().lock(),
         &mut io::stderr().lock(),
     ));
-    match mcp {
-        Some(project) => {
+    match after {
+        Some(After::Watch(settings)) => watch(&runtime, &mut service, &settings, &catalog),
+        Some(After::Run(group, settings)) => {
+            launch(&runtime, &mut service, group, &settings, &catalog)
+        }
+        Some(After::Mcp(project)) => {
             let settings = tasks_mcp::Settings {
                 project,
                 session: context.session,

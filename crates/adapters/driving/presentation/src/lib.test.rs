@@ -4,7 +4,7 @@ use std::io::{self, Write};
 
 use serde::Serialize;
 
-use super::{render, write_json, Format, Render};
+use super::{render, write_json, write_json_line, Format, Render};
 
 /// A toy view: its JSON a list, its text a sentence.
 struct Count(Vec<u8>);
@@ -37,6 +37,37 @@ fn test_json_is_one_indented_document_and_a_newline() {
     let mut out = Vec::new();
     write_json(&mut out, &serde_json::json!({"a": []})).unwrap();
     assert_eq!(String::from_utf8(out).unwrap(), "{\n  \"a\": []\n}\n");
+}
+
+/// A writer that records what reached it by a flush.
+#[derive(Default)]
+struct Flushed {
+    pending: Vec<u8>,
+    flushed: Vec<u8>,
+}
+
+impl std::io::Write for Flushed {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.pending.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.flushed.append(&mut self.pending);
+        Ok(())
+    }
+}
+
+#[test]
+fn test_a_json_line_is_one_compact_document_a_newline_and_flushed() {
+    let mut out = Flushed::default();
+    write_json_line(&mut out, &serde_json::json!({"a": [1, 2], "b": "c"})).unwrap();
+    write_json_line(&mut out, &serde_json::json!({"a": []})).unwrap();
+    assert_eq!(
+        String::from_utf8(out.flushed).unwrap(),
+        "{\"a\":[1,2],\"b\":\"c\"}\n{\"a\":[]}\n"
+    );
+    assert!(out.pending.is_empty(), "each line is flushed");
 }
 
 /// The names of the dependencies a manifest declares, in every section.

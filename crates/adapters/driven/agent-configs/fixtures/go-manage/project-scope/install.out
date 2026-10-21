@@ -1,0 +1,5 @@
+0
+taskloom: warning: "taskloom" does not resolve on this process's PATH: exec: "taskloom": executable file not found in $PATH
+  the registered MCP entry runs "taskloom", which the agent resolves against ITS OWN PATH at startup; install taskloom somewhere on that PATH or the server will not start
+taskloom: registered MCP server for claude-code
+  config: .mcp.json

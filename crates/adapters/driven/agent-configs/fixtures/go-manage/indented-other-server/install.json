@@ -1,0 +1,11 @@
+{
+  "numStartups": 5,
+  "mcpServers": {
+    "other": {
+      "command": "npx",
+      "args": ["foo"]
+    },
+    "taskloom": { "args": ["mcp"], "command": "taskloom" }
+  },
+  "zeta": true
+}

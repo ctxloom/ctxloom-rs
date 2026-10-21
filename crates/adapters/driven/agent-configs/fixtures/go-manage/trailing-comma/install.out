@@ -1,0 +1,4 @@
+1
+taskloom: warning: "taskloom" does not resolve on this process's PATH: exec: "taskloom": executable file not found in $PATH
+  the registered MCP entry runs "taskloom", which the agent resolves against ITS OWN PATH at startup; install taskloom somewhere on that PATH or the server will not start
+taskloom: claude-code: failed to parse .mcp.json: invalid character '}' looking for beginning of object key string - original backed up to $HOME/.claude.json.corrupt-<unix>; fix the JSON and re-run (refusing to write .claude.json to avoid deleting the MCP servers already in it)
