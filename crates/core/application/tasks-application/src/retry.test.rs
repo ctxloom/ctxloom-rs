@@ -7,7 +7,7 @@ use annals_diagnostic::Diagnostic;
 use super::{Backoff, Outcome, Runner};
 use crate::fakes::{ready, FakeClock, FakeDelay, Fault, Flaky};
 use crate::{book, registry, AppError};
-use annals::next::{AsyncEventStore, Handled};
+use annals::next::AsyncEventStore;
 use tasks::{AddTask, TaskRejection};
 
 const MS: Duration = Duration::from_millis(1);
@@ -101,7 +101,7 @@ fn test_a_command_that_commits_at_once_waits_for_nothing() {
     let mut store = Flaky::default();
     let mut delay = FakeDelay::default();
     let outcome = run(&mut store, &mut delay, 3).unwrap();
-    assert!(matches!(outcome, Outcome::Handled(Handled::Applied(_))));
+    assert!(matches!(outcome, Outcome::Committed));
     assert_eq!(store.begun, 1);
     assert!(delay.slept.is_empty());
     assert_eq!(events(&mut store), 1);
@@ -112,7 +112,7 @@ fn test_a_retryable_failure_is_run_again_after_a_growing_capped_wait() {
     let mut store = Flaky::failing(&[Fault::Unavailable, Fault::Conflict, Fault::Unavailable]);
     let mut delay = FakeDelay::default();
     let outcome = run(&mut store, &mut delay, 5).unwrap();
-    assert!(matches!(outcome, Outcome::Handled(Handled::Applied(_))));
+    assert!(matches!(outcome, Outcome::Committed));
     assert_eq!(store.begun, 4, "three failures, then the commit");
     assert_eq!(delay.ceilings, [10 * MS, 20 * MS, 30 * MS]);
     assert_eq!(delay.slept, [10 * MS, 20 * MS, 30 * MS]);
@@ -146,10 +146,8 @@ fn test_a_retry_after_a_lost_answer_is_the_duplicate_of_what_landed() {
     let mut store = Flaky::failing(&[Fault::LandsThenFails]);
     let mut delay = FakeDelay::default();
     let outcome = run(&mut store, &mut delay, 5).unwrap();
-    assert!(
-        matches!(outcome, Outcome::Handled(Handled::Duplicate(_))),
-        "the same command id, found on the stream"
-    );
+    assert!(matches!(outcome, Outcome::Committed));
+    assert_eq!(store.begun, 2, "retried once, and found on the stream");
     assert_eq!(events(&mut store), 1, "not added twice");
 }
 

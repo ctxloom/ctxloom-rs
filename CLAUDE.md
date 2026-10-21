@@ -116,6 +116,8 @@ holding new logic to its tier: every hand-written tier (domain, read models,
 ports, application and adapters) 90% or more; the composition root is
 listed but not held (the justfile's `mutation_thresholds` has every tier). A
 mutant judged equivalent or untestable gets `#[mutants::skip]` on its
-function, with a one-line comment above it saying why; never an exclude in
+function, with a one-line comment above it saying why (in the core, as
+`#[cfg_attr(test, mutants::skip)]` with `mutants` a dev-dependency, so the
+core links nothing new); never an exclude in
 `.cargo/mutants.toml` or a lowered threshold. The last run's mutants.out
 (each mutant's log, outcomes.json) is kept in target/logs/mutants-staged/.

@@ -171,7 +171,7 @@ where
             };
             let book = book(&harp_id, add.into());
             match runner.run(store, &book, &command_id).await? {
-                retry::Outcome::Handled(_) => {
+                retry::Outcome::Committed => {
                     let task = read(store, &self.registry, &harp_id)
                         .await?
                         .ok_or(AppError::Vanished { harp_id })?;
@@ -218,7 +218,7 @@ where
             backoff: self.backoff,
         };
         match runner.run(store, &book, &command_id).await? {
-            retry::Outcome::Handled(_) => {}
+            retry::Outcome::Committed => {}
             retry::Outcome::Refused(rejection) => return Err(rejected(&rejection)),
         }
         let task =

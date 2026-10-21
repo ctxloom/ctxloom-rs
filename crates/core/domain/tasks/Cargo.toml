@@ -19,6 +19,7 @@ angzarr-build.workspace = true
 
 [dev-dependencies]
 fluent-syntax = "0.11"
+mutants.workspace = true
 
 [lints]
 workspace = true

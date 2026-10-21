@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use annals::next::v1::{CommandBook, Uuid};
 use annals::next::{
-    AsyncStore, Failure, Handled, Kernel, MemoryDeadLetters, Recovery, Registry, Routes, Sampled,
+    AsyncStore, Failure, Kernel, MemoryDeadLetters, Recovery, Registry, Routes, Sampled,
 };
 use annals_diagnostic::Report;
 use ports::{Clock, Delay, Jitter};
@@ -53,8 +53,9 @@ impl Backoff {
 
 /// What one command came to, short of an error.
 pub(crate) enum Outcome {
-    /// It committed, or had already. Which, only the tests read.
-    Handled(#[cfg_attr(not(test), expect(dead_code, reason = "read by the tests"))] Handled),
+    /// It committed, or had already (a retry answered DUPLICATE): either
+    /// way the command's events are on the stream once.
+    Committed,
     /// The domain refused it.
     Refused(TaskRejection),
 }
@@ -91,7 +92,7 @@ impl<C: Clock, D: Delay + Jitter> Runner<'_, C, D> {
                 .handle_async::<Tasks, _, _>(unit, &routes, book.clone(), &sampled, &mut ())
                 .await
             {
-                Ok(handled) => return Ok(Outcome::Handled(handled)),
+                Ok(_) => return Ok(Outcome::Committed),
                 Err(Failure::Rejected(rejection)) => return Ok(Outcome::Refused(rejection)),
                 Err(failure) => failure,
             };

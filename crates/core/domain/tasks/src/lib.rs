@@ -105,6 +105,8 @@ impl Domain for Tasks {
         }
     }
 
+    // Equivalent: no fact exists (Infallible), so ingest is never called.
+    #[cfg_attr(test, mutants::skip)]
     fn ingest(_: &TaskState, fact: &Infallible, _: &IngestCtx<'_, Self>) -> Vec<TaskEvent> {
         match *fact {}
     }
