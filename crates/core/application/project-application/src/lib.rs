@@ -80,6 +80,11 @@ impl<A: ProjectAdmin> Projects<A> {
         Projects { admin }
     }
 
+    /// The port it runs over.
+    pub fn admin(&self) -> &A {
+        &self.admin
+    }
+
     /// What the working directory's identity rests on, and every
     /// inconsistency found.
     pub fn show(&mut self, pinned: Option<&str>) -> Result<Shown, ProjectError> {

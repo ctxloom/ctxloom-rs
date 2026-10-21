@@ -1270,6 +1270,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "project-cli"
+version = "0.1.0"
+dependencies = [
+ "annals-diagnostic 0.1.0",
+ "clap",
+ "fluent-syntax",
+ "project-application",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "project-registry"
 version = "0.1.0"
 dependencies = [

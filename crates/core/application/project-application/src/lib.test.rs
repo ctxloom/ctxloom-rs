@@ -111,7 +111,7 @@ fn test_show_gives_the_root_its_entries_its_store_and_passes_the_pin() {
     survey.registry = vec![entry("a", "/w", true), entry("b", "/x", true)];
     let mut projects = projects(survey.clone());
     let shown = projects.show(Some("pinned")).unwrap();
-    assert_eq!(projects.admin.surveyed, [Some(s("pinned"))]);
+    assert_eq!(projects.admin().surveyed, [Some(s("pinned"))]);
     assert_eq!(shown.survey, survey);
     assert_eq!(shown.entries, [entry("a", "/w", true)]);
     assert_eq!(
