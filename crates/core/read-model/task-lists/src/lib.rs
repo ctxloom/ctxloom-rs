@@ -7,11 +7,11 @@
 //! that project's, so a list needs no membership metadata on the streams, and
 //! catches up by enumerating the store's task streams.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use annals::next::v1::Cover;
 use annals::next::{
-    projection, AsyncReadStore, AsyncReadUnit, Committed, EventStore, KernelError, Projection,
+    ids, projection, AsyncReadStore, AsyncReadUnit, Committed, EventStore, KernelError, Projection,
     Registry, Slice, Stream,
 };
 use tasks::{RemovalReason, TaskEvent, TaskState, Tasks, TASK_DOMAIN};
@@ -70,8 +70,9 @@ impl TaskList {
     /// The tasks a prune removed whose streams were still held when last
     /// read, by harp id: a prune left half done, its purge failed after its
     /// removal landed, for a prune to finish. A purge records no event, so
-    /// a list kept across one still names the task: whoever purges checks
-    /// the stream first.
+    /// a list kept across one still names the task until it next catches
+    /// up and finds the stream gone: whoever purges checks the stream
+    /// first.
     pub fn unpurged(&self) -> Vec<&TaskState> {
         self.unpurged.values().collect()
     }
@@ -88,34 +89,59 @@ impl TaskList {
     }
 
     /// Project every task stream in `store` not yet projected: a fresh list
-    /// built after a restart, or one catching up.
+    /// built after a restart, or one catching up. A task whose stream the
+    /// store no longer holds (pruned whole since the last catch-up, its
+    /// removal never seen) leaves the list, and its stream is forgotten,
+    /// so a task minted on its harp later is seen from its start.
     pub fn catch_up<S: EventStore>(
         &mut self,
         store: &mut S,
         registry: &Registry,
     ) -> Result<(), Box<KernelError>> {
-        for cover in store.covers(TASK_DOMAIN).map_err(store_error)? {
+        let covers = store.covers(TASK_DOMAIN).map_err(store_error)?;
+        let held = roots(&covers);
+        for cover in covers {
             let slice = store.read(&cover).map_err(store_error)?;
             self.project_slice(cover, slice, registry)?;
         }
+        self.forget_gone(&held);
         Ok(())
     }
 
     /// [`TaskList::catch_up`], over the async store port: a database's.
     /// The streams are listed and read in one read-only unit of work, so
     /// what is projected is one moment of the store: a write or a purge
-    /// landing meanwhile, through any handle, is not seen.
+    /// landing meanwhile, through any handle, is not seen. A task whose
+    /// stream is gone leaves the list, as in [`TaskList::catch_up`].
     pub async fn catch_up_async<S: AsyncReadStore>(
         &mut self,
         store: &mut S,
         registry: &Registry,
     ) -> Result<(), Box<KernelError>> {
         let mut reads = store.begin_read().await;
-        for cover in reads.covers(TASK_DOMAIN).await.map_err(store_error)? {
+        let covers = reads.covers(TASK_DOMAIN).await.map_err(store_error)?;
+        let held = roots(&covers);
+        for cover in covers {
             let slice = reads.read_from(&cover, 0).await.map_err(store_error)?;
             self.project_slice(cover, slice, registry)?;
         }
+        self.forget_gone(&held);
         Ok(())
+    }
+
+    /// Forget every task whose stream the store no longer holds (`held`
+    /// are the streams it does, by root): a prune that landed whole, its
+    /// removal and its purge, since this list last read. Each such task
+    /// the list held leaves it, as its removal would have taken it.
+    fn forget_gone(&mut self, held: &BTreeSet<Vec<u8>>) {
+        let gone = |harp: &str| !held.contains(&root_of(harp));
+        self.projected.retain(|root, _| held.contains(root));
+        self.unpurged.retain(|harp, _| !gone(harp));
+        let left: Vec<String> = self.entries.keys().filter(|h| gone(h)).cloned().collect();
+        for harp_id in left {
+            self.entries.remove(&harp_id);
+            self.record(Change::Remove { harp_id });
+        }
     }
 
     /// Project one task stream as read, if the store held it.
@@ -146,11 +172,7 @@ impl Projection<Tasks> for TaskList {
         if cover.edition.is_some() {
             return;
         }
-        let root = cover
-            .root
-            .as_ref()
-            .map(|r| r.value.to_vec())
-            .unwrap_or_default();
+        let root = root(cover);
         let sequence = committed.sequence();
         if self
             .projected
@@ -190,6 +212,31 @@ impl Projection<Tasks> for TaskList {
 /// it is purged.
 fn is_pruned(event: &TaskEvent) -> bool {
     matches!(event, TaskEvent::TaskRemoved(removed) if removed.reason == RemovalReason::Pruned)
+}
+
+/// The roots of the main-timeline streams among `covers`.
+fn roots(covers: &[Cover]) -> BTreeSet<Vec<u8>> {
+    covers
+        .iter()
+        .filter(|cover| cover.edition.is_none())
+        .map(root)
+        .collect()
+}
+
+/// A task stream's root, as the list keys its streams by.
+fn root(cover: &Cover) -> Vec<u8> {
+    cover
+        .root
+        .as_ref()
+        .map(|r| r.value.to_vec())
+        .unwrap_or_default()
+}
+
+/// The root of the stream of the task `harp_id` names.
+fn root_of(harp_id: &str) -> Vec<u8> {
+    ids::compute_root(TASK_DOMAIN, harp_id)
+        .map(|r| r.value.to_vec())
+        .unwrap_or_default()
 }
 
 fn store_error(error: annals::next::StoreError) -> Box<KernelError> {

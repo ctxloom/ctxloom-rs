@@ -376,6 +376,74 @@ fn test_a_list_caught_up_after_a_prune_holds_the_task_minted_since() {
     assert_eq!(texts, ["Again"]);
 }
 
+#[test]
+fn test_a_task_pruned_and_purged_unseen_leaves_the_list_at_the_next_catch_up() {
+    // A long-lived list (a watch's) catching up after a prune landed whole
+    // between two of its reads: it never saw the removal, and the stream
+    // is gone, so only the stream's absence says the task went.
+    let mut project = Project::new();
+    let mut list = every_task();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    project.run(&mut list, SECOND, add(SECOND, "Second"));
+    let mut elsewhere = every_task();
+    project.run(&mut elsewhere, FIRST, pruned());
+    annals::next::Purge::purge(&mut project.store, &cover(FIRST)).unwrap();
+
+    list.catch_up(&mut project.store, &project.registry)
+        .unwrap();
+    assert_eq!(harps(&list), [SECOND]);
+    assert_eq!(
+        list.since(2).unwrap(),
+        [Delta {
+            sequence: 3,
+            change: Change::Remove {
+                harp_id: FIRST.to_string()
+            }
+        }]
+    );
+    assert!(unpurged(&list).is_empty(), "its stream is gone");
+    list.catch_up(&mut project.store, &project.registry)
+        .unwrap();
+    assert_eq!(list.sequence(), 3, "gone once");
+
+    // The freed harp minted again: its stream starts over, and is seen.
+    project.run(&mut elsewhere, FIRST, add(FIRST, "Again"));
+    let mut store = Ready(std::mem::take(&mut project.store));
+    ready(list.catch_up_async(&mut store, &project.registry)).unwrap();
+    let texts: Vec<&str> = list.entries().iter().map(|t| t.text.as_str()).collect();
+    assert_eq!(texts, ["Second", "Again"], "by harp");
+}
+
+#[test]
+fn test_an_async_catch_up_drops_a_task_whose_stream_is_gone() {
+    let mut project = Project::new();
+    let mut list = every_task();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    project.run(&mut list, FIRST, status("Done", ""));
+    let mut elsewhere = every_task();
+    project.run(&mut elsewhere, FIRST, pruned());
+    annals::next::Purge::purge(&mut project.store, &cover(FIRST)).unwrap();
+    let mut store = Ready(std::mem::take(&mut project.store));
+    ready(list.catch_up_async(&mut store, &project.registry)).unwrap();
+    assert!(list.entries().is_empty());
+    assert_eq!(list.sequence(), 3);
+}
+
+#[test]
+fn test_a_task_the_list_does_not_hold_leaves_no_change_when_its_stream_goes() {
+    let mut project = Project::new();
+    let mut list = not_done();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    project.run(&mut list, FIRST, status("Done", ""));
+    assert_eq!(list.sequence(), 2, "in, then out");
+    let mut elsewhere = every_task();
+    project.run(&mut elsewhere, FIRST, pruned());
+    annals::next::Purge::purge(&mut project.store, &cover(FIRST)).unwrap();
+    list.catch_up(&mut project.store, &project.registry)
+        .unwrap();
+    assert_eq!(list.sequence(), 2, "nothing listed left");
+}
+
 fn unpurged(list: &TaskList) -> Vec<&str> {
     list.unpurged().iter().map(|t| t.harp_id.as_str()).collect()
 }

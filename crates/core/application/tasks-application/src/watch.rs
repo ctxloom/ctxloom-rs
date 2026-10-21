@@ -3,15 +3,20 @@
 //! last poll the answer. The cursor is the projector's own sequence, so a
 //! poll that finds nothing new answers nothing.
 //!
-//! A poll re-reads the store's task streams; the projector skips what it
-//! has already projected. A cheaper test for "anything committed since"
-//! (SQLite's `PRAGMA data_version`) needs a call annals-store-sql does not
-//! offer yet.
+//! A poll first asks the store for its change token ([`WatchedStores`]),
+//! which reads no stream; only when it differs from the last poll's does
+//! the poll re-read the task streams, and the projector skips what it has
+//! already projected, so a token that moved with nothing new (a purge of
+//! nothing) answers nothing. The token is read before the streams, so a
+//! commit landing between the two is read again at the next poll rather
+//! than missed; and it names the store's handle, so a store opened again
+//! is always read. Where the project has no store yet, a poll is the
+//! store's look for one (for SQLite, at the filesystem) until it appears.
 
 use std::future::Future;
 
 use annals_diagnostic::Report;
-use ports::{Project, ProjectIdentity, TaskStores};
+use ports::{HeldToken, Project, ProjectIdentity, WatchedStores};
 use task_lists::{Change, TaskList};
 
 use crate::{failed, AppError, Service, Task};
@@ -37,6 +42,8 @@ pub struct Watch {
     list: TaskList,
     /// The list's sequence the last poll answered up to.
     cursor: u64,
+    /// The store's token when the list was last caught up; none before.
+    token: Option<HeldToken>,
 }
 
 impl Watch {
@@ -47,6 +54,7 @@ impl Watch {
             project,
             list: TaskList::new(Box::new(|_| true)),
             cursor: 0,
+            token: None,
         }
     }
 }
@@ -64,7 +72,8 @@ pub trait WatchService {
 
     /// The changes committed to `watch`'s project since the last poll (or
     /// since it began), in the order the projector saw them; none while
-    /// the project has no store.
+    /// the project has no store, and none, with no stream read, while its
+    /// store's change token has not moved.
     fn poll(
         &mut self,
         watch: &mut Watch,
@@ -74,7 +83,7 @@ pub trait WatchService {
 impl<I, S, N, C, D, L, G> WatchService for Service<I, S, N, C, D, L, G>
 where
     I: ProjectIdentity + Send,
-    S: TaskStores + Send,
+    S: WatchedStores + Send,
     N: Send,
     C: Send,
     D: Send,
@@ -95,6 +104,17 @@ where
     }
 
     async fn poll(&mut self, watch: &mut Watch) -> Result<Vec<Changed>, AppError> {
+        let Some(token) = self
+            .stores
+            .change_token(&watch.project)
+            .await
+            .map_err(failed)?
+        else {
+            return Ok(Vec::new());
+        };
+        if watch.token == Some(token) {
+            return Ok(Vec::new());
+        }
         let Some(store) = self
             .stores
             .open_existing(&watch.project)
@@ -108,6 +128,7 @@ where
             .catch_up_async(store, &self.registry)
             .await
             .map_err(|e| AppError::Failed(Report::of(&*e)))?;
+        watch.token = Some(token);
         let changes = watch
             .list
             .since(watch.cursor)

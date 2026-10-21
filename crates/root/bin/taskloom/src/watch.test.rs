@@ -1,9 +1,12 @@
 //! Acceptance: `taskloom watch`, the real binary in a temporary home: its
 //! first line at once, a line for a task another process adds, one JSON
 //! document a line, and a clean exit at SIGINT or SIGTERM, or when its
-//! stdin closes, so no process is left behind even by a test that dies. The test waits on the stream's lines (each wait bounded,
-//! so a stream that never answers fails rather than hangs), never on a
-//! sleep.
+//! stdin closes, so a test that dies leaves no process behind while the
+//! watch's stop works (one whose stop a mutant broke is killed by the
+//! mutation gate, which kills whatever its run leaves). The test waits on
+//! the stream's lines (each wait bounded, so a stream that never answers
+//! fails rather than hangs), never on a sleep. Then the stream in
+//! process, its ticks injected, over a prune's halves.
 
 use std::io::{BufRead, BufReader};
 use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
@@ -176,4 +179,304 @@ fn test_watch_ends_cleanly_when_its_stdin_closes() {
     assert_eq!(one_document(&watching.line())["event"], "changed");
     let status = watching.close();
     assert!(status.success(), "a closed stdin is a clean end: {status}");
+}
+
+// ------------------------------------------------- in process, tick by tick
+
+/// The stream in process, over the binary's own store and use cases, its
+/// ticks injected: each tick first does one step to the database through
+/// a handle of its own (another process's), then the stream polls, so
+/// what lands between which polls is chosen, not raced for. A burst's line
+/// is written at its first quiet tick.
+mod ticked {
+    use std::collections::VecDeque;
+    use std::future::poll_fn;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::task::Poll;
+
+    use annals::next::v1::event_meta::Causation;
+    use annals::next::v1::{
+        command_page, Command, CommandBook, CommandPage, Cover, EventMeta, EventPage, Uuid,
+    };
+    use annals::next::{
+        ids, Any, AsyncEventStore, AsyncPurge, Kernel, MemoryDeadLetters, Payload, Routes, Sampled,
+        Timestamp,
+    };
+    use annals_store_sql::sqlite::SqliteStore;
+    use harp_names::HarpNames;
+    use ports::{Project, ProjectIdentity};
+    use system::System;
+    use task_store_sqlite::SqliteStores;
+    use tasks::{RemovalReason, RemoveTask, TaskCommand, Tasks, TASK_DOMAIN};
+    use tasks_application::{ListQuery, NewTask, Service, TaskService};
+    use tasks_watch::{Settings, Ticks};
+
+    /// The one project, wherever the call is from.
+    struct Here(Project);
+
+    impl ProjectIdentity for Here {
+        fn for_write(&mut self, _: Option<&str>) -> Result<Project, annals_diagnostic::Report> {
+            Ok(self.0.clone())
+        }
+        fn for_read(
+            &mut self,
+            _: Option<&str>,
+        ) -> Result<Option<Project>, annals_diagnostic::Report> {
+            Ok(Some(self.0.clone()))
+        }
+        fn every_project(&mut self) -> Result<Vec<Project>, annals_diagnostic::Report> {
+            Ok(vec![self.0.clone()])
+        }
+        fn rootless_directory(&mut self) -> Result<Option<String>, annals_diagnostic::Report> {
+            Ok(None)
+        }
+    }
+
+    type Real = Service<Here, SqliteStores, HarpNames, System, System>;
+
+    fn service(project: &Project) -> Real {
+        Service::new(
+            Here(project.clone()),
+            SqliteStores::default(),
+            HarpNames,
+            System,
+            System,
+        )
+    }
+
+    /// What another process does before a tick's poll.
+    #[derive(Clone, Debug)]
+    enum Step {
+        /// Nothing: a quiet tick.
+        Quiet,
+        /// A prune's removal of the task, without its purge.
+        Prune(String),
+        /// A prune's purge of the task's stream, after its removal.
+        Purge(String),
+        /// A prune whole: its removal, then its purge.
+        Pruned(String),
+        /// A commit outside the task domain: the store's token moves, and
+        /// no task changes.
+        Elsewhere,
+    }
+
+    fn task_stream(harp: &str) -> Cover {
+        Cover {
+            domain: TASK_DOMAIN.to_string(),
+            root: ids::compute_root(TASK_DOMAIN, harp).ok(),
+            edition: None,
+        }
+    }
+
+    impl Step {
+        async fn apply(self, store: &mut SqliteStore, elsewhere: &mut u64) {
+            match self {
+                Step::Quiet => {}
+                Step::Prune(harp) => {
+                    let command: TaskCommand = RemoveTask {
+                        reason: RemovalReason::Pruned,
+                    }
+                    .into();
+                    let book = CommandBook {
+                        cover: Some(task_stream(&harp)),
+                        page: Some(CommandPage {
+                            body: Some(command_page::Body::Command(Command {
+                                payload: Some(command.to_any()),
+                            })),
+                            ..CommandPage::default()
+                        }),
+                        handling: None,
+                    };
+                    let registry = tasks_application::registry();
+                    let dead_letters = MemoryDeadLetters::new();
+                    let sampled = Sampled {
+                        now: Timestamp::default(),
+                        command_id: Uuid::from_bytes([0xee; 16]),
+                    };
+                    let unit = annals::next::AsyncStore::begin(store).await;
+                    Kernel::new(&registry, &dead_letters)
+                        .handle_async::<Tasks, _, _>(unit, &Routes::new(), book, &sampled, &mut ())
+                        .await
+                        .unwrap_or_else(|failure| panic!("{failure:?}"));
+                }
+                Step::Pruned(harp) => {
+                    Box::pin(Step::Prune(harp.clone()).apply(store, elsewhere)).await;
+                    Box::pin(Step::Purge(harp).apply(store, elsewhere)).await;
+                }
+                Step::Purge(harp) => {
+                    let deleted = store.purge(&task_stream(&harp)).await.unwrap();
+                    assert!(deleted > 0, "the stream was there to purge");
+                }
+                Step::Elsewhere => {
+                    let other = Cover {
+                        domain: "elsewhere".to_string(),
+                        root: Some(Uuid::from_bytes([7; 16])),
+                        edition: None,
+                    };
+                    let id = Uuid::from_bytes([*elsewhere as u8 + 1; 16]);
+                    let page = EventPage {
+                        payload: Some(Any {
+                            type_url: "/elsewhere.v1.Event".to_string(),
+                            value: Vec::new(),
+                        }),
+                        meta: Some(EventMeta {
+                            causation: Some(Causation::CommandId(id.clone())),
+                            correlation_id: Some(id),
+                            rules_version: "v1".to_string(),
+                            ..EventMeta::default()
+                        }),
+                        sequence: *elsewhere,
+                    };
+                    store.append(&other, *elsewhere, &[page]).await.unwrap();
+                    *elsewhere += 1;
+                }
+            }
+        }
+    }
+
+    /// One step before each tick; once they run out, the stream is told
+    /// to stop.
+    struct Scripted {
+        steps: VecDeque<Step>,
+        other: SqliteStore,
+        elsewhere: u64,
+        done: Arc<AtomicBool>,
+    }
+
+    impl Ticks for Scripted {
+        async fn tick(&mut self) {
+            match self.steps.pop_front() {
+                Some(step) => step.apply(&mut self.other, &mut self.elsewhere).await,
+                None => {
+                    self.done.store(true, Ordering::SeqCst);
+                    poll_fn(|cx| {
+                        cx.waker().wake_by_ref();
+                        Poll::<()>::Pending
+                    })
+                    .await;
+                }
+            }
+        }
+    }
+
+    /// The lines the stream writes over `steps`, for a project holding
+    /// one task (`harp`) at the start; and the project's tasks after.
+    fn watched(steps: impl Fn(&str) -> Vec<Step>) -> (usize, Vec<String>) {
+        let dir = tempfile::tempdir().unwrap();
+        let project = Project {
+            id: "jolly-mute-magma".to_string(),
+            root: dir.path().display().to_string(),
+            store: dir.path().join("state.db"),
+        };
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let mut seeding = service(&project);
+            let new = |text: &str| NewTask {
+                text: text.to_string(),
+                ..NewTask::default()
+            };
+            let harp = seeding.add(new("Pruned")).await.unwrap().task.harp_id;
+            seeding.add(new("Kept")).await.unwrap();
+
+            let done = Arc::new(AtomicBool::new(false));
+            let mut ticks = Scripted {
+                steps: steps(&harp).into(),
+                other: SqliteStore::open(&project.store).await.unwrap(),
+                elsewhere: 0,
+                done: Arc::clone(&done),
+            };
+            let stop = poll_fn(|_| {
+                if done.load(Ordering::SeqCst) {
+                    Poll::Ready(())
+                } else {
+                    Poll::Pending
+                }
+            });
+            let settings = Settings {
+                format: presentation::Format::Json,
+                project: None,
+                prog: "taskloom",
+            };
+            let catalog = super::super::super::catalog().unwrap();
+            let (mut out, mut err) = (Vec::new(), Vec::new());
+            let mut watching = service(&project);
+            let code = tasks_watch::run(
+                &mut watching,
+                &settings,
+                &mut ticks,
+                stop,
+                &catalog,
+                &mut out,
+                &mut err,
+            )
+            .await;
+            assert_eq!(code, 0, "{}", String::from_utf8_lossy(&err));
+            let lines = String::from_utf8(out).unwrap().lines().count();
+
+            let listing = service(&project)
+                .list(ListQuery {
+                    all: true,
+                    ..ListQuery::default()
+                })
+                .await
+                .unwrap();
+            let texts = listing.rows.iter().map(|r| r.task.text.clone()).collect();
+            (lines, texts)
+        })
+    }
+
+    #[test]
+    fn test_a_prune_between_two_polls_is_one_line() {
+        let (lines, tasks) = watched(|harp| vec![Step::Pruned(harp.to_string()), Step::Quiet]);
+        assert_eq!(lines, 2, "the first line, and the prune's");
+        assert_eq!(tasks, ["Kept"]);
+    }
+
+    #[test]
+    fn test_a_poll_between_a_prunes_removal_and_its_purge_is_one_line() {
+        let (lines, tasks) = watched(|harp| {
+            vec![
+                Step::Prune(harp.to_string()),
+                Step::Quiet,
+                Step::Purge(harp.to_string()),
+                Step::Quiet,
+            ]
+        });
+        // Read once between, at the removal; the quiet tick after has
+        // nothing to read, and the purge's read finds nothing new.
+        assert_eq!(lines, 2, "the first line, and the removal's");
+        assert_eq!(tasks, ["Kept"]);
+    }
+
+    #[test]
+    fn test_a_second_read_between_a_prunes_removal_and_its_purge_is_one_extra_line() {
+        // The store read again after the removal, before the purge (its
+        // token moved for a commit no task sees): the pruned stream is
+        // projected again, the task back and removed again, and that is a
+        // line of its own. Nothing the subscriber reads is wrong.
+        let (lines, tasks) = watched(|harp| {
+            vec![
+                Step::Prune(harp.to_string()),
+                Step::Quiet,
+                Step::Elsewhere,
+                Step::Quiet,
+                Step::Purge(harp.to_string()),
+                Step::Quiet,
+                Step::Quiet,
+            ]
+        });
+        assert_eq!(lines, 3, "the first, the removal's, and the extra");
+        assert_eq!(tasks, ["Kept"]);
+    }
+
+    #[test]
+    fn test_a_commit_no_task_sees_is_no_line() {
+        let (lines, tasks) = watched(|_| vec![Step::Elsewhere, Step::Quiet, Step::Elsewhere]);
+        assert_eq!(lines, 1, "only the first");
+        assert_eq!(tasks, ["Pruned", "Kept"]);
+    }
 }

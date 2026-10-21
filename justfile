@@ -106,6 +106,7 @@ gates-check:
 # per clone; `just gates-link` is once per checkout (`gates-check` does it
 # when a commit finds the link missing). Needs lefthook (1.13.6) and
 # gitleaks (v8), both by `go install`; cargo-nextest, cargo-deny and
-# cargo-mutants by `cargo install <name> --locked`; jq and flock.
+# cargo-mutants by `cargo install <name> --locked`; jq, flock, setsid, ps
+# and pkill.
 hooks-install: gates-link
     lefthook install
