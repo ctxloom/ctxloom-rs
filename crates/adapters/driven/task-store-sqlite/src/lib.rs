@@ -13,7 +13,7 @@ use annals_diagnostic::Report;
 use annals_store_sql::sqlite::SqliteStore;
 use ports::{Project, TaskStores};
 
-pub use error::{diagnostic_samples, StoreOpenError};
+pub use error::{diagnostic_samples, StoreOpenError, EN_US};
 
 /// The SQLite store of the project last asked for, held until another is.
 #[derive(Default)]

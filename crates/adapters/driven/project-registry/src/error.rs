@@ -101,6 +101,13 @@ impl Diagnostic for RegistryError {
     }
 }
 
+/// This crate's en-US messages, its name first: what an edge's catalog
+/// embeds to render its diagnostics.
+pub const EN_US: (&str, &str) = (
+    "project-registry",
+    include_str!("../locales/en-US/project-registry.ftl"),
+);
+
 /// One value of every error, for the catalog test.
 pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
     let path = || "/home/u/.ctxloom/projects/index.yaml".to_string();

@@ -23,7 +23,7 @@ use tasks::{
 };
 
 pub use annals::next::Timestamp;
-pub use error::{diagnostic_samples, AppError};
+pub use error::{diagnostic_samples, AppError, CATALOGS, EN_US};
 pub use ports::Project;
 pub use retry::Backoff;
 pub use view::{is_terminal, text_hash, Task, ARCHIVED, DONE};

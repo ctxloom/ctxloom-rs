@@ -45,6 +45,13 @@ impl Diagnostic for StoreOpenError {
     }
 }
 
+/// This crate's en-US messages, its name first: what an edge's catalog
+/// embeds to render its diagnostics.
+pub const EN_US: (&str, &str) = (
+    "task-store-sqlite",
+    include_str!("../locales/en-US/task-store-sqlite.ftl"),
+);
+
 /// One value of every error, for the catalog test.
 pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
     let path = || "/home/u/.ctxloom/projects/jolly-mute-magma".to_string();
