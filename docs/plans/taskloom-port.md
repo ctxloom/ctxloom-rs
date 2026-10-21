@@ -17,8 +17,8 @@ and angzarr here.
   remove, with localizable rejections.
 - `core/read-model/task-lists`: the list projector, with a resumable cursor,
   caught up over the sync or the async store port.
-- `core/ports/ports`: project identity, the store opener, names, the clock,
-  command ids, and waiting with jitter. Every port future, and every use
+- `core/ports/ports`: project identity and its survey (`ProjectAdmin`), the
+  store opener, names, the clock, command ids, and waiting with jitter. Every port future, and every use
   case's, is `Send`, so a server can spawn them; project identity is
   synchronous and blocks on the registry's lock, so an async server calls it
   through `spawn_blocking`.
@@ -28,10 +28,24 @@ and angzarr here.
   after capped exponential backoff with full jitter (10ms doubling to 1s,
   10 attempts). A list hides terminal and Deferred tasks unless `--all` or
   `--status`, in the order added.
+- `core/application/project-application`: `show`, `heal`, `repoint` and the
+  orphaned databases, planned from the port's survey; it depends on no
+  tasks crate. The marker is authoritative and the registry heals toward
+  it. A change is reported, and made only when asked, under the registry's
+  lock and only while a fresh survey matches the one it was planned from.
 - `adapters/driven/project-registry`: the work root, `.project-id` (adopting
   Go's `.ctxloom/project-id` on a write), the registry in Go's schema, and a
   mint under `index.yaml.lock` that re-checks first, so racing first writes
-  bind one id. A read never mints.
+  bind one id. A read never mints. Resolution reads the marker first, then
+  Go's older marker, then the registry. A linked worktree with no marker of
+  its own is its primary checkout's project, found through git's common
+  directory (the `.git` file's `gitdir`, then its `commondir`), and is bound
+  and marked there, never in the worktree; one whose git directory is gone
+  is an error, as in Go. The lock is taken again when what it was granted is
+  no longer the file at its path (Go's `takeCurrent`, 16 tries), and waited
+  for at most 10s, then refused naming the lock. It also implements
+  `ProjectAdmin`: the survey, and the changes (markers, registry entries,
+  and removing `~/.ctxloom/projects/<id>/`, never through a link).
 - `adapters/driven/harp-names`: harp-core behind the names port.
 - `adapters/driven/go-task-log`: Go's `~/.ctxloom/tasks/<project-id>.jsonl`
   behind the `GoTaskLogs` port, read only (not even its lock file). A line
@@ -43,9 +57,15 @@ and angzarr here.
 - `adapters/driven/system`: the clock, UUIDv7 command ids, tokio's timer and
   jitter.
 - `adapters/driving/tasks-cli`: `add`, `list`, `tag` and `import`, text and
-  json.
+  json, and `run_mounted`, which flattens another crate's commands in
+  beside them and hands one parsed to its caller with the global flags.
+- `adapters/driving/project-cli`: the `project` group (`show`, `heal
+  [--yes]`, `repoint <project-id> [--share] [--yes]`, `orphans`, `orphans
+  remove <id>... [--yes]`), text or one JSON document each, for any binary
+  to mount; taskloom does, and ctxloom can, since it names no tasks crate.
 - `root/bin/taskloom`: the binary, over annals-store-sql's SQLite store at
   `~/.ctxloom/projects/<project-id>/state.db` (CLAUDE.md, "Storage").
+  It mounts the `project` group over the project registry.
   Its tests are Go's `crossprocess_test.go` ported, each process separate
   on one database, and they build the binary themselves: 40 concurrent adds
   at a project's first sight (racing the mint and the migration; one
@@ -74,9 +94,31 @@ and angzarr here.
   all 1162 tasks agreed on every field and a second run applied nothing;
   they held no duplicate add, repair, removal or repeated line, and two
   records out of time order, which the replay order puts right.
+- Healing and repointing (step 2): `taskloom project`, its acceptance tests
+  the binary in a temporary home. A copy that forked its own id is
+  repointed to the original's and finds its tasks, its own database then
+  reported orphaned and removed by name; a lost marker is shown and healed
+  from the registry; a linked worktree made by `git worktree add` shares
+  its primary checkout's tasks and gets no marker.
 
 Where the skeleton differs from Go, or from this plan:
 
+- **Resolution reads the marker first, deliberately** (decided
+  2026-10-21). The committed `.project-id` is authoritative and the
+  registry heals toward it: `--project`, `CTXLOOM_PROJECT_ID`, the marker,
+  Go's older marker, then the registry entry for the root. Go looks the
+  path up in the registry first and treats the marker as advisory, warning
+  when they disagree.
+- Go's `Resolve` heals on its own (a missing marker rewritten, an unknown
+  marker adopted, a proven move repointed, a copy forked). A Rust write
+  only adopts Go's older marker or mints; the rest is `project heal` and
+  `project repoint`, which report what they would change and make it only
+  with `--yes`. Go has neither command.
+- A linked worktree opts out of its primary checkout's project with a
+  marker of its own (`.project-id`, or Go's `.ctxloom/project-id`); in Go,
+  with a `.ctxloom` directory of its own.
+- The registry's lock is waited for at most 10s; Go waits without end.
+- `project heal` does not yet run the store's integrity check (see "Open").
 - Concurrent writers are serialized by SQLite itself: `BEGIN IMMEDIATE` per
   unit of work and sqlx's default 5s busy timeout. With retries switched off
   the acceptance tests still pass, so the backoff is a guard, not what makes
@@ -123,26 +165,27 @@ Where the skeleton differs from Go, or from this plan:
 
 ## Open, and the step each waits for
 
-Found in the walking skeleton's review; each is settled at the step named,
+Found in the walking skeleton's review and since; each is settled at the step named,
 not filed as a task.
 
-- **Linked worktrees resolve to their own project.** A linked worktree's
-  `.git` file marks it a work root, so it gets its own id rather than its
-  primary checkout's, and a `.project-id` committed there and merged back
-  silently repoints the primary checkout. Settle with heal and repoint
-  (step 2), before MCP serves sessions (step 4).
-- **Resolution precedence differs from Go.** Go looks the path up in the
-  registry first and treats the marker as advisory; Rust reads the marker
-  first. Settle with heal and repoint (step 2).
+- **`project heal` runs no integrity check of the store.** SQLite's
+  `PRAGMA integrity_check` has to come through the store adapter, and
+  annals-store-sql offers none: it needs a check on `SqliteStore` in annals
+  (ctxloom writes no SQL, and task-store-sqlite links no sqlx of its own).
+  Then a port for it, called by heal. Waits on that annals change.
+- **A clone with the committed marker writes to the original's database
+  unasked.** The marker is authoritative, so a second clone on the machine
+  resolves to the same id, and a write goes to the same database with no
+  refusal. `project show` reports it ("shared") and `project heal` will not
+  register it, but nothing stops the write, and there is no command to give
+  the clone an id of its own (repoint binds only to an existing id).
+  Decided 4 means repoint's refusal to keep them apart; a write needs the
+  same. Settle before MCP serves sessions (step 4).
 - **Store reads are not one snapshot.** annals' `read_from` should run as
   one read transaction, and annals should gain a read-only unit, so that
   `covers` and the reads after it see one snapshot. Needed before purge
   and prune (step 5, "Purging a stream in annals"): otherwise a purge in
   the middle of a listing yields a blank task.
-- **The registry lock** re-checks no inode after locking (Go does, because
-  `ctxloom clean` reaps lock sidecars, so a lock can be taken on a file
-  since unlinked) and has no timeout. Settle with heal and repoint
-  (step 2), which writes the registry most.
 - **`TaskService` takes `&mut self`**, so an MCP server holding one service
   serializes every call. Revisit with MCP (step 4), before its tools
   multiply (step 5).
@@ -157,11 +200,10 @@ complete unit that retires a risk, and each reviewed by an architect before
 the next. A slice cuts through every layer it needs; the sections after this
 one are the reference for what each layer finally holds, not an order.
 
-Step 1, the importer, is done (see "Where it stands").
+Step 1, the importer, and step 2, healing and repointing a project's
+store, are done (see "Where it stands"); step 2 leaves `project merge` and
+the integrity check (see "Project identity: heal and repoint" and "Open").
 
-2. **Healing and repointing a project's store** (see "Project identity:
-   heal and repoint"). Risk retired: tasks that seem lost because a
-   directory resolved to the wrong id.
 3. **Tags on tagma.** The `Tag` proto in the tagma repository, imported
    here, then validation and queries. Risk retired: the cross-repository
    proto dependency, and query parity between `tagma-core` and Go's
@@ -249,10 +291,10 @@ defects Go's tasks-schema.md records: NaN passes every guard, a zero
 
 - Store: annals-store-sql at `~/.ctxloom/projects/<project-id>/state.db`.
 - Project identity, from Go `projectid`. Resolution order: `--project`, then
-  `CTXLOOM_PROJECT_ID`, then the registry (`~/.ctxloom/projects/index.yaml`)
-  and the marker (`.project-id`, adopting Go's `.ctxloom/project-id`). A
-  write resolves (heal, adopt, move or fork, else mint); a read only looks
-  up. A linked worktree goes to its
+  `CTXLOOM_PROJECT_ID`, then the marker (`.project-id`, adopting Go's
+  `.ctxloom/project-id`), then the registry
+  (`~/.ctxloom/projects/index.yaml`). A write adopts or mints; a read only
+  looks up; heal and repoint are commands. A linked worktree goes to its
   primary checkout unless it has its own marker. The work root is
   `CTXLOOM_ROOT`, then the git root, then cwd.
 - Configuration: `~/.taskloom/config.yaml`, then `<root>/.taskloom/config.yaml`,
@@ -297,27 +339,18 @@ repointed, a copy forked), but offers no command for someone to correct it
 when it chose wrong. The worst case is a fresh clone while the old tree
 still exists: it forks a new id, and every task appears lost.
 
-The identity logic is a shared adapter, and both ctxloom and taskloom
-present it as a `project` command group:
+The identity logic is shared (`project-application` over the
+`ProjectAdmin` port, `project-cli` for the commands), and taskloom presents
+it as the `project` group; ctxloom can mount the same. `show`, `heal`,
+`repoint` and the orphaned databases are done (see "Where it stands").
+What remains:
 
-- `project show`: the id, the root, the marker, every registry entry for
-  the path, the database path, and every inconsistency: two ids for one
-  directory, a missing marker, a registered path that no longer exists, a
-  database that no registered path points at.
-- `project heal`: repair registry and marker skew in either direction, and
-  run the store's integrity check. It reports what it would change, and
-  applies only with `--yes`.
-- `project repoint <project-id>`: bind this directory to an existing id and
-  its database (a wrong fork, a fresh clone, a restored backup). It refuses
-  while the id's registered tree still exists, unless told that the two
-  trees are meant to share it. The id this directory had before keeps its
-  database, which `project show` then reports as orphaned.
+- `project heal` running the store's integrity check (see "Open").
 - `project merge <project-id>`: replay another project's task streams into
   this one, for a fork that gathered tasks on both sides. A harp held on
-  both sides is re-minted, and the result says so. It may come later than
-  the other three.
-- Orphaned databases (no live registered path) are listed, and are removed
-  only by name and with `--yes`.
+  both sides is re-minted, and the result says so. Not started: it needs a
+  tasks use case reading one project's store into another's, beyond the
+  identity ports.
 
 ## Driving adapters
 
