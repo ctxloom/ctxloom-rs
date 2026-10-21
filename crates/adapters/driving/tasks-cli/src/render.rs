@@ -1,56 +1,16 @@
 //! The tasks views: answers as a person reads them (text) or a program
-//! does (JSON), in Go taskloom's shapes, on presentation's [`Render`].
+//! does (JSON), in Go taskloom's shapes, on presentation's [`Render`]. A
+//! task's JSON is tasks-presentation's, shared with the MCP server.
 
 use std::io::{self, Write};
 
 use presentation::{text, Render};
 use serde::Serialize;
-use tasks_application::{Project, Task, Timestamp};
-use time::format_description::well_known::Rfc3339;
-use time::OffsetDateTime;
+use tasks_application::{Project, Task};
+use tasks_presentation::TaskJson;
 
 /// How many characters of a task's first line a listing shows.
 pub const HEADLINE_WIDTH: usize = 80;
-
-/// A task as JSON: Go's `tasks.Task`, its fields in its order.
-#[derive(Serialize)]
-pub struct TaskJson<'a> {
-    harp_id: &'a str,
-    text: &'a str,
-    status: &'a str,
-    checked: bool,
-    text_hash: &'a str,
-    trigger: &'a str,
-    origin_session: &'a str,
-    tags: &'a [String],
-    created_at: String,
-}
-
-impl<'a> TaskJson<'a> {
-    pub fn of(task: &'a Task) -> TaskJson<'a> {
-        TaskJson {
-            harp_id: &task.harp_id,
-            text: &task.text,
-            status: &task.status,
-            checked: task.checked,
-            text_hash: &task.text_hash,
-            trigger: &task.trigger,
-            origin_session: &task.origin_session,
-            tags: &task.tags,
-            created_at: rfc3339(task.created_at),
-        }
-    }
-}
-
-/// `at` in RFC 3339, UTC, with as many fractional digits as it needs (Go's
-/// `RFC3339Nano`).
-pub fn rfc3339(at: Timestamp) -> String {
-    let nanos = i128::from(at.seconds) * 1_000_000_000 + i128::from(at.nanos);
-    OffsetDateTime::from_unix_timestamp_nanos(nanos)
-        .ok()
-        .and_then(|t| t.format(&Rfc3339).ok())
-        .unwrap_or_default()
-}
 
 /// `dir (id)`: the project a command ran in.
 pub fn project_label(project: &Project) -> String {

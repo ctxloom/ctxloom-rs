@@ -34,6 +34,7 @@ go-task-log = { path = "crates/adapters/driven/go-task-log" }
 system = { path = "crates/adapters/driven/system" }
 tasks-cli = { path = "crates/adapters/driving/tasks-cli" }
 presentation = { path = "crates/adapters/driving/presentation" }
+tasks-presentation = { path = "crates/adapters/driving/tasks-presentation" }
 project-cli = { path = "crates/adapters/driving/project-cli" }
 
 # Task and project ids: harp's word lists, as Go's harp ports them.

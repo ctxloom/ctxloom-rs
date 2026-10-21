@@ -2156,6 +2156,16 @@ dependencies = [
  "serde",
  "serde_json",
  "tasks-application",
+ "tasks-presentation",
+]
+
+[[package]]
+name = "tasks-presentation"
+version = "0.1.0"
+dependencies = [
+ "presentation",
+ "serde",
+ "tasks-application",
  "time",
 ]
 

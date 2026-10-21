@@ -25,7 +25,8 @@ use tasks_application::{
 pub use error::{diagnostic_samples, CliError, EN_US};
 pub use import::{ImportJson, Imported};
 pub use notice::Notice;
-pub use render::{headline, rfc3339, table, Added, Listed, Tagged, TaskJson, HEADLINE_WIDTH};
+pub use render::{headline, table, Added, Listed, Tagged, HEADLINE_WIDTH};
+pub use tasks_presentation::{rfc3339, TaskJson};
 
 /// The program's name: every diagnostic's prefix.
 pub const PROG: &str = "taskloom";
