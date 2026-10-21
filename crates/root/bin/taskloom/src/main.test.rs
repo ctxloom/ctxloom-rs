@@ -784,3 +784,6 @@ mod project;
 
 #[path = "tags.test.rs"]
 mod tags;
+
+#[path = "prune.test.rs"]
+mod prune;

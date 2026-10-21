@@ -11,8 +11,8 @@ use std::time::Duration;
 
 use annals::next::v1::{Cover, EventPage, Snapshot, Uuid};
 use annals::next::{
-    AsyncEventStore, AsyncStore, AsyncUnitOfWork, InMemoryStore, InMemoryTx, Ready, Slice,
-    StoreError, Timestamp,
+    AsyncEventStore, AsyncPurge, AsyncStore, AsyncUnitOfWork, InMemoryStore, InMemoryTx, Ready,
+    Slice, StoreError, Timestamp,
 };
 use annals_diagnostic::Report;
 use ports::{Clock, CommandIds, Delay, Jitter, Names, Project, ProjectIdentity, TaskStores};
@@ -91,7 +91,12 @@ pub enum Fault {
     Conflict,
     /// Its commit fails in a way no retry mends.
     Discontinuous,
+    /// Nothing goes wrong: a unit before the one meant to fail.
+    Sound,
 }
+
+/// What another process does to a store.
+pub type Meanwhile = Box<dyn FnOnce(&mut InMemoryStore) + Send>;
 
 /// An in-memory store whose units of work fail on cue, in order.
 pub struct Flaky {
@@ -101,6 +106,12 @@ pub struct Flaky {
     pub begun: u32,
     /// Fails the next open.
     pub open_fails: bool,
+    /// Done to the store as the next unit of work begins, before it: what
+    /// another process does between a use case's read and its write.
+    pub meanwhile: Option<Meanwhile>,
+    /// Every stream reads back with no events, outside a unit of work:
+    /// what a stream purged mid-read can look like.
+    pub hollow: bool,
 }
 
 impl Default for Flaky {
@@ -110,6 +121,8 @@ impl Default for Flaky {
             faults: VecDeque::new(),
             begun: 0,
             open_fails: false,
+            meanwhile: None,
+            hollow: false,
         }
     }
 }
@@ -151,7 +164,13 @@ impl AsyncEventStore for Flaky {
     }
 
     async fn read_from(&mut self, stream: &Cover, from: u64) -> Result<Option<Slice>, StoreError> {
-        self.inner.read_from(stream, from).await
+        let mut read = self.inner.read_from(stream, from).await;
+        if self.hollow {
+            if let Ok(Some(slice)) = &mut read {
+                slice.pages.clear();
+            }
+        }
+        read
     }
 
     async fn find_command(
@@ -167,11 +186,20 @@ impl AsyncEventStore for Flaky {
     }
 }
 
+impl AsyncPurge for Flaky {
+    async fn purge(&mut self, stream: &Cover) -> Result<u64, StoreError> {
+        self.inner.purge(stream).await
+    }
+}
+
 impl AsyncStore for Flaky {
     type Unit<'s> = FlakyUnit<'s>;
 
     async fn begin(&mut self) -> FlakyUnit<'_> {
         self.begun += 1;
+        if let Some(meanwhile) = self.meanwhile.take() {
+            meanwhile(&mut self.inner.0);
+        }
         let fault = self.faults.pop_front();
         FlakyUnit {
             inner: self.inner.begin().await,
@@ -211,10 +239,16 @@ impl AsyncEventStore for FlakyUnit<'_> {
     }
 }
 
+impl AsyncPurge for FlakyUnit<'_> {
+    async fn purge(&mut self, stream: &Cover) -> Result<u64, StoreError> {
+        self.inner.purge(stream).await
+    }
+}
+
 impl AsyncUnitOfWork for FlakyUnit<'_> {
     async fn commit(self) -> Result<(), StoreError> {
         match self.fault {
-            None => self.inner.commit().await,
+            None | Some(Fault::Sound) => self.inner.commit().await,
             Some(Fault::Unavailable) => Err(unavailable()),
             Some(Fault::LandsThenFails) => {
                 self.inner.commit().await?;

@@ -10,9 +10,9 @@ use std::task::{Context as TaskContext, Poll, Waker};
 use annals_diagnostic::Report;
 use tasks_application::{
     AppError, Details, Finding, Hidden, ImportReport, ImportRequest, ImportService, LintReport,
-    ListQuery, Listing, NewTask, Project, ProjectImport, Reach, Row, Scope, ShowQuery,
-    StatusChange, StatusInfo, Statuses, Summary, TagChange, TagCount, Task, TaskService, TextEdit,
-    Violation, Vocabulary, Written,
+    ListQuery, Listing, NewTask, Project, ProjectImport, PruneRequest, PruneService, Pruning,
+    Reach, Row, Scope, ShowQuery, StatusChange, StatusInfo, Statuses, Summary, TagChange, TagCount,
+    Task, TaskService, TextEdit, Violation, Vocabulary, Written,
 };
 
 use presentation::{Catalog, Format};
@@ -79,6 +79,8 @@ struct Fake {
     listing: Option<Result<Listing, AppError>>,
     imports: Vec<ImportRequest>,
     report: Option<Result<ImportReport, AppError>>,
+    prunes: Vec<PruneRequest>,
+    pruning: Option<Result<Pruning, AppError>>,
 }
 
 impl TaskService for Fake {
@@ -137,6 +139,13 @@ impl ImportService for Fake {
     async fn import(&mut self, request: ImportRequest) -> Result<ImportReport, AppError> {
         self.imports.push(request);
         self.report.clone().expect("an import answer scripted")
+    }
+}
+
+impl PruneService for Fake {
+    async fn prune(&mut self, request: PruneRequest) -> Result<Pruning, AppError> {
+        self.prunes.push(request);
+        self.pruning.clone().expect("a prune answer scripted")
     }
 }
 
@@ -1715,4 +1724,181 @@ fn tag(key: &str) -> tasks_application::Tag {
         key: key.to_string(),
         value: None,
     }
+}
+
+// ------------------------------------------------------------ prune
+
+fn pruning(applied: bool, taken: &[&str]) -> Pruning {
+    Pruning {
+        project: Some(project()),
+        statuses: vec!["Done".to_string()],
+        before: tasks_application::Timestamp {
+            seconds: 1_767_225_600,
+            nanos: 0,
+        },
+        tag_query: String::new(),
+        applied,
+        pruned: taken
+            .iter()
+            .map(|harp| tasks_application::Pruned {
+                task: shapes::task(harp, "Done"),
+                status_set_at: tasks_application::Timestamp::default(),
+            })
+            .collect(),
+        events_removed: 2 * taken.len() as u64,
+        tasks_remaining: 1,
+        dangling: vec![tasks_application::Dangling {
+            harp_id: "keeper".to_string(),
+            pruned: "swift-amber".to_string(),
+            via: tasks_application::Via::Tag("relates:swift-amber".to_string()),
+        }],
+        shown: tasks_application::Shown::default(),
+    }
+}
+
+#[test]
+fn test_prune_by_default_reports_done_tasks_older_than_seven_days() {
+    let mut fake = Fake {
+        pruning: Some(Ok(pruning(false, &[]))),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["prune"]);
+    assert_eq!(ran.code, 0, "{}", ran.err);
+    assert_eq!(
+        fake.prunes,
+        [PruneRequest {
+            project: None,
+            statuses: vec!["Done".to_string()],
+            older_than: "7d".to_string(),
+            tag_query: String::new(),
+            apply: false,
+            config_set: Vec::new(),
+        }]
+    );
+    assert_eq!(ran.err, "", "nothing would be taken: nothing to say");
+}
+
+#[test]
+fn test_prune_passes_its_flags() {
+    let mut fake = Fake {
+        pruning: Some(Ok(pruning(true, &["swift-amber"]))),
+        ..Fake::default()
+    };
+    let ran = run_on(
+        &mut fake,
+        true,
+        &[
+            "--project",
+            "pinned",
+            "prune",
+            "--older-than",
+            "30d",
+            "--status",
+            "Done,Archived",
+            "--status",
+            "To Do",
+            "--tag-query",
+            "release",
+            "--yes",
+            "--config-set",
+            "tag_schema=x",
+        ],
+    );
+    assert_eq!(ran.code, 0, "{}", ran.err);
+    assert_eq!(
+        fake.prunes,
+        [PruneRequest {
+            project: Some("pinned".to_string()),
+            statuses: vec![
+                "Done".to_string(),
+                "Archived".to_string(),
+                "To Do".to_string()
+            ],
+            older_than: "30d".to_string(),
+            tag_query: "release".to_string(),
+            apply: true,
+            config_set: vec!["tag_schema=x".to_string()],
+        }]
+    );
+    assert_eq!(ran.err, "", "applied: no report-only notice");
+    assert!(
+        ran.out
+            .starts_with("Project: /work/tree (jolly-mute-magma)\n"),
+        "{}",
+        ran.out
+    );
+}
+
+#[test]
+fn test_a_prune_report_that_would_take_something_says_how_to_apply_it() {
+    let mut fake = Fake {
+        pruning: Some(Ok(pruning(false, &["swift-amber"]))),
+        ..Fake::default()
+    };
+    let ran = run_on(
+        &mut fake,
+        true,
+        &["prune", "--status", "To Do", "--tag-query", "level<=2"],
+    );
+    assert_eq!(ran.code, 0);
+    assert_eq!(
+        ran.err,
+        "taskloom: removed nothing: this was a report, not a removal; to apply exactly this plan, \
+         run it again with --yes: taskloom prune --older-than 7d --status 'To Do' --tag-query 'level<=2' --yes\n"
+    );
+}
+
+#[test]
+fn test_off_a_terminal_a_prune_is_one_json_document_and_its_notices_are_on_stderr() {
+    let mut fake = Fake {
+        pruning: Some(Ok(pruning(false, &["swift-amber"]))),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, false, &["prune"]);
+    let value: serde_json::Value = serde_json::from_str(&ran.out).unwrap();
+    assert_eq!(value["pruned"][0]["harp_id"], "swift-amber");
+    assert_eq!(
+        value["dangling_references"][0]["via"],
+        "tag relates:swift-amber"
+    );
+    assert!(ran.err.contains("removed nothing"), "{}", ran.err);
+}
+
+#[test]
+fn test_a_prune_where_there_is_no_project_says_so_on_stderr() {
+    let mut answer = pruning(false, &[]);
+    answer.project = None;
+    answer.dangling.clear();
+    let mut fake = Fake {
+        pruning: Some(Ok(answer)),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["prune"]);
+    assert_eq!(ran.code, 0);
+    assert_eq!(ran.err, "taskloom: no project here yet: nothing to prune\n");
+    assert_eq!(
+        ran.out,
+        "Nothing to prune (status Done, last status change before 2026-01-01 00:00 UTC).\n"
+    );
+}
+
+#[test]
+fn test_a_refused_prune_says_why_and_exits_1() {
+    let refusal = annals_diagnostic::Report::new(
+        "tasks-application-prune-age-unreadable",
+        "the age soon is unreadable",
+    )
+    .arg("age", "soon");
+    let mut fake = Fake {
+        pruning: Some(Err(AppError::Prune(refusal))),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["prune", "--older-than", "soon"]);
+    assert_eq!(ran.code, 1);
+    assert_eq!(ran.out, "");
+    assert_eq!(
+        ran.err,
+        "taskloom: the age soon is neither an offset (30d, 12w, 720h) nor a date (2026-01-01)\n",
+        "the catalog's message"
+    );
 }

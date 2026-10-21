@@ -1,5 +1,6 @@
 //! The tasks use cases: add a task, move, edit or retag one, read a
-//! project's tasks (or every project's), and import Go taskloom's logs.
+//! project's tasks (or every project's), prune old finished ones, and
+//! import Go taskloom's logs.
 //!
 //! Each resolves its project through [`ProjectIdentity`], opens the
 //! project's store through [`TaskStores`], and runs its command through
@@ -10,6 +11,7 @@
 mod error;
 mod import;
 mod lint;
+mod prune;
 mod query;
 mod read;
 mod retry;
@@ -34,6 +36,10 @@ pub use import::{
 };
 pub use lint::{Finding, LintReport, Violation, SCHEMA_SUBJECT};
 pub use ports::{GoOp, Project};
+pub use prune::{
+    cut, Dangling, PruneRefusal, PruneRequest, PruneService, Pruned, Pruning, Via,
+    DEFAULT_OLDER_THAN, DEFAULT_PRUNE_STATUSES,
+};
 pub use query::{QueryError, QUERY_GRAMMAR};
 pub use read::{Details, Hidden, Listing, Reach, Statuses, Summary, TagCount, Vocabulary};
 pub use retry::Backoff;
@@ -506,7 +512,8 @@ fn book(harp_id: &str, command: TaskCommand) -> CommandBook {
     }
 }
 
-/// The task `harp_id` names, as the store holds it now.
+/// The task `harp_id` names, as the store holds it now; `None` when its
+/// stream holds no task.
 async fn read<S: AsyncEventStore>(
     store: &mut S,
     registry: &Registry,
@@ -518,7 +525,10 @@ async fn read<S: AsyncEventStore>(
     };
     let stream = Stream::<Tasks>::replay(cover, &slice.pages, registry)
         .map_err(|e| AppError::Failed(Report::of(&e)))?;
-    Ok(Some(Task::of(stream.state())))
+    // A stream that replays to no task (purged mid-read, read back with
+    // no events) is no task, never a blank one.
+    let state = stream.state();
+    Ok((!state.harp_id.is_empty()).then(|| Task::of(state)))
 }
 
 fn failed(error: annals::next::StoreError) -> AppError {

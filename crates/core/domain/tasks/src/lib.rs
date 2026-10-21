@@ -1,6 +1,7 @@
 //! The tasks domain. One task is one aggregate: its stream's root is derived
 //! from its harp id, so a harp id is unique because a stream is, and a
-//! removed task's stream keeps its harp reserved.
+//! removed task's stream keeps its harp reserved; a prune removes a task
+//! and then purges its stream, which frees the harp.
 //!
 //! The domain types, their wire conversions, the [`TaskCommand`] and
 //! [`TaskEvent`] payloads and [`TaskState`]'s annals impl are generated from

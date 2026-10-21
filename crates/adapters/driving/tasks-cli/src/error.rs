@@ -123,6 +123,10 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
             deferred: 1,
         }),
         Box::new(Notice::Omitted { omitted: 4 }),
+        Box::new(Notice::NothingToPrune),
+        Box::new(Notice::ReportOnly {
+            command: "taskloom prune --older-than 7d --status Done --yes".to_string(),
+        }),
     ]
 }
 

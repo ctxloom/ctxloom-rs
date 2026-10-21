@@ -24,6 +24,11 @@ pub enum Notice {
     },
     /// The tasks a limit left out.
     Omitted { omitted: usize },
+    /// A prune found no project here, so prunes nothing.
+    NothingToPrune,
+    /// A prune reported what it would take, and took nothing: `command`
+    /// takes it.
+    ReportOnly { command: String },
 }
 
 impl Notice {
@@ -56,6 +61,11 @@ impl fmt::Display for Notice {
                 f,
                 "{omitted} more tasks omitted by --limit: raise or drop it to see them (summary's counts are unaffected)"
             ),
+            Notice::NothingToPrune => f.write_str("no project here yet: nothing to prune"),
+            Notice::ReportOnly { command } => write!(
+                f,
+                "removed nothing: this was a report, not a removal; to apply exactly this plan, run it again with --yes: {command}"
+            ),
         }
     }
 }
@@ -68,6 +78,8 @@ impl Diagnostic for Notice {
             Notice::EveryProject { .. } => "tasks-cli-every-project",
             Notice::Hidden { .. } => "tasks-cli-hidden",
             Notice::Omitted { .. } => "tasks-cli-omitted",
+            Notice::NothingToPrune => "tasks-cli-nothing-to-prune",
+            Notice::ReportOnly { .. } => "tasks-cli-report-only",
         }
     }
 
@@ -76,7 +88,6 @@ impl Diagnostic for Notice {
             Notice::Project { root, id } => {
                 vec![("root", root.as_str().into()), ("id", id.as_str().into())]
             }
-            Notice::NoProject => Vec::new(),
             Notice::EveryProject { directory } => vec![("directory", directory.as_str().into())],
             Notice::Hidden {
                 hidden,
@@ -88,6 +99,8 @@ impl Diagnostic for Notice {
                 ("deferred", (*deferred).into()),
             ],
             Notice::Omitted { omitted } => vec![("omitted", (*omitted).into())],
+            Notice::ReportOnly { command } => vec![("command", command.as_str().into())],
+            Notice::NoProject | Notice::NothingToPrune => Vec::new(),
         }
     }
 }

@@ -38,3 +38,7 @@ tasks-application-lint-not-a-number = { $target }={ $value } does not parse as a
 tasks-application-lint-out-of-range = { $target }={ $value } is outside the declared range [{ $min }, { $max }]
 tasks-application-lint-scalar = { $target } carries { $count } distinct values ({ $values }) but is declared arity=scalar
 tasks-application-lint-formula-enum = { $facet } on { $target } references the placeholder { $placeholder }, but { $value } is not one of { $reference }'s declared enum values: { $members }
+tasks-application-prune-no-status = a prune needs at least one status to select by: an empty status set is never read as every status
+tasks-application-prune-age-required = a prune needs an age: an offset like 30d, or a date like 2026-01-01
+tasks-application-prune-age-not-positive = the age { $age } is not a positive age
+tasks-application-prune-age-unreadable = the age { $age } is neither an offset (30d, 12w, 720h) nor a date (2026-01-01)

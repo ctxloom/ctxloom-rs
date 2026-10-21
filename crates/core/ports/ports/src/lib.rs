@@ -1,6 +1,6 @@
 //! The ports the tasks application needs from outside, beyond annals' own
 //! store port: which project a call is about, where its store is, how ids
-//! are minted, what time it is, how to wait, what is configured, Go
+//! are minted, whether its store can purge a stream, what time it is, how to wait, what is configured, Go
 //! taskloom's logs to import, what a directory's identity rests on, to
 //! show and repair it, and whether a project's database is sound. Each is a trait a driven adapter (or the composition
 //! root) implements; nothing here does I/O.
@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use annals::next::v1::Uuid;
-use annals::next::{AsyncStore, StoreError, Timestamp};
+use annals::next::{AsyncPurge, AsyncStore, AsyncUnitOfWork, StoreError, Timestamp};
 use annals_diagnostic::Report;
 
 mod project;
@@ -81,6 +81,37 @@ pub trait TaskStores {
         &mut self,
         project: &Project,
     ) -> impl Future<Output = Result<Option<&mut Self::Store>, StoreError>> + Send;
+}
+
+/// A task store that can purge a stream, in a unit of work: what a prune
+/// needs of [`TaskStores::Store`]. Opt-in, as annals' purge is: a store
+/// that cannot purge stays append-only by type, and every store whose
+/// units of work purge (annals' [`AsyncPurge`] on the store and on its
+/// unit) is one.
+pub trait PurgingStore: AsyncStore + AsyncPurge + Send {
+    /// A unit of work that can purge, as well as read and append.
+    type PurgingUnit<'s>: AsyncUnitOfWork + AsyncPurge + Send
+    where
+        Self: 's;
+
+    /// A unit of work over this store, as [`AsyncStore::begin`]: what it
+    /// purges lands at its commit, with what it appends.
+    fn begin_purging(&mut self) -> impl Future<Output = Self::PurgingUnit<'_>> + Send;
+}
+
+impl<S> PurgingStore for S
+where
+    S: AsyncStore + AsyncPurge + Send,
+    for<'s> S::Unit<'s>: AsyncPurge,
+{
+    type PurgingUnit<'s>
+        = S::Unit<'s>
+    where
+        Self: 's;
+
+    fn begin_purging(&mut self) -> impl Future<Output = S::Unit<'_>> + Send {
+        self.begin()
+    }
 }
 
 /// Fresh, random names. Uniqueness is not promised: a caller checks.

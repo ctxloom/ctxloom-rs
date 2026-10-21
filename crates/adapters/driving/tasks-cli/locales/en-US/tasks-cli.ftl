@@ -9,3 +9,5 @@ tasks-cli-hidden = { $hidden } more matching tasks hidden by the default view ({
 tasks-cli-omitted = { $omitted } more tasks omitted by --limit: raise or drop it to see them (summary's counts are unaffected)
 tasks-cli-lint-violations = { $count } tag-standard violations found
 tasks-cli-lint-checked-nothing = lint checked no target: the tag schema declares no enum or range, so a clean sweep proves nothing
+tasks-cli-nothing-to-prune = no project here yet: nothing to prune
+tasks-cli-report-only = removed nothing: this was a report, not a removal; to apply exactly this plan, run it again with --yes: { $command }

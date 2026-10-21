@@ -16,14 +16,20 @@ and angzarr here.
 - `core/domain/tasks`: decide and apply for add, set-status, edit, retag and
   remove, with localizable rejections.
 - `core/read-model/task-lists`: the list projector, with a resumable cursor,
-  caught up over the sync or the async store port.
+  caught up over the sync or the async store port. It forgets a stream's
+  last projected sequence when it projects a prune's removal
+  (`TaskRemoved{PRUNED}`), so a task minted on the freed harp, whose
+  stream restarts at sequence 0, is listed; a stream read back with no
+  events lists nothing.
 - `core/ports/ports`: project identity and its survey (`ProjectAdmin`), the
-  store opener, names, the clock, command ids, and waiting with jitter. Every port future, and every use
+  store opener, `PurgingStore` (a store whose store and units of work
+  implement annals' opt-in `AsyncPurge`, as SQLite's do), names, the
+  clock, command ids, and waiting with jitter. Every port future, and every use
   case's, is `Send`, so a server can spawn them; project identity is
   synchronous and blocks on the registry's lock, so an async server calls it
   through `spawn_blocking`.
 - `core/application/tasks-application`: add, status, edit, tag, list,
-  show, summary, statuses, tags, lint and import, and the tag schema,
+  show, summary, statuses, tags, lint, prune and import, and the tag schema,
   write-time admission and tag queries (step 3, below). An add mints a
   harp and re-mints on `TaskExists` (100 tries, a fresh command id each); on
   annals' `Recovery::Retry` the same command id runs again in a new unit
@@ -45,6 +51,21 @@ and angzarr here.
   `internal/shared/tasks/lint`) sweeps every task and the schema's
   formulas, each finding a diagnostic, and exits 1 on a violation or when
   it checked no target.
+  Prune (`PruneService`, opt-in on a `PurgingStore`) is Go's: it selects
+  live tasks by status (at least one; Done by default), by their status
+  last changing strictly before a cut (Go's `agebound`: an offset in Go's
+  duration grammar plus `d` and `w`, or a `YYYY-MM-DD` date at midnight
+  UTC; 7 days by default), and by an optional tag query, in the order
+  added. Without `apply` it reports; with it, each task is removed
+  (`TaskRemoved{PRUNED}`) in a unit of work that first reads the task and
+  declines if it no longer qualifies (moved, retagged, removed or purged
+  since the selection), then its stream is purged in a unit that first
+  checks the stream still holds the removed task, so a task minted on the
+  freed harp meanwhile is never purged; both retry as a command does. It
+  reports the events purged (the removal included, as the store counts
+  them; a report predicts the same), the tasks left, and every dangling
+  reference a survivor holds: a tag carrying the harp as a word
+  (`relates:<harp>`), or the harp as a word of its text or trigger.
 - `core/application/project-application`: `show`, `heal`, `repoint` and the
   orphaned databases, planned from the port's survey; it depends on no
   tasks crate. The marker is authoritative and the registry heals toward
@@ -90,7 +111,10 @@ and angzarr here.
   kept, and RFC 3339 instants), shared by the CLI and the MCP server, so
   one jq filter reads both.
 - `adapters/driving/tasks-cli`: `add`, `status`, `edit`, `list`, `show`,
-  `summary`, `statuses`, `tag`, `tags`, `lint` and `import`, with
+  `summary`, `statuses`, `tag`, `tags`, `lint`, `prune` (Go's flags and
+  defaults, `--yes` to act; Go's report in text, one JSON document in Go's
+  `pruneReport` shape, and on stderr, after a report that would take
+  something, the exact command that applies it) and `import`, with
   `--config-set`, text and json in Go's shapes, its errors and notices
   rendered from the catalogs, and `run_mounted`, which flattens another
   crate's commands in beside them and hands one parsed to its caller with
@@ -133,7 +157,9 @@ and angzarr here.
   tools/list against Go's tools, task_add, task_list, resources/list, and
   the CLI reading the same store; `version --format json` is fed to a port
   of Go ctxloom's boot-probe parse and its lock reaper's check, and
-  `loadout --format yaml` is compared with Go's byte for byte.
+  `loadout --format yaml` is compared with Go's byte for byte. `prune`
+  reports, then with `--yes` removes and purges, naming what dangles,
+  each answer one JSON document.
 - The companion text (step 4): the MCP instructions, the tools as Go's
   tools/list answers them, and the loadout document are fixtures
   `scripts/go-companion-fixtures.sh` extracts from the Go source (a Go
@@ -289,6 +315,17 @@ Where the skeleton differs from Go, or from this plan:
   instructions likewise name `task_tag`, `task_set_status`, `task_edit` and
   the tag resources. Rewording either is the human's call; until then the
   parity tests keep them Go's.
+- Prune, against Go: `--status` refuses `@open`/`@terminal` (as `list`
+  does) until the classes are taken. A report counts each task's events
+  plus the removal a prune records before it purges, which is what the
+  store reports when it acts; Go counted log lines. Go rewrote its log
+  under its write lock; here each task is removed and purged in units of
+  its own, and one that no longer qualifies when its unit reads it is
+  left. A purge that fails for good leaves its task removed, not purged:
+  no list shows it, but its stream and harp stay until purged by hand
+  (no command does). Go has no `remove` command (its `Store.Remove` is
+  called by none), so none is ported; the domain's removal by name is
+  there for one.
 - `version` reports the crate's version (`0.1.0`), not Go's versionator
   stamp; its yaml form is not ported.
 - A read with no project falls back to every project only outside a
@@ -349,9 +386,12 @@ not filed as a task.
   human decision (how a write, and repoint, keep the two clones apart).
 - **Store reads are not one snapshot.** annals' `read_from` should run as
   one read transaction, and annals should gain a read-only unit, so that
-  `covers` and the reads after it see one snapshot. Needed before purge
-  and prune (step 5, "Purging a stream in annals"): otherwise a purge in
-  the middle of a listing yields a blank task.
+  `covers` and the reads after it see one snapshot. Prune is ported
+  without it: a stream purged between a listing's `covers` and its read
+  comes back as no stream or no events, and lists nothing (tested), but a
+  listing can still mix streams read at different moments. Once annals'
+  read-snapshot unit lands, `TaskList::catch_up_async` (behind `list`, and
+  prune's selection) and the application's `read` take it.
 - **JSON escapes no HTML** where Go's encoder escapes `<`, `>` and `&`:
   normalize it when comparing the Go and Rust binaries for parity ("Parity
   and cutover").
@@ -374,14 +414,13 @@ and step 3, tags on tagma, are done (see "Where it stands"); step 2 leaves
    and instructions' Go-specific prose is reworded, and the clone that
    shares the original's database (see "Open"). Risk retired once
    registered: ctxloom loading the Rust binary as its companion.
-5. **The remaining commands and tools**: prune (in flight on another
-   branch, waiting on annals' purge, "Purging a stream in annals"), and
-   the remaining MCP tools (`task_set_status`, `task_edit`, `task_tag`),
+5. **The remaining MCP tools** (in flight on branch `mcp-tools`):
+   `task_set_status`, `task_edit`, `task_tag`,
    `task_list`'s unserved parameters, and the resources
    `taskloom://tag-schema` and `taskloom://tag-vocabulary` (Go's texts are
    authorized to copy verbatim, as the tools' were). status, edit, show,
-   summary, tags, statuses, lint and list's remaining flags are done (see
-   "Where it stands").
+   summary, tags, statuses, lint, list's remaining flags and prune are
+   done (see "Where it stands").
 6. **Priority**: choosing or writing the formula evaluator. It is isolated
    from everything else, so it can move earlier if the evaluator looks
    risky.
@@ -404,9 +443,7 @@ Command handlers (`core/application`):
 
 - add, set-status, edit and tag, and the queries (list, show, summary,
   tags, statuses, lint) are done (see "Where it stands").
-- remove and prune: prune selects by status, `status_set_at` older than a cut,
-  and a tag query. It reports without `--yes`, and reports dangling
-  `relates:`, text and trigger references.
+- prune: done (see "Where it stands"). No remove command: Go has none.
 - list's `--sort priority`, with priority (step 6).
 
 Priority, computed when read and never stored: the `priority_fn` and
@@ -439,7 +476,8 @@ defects Go's tasks-schema.md records: NaN passes every guard, a zero
 
 ## Purging a stream in annals
 
-Work in the annals repository, before prune is ported:
+Done, in the annals repository (`concurrent-writers`), and prune is
+ported on it:
 
 - A purge on the store port, sync and async: it deletes a stream's events,
   its snapshots, and the command ids recorded with them, in one unit of
@@ -458,8 +496,11 @@ Work in the annals repository, before prune is ported:
 In ctxloom-rs, prune records `TaskRemoved{PRUNED}` first, so every list drops
 the task, and then purges the stream. The task-list projector forgets a
 pruned stream's last sequence when it projects that event. Without that, a
-new task minted on the freed harp, whose stream starts again at sequence 1,
-would be skipped as already seen.
+new task minted on the freed harp, whose stream starts again at sequence 0
+(appended at expected 0), would be skipped as already seen. A long-lived
+projector that re-reads a pruned stream before its purge lands projects its
+events again (the task back, then removed again): the end state is right,
+the deltas between are not; nothing long-lived lists yet (`watch`, step 7).
 
 ## Project identity: heal and repoint
 

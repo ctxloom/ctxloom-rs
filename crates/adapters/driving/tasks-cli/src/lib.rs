@@ -1,5 +1,5 @@
 //! The tasks command line: `add`, `status`, `edit`, `list`, `show`,
-//! `summary`, `statuses`, `tag`, `tags`, `lint` and `import`, translated
+//! `summary`, `statuses`, `tag`, `tags`, `lint`, `prune` and `import`, translated
 //! into the application's use cases and their answers rendered through
 //! presentation, with room for another crate's commands mounted beside
 //! them ([`run_mounted`]); and the companion contract ctxloom reads,
@@ -14,6 +14,7 @@ mod companion;
 mod error;
 mod import;
 mod notice;
+mod prune;
 mod render;
 
 use std::ffi::OsString;
@@ -22,12 +23,13 @@ use std::io::{self, Write};
 use annals_diagnostic::Diagnostic;
 use clap::{Parser, Subcommand};
 use presentation::{Catalog, CatalogError, Format, Render, Source, UnknownFormat};
-use tasks_application::{ImportRequest, ImportService, TaskService, Written};
+use tasks_application::{ImportRequest, ImportService, PruneService, TaskService, Written};
 
 pub use companion::{Asked, VersionJson, LOADOUT};
 pub use error::{diagnostic_samples, CliError, EN_US};
 pub use import::{ImportJson, Imported};
 pub use notice::Notice;
+pub use prune::{apply_command, PruneReport};
 pub use render::{headline, table, Added, CompactJson, Listed, RowJson, Tagged, HEADLINE_WIDTH};
 pub use tasks_presentation::{rfc3339, TaskJson};
 
@@ -121,6 +123,16 @@ enum Command<X: Subcommand> {
     /// The tag schema's hidden tags are left out. The filters narrow the
     /// tasks counted.
     Tags(commands::TagsArgs),
+    /// Drop old finished tasks from the store (reports only, without
+    /// --yes). A task is selected when its status is one of --status, its
+    /// last status change is older than --older-than, and it matches
+    /// --tag-query, if given. With --yes each is removed, so every list
+    /// drops it, and its stream purged, freeing its harp to be minted
+    /// again; without it nothing changes. A surviving task naming a pruned
+    /// one (a relates:<harp> tag, or the harp in its text or trigger) is
+    /// reported, and left as written. To keep a finished task, archive it
+    /// and leave Archived out of --status.
+    Prune(commands::PruneArgs),
     /// Import Go taskloom's task logs (~/.ctxloom/tasks/<project-id>.jsonl)
     /// into each project's store: every project's, or --project's alone.
     /// Running it again imports only what is new.
@@ -189,7 +201,7 @@ fn asked_format(args: &[OsString], context: &Context) -> Format {
 
 /// Run the command line `args` (the program name first) against `service`,
 /// writing to `out` and `err` with messages from `catalog`; the exit code.
-pub async fn run<S: TaskService + ImportService>(
+pub async fn run<S: TaskService + ImportService + PruneService>(
     args: impl IntoIterator<Item = OsString>,
     context: &Context,
     catalog: &Catalog,
@@ -231,7 +243,7 @@ fn parse<X: Subcommand>(
 /// of them parsed is handed to `mounted` with the global flags and the
 /// catalog it renders its diagnostics from, and its exit code is the
 /// run's.
-pub async fn run_mounted<S: TaskService + ImportService, X: Subcommand>(
+pub async fn run_mounted<S: TaskService + ImportService + PruneService, X: Subcommand>(
     args: impl IntoIterator<Item = OsString>,
     context: &Context,
     catalog: &Catalog,
@@ -275,6 +287,7 @@ pub async fn run_mounted<S: TaskService + ImportService, X: Subcommand>(
                 Err(e) => Err(CliError::App(e)),
             }
         }
+        Command::Prune(args) => commands::prune(args, ctx, service, out, err).await,
         Command::Mounted(command) => {
             let flags = Mounted {
                 format,
@@ -282,14 +295,7 @@ pub async fn run_mounted<S: TaskService + ImportService, X: Subcommand>(
             };
             return mounted(command, flags, catalog, out, err);
         }
-        Command::Version => {
-            let version = VersionJson {
-                name: PROG,
-                version: &context.version,
-                lock_protocol: context.lock_protocol,
-            };
-            presentation::render(out, format, &version).map_err(output_failed)
-        }
+        Command::Version => version(context, format, out),
         // Answered before the format is chosen: it has its own.
         Command::Loadout => Ok(()),
     };
@@ -367,6 +373,16 @@ pub(crate) fn wrote(
     notify(&Notice::project(&written.project), catalog, err)
         .and_then(|()| presentation::render(out, format, view))
         .map_err(output_failed)
+}
+
+/// The version, as ctxloom's boot probe reads it.
+fn version(context: &Context, format: Format, out: &mut dyn Write) -> Result<(), CliError> {
+    let version = VersionJson {
+        name: PROG,
+        version: &context.version,
+        lock_protocol: context.lock_protocol,
+    };
+    presentation::render(out, format, &version).map_err(output_failed)
 }
 
 /// Render the report; refuse when it left something behind, so a script

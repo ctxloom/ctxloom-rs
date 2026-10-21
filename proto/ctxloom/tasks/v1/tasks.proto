@@ -4,7 +4,8 @@ syntax = "proto3";
 // (`ids::compute_root("tasks", harp_id)`), in its project's store. A harp id
 // is therefore unique because a stream is: adding to a stream that already
 // holds a task is refused, and a removed task's stream keeps its harp
-// reserved.
+// reserved, unless a prune removed it: a prune then purges the stream,
+// freeing the harp.
 package ctxloom.tasks.v1;
 
 import "google/protobuf/timestamp.proto";
@@ -38,7 +39,8 @@ message TaskState {
   google.protobuf.Timestamp status_set_at = 8;
   // When the task last entered Deferred; absent until it first does.
   optional google.protobuf.Timestamp deferred_since = 9;
-  // Removed tasks keep their stream and their harp id.
+  // Removed tasks keep their stream and their harp id, until a prune's
+  // removal is followed by its purge.
   bool removed = 10;
 }
 

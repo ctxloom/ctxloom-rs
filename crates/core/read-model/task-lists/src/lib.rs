@@ -14,7 +14,7 @@ use annals::next::{
     projection, AsyncEventStore, Committed, EventStore, KernelError, Projection, Registry, Slice,
     Stream,
 };
-use tasks::{TaskState, Tasks, TASK_DOMAIN};
+use tasks::{RemovalReason, TaskEvent, TaskState, Tasks, TASK_DOMAIN};
 
 /// Which live tasks a list holds.
 pub type Membership = Box<dyn Fn(&TaskState) -> bool + Send>;
@@ -43,7 +43,7 @@ pub struct TaskList {
     /// Every change, in order: the change numbered `n` is at `n - 1`.
     deltas: Vec<Delta>,
     /// The last stream sequence projected, per task stream (by root), so a
-    /// redelivered event changes nothing.
+    /// redelivered event changes nothing. A pruned stream's is forgotten.
     projected: BTreeMap<Vec<u8>, u64>,
 }
 
@@ -142,7 +142,15 @@ impl Projection<Tasks> for TaskList {
         {
             return;
         }
-        self.projected.insert(root, sequence);
+        // A pruned stream is purged after its removal is projected, and a
+        // task minted on the freed harp starts it again from its first
+        // sequence: forget where it was, so that task is not skipped as
+        // already seen.
+        if is_pruned(committed.event()) {
+            self.projected.remove(&root);
+        } else {
+            self.projected.insert(root, sequence);
+        }
 
         let task = committed.state;
         let listed = !task.removed && (self.membership)(task);
@@ -157,6 +165,12 @@ impl Projection<Tasks> for TaskList {
             });
         }
     }
+}
+
+/// Whether `event` is a prune's removal: the last its stream holds before
+/// it is purged.
+fn is_pruned(event: &TaskEvent) -> bool {
+    matches!(event, TaskEvent::TaskRemoved(removed) if removed.reason == RemovalReason::Pruned)
 }
 
 fn store_error(error: annals::next::StoreError) -> Box<KernelError> {

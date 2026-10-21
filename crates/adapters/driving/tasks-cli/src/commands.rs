@@ -6,10 +6,11 @@ use std::io::{self, Write};
 use clap::Args;
 use presentation::{Catalog, Format};
 use tasks_application::{
-    ListQuery, Listing, NewTask, Reach, Scope, ShowQuery, StatusChange, TagChange, TaskService,
-    TextEdit,
+    ListQuery, Listing, NewTask, PruneRequest, PruneService, Reach, Scope, ShowQuery, StatusChange,
+    TagChange, TaskService, TextEdit, DEFAULT_OLDER_THAN, DEFAULT_PRUNE_STATUSES,
 };
 
+use crate::prune::{apply_command, PruneReport};
 use crate::render::{Added, Counted, Detailed, Linted, Listed, Summed, Tagged, Taxonomy};
 use crate::{notify, output_failed, wrote, CliError, Notice};
 
@@ -384,6 +385,56 @@ pub(crate) async fn lint(
         0 => Ok(()),
         count => Err(CliError::LintViolations { count }),
     }
+}
+
+/// `prune`'s flags.
+#[derive(Args, Debug)]
+pub(crate) struct PruneArgs {
+    /// Only tasks whose last status change is older than this age (30d,
+    /// 12w, 720h) or date (2026-01-01).
+    #[arg(long = "older-than", default_value = DEFAULT_OLDER_THAN)]
+    older_than: String,
+    /// The statuses that qualify a task (repeatable, or comma-separated).
+    #[arg(long, value_delimiter = ',', default_values = DEFAULT_PRUNE_STATUSES)]
+    status: Vec<String>,
+    /// Only tasks matching this tag query (see list --tag-query).
+    #[arg(long = "tag-query", default_value = "")]
+    tag_query: String,
+    /// Remove and purge; without it prune only reports what it would.
+    #[arg(long)]
+    yes: bool,
+}
+
+/// Run the prune the flags ask for. Say on stderr when there is no
+/// project here, then render the report, and after a report that would
+/// take something, say nothing was taken and the command that takes it.
+pub(crate) async fn prune(
+    args: PruneArgs,
+    ctx: Ctx<'_>,
+    service: &mut impl PruneService,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<(), CliError> {
+    let apply = apply_command(&args.older_than, &args.status, &args.tag_query);
+    let request = PruneRequest {
+        project: ctx.project,
+        statuses: args.status,
+        older_than: args.older_than,
+        tag_query: args.tag_query,
+        apply: args.yes,
+        config_set: ctx.config_set,
+    };
+    let (format, catalog) = (ctx.format, ctx.catalog);
+    let pruning = service.prune(request).await.map_err(CliError::App)?;
+    if pruning.project.is_none() {
+        notify(&Notice::NothingToPrune, catalog, err).map_err(output_failed)?;
+    }
+    presentation::render(out, format, &PruneReport(&pruning)).map_err(output_failed)?;
+    if pruning.applied || pruning.pruned.is_empty() {
+        return Ok(());
+    }
+    let report_only = Notice::ReportOnly { command: apply };
+    notify(&report_only, catalog, err).map_err(output_failed)
 }
 
 /// Say on stderr which project a read was in: the one here, by name, or
