@@ -47,3 +47,8 @@ fn test_word_count_counts_the_words() {
 fn test_first_word_is_the_first() {
     assert_eq!(super::first_word("jolly-mute-magma"), "jolly");
 }
+
+#[test]
+fn test_last_word_is_the_last() {
+    assert_eq!(super::last_word("jolly-mute-magma"), "magma");
+}

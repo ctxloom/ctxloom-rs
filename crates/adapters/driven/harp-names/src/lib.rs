@@ -43,3 +43,8 @@ mod tests;
 pub fn first_word(name: &str) -> &str {
     name.split('-').next().unwrap_or("")
 }
+
+/// The last word of `name` (gates demo; reverted).
+pub fn last_word(name: &str) -> &str {
+    name.rsplit('-').next().unwrap_or("")
+}
