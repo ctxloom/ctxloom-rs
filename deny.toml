@@ -1,0 +1,45 @@
+# cargo-deny: what may enter the dependency graph. `just lint-deps` runs it.
+
+[advisories]
+version = 2
+# RustSec advisories. An ignore needs the advisory id and why it does not
+# apply here.
+ignore = []
+
+[licenses]
+version = 2
+# ctxloom is AGPL-3.0-only; every license here may be combined with it.
+allow = [
+  "AGPL-3.0-only",
+  "Apache-2.0",
+  "BSD-3-Clause",
+  # annals. EUPL-1.2's compatibility clause names AGPL-3.0, so EUPL code may
+  # be combined into this AGPL work.
+  "EUPL-1.2",
+  "MIT",
+  "Unicode-3.0",
+  "Zlib",
+]
+confidence-threshold = 0.9
+
+[licenses.private]
+# Not ignored: the git dependencies (angzarr-proto) are `publish = false`
+# too, and their licenses are exactly what must be checked.
+ignore = false
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# A path dependency has no version; allowed for unpublished crates only.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = [
+  # angzarr's wire contract (angzarr-proto).
+  "https://github.com/angzarr-io/angzarr-project",
+  # annals (annals-diagnostic, through angzarr-build).
+  "https://github.com/benjaminabbitt/annals",
+]

@@ -1,0 +1,11 @@
+# gitleaks configuration for the pre-commit secret scan
+# (`just secrets-scan-staged`).
+#
+# The default rule set. A one-off fake secret in a test is allowed where it
+# lives, with a trailing `gitleaks:allow` comment on its line, not here: the
+# annotation moves and dies with the code it covers, while a path here
+# outlives a rename and silently stops meaning anything. A whole class of
+# false positive goes here, with the reason it is not a secret.
+
+[extend]
+useDefault = true

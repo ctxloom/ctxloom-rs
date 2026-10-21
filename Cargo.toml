@@ -1,0 +1,33 @@
+[workspace]
+resolver = "2"
+members = ["crates/*/*/*"]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.85"
+license = "AGPL-3.0-only"
+publish = false
+
+[workspace.dependencies]
+# prost must be the version angzarr-proto generates for, so ctxloom's
+# messages and angzarr's are built by one prost.
+prost = "0.14"
+prost-types = "0.14"
+angzarr-proto = { version = "0.1", git = "https://github.com/angzarr-io/angzarr-project", rev = "672ed768aa1c8a8e05818c457c757cd406105e55" }
+
+# Local checkouts while annals and the generator change together; each
+# becomes a git dependency pinned by commit once pushed.
+annals = { path = "../../annals/crates/annals" }
+annals-diagnostic = { path = "../../annals/crates/annals-diagnostic" }
+angzarr-build = { path = "../../angzarr/angzarr-cli/main/crates/angzarr-build" }
+taskloom-proto = { path = "crates/core/wire/taskloom-proto" }
+
+[workspace.lints.clippy]
+invisible_characters = "deny"
+unicode_not_nfc = "deny"
+non_ascii_literal = "deny"
+# Complexity, at clippy's defaults except nesting, whose threshold is in
+# clippy.toml (and crates/core/clippy.toml, which shadows it there).
+cognitive_complexity = "warn"
+too_many_lines = "warn"
+excessive_nesting = "warn"

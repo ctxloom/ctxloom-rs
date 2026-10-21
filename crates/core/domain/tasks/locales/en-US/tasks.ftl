@@ -1,0 +1,10 @@
+tasks-harp-id-required = a task needs a harp id
+tasks-not-its-stream = task { $harp_id } does not belong in this stream
+tasks-task-exists = task { $harp_id } already exists
+tasks-no-task = there is no such task
+tasks-removed = task { $harp_id } was removed
+tasks-text-required = a task needs text
+tasks-status-required = a status change needs a status
+tasks-status-reserved = the status { $status } is not allowed: '@' is reserved for status classes
+tasks-trigger-required = a Deferred task needs a trigger: the condition that should revive it
+tasks-tag-required = a retag needs at least one tag

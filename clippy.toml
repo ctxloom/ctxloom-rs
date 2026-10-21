@@ -1,0 +1,4 @@
+# Workspace clippy settings. crates/core/clippy.toml replaces this file for
+# core crates (clippy reads only the nearest), so it repeats these; `just
+# lint` checks they match.
+excessive-nesting-threshold = 6

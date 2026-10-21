@@ -1,0 +1,24 @@
+[package]
+name = "tasks"
+version = "0.1.0"
+description = "The tasks domain: one task per aggregate, decided and folded on annals"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+annals.workspace = true
+annals-diagnostic.workspace = true
+# The generated domain layer names prost::Name and the wire types.
+prost.workspace = true
+taskloom-proto.workspace = true
+
+[build-dependencies]
+angzarr-build.workspace = true
+
+[dev-dependencies]
+fluent-syntax = "0.11"
+
+[lints]
+workspace = true

@@ -1,0 +1,45 @@
+# Rules for every crate under crates/core: wire types, domains, read models,
+# ports and the application layer. Clippy reads the nearest clippy.toml up
+# from a crate's directory, so this file reaches every core crate, and a
+# crate's own clippy.toml would replace it, not add to it.
+#
+# The core does no I/O and is deterministic: decide, apply and every
+# projection give the same result from the same inputs. Time, configuration,
+# randomness and the outside world enter as command fields or through ports.
+
+# Clippy does not merge configs, so the workspace's own settings are repeated
+# here; `just lint` checks this line matches the root clippy.toml's.
+excessive-nesting-threshold = 6
+
+disallowed-methods = [
+  { path = "std::time::SystemTime::now", reason = "the core reads no clock: use the recorded instant (Tx::recorded_at) or a command field" },
+  { path = "std::time::Instant::now", reason = "the core reads no clock" },
+  { path = "std::env::var", reason = "configuration enters through a command or a port" },
+  { path = "std::env::var_os", reason = "configuration enters through a command or a port" },
+  { path = "std::env::vars", reason = "configuration enters through a command or a port" },
+  { path = "std::env::args", reason = "arguments belong to a driving adapter" },
+  { path = "std::env::current_dir", reason = "the core knows no filesystem" },
+  { path = "std::process::Command::new", reason = "processes are driven adapters, reached through a port" },
+  { path = "std::thread::spawn", reason = "the core is synchronous; concurrency belongs to adapters" },
+  { path = "std::fs::read", reason = "the core does no I/O: use a port" },
+  { path = "std::fs::read_to_string", reason = "the core does no I/O: use a port" },
+  { path = "std::fs::read_dir", reason = "the core does no I/O: use a port" },
+  { path = "std::fs::write", reason = "the core does no I/O: use a port" },
+  { path = "std::fs::create_dir_all", reason = "the core does no I/O: use a port" },
+  { path = "std::fs::remove_file", reason = "the core does no I/O: use a port" },
+  { path = "std::fs::remove_dir_all", reason = "the core does no I/O: use a port" },
+  { path = "std::fs::rename", reason = "the core does no I/O: use a port" },
+  { path = "std::fs::metadata", reason = "the core does no I/O: use a port" },
+]
+
+disallowed-types = [
+  { path = "std::collections::HashMap", reason = "iteration order is not deterministic: use BTreeMap" },
+  { path = "std::collections::HashSet", reason = "iteration order is not deterministic: use BTreeSet" },
+  { path = "std::time::SystemTime", reason = "the core reads no clock: use prost_types::Timestamp from the recorded instant" },
+  { path = "std::time::Instant", reason = "the core reads no clock" },
+  { path = "std::fs::File", reason = "the core does no I/O: use a port" },
+  { path = "std::fs::OpenOptions", reason = "the core does no I/O: use a port" },
+  { path = "std::net::TcpStream", reason = "the core does no I/O: use a port" },
+  { path = "std::net::TcpListener", reason = "the core does no I/O: use a port" },
+  { path = "std::net::UdpSocket", reason = "the core does no I/O: use a port" },
+]

@@ -1,0 +1,170 @@
+syntax = "proto3";
+
+// One task is one aggregate: its stream's root is derived from its harp id
+// (`ids::compute_root("tasks", harp_id)`), in its project's store. A harp id
+// is therefore unique because a stream is: adding to a stream that already
+// holds a task is refused, and a removed task's stream keeps its harp
+// reserved.
+package ctxloom.tasks.v1;
+
+import "google/protobuf/timestamp.proto";
+import "io/angzarr/v1/options.proto";
+
+// The task, folded from its events. Derived values (whether the status is
+// terminal, the text hash, a priority) are computed when read, never stored.
+message TaskState {
+  option (io.angzarr.v1.component) = {
+    kind: COMPONENT_KIND_AGGREGATE
+    domain: "tasks"
+    name: "Task"
+  };
+
+  // The task's identity ("swift-amber"): what humans and references use.
+  string harp_id = 1;
+  string text = 2;
+  // A status name. The taxonomy (To Do, In Progress, Deferred, Done,
+  // Archived) is the default set, not a closed one.
+  string status = 3;
+  // The revive condition of a Deferred task. Kept when the task leaves
+  // Deferred, so re-deferring needs no new one.
+  string trigger = 4;
+  // The session that created the task, if one did.
+  string origin_session = 5;
+  // Normalized: trimmed, non-empty, unique, sorted.
+  repeated string tags = 6;
+  google.protobuf.Timestamp created_at = 7;
+  // When the status last changed (the add counts).
+  google.protobuf.Timestamp status_set_at = 8;
+  // When the task last entered Deferred. Meaningful only while it is
+  // Deferred.
+  google.protobuf.Timestamp deferred_since = 9;
+  // Removed tasks keep their stream and their harp id.
+  bool removed = 10;
+}
+
+// region commands
+
+// Create the task. The harp id is minted by the caller (minting is random,
+// and decide is deterministic); a stream that already holds a task refuses
+// it, and the caller mints another.
+message AddTask {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.tasks.v1.TaskState"
+    emits: ["ctxloom.tasks.v1.TaskAdded"]
+  };
+
+  string harp_id = 1;
+  string text = 2;
+  // Empty means To Do.
+  string status = 3;
+  // Required when status is Deferred.
+  string trigger = 4;
+  repeated string tags = 5;
+  string origin_session = 6;
+}
+
+// Move the task to a status. An empty trigger keeps the current one; moving
+// to Deferred needs a trigger, given here or already held.
+message SetStatus {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.tasks.v1.TaskState"
+    emits: ["ctxloom.tasks.v1.StatusChanged"]
+  };
+
+  string status = 1;
+  string trigger = 2;
+}
+
+// Replace the task's text whole.
+message EditText {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.tasks.v1.TaskState"
+    emits: ["ctxloom.tasks.v1.TextEdited"]
+  };
+
+  string text = 1;
+}
+
+// Add and remove tags in one change. Both lists are final: a tag schema's
+// scalar collapse (a new `priority=high` displacing `priority=low`) is
+// resolved by the caller before the command is sent, so decide never reads
+// the schema.
+message Retag {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.tasks.v1.TaskState"
+    emits: ["ctxloom.tasks.v1.Retagged"]
+  };
+
+  repeated string add = 1;
+  repeated string remove = 2;
+}
+
+message RemoveTask {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.tasks.v1.TaskState"
+    emits: ["ctxloom.tasks.v1.TaskRemoved"]
+  };
+
+  RemovalReason reason = 1;
+}
+
+enum RemovalReason {
+  REMOVAL_REASON_UNSPECIFIED = 0;
+  // Removed by name.
+  REMOVAL_REASON_REMOVED = 1;
+  // Taken by a prune: a selection by status, age and tags.
+  REMOVAL_REASON_PRUNED = 2;
+}
+
+// endregion commands
+
+// region events
+
+// Every timestamp an event carries is the instant it was recorded
+// (`Tx::recorded_at`), copied in because apply never sees the event's
+// metadata and the state keeps these instants.
+
+message TaskAdded {
+  option (io.angzarr.v1.event) = {component: "ctxloom.tasks.v1.TaskState"};
+
+  string harp_id = 1;
+  string text = 2;
+  string status = 3;
+  string trigger = 4;
+  // Normalized.
+  repeated string tags = 5;
+  string origin_session = 6;
+  google.protobuf.Timestamp at = 7;
+}
+
+message StatusChanged {
+  option (io.angzarr.v1.event) = {component: "ctxloom.tasks.v1.TaskState"};
+
+  string status = 1;
+  // Set only when the trigger changed; empty keeps the current one.
+  string trigger = 2;
+  google.protobuf.Timestamp at = 3;
+}
+
+message TextEdited {
+  option (io.angzarr.v1.event) = {component: "ctxloom.tasks.v1.TaskState"};
+
+  string text = 1;
+}
+
+// The tags actually added and actually removed: a tag already held is not
+// in `added`, nor one never held in `removed`.
+message Retagged {
+  option (io.angzarr.v1.event) = {component: "ctxloom.tasks.v1.TaskState"};
+
+  repeated string added = 1;
+  repeated string removed = 2;
+}
+
+message TaskRemoved {
+  option (io.angzarr.v1.event) = {component: "ctxloom.tasks.v1.TaskState"};
+
+  RemovalReason reason = 1;
+}
+
+// endregion events
