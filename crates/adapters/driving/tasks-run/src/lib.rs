@@ -43,14 +43,16 @@ pub enum Group {
     /// Browse a task and launch an agent on it (via ctxloom run)
     #[command(
         long_about = "Browse the project's open tasks and launch an agent on the chosen one.\n\n\
-The selected task is marked \"In Progress\" in the project task log under a\n\
-brand-new session that continues the task's originating session. The agent\n\
-starts with the task text as its prompt. Launching shells out to `ctxloom run`,\n\
-so ctxloom must be on PATH.\n\n\
+ctxloom marks the selected task \"In Progress\" (in Go taskloom's task log, not\n\
+this store) under a brand-new session that continues the task's originating\n\
+session. The agent starts with the task text as its prompt. Launching shells\n\
+out to `ctxloom run`, so ctxloom must be on PATH.\n\n\
 With a task harp id argument the picker is skipped and that task is launched\n\
 directly. In a non-interactive shell a task harp id is required."
     )]
     Run {
+        /// The task to launch, whatever its status; without one, a picker offers
+        /// the open tasks
         #[arg(value_name = "task-harp-id")]
         harp_id: Option<String>,
         /// Reset the task to To Do instead of marking it In Progress

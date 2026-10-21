@@ -73,6 +73,7 @@ pub enum OrphansAction {
     /// Delete orphaned databases, each named. Reports what it would
     /// delete; --yes deletes it.
     Remove {
+        /// The orphaned databases' project ids.
         #[arg(required = true, num_args = 1..)]
         project_ids: Vec<String>,
         /// Delete them.

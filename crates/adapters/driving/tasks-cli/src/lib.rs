@@ -77,7 +77,8 @@ struct Cli<X: Subcommand> {
     project: Option<String>,
     /// Override a configuration key for this run: <path>=<value>, e.g.
     /// tag_schema=<declaration>,... (repeatable; beats TASKLOOM_CONFIG_*
-    /// and every config.yaml).
+    /// and every config.yaml). The task commands take it; project, mcp,
+    /// watch, run and manage do not.
     #[arg(long = "config-set", global = true, value_name = "PATH=VALUE")]
     config_set: Vec<String>,
     #[command(subcommand)]

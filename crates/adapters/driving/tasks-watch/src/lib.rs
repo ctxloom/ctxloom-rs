@@ -48,7 +48,8 @@ pub enum Group {
     #[command(
         hide = true,
         long_about = "Watch the project's task store and emit a JSONL event whenever it changes.\n\n\
-Long-lived: runs until interrupted (Ctrl-C / SIGTERM). One line per change, e.g.\n\
+Long-lived: runs until interrupted (Ctrl-C / SIGTERM) or its stdin closes. One\n\
+line at once, then one per burst of changes, e.g.\n\
 {\"event\":\"changed\",\"kind\":\"tasks\",\"project\":\"swift-amber-falcon\"}. A GUI\n\
 subscribes to this and re-queries the task list on each event, so it stays live\n\
 without polling or watching the store files itself (the watch plumbing lives in\n\

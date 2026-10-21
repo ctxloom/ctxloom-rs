@@ -30,10 +30,10 @@ pub(crate) struct AddArgs {
     #[arg(required = true, num_args = 1..)]
     text: Vec<String>,
     /// Initial status (default: "To Do").
-    #[arg(long, default_value = "")]
+    #[arg(long, default_value = "", hide_default_value = true)]
     status: String,
     /// Revive condition for a Deferred task (required when --status Deferred).
-    #[arg(long, default_value = "")]
+    #[arg(long, default_value = "", hide_default_value = true)]
     trigger: String,
     /// Tag to set at creation (repeatable).
     #[arg(long = "tag")]
@@ -69,12 +69,13 @@ pub(crate) async fn add(
 
 #[derive(Args, Debug)]
 pub(crate) struct StatusArgs {
+    /// The task's id.
     harp_id: String,
     /// The status: any name not starting with '@' (see `taskloom statuses`).
     status: String,
     /// Revive condition, when the status is Deferred; a task re-deferred
     /// keeps the one it has.
-    #[arg(long, default_value = "")]
+    #[arg(long, default_value = "", hide_default_value = true)]
     trigger: String,
 }
 
@@ -105,6 +106,7 @@ pub(crate) async fn status(
 
 #[derive(Args, Debug)]
 pub(crate) struct EditArgs {
+    /// The task's id.
     harp_id: String,
     /// The new text, whole; several words are joined with spaces. Text
     /// starting with '-' goes after `--`.
@@ -138,6 +140,7 @@ pub(crate) async fn edit(
 
 #[derive(Args, Debug)]
 pub(crate) struct TagArgs {
+    /// The task's id.
     harp_id: String,
     /// Tag to add (repeatable).
     #[arg(long)]
@@ -174,7 +177,7 @@ pub(crate) struct ListArgs {
     #[arg(long, value_delimiter = ',')]
     status: Vec<String>,
     /// Only tasks whose text holds this, in any case.
-    #[arg(long, default_value = "")]
+    #[arg(long, default_value = "", hide_default_value = true)]
     term: String,
     /// Include the tasks hidden by default: Done, Archived and Deferred.
     #[arg(long)]
@@ -185,7 +188,7 @@ pub(crate) struct ListArgs {
     /// The order: priority, Go's one sort, waits on priority, which is
     /// not computed yet; the default is the order added (across projects,
     /// by project and then id).
-    #[arg(long, default_value = "")]
+    #[arg(long, default_value = "", hide_default_value = true)]
     sort: String,
     /// In JSON, each task as its id, status, checked, tags and headline;
     /// text is one line per task already.
@@ -200,7 +203,7 @@ pub(crate) struct ListArgs {
     /// and not release). Operators: and, or, not; atoms [ns:]key[op value]
     /// with op one of = != > >= < <= ~, and * (any) or + (present) for a
     /// namespace, key or value.
-    #[arg(long = "tag-query", default_value = "")]
+    #[arg(long = "tag-query", default_value = "", hide_default_value = true)]
     tag_query: String,
 }
 
@@ -328,10 +331,10 @@ pub(crate) struct TagsArgs {
     status: Vec<String>,
     /// Count only the tasks whose text holds this, in any case (it narrows
     /// the tasks, never the tags' names).
-    #[arg(long, default_value = "")]
+    #[arg(long, default_value = "", hide_default_value = true)]
     term: String,
     /// Count only the tasks this tag query selects (see `list --help`).
-    #[arg(long = "tag-query", default_value = "")]
+    #[arg(long = "tag-query", default_value = "", hide_default_value = true)]
     tag_query: String,
     /// Every project's tags, not just this project's.
     #[arg(long)]
@@ -398,7 +401,7 @@ pub(crate) struct PruneArgs {
     #[arg(long, value_delimiter = ',', default_values = DEFAULT_PRUNE_STATUSES)]
     status: Vec<String>,
     /// Only tasks matching this tag query (see list --tag-query).
-    #[arg(long = "tag-query", default_value = "")]
+    #[arg(long = "tag-query", default_value = "", hide_default_value = true)]
     tag_query: String,
     /// Remove and purge; without it prune only reports what it would.
     #[arg(long)]
