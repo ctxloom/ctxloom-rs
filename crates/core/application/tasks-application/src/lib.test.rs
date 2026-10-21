@@ -440,6 +440,34 @@ fn test_a_list_whose_store_does_not_open_fails() {
 }
 
 #[test]
+fn test_a_list_of_a_status_class_is_refused_until_classes_exist() {
+    let mut service = service(&[]);
+    service.identity.bound = Some(project());
+    let query = ListQuery {
+        statuses: vec!["To Do".to_string(), " @open".to_string()],
+        ..ListQuery::default()
+    };
+    let error = ready(service.list(query)).unwrap_err();
+    let AppError::Rejected(rejection) = &error else {
+        panic!("rejected: {error:?}");
+    };
+    assert_eq!(rejection.code(), "tasks-status-reserved");
+    assert!(rejection.to_string().contains("@open"), "{rejection}");
+    assert!(service.stores.looked.is_empty(), "refused before any read");
+}
+
+#[test]
+fn test_an_add_in_a_status_class_is_refused() {
+    let mut service = service(&["swift-amber"]);
+    let task = NewTask {
+        status: "@terminal".to_string(),
+        ..new_task("Ship it")
+    };
+    let error = add(&mut service, task).unwrap_err();
+    assert_eq!(error.code(), "tasks-status-reserved");
+}
+
+#[test]
 fn test_the_default_query_admits_open_statuses_only() {
     let query = ListQuery::default();
     let task = |status: &str| TaskState {

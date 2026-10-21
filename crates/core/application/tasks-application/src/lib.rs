@@ -17,7 +17,10 @@ use annals::next::{ids, AsyncEventStore, Payload, Registry, Rulebook, Stream, Up
 use annals_diagnostic::Report;
 use ports::{Clock, CommandIds, Delay, Jitter, Names, ProjectIdentity, TaskStores};
 use task_lists::TaskList;
-use tasks::{AddTask, Retag, TaskCommand, TaskRejection, TaskState, Tasks, DEFERRED, TASK_DOMAIN};
+use tasks::{
+    AddTask, Retag, TaskCommand, TaskRejection, TaskState, Tasks, DEFERRED, STATUS_CLASS_SIGIL,
+    TASK_DOMAIN,
+};
 
 pub use annals::next::Timestamp;
 pub use error::{diagnostic_samples, AppError};
@@ -228,6 +231,19 @@ where
     }
 
     async fn list(&mut self, query: ListQuery) -> Result<Listing, AppError> {
+        // `@open` and `@terminal` will name classes of statuses; until they
+        // do, a status starting with the sigil is refused, as a write
+        // refuses it, rather than matching no task.
+        if let Some(class) = query
+            .statuses
+            .iter()
+            .map(|s| s.trim())
+            .find(|s| s.starts_with(STATUS_CLASS_SIGIL))
+        {
+            return Err(rejected(&TaskRejection::StatusReserved {
+                status: class.to_string(),
+            }));
+        }
         let Some(project) = self
             .identity
             .for_read(query.project.as_deref())
