@@ -2,7 +2,7 @@ package main
 
 // Laid into Go taskloom's cmd/taskloom with `go test -overlay` by
 // scripts/go-companion-fixtures.sh, so the Go checkout is not written. It
-// dumps the companion surface Rust taskloom copies verbatim, straight from
+// dumps the companion surface Rust taskloom copies, straight from
 // the Go source: the MCP server's instructions, its capabilities, its
 // tools as tools/list answers them (each description, input and output
 // schema), its resources as resources/list answers them, what each

@@ -13,13 +13,16 @@ use tokio::sync::oneshot;
 use super::{Settings, TaskTools, INSTRUCTIONS};
 use crate::fakes::World;
 
-/// Go taskloom's MCP instructions, its capabilities as initialize answers
-/// them, its tools and resources as tools/list and resources/list answer
-/// them, and what its tag-schema resource reads with nothing configured,
-/// as `scripts/go-companion-fixtures.sh` extracted them from the Go source
+#[path = "../fixtures/reviewed.rs"]
+mod reviewed;
+
+/// Go taskloom's capabilities as initialize answers them, its tools and
+/// resources as tools/list and resources/list answer them, and what its
+/// tag-schema resource reads with nothing configured, as
+/// `scripts/go-companion-fixtures.sh` extracted them from the Go source
 /// (`cmd/taskloom/mcp.go`, `mcp_tools.go`, `mcp_resources.go`); run it
-/// again to regenerate them.
-const GO_INSTRUCTIONS: &str = include_str!("../fixtures/go/instructions.txt");
+/// again to regenerate them. Rust serves Go's instructions and tools with
+/// the reviewed factual changes applied (`reviewed`).
 const GO_CAPABILITIES: &str = include_str!("../fixtures/go/capabilities.json");
 const GO_TOOLS: &str = include_str!("../fixtures/go/tools.json");
 const GO_RESOURCES: &str = include_str!("../fixtures/go/resources.json");
@@ -145,22 +148,34 @@ fn envelope(result: &Value) -> Value {
 // ------------------------------------------------------------ parity with Go
 
 #[test]
-fn test_the_instructions_are_gos_byte_for_byte() {
+fn test_the_instructions_are_gos_reviewed_byte_for_byte() {
+    let reviewed = reviewed::instructions();
     assert!(
-        INSTRUCTIONS == GO_INSTRUCTIONS,
-        "the instructions differ from Go's"
+        INSTRUCTIONS == reviewed,
+        "the instructions differ from Go's, reviewed"
     );
     run(async {
         let (_client, initialized) = connect(Arc::default(), settings()).await;
         let result = &initialized["result"];
         assert!(
-            result["instructions"].as_str() == Some(GO_INSTRUCTIONS),
-            "initialize's instructions differ from Go's"
+            result["instructions"].as_str() == Some(reviewed.as_str()),
+            "initialize's instructions differ from Go's, reviewed"
         );
         assert_eq!(result["serverInfo"]["name"], "taskloom");
         assert_eq!(result["serverInfo"]["version"], "1.2.3");
         assert_eq!(result["protocolVersion"], "2025-06-18");
     });
+}
+
+// A reviewed change applies to exactly one place in Go's text: once Go
+// rewords it, or says it twice, the change is reviewed again.
+#[test]
+fn test_a_reviewed_change_must_match_gos_text_exactly_once() {
+    assert_eq!(reviewed::applied("a b c", &[("b", "x")]), "a x c");
+    for go in ["a c", "b b"] {
+        let refused = std::panic::catch_unwind(|| reviewed::applied(go, &[("b", "x")]));
+        assert!(refused.is_err(), "{go:?}");
+    }
 }
 
 #[test]
@@ -186,8 +201,13 @@ fn test_a_logging_level_is_accepted() {
 }
 
 #[test]
-fn test_the_tools_are_gos_five_byte_for_byte() {
-    let go: Vec<Value> = serde_json::from_str(GO_TOOLS).unwrap();
+fn test_the_tools_are_gos_five_reviewed_byte_for_byte() {
+    let reviewed = reviewed::tools();
+    assert!(
+        super::TOOLS == reviewed,
+        "the tools differ from Go's, reviewed"
+    );
+    let go: Vec<Value> = serde_json::from_str(&reviewed).unwrap();
     run(async {
         let (mut client, _) = connect(Arc::default(), settings()).await;
         let listed = client.ask("tools/list", json!({})).await;
@@ -200,7 +220,7 @@ fn test_the_tools_are_gos_five_byte_for_byte() {
                 .expect("Go has the tool");
             assert!(
                 tool["description"].as_str() == gos["description"].as_str(),
-                "{}'s description differs from Go's",
+                "{}'s description differs from Go's, reviewed",
                 tool["name"]
             );
             assert_eq!(tool["inputSchema"], gos["inputSchema"], "{}", tool["name"]);

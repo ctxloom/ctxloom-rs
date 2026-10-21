@@ -19,8 +19,8 @@ run:
 
   description: |
     Persistent task tracking via the standalone `taskloom` binary
-    (built from github.com/ctxloom/ctxloom, cmd/taskloom). Tasks live in a per-project append-only log
-    at ~/.ctxloom/tasks/<project-id>.jsonl keyed by harp IDs and are managed
+    (built from github.com/ctxloom/ctxloom, crates/root/bin/taskloom). Tasks live in a per-project append-only log
+    at ~/.ctxloom/projects/<project-id>/state.db keyed by harp IDs and are managed
     through the task MCP tools served by `taskloom mcp` (registered by this
     bundle) or the `taskloom` CLI. Also stamps the active session's harp name
     into plan files as they're edited. Write task text subject-first: the
@@ -47,8 +47,7 @@ run:
          startup.
 
   installation: |
-    The ctxloom install script and `brew install ctxloom/tap/taskloom` ship the
-    taskloom binary (fallback: go install github.com/ctxloom/ctxloom/cmd/taskloom@latest).
+    «HUMAN: how the Rust taskloom binary is installed; it has no install channel yet.»
     Then start a `ctxloom run` session (it delivers the hooks and MCP server
     into its own session home), or run `ctxloom materialize --yes` to write
     them into the project's own engine files. The
@@ -87,11 +86,11 @@ run:
         - mcp
       notes: |
         The standalone task-store MCP server (built from github.com/ctxloom/ctxloom,
-        cmd/taskloom). The
+        crates/root/bin/taskloom). The
         project and session resolve per call from CTXLOOM_PROJECT_ID /
         CTXLOOM_SESSION_HARP (exported by ctxloom run) or the working
         directory.
-      installation: brew install ctxloom/tap/taskloom
+      installation: "«HUMAN: the Rust taskloom's install command; none exists yet»"
 
   fragments:
     taskloom:
@@ -106,7 +105,7 @@ run:
         # taskloom
 
         Persistent task tracking. Tasks live in a per-project append-only log
-        (~/.ctxloom/tasks/<project-id>.jsonl) and are keyed by harp IDs
+        (~/.ctxloom/projects/<project-id>/state.db) and are keyed by harp IDs
         (e.g. `swift-amber-falcon`). Statuses: `In Progress`, `To Do`,
         `Deferred`, `Done`, `Archived`.
 
@@ -129,7 +128,7 @@ run:
         ## Use `--json` FIRST, paired with jq — on every command
 
         EVERY taskloom command takes `--json` (shorthand for `--format json`;
-        `--format` also accepts yaml, toml, text, markdown). If you are an agent,
+        `--format` also accepts text). If you are an agent,
         `--json` is your surface — reach for it before anything else, and pipe it
         through jq. The default text output is for a person reading a terminal.
 

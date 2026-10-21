@@ -224,7 +224,7 @@
     }
   },
   {
-    "description": "List tasks, optionally filtered by status, text term, or tag query (tag_query). By default this is scoped to the CURRENT project (resolved from the working directory); pass global=true to aggregate every PRIVATELY-homed project instead (a repo-homed project -- homing: repo -- is registered nowhere global and is never included, even if it is the current project; the result's notice field always says so when global is true). When no project can be resolved at all (not in a git repo, no CTXLOOM_ROOT, no prior task history there), the listing automatically falls back to global too, with the same notice field explaining why. Completed (Done/Archived) and Deferred tasks are hidden unless include_completed is set; when a filter matches hidden tasks the result reports hidden_completed/hidden_deferred counts. Pass include_summary=true to also get per-status counts and the in-progress tasks, each with its project (summed across projects when global). To enumerate MANY tasks, pass compact=true (harp_id, status, checked, tags, and a truncated headline in compact_tasks -- no full text/trigger/detail) and/or limit (caps row count; omitted rows are reported in omitted_by_limit, and status/summary counts stay uncapped) -- an unfiltered listing otherwise returns every task's full body and can overflow the caller; prefer statuses/tag_query filters too. Echo a task's harp_id back when you reference that task in a later call (e.g. task_set_status).",
+    "description": "List tasks, optionally filtered by status, text term, or tag query (tag_query). By default this is scoped to the CURRENT project (resolved from the working directory); pass global=true to aggregate every project instead. When no project can be resolved at all (not in a git repo, no CTXLOOM_ROOT, no prior task history there), the listing automatically falls back to global too, with the notice field explaining why. Completed (Done/Archived) and Deferred tasks are hidden unless include_completed is set; when a filter matches hidden tasks the result reports hidden_completed/hidden_deferred counts. Pass include_summary=true to also get per-status counts and the in-progress tasks, each with its project (summed across projects when global). To enumerate MANY tasks, pass compact=true (harp_id, status, checked, tags, and a truncated headline in compact_tasks -- no full text/trigger/detail) and/or limit (caps row count; omitted rows are reported in omitted_by_limit, and status/summary counts stay uncapped) -- an unfiltered listing otherwise returns every task's full body and can overflow the caller; prefer statuses/tag_query filters too. Echo a task's harp_id back when you reference that task in a later call (e.g. task_set_status).",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -233,7 +233,7 @@
           "type": "boolean"
         },
         "global": {
-          "description": "When true, aggregate tasks across every PRIVATELY-homed project instead of just the current one. Off by default: task_list scopes to the project resolved from the working directory. Automatically turned on (with notice set) when no project can be resolved at all. A repo-homed project (homing: repo, its log checked into \u003crepo\u003e/.taskloom/tasks.jsonl) is registered nowhere global and is NEVER included, even if it is the current project -- every global listing's notice field says so.",
+          "description": "When true, aggregate tasks across every project instead of just the current one. Off by default: task_list scopes to the project resolved from the working directory. Automatically turned on (with notice set) when no project can be resolved at all.",
           "type": "boolean"
         },
         "include_completed": {
@@ -249,7 +249,7 @@
           "type": "integer"
         },
         "sort": {
-          "description": "Optional sort order. \"priority\" sorts by derived, rank-normalized priority (descending) — a 0-5 score combining a project's priority_fn/decay_fn formulas over each task's tags, percentile-ranked against the project's non-terminal tasks; see each returned task's derived_priority field. Empty (default) leaves today's order unchanged.",
+          "description": "Optional sort order. \"priority\" is refused with an error: this taskloom does not compute priority yet, and each returned task's derived_priority field is null. Empty (default) leaves today's order unchanged.",
           "type": "string"
         },
         "statuses": {

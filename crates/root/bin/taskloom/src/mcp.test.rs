@@ -17,11 +17,12 @@ use super::{binary, Env};
 /// Go taskloom's capabilities, tools and resources as its initialize,
 /// tools/list and resources/list answer them, and its tag-schema
 /// resource with nothing configured, as `scripts/go-companion-fixtures.sh`
-/// extracted them from the Go source.
+/// extracted them from the Go source. Rust serves Go's tools with the
+/// reviewed factual changes applied (`reviewed`).
 const GO_CAPABILITIES: &str =
     include_str!("../../../../adapters/driving/tasks-mcp/fixtures/go/capabilities.json");
-const GO_TOOLS: &str =
-    include_str!("../../../../adapters/driving/tasks-mcp/fixtures/go/tools.json");
+#[path = "../../../../adapters/driving/tasks-mcp/fixtures/reviewed.rs"]
+mod reviewed;
 const GO_RESOURCES: &str =
     include_str!("../../../../adapters/driving/tasks-mcp/fixtures/go/resources.json");
 const GO_TAG_SCHEMA: &str =
@@ -149,17 +150,18 @@ fn test_mcp_offers_gos_capabilities_tools_and_resources_over_stdio() {
     assert_eq!(info["serverInfo"]["name"], "taskloom", "{initialized}");
     assert_eq!(info["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
     assert!(
-        info["instructions"]
-            .as_str()
-            .is_some_and(|i| i.starts_with("Per-project task tracking.")),
-        "{initialized}"
+        info["instructions"].as_str() == Some(reviewed::instructions().as_str()),
+        "the instructions differ from Go's, reviewed: {initialized}"
     );
     let go_capabilities: Value = serde_json::from_str(GO_CAPABILITIES).unwrap();
     assert_eq!(info["capabilities"], go_capabilities, "{initialized}");
 
     let listed = server.ask("tools/list", json!({}));
-    let go_tools: Value = serde_json::from_str(GO_TOOLS).unwrap();
-    assert_eq!(listed["result"]["tools"], go_tools, "the tools are Go's");
+    let go_tools: Value = serde_json::from_str(&reviewed::tools()).unwrap();
+    assert_eq!(
+        listed["result"]["tools"], go_tools,
+        "the tools are Go's, reviewed"
+    );
     let resources = server.ask("resources/list", json!({}));
     let go_resources: Value = serde_json::from_str(GO_RESOURCES).unwrap();
     assert_eq!(

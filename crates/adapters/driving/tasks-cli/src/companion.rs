@@ -13,8 +13,9 @@ use serde::Serialize;
 use crate::{output_failed, CliError};
 
 /// The loadout document, Go taskloom's own (`cmd/taskloom/loadout.yaml`)
-/// copied verbatim: its text is Go's, and a parity test holds it to the
-/// Go source. Printed as it is, comments and all, as Go prints it.
+/// with the human's reviewed factual changes (`fixtures/reviewed.rs`): a
+/// parity test holds it to the Go source with those applied. Printed as
+/// it is, comments and all, as Go prints it.
 pub const LOADOUT: &str = include_str!("loadout.yaml");
 
 /// A `--format` value: one of presentation's formats, or `yaml`, which
