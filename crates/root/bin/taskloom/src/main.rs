@@ -62,6 +62,8 @@ fn main() -> ExitCode {
     let context = Context {
         session: std::env::var("CTXLOOM_SESSION_HARP").unwrap_or_default(),
         stdout_is_terminal: io::stdout().is_terminal(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        lock_protocol: project_registry::LOCK_PROTOCOL,
     };
     let project_group = |group,
                          flags: tasks_cli::Mounted,

@@ -108,13 +108,19 @@ fn run_on(fake: &mut Fake, terminal: bool, args: &[&str]) -> Ran {
     let context = Context {
         session: "cross-proc-harp".to_string(),
         stdout_is_terminal: terminal,
+        version: "1.2.3".to_string(),
+        lock_protocol: 2,
     };
+    run_in(&context, fake, args)
+}
+
+fn run_in(context: &Context, fake: &mut Fake, args: &[&str]) -> Ran {
     let args: Vec<OsString> = std::iter::once("taskloom")
         .chain(args.iter().copied())
         .map(OsString::from)
         .collect();
     let (mut out, mut err) = (Vec::new(), Vec::new());
-    let code = ready(run(args, &context, &catalog(), fake, &mut out, &mut err));
+    let code = ready(run(args, context, &catalog(), fake, &mut out, &mut err));
     Ran {
         code,
         out: String::from_utf8(out).unwrap(),
@@ -700,6 +706,91 @@ fn test_import_that_cannot_start_fails_with_why() {
     );
 }
 
+// ------------------------------------------------------------ companion
+
+/// Go taskloom's loadout document, as `scripts/go-companion-fixtures.sh`
+/// copied it from the Go source (`cmd/taskloom/loadout.yaml`); run it again
+/// to regenerate it.
+const GO_LOADOUT: &str = include_str!("../fixtures/go/loadout.yaml");
+
+#[test]
+fn test_version_in_json_is_gos_shape_with_the_lock_protocol() {
+    let ran = run_on(&mut Fake::default(), true, &["version", "--format", "json"]);
+    assert_eq!(ran.code, 0, "{}", ran.err);
+    assert_eq!(
+        ran.out,
+        "{\n  \"name\": \"taskloom\",\n  \"version\": \"1.2.3\",\n  \"lock_protocol\": 2\n}\n"
+    );
+    assert_eq!(ran.err, "");
+}
+
+#[test]
+fn test_version_in_text_is_the_bare_version() {
+    let ran = run_on(&mut Fake::default(), true, &["version"]);
+    assert_eq!((ran.code, ran.out.as_str()), (0, "1.2.3\n"));
+}
+
+#[test]
+fn test_a_version_with_no_lock_protocol_leaves_it_out_as_go_does() {
+    let context = Context {
+        version: "1.2.3".to_string(),
+        ..Context::default()
+    };
+    let ran = run_in(&context, &mut Fake::default(), &["version", "--json"]);
+    let value: serde_json::Value = serde_json::from_str(&ran.out).unwrap();
+    assert_eq!(
+        value,
+        serde_json::json!({"name": "taskloom", "version": "1.2.3"})
+    );
+}
+
+#[test]
+fn test_the_loadout_is_gos_byte_for_byte() {
+    for args in [&["loadout"][..], &["loadout", "--format", "yaml"]] {
+        let ran = run_on(&mut Fake::default(), false, args);
+        assert_eq!(ran.code, 0, "{args:?}: {}", ran.err);
+        assert!(
+            ran.out == GO_LOADOUT,
+            "{args:?}: the loadout differs from Go's"
+        );
+        assert_eq!(ran.err, "");
+    }
+}
+
+#[test]
+fn test_the_loadout_in_another_format_is_refused_and_prints_nothing() {
+    for (args, asked) in [
+        (&["loadout", "--json"][..], "json"),
+        (&["loadout", "--format", "json"], "json"),
+        (&["--format", "text", "loadout"], "text"),
+    ] {
+        let ran = run_on(&mut Fake::default(), true, args);
+        assert_eq!(ran.code, 1, "{args:?}");
+        assert_eq!(ran.out, "", "{args:?}");
+        assert!(
+            ran.err.contains(&format!("not {asked}")),
+            "{args:?}: {}",
+            ran.err
+        );
+    }
+}
+
+#[test]
+fn test_yaml_is_only_the_loadout_s() {
+    for args in [
+        &["list", "--format", "yaml"][..],
+        &["version", "--format", "yaml"],
+    ] {
+        let ran = run_on(&mut Fake::default(), true, args);
+        assert_eq!(ran.code, 1, "{args:?}");
+        assert_eq!(ran.out, "", "{args:?}");
+        assert_eq!(
+            ran.err, "taskloom: the format yaml is not one of text or json\n",
+            "{args:?}"
+        );
+    }
+}
+
 // ------------------------------------------------------------ mounted
 
 /// Another crate's commands, as a binary mounts them.
@@ -711,8 +802,8 @@ enum Extra {
 
 fn run_extra(terminal: bool, args: &[&str]) -> (Ran, Vec<(Extra, Mounted)>) {
     let context = Context {
-        session: String::new(),
         stdout_is_terminal: terminal,
+        ..Context::default()
     };
     let args: Vec<OsString> = std::iter::once("taskloom")
         .chain(args.iter().copied())

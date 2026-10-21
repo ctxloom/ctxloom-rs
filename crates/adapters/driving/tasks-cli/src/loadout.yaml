@@ -1,0 +1,338 @@
+# taskloom's own loadout — what taskloom contributes to a ctxloom session,
+# emitted by `taskloom loadout --format yaml` as a loadout DOCUMENT: `run:` is the bundles.Bundle a session consumes
+# every time; a typed `init:` section (setup_guidance, tooling,
+# legacy_context, questions) is consumed once at setup — taskloom declares
+# none today. ctxloom discovers this binary on PATH, execs the loadout
+# command, and seeds the RUN bundle under the ctxloom:companion@taskloom
+# source ref — same shape a remote bundle takes. This file is the single
+# source of truth
+# for what taskloom tells ctxloom about itself.
+
+run:
+  version: 1.2.0
+  tags:
+    - tasks
+    - workflow
+    - productivity
+    - ctxloom-native
+  author: taskloom
+
+  description: |
+    Persistent task tracking via the standalone `taskloom` binary
+    (built from github.com/ctxloom/ctxloom, cmd/taskloom). Tasks live in a per-project append-only log
+    at ~/.ctxloom/tasks/<project-id>.jsonl keyed by harp IDs and are managed
+    through the task MCP tools served by `taskloom mcp` (registered by this
+    bundle) or the `taskloom` CLI. Also stamps the active session's harp name
+    into plan files as they're edited. Write task text subject-first: the
+    first line is what the task IS (list views show only that line,
+    truncated at 80 characters); provenance goes on a later line.
+
+  notes: |
+    This bundle ships two ctxloom hooks and one MCP server:
+
+      1. SessionStart → ctxloom hook session-bind
+         Records the backend session_id ↔ harp mapping in
+         the session's record so resume and the transcript capture can
+         find the session.
+
+      2. PostFileEdit matcher=plan files → ctxloom hook stamp-plan
+         Records the active session's harp name in the file's YAML
+         frontmatter `sessions:` list. Plans and sessions cross-reference
+         automatically.
+
+      3. MCP server `taskloom` → `taskloom mcp`
+         Serves task_list / task_add / task_set_status / task_edit over
+         stdio from the standalone taskloom binary. Requires `taskloom` on
+         PATH; a missing binary degrades to no task tools, never a blocked
+         startup.
+
+  installation: |
+    The ctxloom install script and `brew install ctxloom/tap/taskloom` ship the
+    taskloom binary (fallback: go install github.com/ctxloom/ctxloom/cmd/taskloom@latest).
+    Then start a `ctxloom run` session (it delivers the hooks and MCP server
+    into its own session home), or run `ctxloom materialize --yes` to write
+    them into the project's own engine files. The
+    hooks are safe to install before session harp-naming is active (stamp-plan
+    no-ops when CTXLOOM_SESSION_HARP is unset). Without ctxloom, the binary
+    self-registers: `taskloom manage install`.
+
+  hooks:
+    session_start:
+      # Fires once per backend session with the session id and transcript
+      # path in the JSON payload. ctxloom hook session-bind reads those,
+      # looks up CTXLOOM_SESSION_HARP from env, and records the mapping in
+      # the session's record. This is the bind path — resume and the
+      # transcript capture rely on the resulting record.
+      #
+      # pre_tool_fallback: the bind is first-bind-wins idempotent, so on
+      # agents without a session-start event it may fire on
+      # PreToolUse instead — the session binds at the first tool call.
+      - command: ctxloom
+        args: [hook, session-bind]
+        type: command
+        pre_tool_fallback: true
+    post_file_edit:
+      # No tool class: post_file_edit is already post_tool narrowed to the
+      # file_edit class, which each engine maps to its own file-editing
+      # tools. Plan-file filtering happens inside stamp-plan via
+      # plans.IsPlanFile so the hook is cheap to install on every edit.
+      - command: ctxloom
+        args: [hook, stamp-plan]
+        type: command
+
+  mcp:
+    taskloom:
+      command: taskloom
+      args:
+        - mcp
+      notes: |
+        The standalone task-store MCP server (built from github.com/ctxloom/ctxloom,
+        cmd/taskloom). The
+        project and session resolve per call from CTXLOOM_PROJECT_ID /
+        CTXLOOM_SESSION_HARP (exported by ctxloom run) or the working
+        directory.
+      installation: brew install ctxloom/tap/taskloom
+
+  fragments:
+    taskloom:
+      premise: You are about to create, read, update or close a task, judge whether
+        something already tracked covers the work in front of you, or decide whether a
+        finding should become a row at all. For anyone reaching for the task log, however
+        the moment is worded.
+      tags:
+        - tasks
+        - ctxloom
+      content: |
+        # taskloom
+
+        Persistent task tracking. Tasks live in a per-project append-only log
+        (~/.ctxloom/tasks/<project-id>.jsonl) and are keyed by harp IDs
+        (e.g. `swift-amber-falcon`). Statuses: `In Progress`, `To Do`,
+        `Deferred`, `Done`, `Archived`.
+
+        ## MCP tools (served by `taskloom mcp`)
+
+        - `task_list({statuses?, term?, include_completed?, include_summary?})`
+          — list/filter tasks. Set `include_summary: true` to also get
+          per-status counts plus the in-progress harp IDs.
+        - `task_add({text, status?, trigger?})` — add a task with a fresh
+          harp ID. Default status is `"To Do"`; `"Deferred"` requires a
+          `trigger` (the condition that should revive it).
+        - `task_set_status({harp_id, status, trigger?})` — move a task
+          between statuses.
+        - `task_edit({harp_id, text})` — replace a task's text in place.
+
+        Tasks are created and updated only through these tools (or the
+        `taskloom` CLI). The harp ID appears in `task_list` output so you can
+        reference a specific task in later calls.
+
+        ## Use `--json` FIRST, paired with jq — on every command
+
+        EVERY taskloom command takes `--json` (shorthand for `--format json`;
+        `--format` also accepts yaml, toml, text, markdown). If you are an agent,
+        `--json` is your surface — reach for it before anything else, and pipe it
+        through jq. The default text output is for a person reading a terminal.
+
+            # one task's exact body — no header to strip, no offset to guess.
+            # A GROUP serializes as a LIST and a SINGLE value as an OBJECT, so
+            # one id is a bare object and several are an array. The shape
+            # follows what you ASKED FOR, not what was found.
+            taskloom show <harp> --json | jq -r '.text'
+            taskloom show <harp-a> <harp-b> --json | jq -r '.[].text'
+
+            # every harp; every harp carrying a tag
+            taskloom list --all --json | jq -r '.[].harp_id'
+            taskloom list --all --json | jq -r '.[]|select(.tags[]?=="urgent")|.harp_id'
+
+        `Task`'s JSON tags are a cross-surface contract: the CLI and the MCP tools
+        emit the same snake_case keys, so one jq filter works against either.
+
+        **If `--json` fails, or a field you need is missing from it, REPORT THAT
+        as a defect** — then route around it if you must to finish the job. Both,
+        not either. The workaround unblocks you; the report is what gets the gap
+        closed, and it is the half that gets skipped.
+
+        This matters more here than it would for a third-party tool: taskloom,
+        ctxloom and reprise are ours, and we are their alpha users. There is no
+        upstream to file against and no other user base to hit the gap first. A
+        missing field that nobody reports simply stays missing, and the next agent
+        pays the same tax — which is exactly how the text-scraping habit took hold
+        instead of anyone noticing every command already speaks JSON.
+
+        Why this is stated so firmly: every way text-parsing breaks here produces a
+        WRONG ANSWER rather than an error.
+
+        - `taskloom show`'s text form prints a multi-line header. Capturing a body
+          by dropping a fixed number of lines can leave a `tags:` line as line 1 —
+          and line 1 IS the subject, so a following `edit` (which replaces the
+          whole text) silently renames the task.
+        - In `--compact` rows, `[x]` is one field but `[ ]` is two, so a positional
+          field split drops every OPEN task and keeps only the closed ones. The
+          output looks well-formed and is wrong in exactly one direction.
+
+        Note the CLI flag names differ from the MCP parameter names: `--status`
+        (singular) and `--all`, not `statuses`/`include_completed`. A mistyped flag
+        errors, but a mis-scoped query returns a confident empty list — confirm the
+        flag exists before believing emptiness.
+
+        ## Check the log before you start, and again before you finish
+
+        **Before starting work**, look for open tasks that touch what you are
+        about to change. One may already hold the root cause, a decision
+        someone already made, or a constraint you would otherwise rediscover
+        the hard way — and it may show that someone else is mid-flight in the
+        same files. Search by AREA, not just by title, since a task about your
+        code may be named for its symptom:
+
+            taskloom list --term <symbol, path, or error string>
+            taskloom list --tag-query <area>
+
+        **Before finishing**, scan again for tasks in the same area. If your
+        change satisfies one, say so and offer to close it — quote what the
+        task asked for and what you actually did, so the reader can judge
+        rather than take your word. If it satisfies a task only in part, edit
+        the task to record what is now done and what remains, instead of
+        leaving it whole and letting the next person redo the finished half.
+
+        `taskloom prune` removes old finished tasks from the log for good (by
+        default Done tasks whose last status change is over 7 days old); without
+        `--yes` it only reports. It is the human's housekeeping call: never run
+        `taskloom prune --yes` unless asked, and never in place of closing or
+        archiving a task.
+
+        ## Do NOT create a task on your own initiative
+
+        A task is created with the user's agreement, never as a side effect of
+        you noticing something. PROPOSE it — say what you found and what you
+        think should happen — and create the row once they accept. Work is
+        meant to be planned and accepted, then pulled in later, fleshed out,
+        and acted on.
+
+        This reverses the older instinct to capture everything. That instinct
+        produced 163-309 new tasks a week for eight weeks, and the open pile is
+        now as large as everything ever completed. A backlog that size is not a
+        record of intent; it is a search cost paid by everyone who opens it.
+        Note also what the log cannot tell you: a task record carries only
+        `created_at` and no completion timestamp, so whether the queue is
+        keeping up is not a computable question. The size of the pile is the
+        only signal there is, and it says stop.
+
+        Surfacing is NOT filing. Deferred work must still never vanish silently
+        at the end of a session — but the way it survives is that you TELL THE
+        USER, in your reply, plainly enough for them to act on. They decide
+        what becomes a row.
+
+        ## Do it, do not file it
+
+        Before proposing anything, apply this test. It is a test rather than an
+        effort estimate because nobody can calibrate an estimate:
+
+          - you have ALREADY root-caused it, AND
+          - the fix touches code you have ALREADY read, AND
+          - the fast gates settle it — `just build && just lint &&
+            just test-pkg <pkg>`, roughly 35 seconds
+
+        All three true? DO IT NOW. Filing instead converts a solved problem
+        into work someone pays to rediscover: they must re-read the code,
+        rebuild the reproduction, and re-derive the cause you already had in
+        hand. A filed task looks like progress. It is a promise.
+
+        ## Propose one only when the work genuinely cannot happen now
+
+        Exactly three reasons qualify:
+
+          - it needs a HUMAN DECISION — then name the fork and the options
+          - it lives in ANOTHER REPO or another RELEASE
+          - it is MATERIALLY LARGER than the current turn
+
+        "I noticed several things" is not one of them.
+
+        ONE issue per task. A row carrying two questions gets one of them
+        answered and the other silently dropped; a row carrying a question AND
+        the work it gates cannot be closed without lying about one half. If you
+        are about to write "and also", propose two, each naming the other.
+
+        LOOK BEFORE YOU PROPOSE. Search by AREA and by SYMPTOM, not just by the
+        title you have in mind — a task about your code is often named for the
+        thing it broke:
+
+            taskloom list --all --json | jq -r '.[]|select(.text|test("<symbol>"))|.harp_id'
+            taskloom list --term <symbol|path|error> --json
+            taskloom list --tag-query <area>
+
+        A duplicate is worse than a missing task: two rows describing one
+        problem drift apart, and whichever is read first looks complete.
+
+        ## Carry REASONING, not detail that rots
+
+        A task earns its length with judgment a later reader cannot recompute.
+        Write three things: WHY IT MATTERS, WHAT NEEDS TO HAPPEN, and WHAT
+        WOULD SETTLE IT.
+
+        Leave out line counts, commit SHAs, exhaustive file inventories, census
+        numbers and measured sizes. Nothing recomputes them, so they go stale
+        and then keep their authority while lying. Cite by SYMBOL — a function,
+        a type, an exact string to grep — which fails loudly the moment someone
+        looks for it; a stale line number silently points at unrelated code and
+        gets believed.
+
+        The reader has no memory of the session that proposed it and cannot ask
+        you. That argues for the reasoning being stated once and clearly, not
+        for an exhaustive body.
+
+        LINK RELATED WORK with `relates:<harp>`, on both rows. Prose that says
+        "see <harp>" is invisible to a query, so the connection exists only for
+        whoever happens to read that paragraph. A split, a root cause and its
+        symptom, a decision and the work it gates — link them, or the second one
+        gets solved twice.
+
+        ## The tag axes, and what each one answers
+
+        Independent axes, each answering a different question. Conflating them is
+        what makes a log unqueryable;
+        the full rules live in `docs/task-tagging-standard.md`.
+
+        - `triage:level=` — how bad is it if we ship without this, as an
+          INTEGER 1-5, lower is worse. `1` data loss, or a trust/isolation
+          boundary breached. `2` unusable, or SUCCEEDS WITHOUT DOING THE THING.
+          `3` wrong, but a workaround exists. `4` low or no user impact. `5`
+          does not exist yet. Security is folded in BY CONSEQUENCE — there is
+          no second security scale to cross-reference.
+          It is an integer so it SORTS and so relational queries work:
+          `--tag-query 'triage:level<=2'` is everything that must not ship.
+          Exactly one per task; the range is enforced, so `0` and `6` are
+          refused.
+        - `area:` — which subsystem. Exactly one per task.
+        - `touches:` — a repo-relative FILE path this task will EDIT.
+          Repeatable. This is what says whether two tasks can run at once: two
+          agents editing one file collide whatever symbols each touched.
+        - `sig:` — `package.Symbol` whose contract changes. Repeatable.
+
+        `touches:` and `sig:` are the two pieces of location that SURVIVE the
+        rule against rotting detail, and they survive for different reasons.
+        `sig:` is a symbol: when it goes stale a grep returns nothing and the
+        reader finds out immediately. `touches:` is the only thing that answers
+        whether two tasks can be dispatched at once — drop it and a scheduler
+        has to open every row to find out. Neither is an inventory of the
+        change: record what is already in front of you and stop. Do not
+        "simplify" them away as detail; they are the deliberate exception, and
+        this paragraph is the reason.
+
+        Rate the level FROM THE CODE, never from the task's own prose: a task
+        description outlives the code it describes, and tasks here have named
+        functions deleted commits earlier.
+
+        When you rename a file or change a symbol's contract, fix the
+        `touches:`/`sig:` tags that name it. Nothing else will: a tag has no
+        compiler and no gate.
+
+        Both halves matter for the same reason: a task nobody rereads gets
+        solved twice, and a task silently satisfied but left open is
+        indistinguishable from work never done.
+
+        ## Plan stamping
+
+        When you edit a plan file (`CURRENT_PLAN.md`, `*-plan.md`,
+        `docs/*-plan.md`), the active session's harp name is auto-stamped
+        into the file's YAML frontmatter `sessions:` list. Plans and
+        sessions cross-reference without a separate database.

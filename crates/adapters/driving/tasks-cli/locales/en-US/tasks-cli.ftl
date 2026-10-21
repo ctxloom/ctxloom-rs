@@ -3,3 +3,4 @@ tasks-cli-import-incomplete = not everything was imported: { $stopped } projects
 tasks-cli-usage = { $detail }
 tasks-cli-project = project { $root } ({ $id })
 tasks-cli-no-project = no project here yet: nothing to list
+tasks-cli-loadout-format = the loadout is printed only as yaml, not { $format }

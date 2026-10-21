@@ -145,6 +145,14 @@ const LOCK_POLL: Duration = Duration::from_millis(20);
 /// again before giving up: Go's `lockAttempts`.
 pub const LOCK_ATTEMPTS: u32 = 16;
 
+/// The lock-taking protocol [`take_current`] follows, as every
+/// ctxloom-family binary reports it (`version --format json`'s
+/// `lock_protocol`, Go's `safefs.LockProtocol`): 2 is the re-check, a
+/// lock granted on a file no longer at its path taken again. ctxloom
+/// removes a lock file only while every running binary reports at least
+/// this.
+pub const LOCK_PROTOCOL: u32 = 2;
+
 /// An exclusive lock on the registry at `path`, held until dropped.
 pub struct Locked {
     _file: File,

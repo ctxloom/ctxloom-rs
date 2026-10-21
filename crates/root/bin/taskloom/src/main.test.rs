@@ -504,6 +504,9 @@ fn test_in_json_each_command_writes_one_document_and_errors_an_envelope() {
     );
 }
 
+#[path = "companion.test.rs"]
+mod companion;
+
 #[path = "import.test.rs"]
 mod import;
 

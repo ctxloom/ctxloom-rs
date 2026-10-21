@@ -1,12 +1,14 @@
 //! The tasks command line: `add`, `list`, `tag` and `import`, translated
 //! into the application's use cases and their answers rendered through
 //! presentation, with room for another crate's commands mounted beside
-//! them ([`run_mounted`]). Text on a terminal, JSON otherwise, unless
+//! them ([`run_mounted`]); and the companion contract ctxloom reads,
+//! `version` and `loadout`. Text on a terminal, JSON otherwise, unless
 //! `--format` or `--json` says; stdout holds the answer alone (one JSON
 //! document), and notices, such as the project a write went to, go to
 //! stderr. Exit 0, or 1 with the error on stderr: its catalog message in
 //! text, its envelope in JSON.
 
+mod companion;
 mod error;
 mod import;
 mod notice;
@@ -17,11 +19,12 @@ use std::io::{self, Write};
 
 use annals_diagnostic::Diagnostic;
 use clap::{Parser, Subcommand};
-use presentation::{Catalog, CatalogError, Format, Render, Source};
+use presentation::{Catalog, CatalogError, Format, Render, Source, UnknownFormat};
 use tasks_application::{
     ImportRequest, ImportService, ListQuery, NewTask, TagChange, TaskService, Written,
 };
 
+pub use companion::{Asked, VersionJson, LOADOUT};
 pub use error::{diagnostic_samples, CliError, EN_US};
 pub use import::{ImportJson, Imported};
 pub use notice::Notice;
@@ -38,6 +41,13 @@ pub struct Context {
     pub session: String,
     /// Whether stdout is a terminal, which picks text over JSON.
     pub stdout_is_terminal: bool,
+    /// The binary's version, as `version` reports it.
+    pub version: String,
+    /// The lock-taking protocol the binary's lock takers follow, as
+    /// `version` reports it (Go's `safefs.LockProtocol`): ctxloom asks
+    /// every running binary for it before it removes a lock file. 0 when
+    /// the binary takes no shared lock, and then left out.
+    pub lock_protocol: u32,
 }
 
 /// The catalog of every diagnostic the command line prints: its own, the
@@ -53,9 +63,10 @@ pub fn catalog(adapters: &[Source]) -> Result<Catalog, CatalogError> {
 #[derive(Parser, Debug)]
 #[command(name = PROG, about = "Manage the per-project task store")]
 struct Cli<X: Subcommand> {
-    /// Output format: text, or json (the default when stdout is not a terminal).
+    /// Output format: text, or json (the default when stdout is not a
+    /// terminal); yaml, for loadout alone.
     #[arg(long, global = true)]
-    format: Option<Format>,
+    format: Option<Asked>,
     /// Shorthand for --format json.
     #[arg(long, global = true)]
     json: bool,
@@ -106,6 +117,12 @@ enum Command<X: Subcommand> {
     /// into each project's store: every project's, or --project's alone.
     /// Running it again imports only what is new.
     Import,
+    /// Print the taskloom version.
+    Version,
+    /// Print the context, commands, hooks and MCP servers taskloom
+    /// contributes to a session: the loadout document ctxloom reads
+    /// (`taskloom loadout --format yaml`).
+    Loadout,
     /// Commands another crate defines, mounted beside these.
     #[command(flatten)]
     Mounted(X),
@@ -126,9 +143,19 @@ pub struct Mounted {
 }
 
 impl<X: Subcommand> Cli<X> {
-    /// The format asked for, else text on a terminal and JSON off one.
-    fn format(&self, context: &Context) -> Format {
-        Format::choose(self.json, self.format, context.stdout_is_terminal)
+    /// The format asked for, else text on a terminal and JSON off one;
+    /// refused when it is yaml, which only `loadout` speaks.
+    fn format(&self, context: &Context) -> Result<Format, CliError> {
+        let asked = match self.format {
+            Some(Asked::Yaml) => {
+                return Err(CliError::Format(UnknownFormat {
+                    value: "yaml".to_string(),
+                }))
+            }
+            Some(Asked::Format(format)) => Some(format),
+            None => None,
+        };
+        Ok(Format::choose(self.json, asked, context.stdout_is_terminal))
     }
 }
 
@@ -199,7 +226,10 @@ pub async fn run_mounted<S: TaskService + ImportService, X: Subcommand>(
             return 0;
         }
     };
-    let format = cli.format(context);
+    let format = match answer_format(&cli, context, catalog, out, err) {
+        Ok(format) => format,
+        Err(code) => return code,
+    };
     let result = match cli.command {
         Command::Add {
             text,
@@ -254,6 +284,16 @@ pub async fn run_mounted<S: TaskService + ImportService, X: Subcommand>(
             };
             return mounted(command, flags, catalog, out, err);
         }
+        Command::Version => {
+            let version = VersionJson {
+                name: PROG,
+                version: &context.version,
+                lock_protocol: context.lock_protocol,
+            };
+            presentation::render(out, format, &version).map_err(output_failed)
+        }
+        // Answered before the format is chosen: it has its own.
+        Command::Loadout => Ok(()),
         Command::Import => {
             let request = ImportRequest {
                 project: cli.project,
@@ -264,6 +304,35 @@ pub async fn run_mounted<S: TaskService + ImportService, X: Subcommand>(
             }
         }
     };
+    finish(result, format, catalog, err)
+}
+
+/// The format `cli`'s answer is written in; or the exit code when there
+/// is no format to choose: `loadout`, printed in its own, or a format
+/// refused.
+fn answer_format<X: Subcommand>(
+    cli: &Cli<X>,
+    context: &Context,
+    catalog: &Catalog,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<Format, u8> {
+    let fallback = Format::choose(cli.json, None, context.stdout_is_terminal);
+    if let Command::Loadout = cli.command {
+        let printed = companion::loadout(cli.json, cli.format, out);
+        return Err(finish(printed, fallback, catalog, err));
+    }
+    cli.format(context)
+        .map_err(|error| finish(Err(error), fallback, catalog, err))
+}
+
+/// The exit code of `result`, its error reported in `format`.
+fn finish(
+    result: Result<(), CliError>,
+    format: Format,
+    catalog: &Catalog,
+    err: &mut dyn Write,
+) -> u8 {
     match result {
         Ok(()) => 0,
         Err(error) => {

@@ -2108,6 +2108,7 @@ dependencies = [
  "project-application",
  "project-cli",
  "project-registry",
+ "serde",
  "serde_json",
  "system",
  "task-store-sqlite",
