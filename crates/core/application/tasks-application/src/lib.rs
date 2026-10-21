@@ -1,5 +1,5 @@
-//! The tasks use cases: add a task, retag one, list a project's tasks, and
-//! import Go taskloom's logs.
+//! The tasks use cases: add a task, retag one, list a project's tasks,
+//! prune old finished ones, and import Go taskloom's logs.
 //!
 //! Each resolves its project through [`ProjectIdentity`], opens the
 //! project's store through [`TaskStores`], and runs its command through
@@ -9,6 +9,7 @@
 
 mod error;
 mod import;
+mod prune;
 mod query;
 mod retry;
 mod schema;
@@ -35,6 +36,10 @@ pub use import::{
     NoGoLogs, ProjectImport, Why,
 };
 pub use ports::{GoOp, Project};
+pub use prune::{
+    cut, Dangling, PruneRefusal, PruneRequest, PruneService, Pruned, Pruning, Via,
+    DEFAULT_OLDER_THAN, DEFAULT_PRUNE_STATUSES,
+};
 pub use query::{QueryError, QUERY_GRAMMAR};
 pub use retry::Backoff;
 pub use schema::{

@@ -7,7 +7,7 @@ use annals_diagnostic::{Arg, Diagnostic, Report};
 /// Why a use case did not complete. A wrapper of another error
 /// ([`AppError::Rejected`], [`AppError::TagRefused`], [`AppError::Failed`],
 /// [`AppError::Identity`], [`AppError::Configuration`],
-/// [`AppError::TagQuery`]) is that error's diagnostic: its code, args and
+/// [`AppError::TagQuery`], [`AppError::Prune`]) is that error's diagnostic: its code, args and
 /// English.
 #[derive(Clone, PartialEq, Debug)]
 pub enum AppError {
@@ -24,6 +24,8 @@ pub enum AppError {
     Configuration(Report),
     /// A malformed tag query ([`crate::QueryError`]).
     TagQuery(Report),
+    /// A prune refused before it read anything ([`crate::PruneRefusal`]).
+    Prune(Report),
     /// Every attempt the retry budget allows failed with a retryable error;
     /// `error` is the last.
     GaveUp { attempts: u32, error: Report },
@@ -45,7 +47,8 @@ impl fmt::Display for AppError {
             | AppError::Failed(cause)
             | AppError::Identity(cause)
             | AppError::Configuration(cause)
-            | AppError::TagQuery(cause) => cause.fmt(f),
+            | AppError::TagQuery(cause)
+            | AppError::Prune(cause) => cause.fmt(f),
             AppError::GaveUp { attempts, error } => {
                 write!(f, "gave up after {attempts} attempts: {error}")
             }
@@ -73,7 +76,8 @@ impl Diagnostic for AppError {
             | AppError::Failed(cause)
             | AppError::Identity(cause)
             | AppError::Configuration(cause)
-            | AppError::TagQuery(cause) => cause.code(),
+            | AppError::TagQuery(cause)
+            | AppError::Prune(cause) => cause.code(),
             AppError::GaveUp { .. } => "tasks-application-gave-up",
             AppError::HarpsExhausted { .. } => "tasks-application-harps-exhausted",
             AppError::Vanished { .. } => "tasks-application-vanished",
@@ -89,7 +93,8 @@ impl Diagnostic for AppError {
             | AppError::Failed(cause)
             | AppError::Identity(cause)
             | AppError::Configuration(cause)
-            | AppError::TagQuery(cause) => cause.args(),
+            | AppError::TagQuery(cause)
+            | AppError::Prune(cause) => cause.args(),
             AppError::GaveUp { attempts, error } => vec![
                 ("attempts", (*attempts).into()),
                 ("error", Arg::nested(error)),
@@ -138,6 +143,11 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
     ];
     samples.extend(tags.map(|t| Box::new(t) as Box<dyn Diagnostic>));
     samples.extend(schema.map(|s| Box::new(s) as Box<dyn Diagnostic>));
+    samples.extend(
+        crate::prune::samples()
+            .into_iter()
+            .map(|p| Box::new(p) as Box<dyn Diagnostic>),
+    );
     samples.push(Box::new(crate::QueryError {
         query: "and".to_string(),
         postfix: "x".to_string(),

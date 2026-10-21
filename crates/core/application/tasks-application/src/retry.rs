@@ -11,13 +11,14 @@
 
 use std::time::Duration;
 
-use annals::next::v1::{CommandBook, Uuid};
+use annals::next::v1::{CommandBook, Cover, Uuid};
 use annals::next::{
-    AsyncStore, Failure, Kernel, MemoryDeadLetters, Recovery, Registry, Routes, Sampled,
+    AsyncEventStore, AsyncPurge, AsyncStore, AsyncUnitOfWork, Failure, Kernel, MemoryDeadLetters,
+    Recovery, Registry, Routes, Sampled, StoreError, Stream,
 };
 use annals_diagnostic::Report;
-use ports::{Clock, Delay, Jitter};
-use tasks::{TaskRejection, Tasks};
+use ports::{Clock, Delay, Jitter, PurgingStore};
+use tasks::{TaskRejection, TaskState, Tasks};
 
 use crate::AppError;
 
@@ -78,6 +79,24 @@ impl<C: Clock, D: Delay + Jitter> Runner<'_, C, D> {
         book: &CommandBook,
         command_id: &Uuid,
     ) -> Result<Outcome, AppError> {
+        let always: Option<&fn(&TaskState) -> bool> = None;
+        let outcome = self.run_where(store, book, command_id, always).await?;
+        // Equivalent: with no condition nothing is declined.
+        Ok(outcome.unwrap_or(Outcome::Committed))
+    }
+
+    /// [`Runner::run`], if the task on `book`'s stream, read in each
+    /// attempt's own unit of work before the command is decided there,
+    /// meets `holds`: `None` (nothing sent) when it does not. A unit of
+    /// work holds the store's write lock from its first read, so nothing
+    /// changes the task between the reading and the commit.
+    pub async fn run_where<S: AsyncStore, P: Fn(&TaskState) -> bool + Sync>(
+        &mut self,
+        store: &mut S,
+        book: &CommandBook,
+        command_id: &Uuid,
+        holds: Option<&P>,
+    ) -> Result<Option<Outcome>, AppError> {
         let dead_letters = MemoryDeadLetters::new();
         let kernel = Kernel::new(self.registry, &dead_letters);
         let routes = Routes::new();
@@ -87,30 +106,114 @@ impl<C: Clock, D: Delay + Jitter> Runner<'_, C, D> {
                 now: self.clock.now(),
                 command_id: command_id.clone(),
             };
-            let unit = store.begin().await;
-            let failure = match kernel
-                .handle_async::<Tasks, _, _>(unit, &routes, book.clone(), &sampled, &mut ())
-                .await
-            {
-                Ok(_) => return Ok(Outcome::Committed),
-                Err(Failure::Rejected(rejection)) => return Ok(Outcome::Refused(rejection)),
-                Err(failure) => failure,
+            let mut unit = store.begin().await;
+            let (failure, recovery) = match held(self.registry, &mut unit, book, holds).await {
+                Ok(false) => return Ok(None),
+                Ok(true) => match kernel
+                    .handle_async::<Tasks, _, _>(unit, &routes, book.clone(), &sampled, &mut ())
+                    .await
+                {
+                    Ok(_) => return Ok(Some(Outcome::Committed)),
+                    Err(Failure::Rejected(rejection)) => {
+                        return Ok(Some(Outcome::Refused(rejection)))
+                    }
+                    Err(failure) => (Report::of(&failure), failure.recovery()),
+                },
+                Err(error) => (Report::of(&error), error.recovery()),
             };
-            if failure.recovery() != Recovery::Retry {
-                return Err(AppError::Failed(Report::of(&failure)));
-            }
-            failed += 1;
-            if failed >= self.backoff.attempts {
-                return Err(AppError::GaveUp {
-                    attempts: failed,
-                    error: Report::of(&failure),
-                });
-            }
-            let ceiling = self.backoff.ceiling(failed);
-            let wait = self.delay.up_to(ceiling).min(ceiling);
-            self.delay.sleep(wait).await;
+            self.again(&mut failed, failure, recovery).await?;
         }
     }
+
+    /// Purge the stream of the task `harp_id` names, if it holds a removed
+    /// task: in a unit of work of its own, which reads the stream first,
+    /// so a task minted on the harp since is never purged. Each attempt
+    /// is a fresh unit, as [`Runner::run`]'s are. How many events it
+    /// deleted: 0 when the stream holds no removed task.
+    pub async fn purge<S: PurgingStore>(
+        &mut self,
+        store: &mut S,
+        stream: &Cover,
+    ) -> Result<u64, AppError> {
+        let mut failed = 0;
+        loop {
+            let unit = store.begin_purging().await;
+            let (failure, recovery) = match purge_removed(self.registry, unit, stream).await {
+                Ok(deleted) => return Ok(deleted),
+                Err(failed) => failed,
+            };
+            self.again(&mut failed, failure, recovery).await?;
+        }
+    }
+
+    /// After the `failed`th failure, wait to try again; or the error to
+    /// end with, when a retry will not mend it or the attempts are spent.
+    async fn again(
+        &mut self,
+        failed: &mut u32,
+        failure: Report,
+        recovery: Recovery,
+    ) -> Result<(), AppError> {
+        if recovery != Recovery::Retry {
+            return Err(AppError::Failed(failure));
+        }
+        *failed += 1;
+        if *failed >= self.backoff.attempts {
+            return Err(AppError::GaveUp {
+                attempts: *failed,
+                error: failure,
+            });
+        }
+        let ceiling = self.backoff.ceiling(*failed);
+        let wait = self.delay.up_to(ceiling).min(ceiling);
+        self.delay.sleep(wait).await;
+        Ok(())
+    }
+}
+
+/// Purge `stream` through `unit` and commit, if it holds a removed task.
+async fn purge_removed<U: AsyncUnitOfWork + AsyncPurge>(
+    registry: &Registry,
+    mut unit: U,
+    stream: &Cover,
+) -> Result<u64, (Report, Recovery)> {
+    let store = |e: StoreError| (Report::of(&e), e.recovery());
+    let Some(slice) = unit.read_from(stream, 0).await.map_err(store)? else {
+        return Ok(0);
+    };
+    let replayed = Stream::<Tasks>::replay(stream.clone(), &slice.pages, registry)
+        .map_err(|e| (Report::of(&e), Recovery::Bug))?;
+    if !replayed.state().removed {
+        return Ok(0);
+    }
+    let deleted = unit.purge(stream).await.map_err(store)?;
+    unit.commit().await.map_err(store)?;
+    Ok(deleted)
+}
+
+/// Whether the task on `book`'s stream, read through `unit`, meets
+/// `holds`; true when there is no condition, without reading.
+async fn held<U: AsyncEventStore, P: Fn(&TaskState) -> bool + Sync>(
+    registry: &Registry,
+    unit: &mut U,
+    book: &CommandBook,
+    holds: Option<&P>,
+) -> Result<bool, StoreError> {
+    let Some(holds) = holds else {
+        return Ok(true);
+    };
+    let cover = book.cover.clone().unwrap_or_default();
+    let pages = unit
+        .read_from(&cover, 0)
+        .await?
+        .map(|slice| slice.pages)
+        .unwrap_or_default();
+    // A stream that does not replay is the kernel's to report, as it
+    // replays it again.
+    let Ok(stream) = Stream::<Tasks>::replay(cover, &pages, registry) else {
+        return Ok(true);
+    };
+    Ok(holds(stream.state()))
 }
 
 #[cfg(test)]

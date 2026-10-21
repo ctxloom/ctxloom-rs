@@ -194,3 +194,125 @@ fn test_a_rejection_is_answered_not_retried() {
     assert_eq!(store.begun, 2);
     assert!(delay.slept.is_empty());
 }
+
+// ------------------------------------------------------------ conditions and purges
+
+/// A runner over `registry`, `clock` and `delay`, 5 attempts.
+fn runner<'a>(
+    registry: &'a annals::next::Registry,
+    clock: &'a mut FakeClock,
+    delay: &'a mut FakeDelay,
+) -> Runner<'a, FakeClock, FakeDelay> {
+    Runner {
+        registry,
+        clock,
+        delay,
+        backoff: Backoff {
+            base: 10 * MS,
+            cap: 30 * MS,
+            attempts: 5,
+        },
+    }
+}
+
+fn removal() -> annals::next::v1::CommandBook {
+    let remove = tasks::RemoveTask {
+        reason: tasks::RemovalReason::Pruned,
+    };
+    book("swift-amber", remove.into())
+}
+
+#[test]
+fn test_a_command_whose_condition_fails_on_the_task_read_in_its_unit_is_not_sent() {
+    let mut store = Flaky::default();
+    let mut delay = FakeDelay::default();
+    run(&mut store, &mut delay, 3).unwrap();
+    let registry = registry();
+    let mut clock = FakeClock::default();
+    let command_id = annals::next::v1::Uuid::from_bytes([9; 16]);
+    let mut runner = runner(&registry, &mut clock, &mut delay);
+    let other = |task: &tasks::TaskState| task.text == "Something else";
+    let outcome = ready(runner.run_where(&mut store, &removal(), &command_id, Some(&other)));
+    assert!(outcome.unwrap().is_none(), "declined");
+    assert_eq!(events(&mut store), 1, "nothing sent");
+
+    let this = |task: &tasks::TaskState| task.text == "Ship it";
+    let outcome = ready(runner.run_where(&mut store, &removal(), &command_id, Some(&this)));
+    assert!(matches!(outcome, Ok(Some(Outcome::Committed))));
+    assert_eq!(events(&mut store), 2, "the removal landed");
+}
+
+#[test]
+fn test_a_condition_reads_through_a_unit_that_can_fail_and_be_retried() {
+    let mut store = Flaky::default();
+    let mut delay = FakeDelay::default();
+    run(&mut store, &mut delay, 3).unwrap();
+    store.faults = [Fault::Unavailable].into();
+    let registry = registry();
+    let mut clock = FakeClock::default();
+    let command_id = annals::next::v1::Uuid::from_bytes([9; 16]);
+    let mut runner = runner(&registry, &mut clock, &mut delay);
+    let any = |_: &tasks::TaskState| true;
+    let outcome = ready(runner.run_where(&mut store, &removal(), &command_id, Some(&any)));
+    assert!(matches!(outcome, Ok(Some(Outcome::Committed))));
+    assert_eq!(
+        store.begun, 3,
+        "the add, then the failed attempt and its retry"
+    );
+}
+
+#[test]
+fn test_a_purge_deletes_a_removed_tasks_stream_and_says_how_many_events() {
+    let mut store = Flaky::default();
+    let mut delay = FakeDelay::default();
+    run(&mut store, &mut delay, 3).unwrap();
+    let registry = registry();
+    let mut clock = FakeClock::default();
+    let command_id = annals::next::v1::Uuid::from_bytes([9; 16]);
+    let mut runner = runner(&registry, &mut clock, &mut delay);
+    ready(runner.run(&mut store, &removal(), &command_id)).unwrap();
+    let stream = crate::cover("swift-amber");
+    assert_eq!(ready(runner.purge(&mut store, &stream)).unwrap(), 2);
+    assert_eq!(events(&mut store), 0);
+    assert_eq!(
+        ready(runner.purge(&mut store, &stream)).unwrap(),
+        0,
+        "no such stream"
+    );
+}
+
+#[test]
+fn test_a_purge_leaves_a_live_task_alone() {
+    // A task minted on the harp after the removal was purged by another.
+    let mut store = Flaky::default();
+    let mut delay = FakeDelay::default();
+    run(&mut store, &mut delay, 3).unwrap();
+    let registry = registry();
+    let mut clock = FakeClock::default();
+    let mut runner = runner(&registry, &mut clock, &mut delay);
+    let stream = crate::cover("swift-amber");
+    assert_eq!(ready(runner.purge(&mut store, &stream)).unwrap(), 0);
+    assert_eq!(events(&mut store), 1, "kept");
+}
+
+#[test]
+fn test_a_purge_gives_up_once_its_attempts_are_spent() {
+    let mut store = Flaky::default();
+    let mut delay = FakeDelay::default();
+    run(&mut store, &mut delay, 3).unwrap();
+    let registry = registry();
+    let mut clock = FakeClock::default();
+    let command_id = annals::next::v1::Uuid::from_bytes([9; 16]);
+    let mut runner = runner(&registry, &mut clock, &mut delay);
+    ready(runner.run(&mut store, &removal(), &command_id)).unwrap();
+    runner.delay.slept.clear();
+    store.faults = [Fault::Conflict; 5].into();
+    let stream = crate::cover("swift-amber");
+    let Err(AppError::GaveUp { attempts, error }) = ready(runner.purge(&mut store, &stream)) else {
+        panic!("gave up");
+    };
+    assert_eq!(attempts, 5);
+    assert_eq!(error.code(), "annals-next-store-conflict");
+    assert_eq!(runner.delay.slept.len(), 4);
+    assert_eq!(events(&mut store), 2, "nothing purged");
+}
