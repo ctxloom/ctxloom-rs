@@ -38,3 +38,8 @@ impl Names for HarpNames {
 #[cfg(test)]
 #[path = "lib.test.rs"]
 mod tests;
+
+/// The first word of `name` (gates demo; reverted).
+pub fn first_word(name: &str) -> &str {
+    name.split('-').next().unwrap_or("")
+}

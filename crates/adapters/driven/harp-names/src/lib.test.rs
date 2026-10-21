@@ -42,3 +42,8 @@ fn test_names_are_drawn_at_random() {
 fn test_word_count_counts_the_words() {
     assert_eq!(super::word_count("jolly-mute-magma"), 3);
 }
+
+#[test]
+fn test_first_word_is_the_first() {
+    assert_eq!(super::first_word("jolly-mute-magma"), "jolly");
+}
