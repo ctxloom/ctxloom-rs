@@ -43,28 +43,29 @@ impl Domain for Tasks {
         match command {
             TaskCommand::AddTask(add) => decide_add(add, tx),
             TaskCommand::SetStatus(set) => {
-                let held = live(tx.state())?.trigger.clone();
+                let held = live(tx.state())?;
                 let status = valid_status(&set.status)?.ok_or(TaskRejection::StatusRequired)?;
                 let given = set.trigger.trim();
-                let effective = if given.is_empty() {
-                    held.as_str()
+                let trigger = if given.is_empty() {
+                    held.trigger.clone()
                 } else {
-                    given
+                    given.to_string()
                 };
-                if status == DEFERRED && effective.is_empty() {
+                if status == DEFERRED && trigger.is_empty() {
                     return Err(TaskRejection::TriggerRequired);
                 }
-                let trigger = if effective == held {
-                    String::new()
-                } else {
-                    effective.to_string()
-                };
                 let at = tx.recorded_at();
+                let deferred_since = if status == DEFERRED {
+                    Some(at)
+                } else {
+                    held.deferred_since
+                };
                 tx.emit(
                     StatusChanged {
                         status,
                         trigger,
                         at,
+                        deferred_since,
                     }
                     .into(),
                 );
@@ -85,10 +86,9 @@ impl Domain for Tasks {
                 }
                 let after: BTreeSet<String> = held.union(&add).cloned().collect();
                 let after: BTreeSet<String> = after.difference(&remove).cloned().collect();
-                let added: Vec<String> = after.difference(&held).cloned().collect();
-                let removed: Vec<String> = held.difference(&after).cloned().collect();
-                if !added.is_empty() || !removed.is_empty() {
-                    tx.emit(Retagged { added, removed }.into());
+                if after != held {
+                    let tags = after.into_iter().collect();
+                    tx.emit(Retagged { tags }.into());
                 }
                 Ok(())
             }
@@ -120,29 +120,16 @@ impl Domain for Tasks {
                 state.origin_session = added.origin_session.clone();
                 state.created_at = added.at;
                 state.status_set_at = added.at;
-                if added.status == DEFERRED {
-                    state.deferred_since = Some(added.at);
-                }
+                state.deferred_since = added.deferred_since;
             }
             TaskEvent::StatusChanged(changed) => {
                 state.status = changed.status.clone();
-                if !changed.trigger.is_empty() {
-                    state.trigger = changed.trigger.clone();
-                }
+                state.trigger = changed.trigger.clone();
                 state.status_set_at = changed.at;
-                if changed.status == DEFERRED {
-                    state.deferred_since = Some(changed.at);
-                }
+                state.deferred_since = changed.deferred_since;
             }
             TaskEvent::TextEdited(edited) => state.text = edited.text.clone(),
-            TaskEvent::Retagged(retagged) => {
-                let mut tags: BTreeSet<String> = state.tags.iter().cloned().collect();
-                tags.extend(retagged.added.iter().cloned());
-                for tag in &retagged.removed {
-                    tags.remove(tag);
-                }
-                state.tags = tags.into_iter().collect();
-            }
+            TaskEvent::Retagged(retagged) => state.tags = retagged.tags.clone(),
             TaskEvent::TaskRemoved(_) => state.removed = true,
         }
     }
@@ -173,6 +160,7 @@ fn decide_add(add: &AddTask, tx: &mut Tx<'_, Tasks>) -> Result<(), TaskRejection
         return Err(TaskRejection::TriggerRequired);
     }
     let at = tx.recorded_at();
+    let deferred_since = (status == DEFERRED).then_some(at);
     tx.emit(
         TaskAdded {
             harp_id: harp_id.to_string(),
@@ -182,6 +170,7 @@ fn decide_add(add: &AddTask, tx: &mut Tx<'_, Tasks>) -> Result<(), TaskRejection
             tags: normalized(&add.tags).into_iter().collect(),
             origin_session: add.origin_session.clone(),
             at,
+            deferred_since,
         }
         .into(),
     );

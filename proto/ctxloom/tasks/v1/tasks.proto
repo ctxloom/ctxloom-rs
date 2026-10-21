@@ -119,6 +119,10 @@ enum RemovalReason {
 
 // region events
 
+// An event carries the values the task holds after it, not the change that
+// led there: apply assigns them and computes nothing, so folding an event
+// needs no rule and no prior state, and a consumer reads it whole.
+//
 // Every timestamp an event carries is the instant it was recorded
 // (`Tx::recorded_at`), copied in because apply never sees the event's
 // metadata and the state keeps these instants.
@@ -134,15 +138,20 @@ message TaskAdded {
   repeated string tags = 5;
   string origin_session = 6;
   google.protobuf.Timestamp at = 7;
+  // `at` when the task is added Deferred; absent otherwise.
+  optional google.protobuf.Timestamp deferred_since = 8;
 }
 
 message StatusChanged {
   option (io.angzarr.v1.event) = {component: "ctxloom.tasks.v1.TaskState"};
 
   string status = 1;
-  // Set only when the trigger changed; empty keeps the current one.
+  // The trigger the task holds after the change, changed or not.
   string trigger = 2;
   google.protobuf.Timestamp at = 3;
+  // `at` when the task enters Deferred; otherwise the instant it last did,
+  // absent if it never has.
+  optional google.protobuf.Timestamp deferred_since = 4;
 }
 
 message TextEdited {
@@ -151,13 +160,14 @@ message TextEdited {
   string text = 1;
 }
 
-// The tags actually added and actually removed: a tag already held is not
-// in `added`, nor one never held in `removed`.
+// Recorded only when the retag changes the task's tags.
 message Retagged {
   option (io.angzarr.v1.event) = {component: "ctxloom.tasks.v1.TaskState"};
 
-  repeated string added = 1;
-  repeated string removed = 2;
+  reserved 1, 2;
+  reserved "added", "removed";
+  // The task's tags after the retag, normalized.
+  repeated string tags = 3;
 }
 
 message TaskRemoved {

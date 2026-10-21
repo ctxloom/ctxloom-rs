@@ -15,8 +15,7 @@ fn test_type_url_names_each_message_by_full_name() {
 #[test]
 fn test_event_round_trips_through_its_encoding() {
     let event = v1::Retagged {
-        added: vec!["urgent".to_string()],
-        removed: vec!["later".to_string()],
+        tags: vec!["later".to_string(), "urgent".to_string()],
     };
     let decoded = v1::Retagged::decode(event.encode_to_vec().as_slice()).expect("decode");
     assert_eq!(decoded, event);

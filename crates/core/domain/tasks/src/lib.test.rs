@@ -177,6 +177,7 @@ fn test_add_records_the_task_with_its_creation_time() {
             tags: Vec::new(),
             origin_session: "calm-otter".to_string(),
             at: at(101),
+            deferred_since: None,
         })]
     );
     let state = task.state();
@@ -226,6 +227,7 @@ fn test_set_status_moves_the_task_and_stamps_when() {
             status: "In Progress".to_string(),
             trigger: String::new(),
             at: at(102),
+            deferred_since: None,
         })]
     );
     assert_eq!(task.state().status, "In Progress");
@@ -243,13 +245,31 @@ fn test_deferring_again_keeps_the_trigger_the_task_holds() {
         events,
         vec![TaskEvent::StatusChanged(StatusChanged {
             status: DEFERRED.to_string(),
-            trigger: String::new(),
+            trigger: "after the release".to_string(),
             at: at(104),
+            deferred_since: Some(at(104)),
         })],
-        "an unchanged trigger is not recorded again"
+        "the event carries the trigger held, unchanged or not"
     );
     assert_eq!(task.state().trigger, "after the release");
     assert_eq!(task.state().deferred_since, Some(at(104)));
+}
+
+#[test]
+fn test_leaving_deferred_keeps_the_trigger_and_when_it_was_deferred() {
+    let mut task = Task::added("Revisit");
+    task.run(status(DEFERRED, "after the release")).unwrap();
+    let events = task.run(status(TO_DO, "")).unwrap();
+    assert_eq!(
+        events,
+        vec![TaskEvent::StatusChanged(StatusChanged {
+            status: TO_DO.to_string(),
+            trigger: "after the release".to_string(),
+            at: at(103),
+            deferred_since: Some(at(102)),
+        })]
+    );
+    assert_eq!(task.state().deferred_since, Some(at(102)));
 }
 
 #[test]
@@ -278,7 +298,7 @@ fn test_edit_text_replaces_the_text_whole() {
 }
 
 #[test]
-fn test_retag_records_only_the_tags_it_changes() {
+fn test_retag_records_the_tags_the_task_holds_after_it() {
     let mut task = Task::new();
     task.run(AddTask {
         tags: strings(&["later", "release"]),
@@ -291,8 +311,7 @@ fn test_retag_records_only_the_tags_it_changes() {
     assert_eq!(
         events,
         vec![TaskEvent::Retagged(Retagged {
-            added: strings(&["urgent"]),
-            removed: strings(&["later"]),
+            tags: strings(&["release", "urgent"]),
         })]
     );
     assert_eq!(task.state().tags, strings(&["release", "urgent"]));
@@ -304,8 +323,7 @@ fn test_retag_with_only_tags_to_add_records_them() {
     assert_eq!(
         task.run(retag(&["urgent"], &[])).unwrap(),
         vec![TaskEvent::Retagged(Retagged {
-            added: strings(&["urgent"]),
-            removed: Vec::new(),
+            tags: strings(&["urgent"]),
         })]
     );
 }
@@ -320,10 +338,7 @@ fn test_retag_with_only_tags_to_remove_records_them() {
     .unwrap();
     assert_eq!(
         task.run(retag(&[], &["later"])).unwrap(),
-        vec![TaskEvent::Retagged(Retagged {
-            added: Vec::new(),
-            removed: strings(&["later"]),
-        })]
+        vec![TaskEvent::Retagged(Retagged { tags: Vec::new() })]
     );
     assert_eq!(task.state().tags, Vec::<String>::new());
 }
@@ -561,6 +576,7 @@ fn test_an_event_round_trips_through_the_wire() {
         status: DEFERRED.to_string(),
         trigger: "after the release".to_string(),
         at: at(5),
+        deferred_since: Some(at(5)),
     });
     assert_eq!(TaskEvent::from_any(&event.to_any()), Ok(event));
 }
