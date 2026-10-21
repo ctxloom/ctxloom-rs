@@ -91,6 +91,14 @@ the crate's name), an en-US message in `locales/en-US/<crate>.ftl` using
 exactly its args, and a sample in the crate's `diagnostic_samples()`. The
 crate's catalog test checks messages and samples both ways.
 
+Each crate with diagnostics exports its embedded en-US catalog as `EN_US`
+(its name and its `.ftl`). The composition root assembles the binary's
+catalog from every crate's `EN_US` (presentation's `Catalog`), and the
+driving adapters render with it: a diagnostic's catalog message in text,
+its `{code, args, message}` envelope in JSON. A new crate's `EN_US` joins
+the binary's catalog list, and its samples the binary's every-diagnostic
+catalog test.
+
 ## Use `just`
 
 `just build`, `just test` (cargo-nextest, required: a missing nextest fails
