@@ -7,11 +7,13 @@
 //! working directory lies in no work root of its own (no CTXLOOM_ROOT, no
 //! git repository), as Go's does; inside a work root it reads nothing.
 
+use std::collections::BTreeMap;
+
 use annals_diagnostic::Report;
 use ports::{Configuration, ProjectIdentity, TaskStores};
 use task_lists::TaskList;
 
-use crate::view::{is_active, is_terminal, Row, Task, OPEN, STATUS_CLASSES, TERMINAL};
+use crate::view::{is_active, is_terminal, Row, Task, IN_PROGRESS, OPEN, STATUS_CLASSES, TERMINAL};
 use crate::{failed, query, AppError, Project, Service, Shown};
 
 /// What a read reached.
@@ -103,6 +105,16 @@ pub struct Details {
     pub rows: Vec<Row>,
     /// Which of their tags a person is shown.
     pub shown: Shown,
+}
+
+/// How many tasks hold each status, over every task the read reached
+/// whatever a listing would filter or hide, and the tasks In Progress.
+#[derive(Clone, PartialEq, Debug)]
+pub struct Summary {
+    pub reach: Reach,
+    /// By status, sorted.
+    pub counts: BTreeMap<String, usize>,
+    pub in_progress: Vec<Row>,
 }
 
 /// A status filter: statuses by name, and the classes `@open` (every
@@ -280,6 +292,25 @@ where
                 })
                 .collect(),
         ))
+    }
+
+    /// The counts by status of every task `scope` reaches.
+    pub(crate) async fn summed(&mut self, scope: crate::Scope) -> Result<Summary, AppError> {
+        let scan = self.scan(scope.project.as_deref(), scope.global).await?;
+        let mut counts = BTreeMap::new();
+        for row in &scan.rows {
+            *counts.entry(row.task.status.clone()).or_insert(0) += 1;
+        }
+        let in_progress = scan
+            .rows
+            .into_iter()
+            .filter(|row| row.task.status == IN_PROGRESS)
+            .collect();
+        Ok(Summary {
+            reach: scan.reach,
+            counts,
+            in_progress,
+        })
     }
 
     /// The tasks `query` names, every one of them found once.

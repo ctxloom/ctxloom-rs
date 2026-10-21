@@ -6,10 +6,11 @@ use std::io::{self, Write};
 use clap::Args;
 use presentation::{Catalog, Format};
 use tasks_application::{
-    ListQuery, Listing, NewTask, Reach, ShowQuery, StatusChange, TagChange, TaskService, TextEdit,
+    ListQuery, Listing, NewTask, Reach, Scope, ShowQuery, StatusChange, TagChange, TaskService,
+    TextEdit,
 };
 
-use crate::render::{Added, Detailed, Listed, Tagged};
+use crate::render::{Added, Detailed, Listed, Summed, Tagged};
 use crate::{notify, output_failed, wrote, CliError, Notice};
 
 /// What every task command is handed besides its own arguments: the
@@ -258,6 +259,40 @@ pub(crate) async fn show(
     let details = service.show(query).await.map_err(CliError::App)?;
     read_in(&details.reach, ctx.catalog, err)
         .and_then(|()| presentation::render(out, ctx.format, &Detailed(&details)))
+        .map_err(output_failed)
+}
+
+#[derive(Args, Debug)]
+pub(crate) struct GlobalArgs {
+    /// Every project, not just this one.
+    #[arg(long)]
+    global: bool,
+}
+
+impl GlobalArgs {
+    fn scope(&self, ctx: Ctx<'_>) -> Scope {
+        Scope {
+            project: ctx.project,
+            global: self.global,
+            config_set: ctx.config_set,
+        }
+    }
+}
+
+pub(crate) async fn summary(
+    args: GlobalArgs,
+    ctx: Ctx<'_>,
+    service: &mut impl TaskService,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<(), CliError> {
+    let (format, catalog) = (ctx.format, ctx.catalog);
+    let summary = service
+        .summary(args.scope(ctx))
+        .await
+        .map_err(CliError::App)?;
+    reached(&summary.reach, catalog, err)
+        .and_then(|()| presentation::render(out, format, &Summed(&summary)))
         .map_err(output_failed)
 }
 

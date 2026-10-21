@@ -79,6 +79,7 @@ where
     is_send(&service.set_status(StatusChange::default()));
     is_send(&service.edit(TextEdit::default()));
     is_send(&service.show(crate::ShowQuery::default()));
+    is_send(&service.summary(crate::Scope::default()));
     is_send(&stores.open(&project()));
     is_send(&stores.open_existing(&project()));
     is_send(&delay.sleep(std::time::Duration::ZERO));

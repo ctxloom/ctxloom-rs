@@ -7,7 +7,7 @@ use annals_diagnostic::Diagnostic;
 
 use crate::fakes::{ready, FakeClock, FakeDelay, FakeIdentity, FakeNames, FakeStores, Flaky};
 use crate::{
-    AppError, Hidden, ListQuery, NewTask, Project, Reach, Service, ShowQuery, TaskService,
+    AppError, Hidden, ListQuery, NewTask, Project, Reach, Scope, Service, ShowQuery, TaskService,
 };
 
 pub(crate) type Fake = Service<FakeIdentity, FakeStores, FakeNames, FakeClock, FakeDelay>;
@@ -420,4 +420,49 @@ fn test_show_where_there_is_no_project_finds_nothing() {
     let mut service = service(&[]);
     let error = ready(service.show(asked(&["swift-amber"]))).unwrap_err();
     assert_eq!(error.code(), "tasks-application-not-found");
+}
+
+// ------------------------------------------------------------ summary
+
+#[test]
+fn test_a_summary_counts_every_task_by_status_and_names_those_in_progress() {
+    let mut service = with_every_status();
+    service.names = crate::fakes::FakeNames::of(&["also-doing"]);
+    add(&mut service, "Second", "In Progress");
+    let summary = ready(service.summary(Scope::default())).unwrap();
+    let counts: Vec<(&str, usize)> = summary
+        .counts
+        .iter()
+        .map(|(s, n)| (s.as_str(), *n))
+        .collect();
+    assert_eq!(
+        counts,
+        [
+            ("Archived", 1),
+            ("Blocked", 1),
+            ("Deferred", 1),
+            ("Done", 1),
+            ("In Progress", 2),
+            ("To Do", 1)
+        ]
+    );
+    let doing: Vec<&str> = summary
+        .in_progress
+        .iter()
+        .map(|r| r.task.harp_id.as_str())
+        .collect();
+    assert_eq!(doing, ["doing", "also-doing"], "in the order added");
+    assert_eq!(summary.reach, Reach::Project(crate::fakes::project()));
+}
+
+#[test]
+fn test_a_summary_across_projects_sums_them() {
+    let mut service = with_two_projects();
+    let global = Scope {
+        global: true,
+        ..Scope::default()
+    };
+    let summary = ready(service.summary(global)).unwrap();
+    assert_eq!(summary.counts.get("To Do"), Some(&3));
+    assert!(summary.reach.is_every());
 }

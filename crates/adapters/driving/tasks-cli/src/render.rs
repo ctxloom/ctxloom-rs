@@ -5,7 +5,11 @@ use std::io::{self, Write};
 
 use presentation::{text, Render};
 use serde::Serialize;
-use tasks_application::{Details, Listing, Project, Reach, Row, Shown, Tag, Task, Timestamp};
+use std::collections::BTreeMap;
+
+use tasks_application::{
+    Details, Listing, Project, Reach, Row, Shown, Summary, Tag, Task, Timestamp,
+};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
@@ -317,6 +321,63 @@ fn attributed(row: &Row) -> RowJson<'_, TaskJson<'_>> {
 enum OneOrMany<T> {
     One(T),
     Many(Vec<T>),
+}
+
+/// A summary: JSON Go's `Summary`, the counts by status and each task In
+/// Progress with its project; text a line per status, then the tasks In
+/// Progress, by id (with its project across projects).
+pub struct Summed<'a>(pub &'a Summary);
+
+#[derive(Serialize)]
+struct SummaryJson<'a> {
+    counts: &'a BTreeMap<String, usize>,
+    in_progress: Vec<InProgressJson<'a>>,
+}
+
+#[derive(Serialize)]
+struct InProgressJson<'a> {
+    harp_id: &'a str,
+    project: String,
+}
+
+impl Render for Summed<'_> {
+    fn json(&self) -> impl Serialize + '_ {
+        SummaryJson {
+            counts: &self.0.counts,
+            in_progress: self
+                .0
+                .in_progress
+                .iter()
+                .map(|row| InProgressJson {
+                    harp_id: &row.task.harp_id,
+                    project: project_label(&row.project),
+                })
+                .collect(),
+        }
+    }
+
+    fn text(&self, out: &mut dyn Write) -> io::Result<()> {
+        let summary = self.0;
+        if let Reach::Every { projects, .. } = summary.reach {
+            projects_heading(out, projects)?;
+        }
+        for (status, count) in &summary.counts {
+            writeln!(out, "{status}\t{count}")?;
+        }
+        if summary.in_progress.is_empty() {
+            return Ok(());
+        }
+        let every = summary.reach.is_every();
+        let names: Vec<String> = summary
+            .in_progress
+            .iter()
+            .map(|row| match every {
+                true => format!("{} ({})", row.task.harp_id, project_label(&row.project)),
+                false => row.task.harp_id.clone(),
+            })
+            .collect();
+        writeln!(out, "\nIn-progress: {}", names.join(", "))
+    }
 }
 
 /// One task whole: its check, id and status; the tags a person is shown

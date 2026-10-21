@@ -640,6 +640,17 @@ fn test_in_json_each_later_command_writes_one_document_and_errors_an_envelope() 
         &["show", &harp, "no-such-task", "--json"],
         "tasks-application-not-found",
     );
+
+    for args in [
+        &["summary", "--json"][..],
+        &["summary", "--global", "--json"],
+    ] {
+        let summed = env.run(args);
+        assert!(summed.ok, "{}", summed.stderr);
+        let summary = one_document(&summed.stdout);
+        assert_eq!(summary["counts"]["To Do"], 1, "{args:?}");
+        assert_eq!(summary["in_progress"], serde_json::json!([]), "{args:?}");
+    }
 }
 
 #[test]

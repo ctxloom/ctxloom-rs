@@ -10,8 +10,8 @@ use std::task::{Context as TaskContext, Poll, Waker};
 use annals_diagnostic::Report;
 use tasks_application::{
     AppError, Details, Hidden, ImportReport, ImportRequest, ImportService, ListQuery, Listing,
-    NewTask, Project, ProjectImport, Reach, Row, ShowQuery, StatusChange, TagChange, Task,
-    TaskService, TextEdit, Written,
+    NewTask, Project, ProjectImport, Reach, Row, Scope, ShowQuery, StatusChange, Summary,
+    TagChange, Task, TaskService, TextEdit, Written,
 };
 
 use presentation::{Catalog, Format};
@@ -64,6 +64,8 @@ struct Fake {
     moved: Vec<StatusChange>,
     edits: Vec<TextEdit>,
     shows: Vec<ShowQuery>,
+    summed: Vec<Scope>,
+    summary: Option<Result<Summary, AppError>>,
     details: Option<Result<Details, AppError>>,
     listed: Vec<ListQuery>,
     written: Option<Result<Written, AppError>>,
@@ -101,6 +103,11 @@ impl TaskService for Fake {
     async fn show(&mut self, query: ShowQuery) -> Result<Details, AppError> {
         self.shows.push(query);
         self.details.clone().expect("a show answer scripted")
+    }
+
+    async fn summary(&mut self, scope: Scope) -> Result<Summary, AppError> {
+        self.summed.push(scope);
+        self.summary.clone().expect("a summary answer scripted")
     }
 }
 
@@ -560,6 +567,91 @@ fn test_show_needs_an_id_and_says_which_were_not_found() {
         ran.err,
         "taskloom: no task holds this harp id: \"nope\" (see `taskloom list`)\n"
     );
+}
+
+// ------------------------------------------------------------ summary
+
+fn summary(reach: Reach) -> Option<Result<Summary, AppError>> {
+    let rows = listing_in(
+        reach.clone(),
+        vec![shapes::task("swift-amber", "In Progress")],
+    )
+    .rows;
+    Some(Ok(Summary {
+        reach,
+        counts: [("To Do".to_string(), 2), ("In Progress".to_string(), 1)]
+            .into_iter()
+            .collect(),
+        in_progress: rows,
+    }))
+}
+
+#[test]
+fn test_summary_counts_each_status_then_names_those_in_progress() {
+    let mut fake = Fake {
+        summary: summary(Reach::Project(project())),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["--project", "p", "summary"]);
+    assert_eq!(ran.code, 0, "{}", ran.err);
+    assert_eq!(
+        fake.summed,
+        [Scope {
+            project: Some("p".to_string()),
+            ..Scope::default()
+        }]
+    );
+    assert_eq!(
+        ran.out,
+        "In Progress\t1\nTo Do\t2\n\nIn-progress: swift-amber\n"
+    );
+    assert_eq!(ran.err, "");
+    let ran = run_on(&mut fake, false, &["summary"]);
+    assert_eq!(
+        ran.out,
+        r#"{
+  "counts": {
+    "In Progress": 1,
+    "To Do": 2
+  },
+  "in_progress": [
+    {
+      "harp_id": "swift-amber",
+      "project": "/work/tree (jolly-mute-magma)"
+    }
+  ]
+}
+"#
+    );
+}
+
+#[test]
+fn test_summary_across_projects_names_each_task_with_its_project() {
+    let mut fake = Fake {
+        summary: summary(Reach::Every {
+            projects: 2,
+            fallback: None,
+        }),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["summary", "--global"]);
+    assert!(fake.summed[0].global);
+    assert_eq!(
+        ran.out,
+        "Projects: 2 (--global)\n\nIn Progress\t1\nTo Do\t2\n\n\
+         In-progress: swift-amber (/work/tree (jolly-mute-magma))\n"
+    );
+    let quiet = Summary {
+        reach: Reach::NoProject,
+        counts: Default::default(),
+        in_progress: Vec::new(),
+    };
+    fake.summary = Some(Ok(quiet));
+    let ran = run_on(&mut fake, true, &["summary"]);
+    assert_eq!(ran.out, "");
+    assert_eq!(ran.err, "taskloom: no project here yet: nothing to list\n");
+    let ran = run_on(&mut fake, false, &["summary"]);
+    assert_eq!(ran.out, "{\n  \"counts\": {},\n  \"in_progress\": []\n}\n");
 }
 
 // ------------------------------------------------------------ list
