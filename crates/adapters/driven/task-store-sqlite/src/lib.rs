@@ -7,6 +7,9 @@
 //! migrated is refused (`annals-store-sql-unmigrated`) until a write
 //! migrates it.
 //!
+//! The store purges a stream (a prune's), on its own or in a unit of work,
+//! through annals-store-sql's purge, so it is a [`ports::PurgingStore`].
+//!
 //! [`StoreCheck`] checks a project's database whole (SQLite's `PRAGMA
 //! integrity_check`, through annals-store-sql), opened afresh and
 //! read-only: damage is reported as the store's diagnostic, never

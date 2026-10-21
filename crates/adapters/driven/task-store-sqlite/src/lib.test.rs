@@ -426,3 +426,36 @@ fn test_a_check_that_cannot_run_fails_with_the_stores_error() {
         "{cause:?}"
     );
 }
+
+// ------------------------------------------------------------ purging
+
+#[test]
+fn test_the_store_purges_a_stream_in_a_unit_of_work_as_a_prune_needs() {
+    use annals::next::{AsyncPurge, AsyncUnitOfWork};
+    use ports::PurgingStore;
+
+    let home = tempfile::tempdir().unwrap();
+    let project = project("p", store_in(home.path(), "p"));
+    let stream = Cover {
+        domain: "tasks".to_string(),
+        root: Some(Uuid::from_bytes([1; 16])),
+        edition: None,
+    };
+    let mut stores = SqliteStores::default();
+    block_on(async {
+        let store = stores.open(&project).await.unwrap();
+        store
+            .append(&stream, 0, &[event(0, 1), event(1, 2)])
+            .await
+            .unwrap();
+        let mut unit = store.begin_purging().await;
+        assert_eq!(unit.purge(&stream).await.unwrap(), 2, "events deleted");
+        unit.commit().await.unwrap();
+        assert_eq!(store.read_from(&stream, 0).await.unwrap(), None);
+        assert_eq!(
+            store.append(&stream, 0, &[event(0, 3)]).await.unwrap(),
+            1,
+            "the stream starts again from expected 0"
+        );
+    });
+}
