@@ -54,11 +54,12 @@ impl<'a> TaskJson<'a> {
     }
 }
 
-/// A number as Go's encoding/json writes a float64 in this range: a whole
-/// number without a fraction (`5`, where serde_json writes `5.0`).
+/// A derived priority, in `[0, 5]`, as Go's encoding/json writes a float64
+/// there: a whole number without a fraction (`5`, where serde_json writes
+/// `5.0`).
 fn go_number<S: serde::Serializer>(value: &Option<f64>, serializer: S) -> Result<S::Ok, S::Error> {
     match *value {
-        Some(n) if n.fract() == 0.0 && n.abs() < 1e15 => serializer.serialize_i64(n as i64),
+        Some(n) if n.fract() == 0.0 => serializer.serialize_i64(n as i64),
         Some(n) => serializer.serialize_f64(n),
         None => serializer.serialize_none(),
     }
