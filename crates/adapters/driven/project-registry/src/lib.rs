@@ -103,6 +103,24 @@ impl<N: Names> ProjectRegistry<N> {
         Ok(path::canonical(root))
     }
 
+    /// The working directory, canonical, if neither CTXLOOM_ROOT nor a
+    /// `.git` above it gives it a work root of its own.
+    fn rootless(&self) -> Result<Option<String>, RegistryError> {
+        if self
+            .env
+            .root
+            .as_ref()
+            .is_some_and(|r| !r.as_os_str().is_empty())
+        {
+            return Ok(None);
+        }
+        let cwd = self.cwd()?;
+        if cwd.ancestors().any(|dir| dir.join(".git").exists()) {
+            return Ok(None);
+        }
+        Ok(Some(path::canonical(cwd).display().to_string()))
+    }
+
     fn cwd(&self) -> Result<&Path, RegistryError> {
         self.env
             .cwd
@@ -244,6 +262,14 @@ impl<N: Names> ProjectIdentity for ProjectRegistry<N> {
 
     fn for_read(&mut self, pinned: Option<&str>) -> Result<Option<Project>, Report> {
         self.resolve(pinned, false).map_err(|e| Report::of(&e))
+    }
+
+    fn every_project(&mut self) -> Result<Vec<Project>, Report> {
+        self.every().map_err(|e| Report::of(&e))
+    }
+
+    fn rootless_directory(&mut self) -> Result<Option<String>, Report> {
+        self.rootless().map_err(|e| Report::of(&e))
     }
 }
 

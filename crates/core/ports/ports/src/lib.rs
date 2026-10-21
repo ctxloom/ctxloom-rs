@@ -48,6 +48,18 @@ pub trait ProjectIdentity {
     /// The project a read is about, never minting: `None` when the work
     /// root has no project yet.
     fn for_read(&mut self, pinned: Option<&str>) -> Result<Option<Project>, Report>;
+
+    /// Every project with a directory of its own under the projects
+    /// directory, by id: what a read across every project (`--global`)
+    /// spans. A project's root is the path the registry first holds for
+    /// it, canonical, or empty where it holds none.
+    fn every_project(&mut self) -> Result<Vec<Project>, Report>;
+
+    /// The working directory, canonical, when it lies in no work root of
+    /// its own: no CTXLOOM_ROOT, and no git repository above it. A read
+    /// that finds no project there reads every project instead, as Go's
+    /// does; inside a work root (`None`) it reads none.
+    fn rootless_directory(&mut self) -> Result<Option<String>, Report>;
 }
 
 /// Where a project's tasks are kept.

@@ -7,7 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use annals_diagnostic::Report;
-use ports::{Change, Names, ProjectAdmin, Registered, Survey};
+use ports::{Change, Names, Project, ProjectAdmin, Registered, Survey};
 
 use crate::path::canonical;
 use crate::{
@@ -49,6 +49,26 @@ impl<N: Names> ProjectRegistry<N> {
             databases: databases(&projects)?,
             projects,
         })
+    }
+
+    /// Every project with a database directory, by id, each rooted where
+    /// the registry first holds it.
+    pub(crate) fn every(&self) -> Result<Vec<Project>, RegistryError> {
+        let projects = self.projects_dir()?;
+        let registry = index::load(&projects.join("index.yaml"))?;
+        databases(&projects)?
+            .into_iter()
+            .map(|id| {
+                let root = registry
+                    .projects
+                    .iter()
+                    .find(|e| e.project_id == id)
+                    .map(|e| canonical(Path::new(&e.path)).display().to_string())
+                    .unwrap_or_default();
+                let store = projects.join(&id).join("state.db");
+                Ok(Project { id, root, store })
+            })
+            .collect()
     }
 
     fn apply_changes(
