@@ -1,8 +1,11 @@
 //! A project's task store: annals-store-sql's SQLite store at the path the
 //! project names (`~/.ctxloom/projects/<project-id>/state.db`), opened on
 //! first use and held after, behind the [`TaskStores`] port. A write opens
-//! it creating what is missing; a read opens it read-only and creates
-//! nothing, finding no store where there is no file.
+//! it creating what is missing; a read opens it read-only and never
+//! creates, migrates or writes, finding no store where there is no file. A
+//! file a writer is still making is annals-store-sql's to wait for; one not
+//! migrated is refused (`annals-store-sql-unmigrated`) until a write
+//! migrates it.
 
 mod error;
 
@@ -44,7 +47,7 @@ impl TaskStores for SqliteStores {
                 Held {
                     path: project.store.clone(),
                     writable: true,
-                    store: open_writable(project.store.clone()).await?,
+                    store: SqliteStore::open(&project.store).await?,
                 }
             }
         };
@@ -58,19 +61,13 @@ impl TaskStores for SqliteStores {
         let held = self.held.take().filter(|held| held.path == project.store);
         let held = match held {
             Some(held) => held,
-            None => match SqliteStore::open_existing(&project.store).await {
-                Ok(Some(store)) => Held {
+            None => match SqliteStore::open_existing(&project.store).await? {
+                Some(store) => Held {
                     path: project.store.clone(),
                     writable: false,
                     store,
                 },
-                Ok(None) => return Ok(None),
-                Err(_) if being_made(&project.store) => Held {
-                    path: project.store.clone(),
-                    writable: true,
-                    store: open_writable(project.store.clone()).await?,
-                },
-                Err(error) => return Err(error),
+                None => return Ok(None),
             },
         };
         Ok(Some(&mut self.held.insert(held).store))
@@ -88,44 +85,8 @@ fn create_parent(path: &Path) -> Result<(), StoreOpenError> {
     })
 }
 
-/// Whether a database at `path` whose read-only open failed may be one a
-/// writer is making: the file exists. A writer creates the file, moves it
-/// into WAL and migrates it, and a read-only open in between fails (not yet
-/// migrated; or "unable to open", reading a file mid-move to WAL). The file
-/// exists, so opening it to write creates nothing, and waits on the
-/// writer's lock until it is done. A file that is not a database fails that
-/// open too; what is not a file at all (a directory) is not tried.
-fn being_made(path: &Path) -> bool {
-    path.is_file()
-}
-
 fn unavailable(error: StoreOpenError) -> StoreError {
     StoreError::Unavailable(Report::of(&error))
-}
-
-/// [`SqliteStore::open`], run to its end on a blocking thread.
-///
-/// The compiler cannot prove its future `Send`: sqlx's migrator
-/// is generic over `Acquire<'a>`, and an `async fn` holding it fails the
-/// higher-ranked check ("implementation of `Acquire` is not general
-/// enough"). The port's futures must be `Send`, so the open is driven by
-/// `block_on` on a blocking thread, which needs only the path to be `Send`.
-/// Once annals-store-sql's `open` is provably `Send`, this is a plain await.
-#[expect(
-    clippy::result_large_err,
-    reason = "the blocking closure passes SqliteStore::open's own error through"
-)]
-async fn open_writable(path: PathBuf) -> Result<SqliteStore, StoreError> {
-    let shown = path.display().to_string();
-    let runtime = tokio::runtime::Handle::current();
-    tokio::task::spawn_blocking(move || runtime.block_on(SqliteStore::open(&path)))
-        .await
-        .map_err(|e| {
-            unavailable(StoreOpenError::Interrupted {
-                path: shown,
-                detail: e.to_string(),
-            })
-        })?
 }
 
 #[cfg(test)]

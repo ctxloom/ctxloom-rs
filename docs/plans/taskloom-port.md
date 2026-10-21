@@ -182,15 +182,12 @@ Where the skeleton differs from Go, or from this plan:
   statements, not one transaction, so a stream appended to mid-read can come
   back inconsistent. Lists and read-backs go through it; not fixed yet.
 - A read opens its store read-only (annals-store-sql's `open_existing`)
-  and creates nothing; `list` of a project with no store yet is empty, and
-  `tag` resolves its project as a read does. A read-only open of a file a
-  writer has created but not yet migrated or moved into WAL fails, so the
-  opener then opens that existing file to write, which waits on the
-  writer's lock.
-- annals-store-sql's `SqliteStore::open` future cannot be proven `Send`
-  (sqlx's migrator fails the higher-ranked `Acquire` check), so
-  task-store-sqlite drives it with `block_on` on a blocking thread. annals
-  should make it provably `Send`; the workaround then goes.
+  and never creates, migrates or writes; `list` of a project with no store
+  yet is empty, and `tag` resolves its project as a read does. A file a
+  writer has created but not yet migrated or moved into WAL is waited for
+  by annals-store-sql (up to its 5s busy timeout), on annals' branch
+  `concurrent-writers`; one that stays empty, or holds a database with
+  migrations pending, is refused as unmigrated until a write migrates it.
 - Work roots and registry entries are compared canonical, as Go's
   `cleanPath` (symlinks resolved, else cleaned lexically), and the
   canonical path is registered. A status starting with `@` is refused in
