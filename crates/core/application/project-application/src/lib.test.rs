@@ -512,3 +512,16 @@ fn test_a_removal_naming_anything_not_orphaned_removes_nothing() {
         assert!(projects.admin.applied.is_empty());
     }
 }
+
+#[test]
+fn test_heal_leaves_a_tree_already_sharing_its_id_alone() {
+    let mut survey = marked("m");
+    survey.registry = vec![entry("m", "/w", true), entry("m", "/clone", true)];
+    let shown = projects(survey.clone()).show(None).unwrap();
+    assert_eq!(
+        shown.problems,
+        [],
+        "shared on purpose, by a repoint --share"
+    );
+    assert_eq!(projects(survey).heal(true).unwrap(), Plan::default());
+}
