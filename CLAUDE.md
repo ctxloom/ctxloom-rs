@@ -103,11 +103,12 @@ errors, the mutation verdict and survivors). Read the log for the rest;
 `VERBOSE=1 just <gate>` shows the full output. lefthook shows a gate's
 output only when it fails. `just fmt` and `just fmt-check` cover this
 workspace's crates only, never the path dependencies (annals, angzarr-build).
-Lefthook's pre-commit first formats the staged Rust files and re-stages them
-(`just fmt-staged`; a partially staged file's unstaged hunks are set aside
-meanwhile, so they stay unstaged and unformatted), rather than refusing an
-unformatted commit; `just fmt-check` remains the check for CI and manual
-runs. It then runs gitleaks, clippy and cargo-deny, and judges the staged
+Lefthook's pre-commit first formats the staged Rust files rather than
+refusing an unformatted commit (`just fmt-staged`): it formats each file's
+staged content into the index, and the working file too when it has no
+unstaged change; a partially staged file's working copy is left exactly as
+it was, and is named as formatted in the commit only. `just fmt-check`
+remains the check for CI and manual runs. It then runs gitleaks, clippy and cargo-deny, and judges the staged
 change alone: `just
 test-staged` tests the changed crates and their dependents, and `just
 mutants-staged` mutation-tests the staged diff (`cargo mutants --in-diff`),

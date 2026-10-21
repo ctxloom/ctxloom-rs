@@ -16,14 +16,15 @@ pre-commit:
   piped: true
   commands:
     fmt:
-      # Formats the staged Rust files and re-stages them, rather than
-      # refusing the commit; `just fmt-check` is the check, for CI and
-      # manual runs. lefthook sets a partially staged file's unstaged
-      # hunks aside while it runs, so they are neither formatted nor staged.
+      # Formats the staged Rust files in the index (the commit) rather than
+      # refusing the commit; a partially staged file's working copy is left
+      # untouched (`just fmt-staged` says how). Not lefthook's stage_fixed:
+      # lefthook 1.13.6 restores the unstaged hunks it set aside at the
+      # wrong lines when formatting moved them. `just fmt-check` is the
+      # check, for CI and manual runs.
       priority: 1
       glob: "*.rs"
-      run: just fmt-staged {staged_files}
-      stage_fixed: true
+      run: just fmt-staged
     secrets:
       priority: 2
       run: just secrets-scan-staged

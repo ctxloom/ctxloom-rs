@@ -80,47 +80,79 @@ fmt-check:
     exec just --justfile {{TOP}}/justfile _run fmt-check workspace fmt \
         cargo fmt --manifest-path {{TOP}}/Cargo.toml "${packages[@]}" -- --check "${terse[@]}"
 
-# Format the staged Rust files in place: lefthook's pre-commit step, which
-# re-stages them (`stage_fixed`) and sets unstaged hunks aside meanwhile, so
-# only what is staged is formatted into the commit. Each file goes through
-# rustfmt on stdin, so exactly the files named are formatted: rustfmt given a
-# path also formats every module file it declares, staged or not. The
-# edition is the workspace's (`[workspace.package]` in Cargo.toml). Prints
-# each file it changed.
-[positional-arguments]
+# Format the staged Rust files: lefthook's pre-commit step. Each staged
+# *.rs file's STAGED content (its blob in the index, not the working file) is
+# put through rustfmt and the result written back into the index, with the
+# file's mode kept, so the commit is formatted. A file with no unstaged
+# change gets the same content in the working tree, so tree and index agree.
+# A partially staged file's working copy is left byte for byte as it was,
+# unstaged hunks and all, and a line names it as formatted in the commit
+# only (lefthook sets its unstaged hunks aside while the hook runs and puts
+# them back over the unchanged staged content after; see `_fmt-index`).
+# Not lefthook's stage_fixed, which would format the working copy under
+# those hunks: lefthook re-applies them with zero context, at the wrong
+# lines once formatting has moved them. rustfmt reads stdin, so exactly the
+# files staged are formatted (given a path, it formats every module file the
+# file declares). The edition is the workspace's (`[workspace.package]`).
 [no-exit-message]
-fmt-staged *files:
+fmt-staged:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ "$#" -eq 0 ]; then
+    cd {{TOP}}
+    mapfile -d '' files < <(git diff --cached --name-only --diff-filter=ACMR -z -- '*.rs')
+    if [ "${#files[@]}" -eq 0 ]; then
         echo "ok   fmt-staged (nothing to format: no Rust file is staged)"
         exit 0
     fi
-    exec just --justfile {{TOP}}/justfile _run fmt-staged "$# Rust files staged" rustfmt \
-        just --justfile {{TOP}}/justfile _fmt-files "$@"
+    just --justfile {{TOP}}/justfile _run fmt-staged "${#files[@]} Rust files staged" rustfmt \
+        just --justfile {{TOP}}/justfile _fmt-index "${files[@]}"
+    # A pass prints one line, but a file formatted in the commit only is
+    # worth its own: its working copy now differs from what was committed.
+    grep ': formatted in the commit only' "${GATE_LOG_DIR:-{{TOP}}/target/logs}/fmt-staged.log" || true
 
+# Inside fmt-staged: format each file's staged blob into the index; print
+# each file changed, and say which were formatted in the commit only.
 [positional-arguments]
 [no-exit-message]
-_fmt-files +files:
+_fmt-index +files:
     #!/usr/bin/env bash
     set -euo pipefail
-    edition=$(sed -n '/^\[workspace\.package\]/,/^\[/s/^edition *= *"\(.*\)"/\1/p' {{TOP}}/Cargo.toml)
+    cd {{TOP}}
+    edition=$(sed -n '/^\[workspace\.package\]/,/^\[/s/^edition *= *"\(.*\)"/\1/p' Cargo.toml)
     if [ -z "$edition" ]; then
         echo "no edition in Cargo.toml's [workspace.package]" >&2
         exit 1
     fi
-    formatted=$(mktemp)
-    trap 'rm -f "$formatted"' EXIT
+    hidden=$(git rev-parse --git-path info/lefthook-unstaged.patch)
+    scratch=$(mktemp -d)
+    trap 'rm -rf "$scratch"' EXIT
     rc=0
     for file in "$@"; do
-        [ -f "$file" ] || continue
-        if ! rustfmt --edition "$edition" < "$file" > "$formatted"; then
+        read -r mode _ < <(git ls-files --stage -- "$file")
+        # A symlink's blob is its target's path, not Rust.
+        [ "$mode" = 120000 ] && continue
+        git show ":$file" > "$scratch/staged"
+        if ! rustfmt --edition "$edition" < "$scratch/staged" > "$scratch/formatted"; then
             echo "$file: rustfmt could not format it"
             rc=1
             continue
         fi
-        if ! cmp -s "$formatted" "$file"; then
-            cat "$formatted" > "$file"
+        cmp -s "$scratch/staged" "$scratch/formatted" && continue
+        # Asked before the index changes: does the working file hold more
+        # than what is staged? lefthook (1.13.6) checks a partially staged
+        # file out at its staged content while the hook runs, keeping the
+        # unstaged hunks in its patch, and re-applies that patch after; so
+        # a file the patch names is partial too, and its working copy must
+        # stay the staged content the patch applies to.
+        partial=
+        git diff --quiet -- "$file" || partial=1
+        if [ -f "$hidden" ] && grep -qxF "diff --git a/$file b/$file" "$hidden"; then partial=1; fi
+        sha=$(git hash-object -w --no-filters "$scratch/formatted")
+        git update-index --cacheinfo "$mode,$sha,$file"
+        if [ -n "$partial" ]; then
+            echo "$file: formatted in the commit only; the working file, with its unstaged changes, is left as it was"
+        else
+            cat "$scratch/formatted" > "$file"
             echo "$file"
         fi
     done
