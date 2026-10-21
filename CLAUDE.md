@@ -98,5 +98,9 @@ crate's catalog test checks messages and samples both ways.
 clippy and cargo-deny, then judges the staged change alone: `just
 test-staged` tests the changed crates and their dependents, and `just
 mutants-staged` mutation-tests the staged diff (`cargo mutants --in-diff`),
-holding new logic to its tier: domain and read models 85% or more, adapters
-50% or more (the justfile's `mutation_thresholds` has every tier).
+holding new logic to its tier: every hand-written tier (domain, read models,
+ports, application and adapters) 90% or more; the composition root is
+listed but not held (the justfile's `mutation_thresholds` has every tier). A
+mutant judged equivalent or untestable gets `#[mutants::skip]` on its
+function, with a one-line comment above it saying why; never an exclude in
+`.cargo/mutants.toml` or a lowered threshold.
