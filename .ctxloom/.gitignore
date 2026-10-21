@@ -1,0 +1,16 @@
+# ctxloom's private working state: rebuildable or purely local, and so must
+# never ride a distributable tree. Everything else under .ctxloom/ — config.yaml,
+# remotes.yaml, lock.yaml, content/ — is committed by omission, because it is
+# content or config the project depends on.
+#
+# GENERATED from gitignore.PrivateStatePatterns, relativized to this directory.
+# ctxloom REWRITES THIS FILE WHOLESALE; hand edits are lost. Change that list.
+#
+# COMMIT THIS FILE. Tracking it is what carries the rules with the directory —
+# into every clone and, crucially, into every linked worktree, which is where a
+# rule living only in the superproject's root .gitignore would not reach.
+/cache
+/sessions
+/project-id
+/state
+*.lock

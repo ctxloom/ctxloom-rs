@@ -1,0 +1,3 @@
+description: "Domain-only context for ctxloom's own LLM calls (distiller, triage): the project's architecture vocabulary, no behavioural standards."
+bundles:
+  - ctxloom+local:project#fragments/ctxloom-rs-architecture

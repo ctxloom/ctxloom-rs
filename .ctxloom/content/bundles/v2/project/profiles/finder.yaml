@@ -1,0 +1,4 @@
+description: "Finder for ctxloom-rs: cheap lookup role plus its tools (ast-grep, rtk). Deliberately minimal."
+parents:
+  - ctxloom+git://github.com/ctxloom/ctxloom-default//bundles/agent-roles@branch:main#profiles/finder
+  - ctxloom+git://github.com/benjaminabbitt/ctxloom-personal//bundles/agent-ensemble@branch:main#profiles/finder

@@ -1,0 +1,6 @@
+description: "Rust code reviewer for ctxloom-rs: personal review standards, every general review lens, and the project's architecture rules."
+parents:
+  - ctxloom+git://github.com/benjaminabbitt/ctxloom-personal//bundles/rust-development@branch:main#profiles/rust-code-reviewer
+  - ctxloom+git://github.com/ctxloom/ctxloom-default//bundles/code-review-base@branch:main#profiles/cr-thorough
+bundles:
+  - ctxloom+local:project#fragments/ctxloom-rs-architecture

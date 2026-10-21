@@ -1,0 +1,8 @@
+description: "Orchestrator for ctxloom-rs: coordinator role (both halves), unattended operation, task tracking, and the project's architecture vocabulary. No development-language bundles."
+parents:
+  - ctxloom+git://github.com/ctxloom/ctxloom-default//bundles/agent-roles@branch:main#profiles/coordinator
+  - ctxloom+git://github.com/benjaminabbitt/ctxloom-personal//bundles/agent-ensemble@branch:main#profiles/coordinator
+bundles:
+  - ctxloom+git://github.com/benjaminabbitt/ctxloom-personal//bundles/unattended
+  - ctxloom+git://github.com/ctxloom/ctxloom-default//bundles/taskloom
+  - ctxloom+local:project#fragments/ctxloom-rs-architecture

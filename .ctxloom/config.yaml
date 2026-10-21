@@ -1,0 +1,56 @@
+agents:
+  default:
+    engine_home: session
+    llm: claude-code
+    permissions:
+      claude-code:
+        mode: acceptEdits
+    profiles:
+      - default
+    runtime: host
+  developer:
+    llm: claude-code
+    profiles:
+      - default
+    runtime: container-rootless
+  distiller:
+    llm: claude-fast
+    profiles:
+      - domain
+    runtime: host
+  finder:
+    llm: claude-fast
+    profiles:
+      - finder
+    runtime: container-rootless
+  orchestrator:
+    llm: claude-code
+    profiles:
+      - orchestrator
+    runtime: host
+  reviewer-rust:
+    llm: claude-code
+    profiles:
+      - reviewer-rust
+    runtime: host
+  triage:
+    llm: claude-fast
+    profiles:
+      - domain
+    runtime: host
+auth: token
+config:
+  use_distilled: true
+default_agent: orchestrator
+llm:
+  configs:
+    claude-code:
+      model: opus
+      type: claude-code
+    claude-fast:
+      model: haiku
+      type: claude-code
+  defaults:
+    fast: claude-fast
+    primary: claude-code
+schema_version: 8

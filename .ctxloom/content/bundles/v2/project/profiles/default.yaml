@@ -1,0 +1,19 @@
+description: "Working profile for ctxloom-rs: Rust developer (ctxloom-default + personal halves), code intelligence, companions, testing, git and release practice, and the developer escalation discipline."
+tags:
+  - default
+parents:
+  - ctxloom+git://github.com/ctxloom/ctxloom-default//bundles/rust-development@branch:main#profiles/rust-developer
+  - ctxloom+git://github.com/benjaminabbitt/ctxloom-personal//bundles/rust-development@branch:main#profiles/rust-developer
+bundles:
+  - ctxloom+git://github.com/benjaminabbitt/ctxloom-personal//bundles/serena
+  - ctxloom+git://github.com/ctxloom/ctxloom-default//bundles/sequential-thinking
+  - ctxloom+git://github.com/ctxloom/ctxloom-default//bundles/taskloom
+  - ctxloom+git://github.com/ctxloom/ctxloom-default//bundles/ltk
+  - ctxloom+git://github.com/ctxloom/ctxloom-default//bundles/reprise
+  - ctxloom+git://github.com/ctxloom/ctxloom-default//bundles/testing
+  - ctxloom+git://github.com/ctxloom/ctxloom-default//bundles/git
+  - ctxloom+git://github.com/ctxloom/ctxloom-default//bundles/lefthook
+  - ctxloom+git://github.com/ctxloom/ctxloom-default//bundles/versionator
+  - ctxloom+git://github.com/ctxloom/ctxloom-default//bundles/ctxloom-doctor
+  - ctxloom+git://github.com/ctxloom/ctxloom-default//bundles/agent-roles#fragments/developer-escalation
+  - ctxloom+local:project#fragments/ctxloom-rs-architecture
