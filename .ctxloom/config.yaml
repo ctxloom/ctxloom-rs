@@ -25,6 +25,9 @@ agents:
     runtime: container-rootless
   orchestrator:
     llm: claude-code
+    permissions:
+      claude-code:
+        mode: bypassPermissions
     profiles:
       - orchestrator
     runtime: host
