@@ -212,7 +212,6 @@ where
 
     /// The resource at `uri`, read now: its document, or why not.
     async fn read(&self, uri: &str) -> Result<String, McpError> {
-        let project = self.settings.project.clone();
         match uri {
             resources::TAG_SCHEMA => {
                 let schema = self
@@ -222,10 +221,7 @@ where
                 Ok(resources::schema_text(&schema))
             }
             resources::TAG_VOCABULARY => {
-                let query = tasks_application::ListQuery {
-                    project,
-                    ..tasks_application::ListQuery::default()
-                };
+                let query = resources::vocabulary_query(&self.settings);
                 let vocabulary = self
                     .on_its_own(move |mut service| async move { service.tags(query).await })
                     .await?

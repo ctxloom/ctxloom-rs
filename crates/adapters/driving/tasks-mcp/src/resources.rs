@@ -9,10 +9,10 @@ use presentation::Catalog;
 use rmcp::model::Resource;
 use serde::Serialize;
 use serde_json::ser::{Formatter, PrettyFormatter};
-use tasks_application::{Reach, TagSchema, Vocabulary};
+use tasks_application::{ListQuery, Reach, TagSchema, Vocabulary};
 use tasks_presentation::TagCountJson;
 
-use crate::McpNotice;
+use crate::{McpNotice, Settings};
 
 pub const TAG_SCHEMA: &str = "taskloom://tag-schema";
 pub const TAG_VOCABULARY: &str = "taskloom://tag-vocabulary";
@@ -110,6 +110,16 @@ struct VocabularyDoc<'a> {
     #[serde(skip_serializing_if = "String::is_empty")]
     warning: String,
     tags: Vec<TagCountJson>,
+}
+
+/// What the tag-vocabulary resource counts: every task of the project
+/// here (or the one pinned), whatever its status, as Go's counts the
+/// whole project.
+pub fn vocabulary_query(settings: &Settings) -> ListQuery {
+    ListQuery {
+        project: settings.project.clone(),
+        ..ListQuery::default()
+    }
 }
 
 /// `vocabulary` as the tag-vocabulary resource reads: the project it

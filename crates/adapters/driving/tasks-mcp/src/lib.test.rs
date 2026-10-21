@@ -372,6 +372,14 @@ fn test_a_pinned_project_reaches_every_call() {
     assert_eq!(edit.project.as_deref(), pin);
     let tag = crate::tools::tag_change(json!({"harp_id": "h", "add": ["a"]}), &pinned).unwrap();
     assert_eq!(tag.project.as_deref(), pin);
+    let vocabulary = crate::resources::vocabulary_query(&pinned);
+    assert_eq!(
+        vocabulary,
+        tasks_application::ListQuery {
+            project: pin.map(str::to_string),
+            ..tasks_application::ListQuery::default()
+        }
+    );
 }
 
 /// A world with a project here.
