@@ -121,7 +121,7 @@ impl Domain for Tasks {
                 state.created_at = added.at;
                 state.status_set_at = added.at;
                 if added.status == DEFERRED {
-                    state.deferred_since = added.at;
+                    state.deferred_since = Some(added.at);
                 }
             }
             TaskEvent::StatusChanged(changed) => {
@@ -131,7 +131,7 @@ impl Domain for Tasks {
                 }
                 state.status_set_at = changed.at;
                 if changed.status == DEFERRED {
-                    state.deferred_since = changed.at;
+                    state.deferred_since = Some(changed.at);
                 }
             }
             TaskEvent::TextEdited(edited) => state.text = edited.text.clone(),

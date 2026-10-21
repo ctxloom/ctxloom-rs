@@ -1,0 +1,266 @@
+//! A task list, projected as the daemon projects it: each command runs
+//! through annals' kernel with the list attached as a projection, so the
+//! list sees each committed event with the task's state just after it. A
+//! fresh list catches up from the store, as after a daemon restart.
+
+use std::marker::PhantomData;
+
+use annals::next::v1::{command_page, CommandBook, CommandPage, Cover, Uuid};
+use annals::next::{
+    ids, InMemoryStore, Kernel, MemoryDeadLetters, Payload, ProjectionRoute, Registry, Routes,
+    Rulebook, Sampled, Timestamp, Upcaster,
+};
+use task_lists::{Change, Delta, TaskList};
+use tasks::{
+    AddTask, RemovalReason, RemoveTask, SetStatus, TaskCommand, TaskState, Tasks, DEFERRED,
+};
+
+const FIRST: &str = "swift-amber";
+const SECOND: &str = "calm-otter";
+
+/// One project's store, and the clock its commands are sampled at.
+struct Project {
+    store: InMemoryStore,
+    registry: Registry,
+    seconds: i64,
+}
+
+impl Project {
+    fn new() -> Project {
+        let mut registry = Registry::new();
+        registry
+            .register::<Tasks>(Rulebook::new("v1", ()), Upcaster::new("tasks", "tasks"))
+            .unwrap();
+        Project {
+            store: InMemoryStore::new(),
+            registry,
+            seconds: 100,
+        }
+    }
+
+    /// Run `command` on task `harp`'s stream, projecting into `list`.
+    fn run(&mut self, list: &mut TaskList, harp: &str, command: impl Into<TaskCommand>) {
+        self.seconds += 1;
+        let sampled = Sampled {
+            now: Timestamp {
+                seconds: self.seconds,
+                nanos: 0,
+            },
+            command_id: Uuid::from_bytes([self.seconds as u8; 16]),
+        };
+        let dead_letters = MemoryDeadLetters::new();
+        let mut route = ProjectionRoute {
+            name: "list",
+            projection: list,
+            domain: PhantomData::<fn() -> Tasks>,
+        };
+        Kernel::new(&self.registry, &dead_letters)
+            .handle::<Tasks, _, _>(
+                self.store.begin(),
+                &Routes::new(),
+                book(harp, command.into().to_any()),
+                &sampled,
+                &mut route,
+            )
+            .unwrap_or_else(|failure| panic!("{failure:?}"));
+    }
+}
+
+fn cover(harp: &str) -> Cover {
+    Cover {
+        domain: "tasks".to_string(),
+        root: Some(ids::compute_root("tasks", harp).unwrap()),
+        edition: None,
+    }
+}
+
+fn book(harp: &str, payload: annals::next::Any) -> CommandBook {
+    CommandBook {
+        cover: Some(cover(harp)),
+        page: Some(CommandPage {
+            body: Some(command_page::Body::Command(annals::next::v1::Command {
+                payload: Some(payload),
+            })),
+            ..CommandPage::default()
+        }),
+        handling: None,
+    }
+}
+
+fn add(harp: &str, text: &str) -> AddTask {
+    AddTask {
+        harp_id: harp.to_string(),
+        text: text.to_string(),
+        status: String::new(),
+        trigger: String::new(),
+        tags: Vec::new(),
+        origin_session: String::new(),
+    }
+}
+
+fn status(status: &str, trigger: &str) -> SetStatus {
+    SetStatus {
+        status: status.to_string(),
+        trigger: trigger.to_string(),
+    }
+}
+
+fn every_task() -> TaskList {
+    TaskList::new(Box::new(|_| true))
+}
+
+fn not_done() -> TaskList {
+    TaskList::new(Box::new(|t: &TaskState| t.status != "Done"))
+}
+
+fn deferred() -> TaskList {
+    TaskList::new(Box::new(|t: &TaskState| t.status == DEFERRED))
+}
+
+fn harps(list: &TaskList) -> Vec<&str> {
+    list.entries().iter().map(|t| t.harp_id.as_str()).collect()
+}
+
+// ------------------------------------------------------------ membership
+
+#[test]
+fn test_a_list_holds_each_live_task_its_membership_admits() {
+    let mut project = Project::new();
+    let mut list = every_task();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    project.run(&mut list, SECOND, add(SECOND, "Second"));
+    assert_eq!(harps(&list), [SECOND, FIRST], "by harp id");
+    assert_eq!(list.sequence(), 2);
+}
+
+#[test]
+fn test_each_change_to_the_list_takes_the_next_sequence() {
+    let mut project = Project::new();
+    let mut list = every_task();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    project.run(&mut list, FIRST, status("In Progress", ""));
+    let deltas = list.since(0).expect("from the start");
+    assert_eq!(deltas.len(), 2);
+    assert_eq!(deltas[0].sequence, 1);
+    assert_eq!(deltas[1].sequence, 2);
+    let Change::Upsert(task) = &deltas[1].change else {
+        panic!("a listed task changed: {deltas:?}");
+    };
+    assert_eq!(
+        task.status, "In Progress",
+        "the task's state after the event"
+    );
+}
+
+#[test]
+fn test_a_task_leaving_the_membership_is_removed_from_the_list() {
+    let mut project = Project::new();
+    let mut list = not_done();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    project.run(&mut list, FIRST, status("Done", ""));
+    assert!(list.entries().is_empty());
+    assert_eq!(
+        list.since(1),
+        Some(
+            &[Delta {
+                sequence: 2,
+                change: Change::Remove {
+                    harp_id: FIRST.to_string()
+                },
+            }][..]
+        )
+    );
+}
+
+#[test]
+fn test_a_task_entering_the_membership_is_added_to_the_list() {
+    let mut project = Project::new();
+    let mut list = deferred();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    assert_eq!(list.sequence(), 0, "not deferred: not listed");
+    project.run(&mut list, FIRST, status(DEFERRED, "after the release"));
+    assert_eq!(harps(&list), [FIRST]);
+    assert_eq!(list.sequence(), 1);
+}
+
+#[test]
+fn test_a_removed_task_leaves_the_list() {
+    let mut project = Project::new();
+    let mut list = every_task();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    project.run(
+        &mut list,
+        FIRST,
+        RemoveTask {
+            reason: RemovalReason::Removed,
+        },
+    );
+    assert!(list.entries().is_empty());
+    assert_eq!(list.sequence(), 2);
+}
+
+#[test]
+fn test_a_change_outside_the_membership_takes_no_sequence() {
+    let mut project = Project::new();
+    let mut list = deferred();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    project.run(&mut list, FIRST, status("In Progress", ""));
+    assert_eq!(list.sequence(), 0);
+    assert_eq!(list.since(0), Some(&[][..]));
+}
+
+// ------------------------------------------------------------ cursors
+
+#[test]
+fn test_since_gives_the_changes_after_a_cursor() {
+    let mut project = Project::new();
+    let mut list = every_task();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    project.run(&mut list, SECOND, add(SECOND, "Second"));
+    let after_first = list.since(1).unwrap();
+    assert_eq!(after_first.len(), 1);
+    assert_eq!(after_first[0].sequence, 2);
+    assert_eq!(list.since(2), Some(&[][..]), "caught up");
+}
+
+#[test]
+fn test_since_a_cursor_past_the_sequence_is_none() {
+    // A cursor the list never issued (a daemon restarted under the reader):
+    // the reader takes the list whole.
+    let mut project = Project::new();
+    let mut list = every_task();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    assert_eq!(list.since(5), None);
+}
+
+// ------------------------------------------------------------ catch-up
+
+#[test]
+fn test_a_list_caught_up_from_the_store_holds_what_the_live_list_holds() {
+    let mut project = Project::new();
+    let mut live = not_done();
+    project.run(&mut live, FIRST, add(FIRST, "First"));
+    project.run(&mut live, SECOND, add(SECOND, "Second"));
+    project.run(&mut live, FIRST, status("Done", ""));
+
+    let mut rebuilt = not_done();
+    rebuilt
+        .catch_up(&mut project.store, &project.registry)
+        .unwrap();
+    assert_eq!(rebuilt.entries(), live.entries());
+    assert_eq!(harps(&rebuilt), [SECOND]);
+}
+
+#[test]
+fn test_a_redelivered_event_changes_nothing() {
+    let mut project = Project::new();
+    let mut list = every_task();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    list.catch_up(&mut project.store, &project.registry)
+        .unwrap();
+    assert_eq!(
+        list.sequence(),
+        1,
+        "the store's events were already projected"
+    );
+}

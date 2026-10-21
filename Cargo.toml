@@ -21,6 +21,7 @@ annals = { path = "../../annals/crates/annals" }
 annals-diagnostic = { path = "../../annals/crates/annals-diagnostic" }
 angzarr-build = { path = "../../angzarr/angzarr-cli/main/crates/angzarr-build" }
 taskloom-proto = { path = "crates/core/wire/taskloom-proto" }
+tasks = { path = "crates/core/domain/tasks" }
 
 [workspace.lints.clippy]
 invisible_characters = "deny"

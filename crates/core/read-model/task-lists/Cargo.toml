@@ -1,0 +1,15 @@
+[package]
+name = "task-lists"
+version = "0.1.0"
+description = "Task lists: read models a projector folds from a project's task streams"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+annals.workspace = true
+tasks.workspace = true
+
+[lints]
+workspace = true

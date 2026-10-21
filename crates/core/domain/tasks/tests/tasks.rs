@@ -186,6 +186,7 @@ fn test_add_records_the_task_with_its_creation_time() {
     assert_eq!(state.origin_session, "calm-otter");
     assert_eq!(state.created_at, at(101));
     assert_eq!(state.status_set_at, at(101));
+    assert_eq!(state.deferred_since, None, "never deferred");
     assert!(!state.removed);
 }
 
@@ -212,7 +213,7 @@ fn test_add_deferred_with_a_trigger_records_when_it_was_deferred() {
     .unwrap();
     assert_eq!(task.state().status, DEFERRED);
     assert_eq!(task.state().trigger, "after the release");
-    assert_eq!(task.state().deferred_since, at(101));
+    assert_eq!(task.state().deferred_since, Some(at(101)));
 }
 
 #[test]
@@ -248,7 +249,7 @@ fn test_deferring_again_keeps_the_trigger_the_task_holds() {
         "an unchanged trigger is not recorded again"
     );
     assert_eq!(task.state().trigger, "after the release");
-    assert_eq!(task.state().deferred_since, at(104));
+    assert_eq!(task.state().deferred_since, Some(at(104)));
 }
 
 #[test]

@@ -35,9 +35,8 @@ message TaskState {
   google.protobuf.Timestamp created_at = 7;
   // When the status last changed (the add counts).
   google.protobuf.Timestamp status_set_at = 8;
-  // When the task last entered Deferred. Meaningful only while it is
-  // Deferred.
-  google.protobuf.Timestamp deferred_since = 9;
+  // When the task last entered Deferred; absent until it first does.
+  optional google.protobuf.Timestamp deferred_since = 9;
   // Removed tasks keep their stream and their harp id.
   bool removed = 10;
 }
