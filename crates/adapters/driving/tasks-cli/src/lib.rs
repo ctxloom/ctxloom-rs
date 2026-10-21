@@ -1,4 +1,5 @@
-//! The tasks command line: `add`, `status`, `list`, `tag` and `import`, translated
+//! The tasks command line: `add`, `status`, `edit`, `list`, `tag` and
+//! `import`, translated
 //! into the application's use cases and their answers rendered through
 //! presentation, with room for another crate's commands mounted beside
 //! them ([`run_mounted`]). Text on a terminal, JSON otherwise, unless
@@ -83,6 +84,8 @@ enum Command<X: Subcommand> {
     /// Change the status of a task; Deferred needs a revive trigger, which
     /// hides the task from the default list until it fires.
     Status(commands::StatusArgs),
+    /// Replace a task's text whole; its status and trigger are kept.
+    Edit(commands::EditArgs),
     /// Add and/or remove tags on a task; adds apply before removes.
     Tag(commands::TagArgs),
     /// Import Go taskloom's task logs (~/.ctxloom/tasks/<project-id>.jsonl)
@@ -203,6 +206,7 @@ pub async fn run_mounted<S: TaskService + ImportService, X: Subcommand>(
     let result = match cli.command {
         Command::Add(args) => commands::add(args, ctx, service, out, err).await,
         Command::Status(args) => commands::status(args, ctx, service, out, err).await,
+        Command::Edit(args) => commands::edit(args, ctx, service, out, err).await,
         Command::Tag(args) => commands::tag(args, ctx, service, out, err).await,
         Command::List(args) => commands::list(args, ctx, service, out, err).await,
         Command::Import => {

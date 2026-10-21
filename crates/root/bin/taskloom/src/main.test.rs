@@ -617,6 +617,15 @@ fn test_in_json_each_later_command_writes_one_document_and_errors_an_envelope() 
         &["status", "no-such-task", "Done", "--json"],
         "tasks-no-task",
     );
+
+    let edited = env.run(&["edit", &harp, "Ship", "it", "today", "--json"]);
+    assert!(edited.ok, "{}", edited.stderr);
+    let task = one_document(&edited.stdout);
+    assert_eq!(
+        (&task["text"], &task["status"]),
+        (&"Ship it today".into(), &"To Do".into())
+    );
+    refused(&["edit", &harp, " ", "--json"], "tasks-text-required");
 }
 
 #[test]

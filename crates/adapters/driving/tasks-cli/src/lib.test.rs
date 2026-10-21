@@ -10,7 +10,8 @@ use std::task::{Context as TaskContext, Poll, Waker};
 use annals_diagnostic::Report;
 use tasks_application::{
     AppError, Hidden, ImportReport, ImportRequest, ImportService, ListQuery, Listing, NewTask,
-    Project, ProjectImport, Reach, Row, StatusChange, TagChange, Task, TaskService, Written,
+    Project, ProjectImport, Reach, Row, StatusChange, TagChange, Task, TaskService, TextEdit,
+    Written,
 };
 
 use presentation::{Catalog, Format};
@@ -61,6 +62,7 @@ struct Fake {
     added: Vec<NewTask>,
     tagged: Vec<TagChange>,
     moved: Vec<StatusChange>,
+    edits: Vec<TextEdit>,
     listed: Vec<ListQuery>,
     written: Option<Result<Written, AppError>>,
     listing: Option<Result<Listing, AppError>>,
@@ -87,6 +89,11 @@ impl TaskService for Fake {
     async fn set_status(&mut self, change: StatusChange) -> Result<Written, AppError> {
         self.moved.push(change);
         self.written.clone().expect("a status answer scripted")
+    }
+
+    async fn edit(&mut self, edit: TextEdit) -> Result<Written, AppError> {
+        self.edits.push(edit);
+        self.written.clone().expect("an edit answer scripted")
     }
 }
 
@@ -373,6 +380,62 @@ fn test_status_needs_an_id_and_a_status_and_says_why_it_failed() {
     assert_eq!(
         ran.err,
         "taskloom: there is no project here yet, so no task to change\n"
+    );
+}
+
+// ------------------------------------------------------------ edit
+
+#[test]
+fn test_edit_joins_its_words_and_answers_like_add() {
+    let mut fake = Fake {
+        written: written(shapes::task("swift-amber", "To Do")),
+        ..Fake::default()
+    };
+    let ran = run_on(
+        &mut fake,
+        true,
+        &[
+            "--project",
+            "p",
+            "edit",
+            "swift-amber",
+            "Ship",
+            "it",
+            "--",
+            "--now",
+        ],
+    );
+    assert_eq!(ran.code, 0, "{}", ran.err);
+    assert_eq!(
+        fake.edits,
+        [TextEdit {
+            project: Some("p".to_string()),
+            harp_id: "swift-amber".to_string(),
+            text: "Ship it --now".to_string(),
+            config_set: Vec::new(),
+        }]
+    );
+    assert_eq!(ran.out, "swift-amber\tTo Do\tShip it\n");
+    assert_eq!(ran.err, "taskloom: project /work/tree (jolly-mute-magma)\n");
+    let ran = run_on(&mut fake, false, &["edit", "swift-amber", "x"]);
+    let json: serde_json::Value = serde_json::from_str(&ran.out).unwrap();
+    assert_eq!(json["harp_id"], "swift-amber");
+}
+
+#[test]
+fn test_edit_needs_text_and_says_why_it_failed() {
+    let ran = run_on(&mut Fake::default(), true, &["edit", "swift-amber"]);
+    assert_eq!(ran.code, 1);
+    let mut fake = Fake {
+        written: Some(Err(AppError::NoProject)),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["edit", "swift-amber", "x"]);
+    assert_eq!(ran.code, 1);
+    assert!(
+        ran.err.starts_with("taskloom: there is no project"),
+        "{}",
+        ran.err
     );
 }
 

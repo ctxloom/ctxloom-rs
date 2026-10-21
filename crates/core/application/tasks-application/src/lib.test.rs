@@ -9,8 +9,8 @@ use crate::fakes::{
     project, ready, FakeClock, FakeDelay, FakeIdentity, FakeNames, FakeStores, Fault, Flaky,
 };
 use crate::{
-    cover, AppError, ListQuery, NewTask, Service, StatusChange, TagChange, TaskService, Written,
-    HARP_ATTEMPTS,
+    cover, AppError, ListQuery, NewTask, Service, StatusChange, TagChange, TaskService, TextEdit,
+    Written, HARP_ATTEMPTS,
 };
 
 type Fake = Service<FakeIdentity, FakeStores, FakeNames, FakeClock, FakeDelay>;
@@ -77,6 +77,7 @@ where
     is_send(&service.tag(TagChange::default()));
     is_send(&service.list(ListQuery::default()));
     is_send(&service.set_status(StatusChange::default()));
+    is_send(&service.edit(TextEdit::default()));
     is_send(&stores.open(&project()));
     is_send(&stores.open_existing(&project()));
     is_send(&delay.sleep(std::time::Duration::ZERO));
@@ -611,6 +612,60 @@ fn test_a_status_change_under_a_malformed_configuration_is_refused() {
     let error = ready(service.set_status(moved("swift-amber", "Done", ""))).unwrap_err();
     assert_eq!(error.code(), "tasks-application-schema-unknown-facet");
     assert!(service.identity.pins.is_empty());
+}
+
+// ------------------------------------------------------------ edit
+
+fn edited(harp: &str, text: &str) -> TextEdit {
+    TextEdit {
+        project: Some("pinned-id".to_string()),
+        harp_id: harp.to_string(),
+        text: text.to_string(),
+        config_set: Vec::new(),
+    }
+}
+
+#[test]
+fn test_an_edit_replaces_the_text_whole_and_keeps_the_status_and_trigger() {
+    let mut service = service(&["swift-amber"]);
+    let deferred = NewTask {
+        status: "Deferred".to_string(),
+        trigger: "the release".to_string(),
+        ..new_task("Ship it")
+    };
+    let before = add(&mut service, deferred).unwrap();
+    let written = ready(service.edit(edited("swift-amber", "  Ship it, then tell\n"))).unwrap();
+    assert_eq!(written.task.text, "Ship it, then tell", "trimmed");
+    assert_ne!(written.task.text_hash, before.task.text_hash);
+    assert_eq!(written.task.status, "Deferred");
+    assert_eq!(written.task.trigger, "the release");
+    assert_eq!(written.project, project());
+    assert_eq!(
+        service.identity.pins.last(),
+        Some(&Some("pinned-id".to_string()))
+    );
+}
+
+#[test]
+fn test_an_edit_to_no_text_or_no_task_is_refused() {
+    let mut service = service(&["swift-amber"]);
+    add(&mut service, new_task("Ship it")).unwrap();
+    let error = ready(service.edit(edited("swift-amber", " "))).unwrap_err();
+    assert_eq!(error.code(), "tasks-text-required");
+    let error = ready(service.edit(edited("calm-otter", "x"))).unwrap_err();
+    assert_eq!(error.code(), "tasks-no-task");
+    let mut nowhere = self::service(&[]);
+    let unpinned = TextEdit {
+        project: None,
+        ..edited("swift-amber", "x")
+    };
+    assert_eq!(
+        ready(nowhere.edit(unpinned)).unwrap_err(),
+        AppError::NoProject
+    );
+    let mut configured = configured(&["tagma.arty:x=1"]);
+    let error = ready(configured.edit(edited("swift-amber", "x"))).unwrap_err();
+    assert_eq!(error.code(), "tasks-application-schema-unknown-facet");
 }
 
 // ------------------------------------------------------------ list

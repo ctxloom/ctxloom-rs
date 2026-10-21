@@ -5,7 +5,9 @@ use std::io::{self, Write};
 
 use clap::Args;
 use presentation::{Catalog, Format};
-use tasks_application::{ListQuery, Listing, NewTask, Reach, StatusChange, TagChange, TaskService};
+use tasks_application::{
+    ListQuery, Listing, NewTask, Reach, StatusChange, TagChange, TaskService, TextEdit,
+};
 
 use crate::render::{Added, Listed, Tagged};
 use crate::{notify, output_failed, wrote, CliError, Notice};
@@ -89,6 +91,39 @@ pub(crate) async fn status(
         config_set: ctx.config_set,
     };
     let written = service.set_status(change).await.map_err(CliError::App)?;
+    wrote(
+        &written,
+        &Added(&written.task),
+        ctx.format,
+        ctx.catalog,
+        out,
+        err,
+    )
+}
+
+#[derive(Args, Debug)]
+pub(crate) struct EditArgs {
+    harp_id: String,
+    /// The new text, whole; several words are joined with spaces. Text
+    /// starting with '-' goes after `--`.
+    #[arg(required = true, num_args = 1..)]
+    text: Vec<String>,
+}
+
+pub(crate) async fn edit(
+    args: EditArgs,
+    ctx: Ctx<'_>,
+    service: &mut impl TaskService,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<(), CliError> {
+    let edit = TextEdit {
+        project: ctx.project,
+        harp_id: args.harp_id,
+        text: args.text.join(" "),
+        config_set: ctx.config_set,
+    };
+    let written = service.edit(edit).await.map_err(CliError::App)?;
     wrote(
         &written,
         &Added(&written.task),

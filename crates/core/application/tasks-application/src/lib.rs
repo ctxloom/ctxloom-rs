@@ -1,5 +1,5 @@
-//! The tasks use cases: add a task, retag one, list a project's tasks, and
-//! import Go taskloom's logs.
+//! The tasks use cases: add a task, move, edit or retag one, read a
+//! project's tasks (or every project's), and import Go taskloom's logs.
 //!
 //! Each resolves its project through [`ProjectIdentity`], opens the
 //! project's store through [`TaskStores`], and runs its command through
@@ -23,7 +23,7 @@ use annals::next::v1::{command_page, Command, CommandBook, CommandPage, Cover};
 use annals::next::{ids, AsyncEventStore, Payload, Registry, Rulebook, Stream, Upcaster};
 use annals_diagnostic::Report;
 use ports::{Clock, CommandIds, Configuration, Delay, Jitter, Names, ProjectIdentity, TaskStores};
-use tasks::{AddTask, Retag, SetStatus, TaskCommand, TaskRejection, Tasks, TASK_DOMAIN};
+use tasks::{AddTask, EditText, Retag, SetStatus, TaskCommand, TaskRejection, Tasks, TASK_DOMAIN};
 
 pub use annals::next::Timestamp;
 pub use error::{diagnostic_samples, AppError, CATALOGS, EN_US};
@@ -93,6 +93,16 @@ pub struct StatusChange {
     pub config_set: Vec<String>,
 }
 
+/// A task's text replaced whole; its status and trigger untouched.
+#[derive(Clone, PartialEq, Debug, Default)]
+pub struct TextEdit {
+    pub project: Option<String>,
+    pub harp_id: String,
+    pub text: String,
+    /// Configuration overrides, `<path>=<value>` (`--config-set`).
+    pub config_set: Vec<String>,
+}
+
 /// Which tasks to list. By default the active ones: neither terminal nor
 /// Deferred. `all` lists every task; naming statuses (or the classes
 /// `@open` and `@terminal`) lists exactly the tasks in them. A term keeps
@@ -142,6 +152,7 @@ pub trait TaskService {
         &mut self,
         change: StatusChange,
     ) -> impl Future<Output = Result<Written, AppError>> + Send;
+    fn edit(&mut self, edit: TextEdit) -> impl Future<Output = Result<Written, AppError>> + Send;
 }
 
 /// The registry the tasks domain runs under.
@@ -384,6 +395,18 @@ where
             trigger: change.trigger,
         };
         let task = self.commit(&project, &change.harp_id, set.into()).await?;
+        Ok(Written {
+            project,
+            task,
+            shown: Shown::of(&schema),
+        })
+    }
+
+    async fn edit(&mut self, edit: TextEdit) -> Result<Written, AppError> {
+        let schema = self.schema(&edit.config_set)?;
+        let project = self.existing(edit.project.as_deref()).await?;
+        let command = EditText { text: edit.text };
+        let task = self.commit(&project, &edit.harp_id, command.into()).await?;
         Ok(Written {
             project,
             task,
