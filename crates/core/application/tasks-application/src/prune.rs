@@ -512,33 +512,56 @@ fn duration(text: &str) -> Option<i128> {
     if rest.is_empty() {
         return None;
     }
-    let mut total = 0f64;
+    let mut total: i128 = 0;
     while !rest.is_empty() {
-        let number_len = rest
-            .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+        let whole_len = rest
+            .find(|c: char| !c.is_ascii_digit())
             .unwrap_or(rest.len());
-        let (number, after) = rest.split_at(number_len);
-        if number.is_empty() || number == "." || number.matches('.').count() > 1 {
+        let (whole, after) = rest.split_at(whole_len);
+        let (fraction, after) = match after.strip_prefix('.') {
+            Some(after) => after.split_at(
+                after
+                    .find(|c: char| !c.is_ascii_digit())
+                    .unwrap_or(after.len()),
+            ),
+            None => ("", after),
+        };
+        if whole.is_empty() && fraction.is_empty() {
             return None;
         }
         let unit_len = after
             .find(|c: char| c.is_ascii_digit() || c == '.')
             .unwrap_or(after.len());
         let (unit, after) = after.split_at(unit_len);
-        let scale = match unit {
-            "ns" => 1.0,
-            "us" | "µs" | "μs" => 1e3,
-            "ms" => 1e6,
-            "s" => 1e9,
-            "m" => 60e9,
-            "h" => 3600e9,
+        let scale: i128 = match unit {
+            "ns" => 1,
+            "us" | "\u{b5}s" | "\u{3bc}s" => 1_000,
+            "ms" => 1_000_000,
+            "s" => 1_000_000_000,
+            "m" => 60_000_000_000,
+            "h" => 3_600_000_000_000,
             _ => return None,
         };
-        total += number.parse::<f64>().ok()? * scale;
+        // Digits past the nanosecond are dropped, as Go drops them.
+        let whole: i128 = if whole.is_empty() {
+            0
+        } else {
+            whole.parse().ok()?
+        };
+        let mut part = 0;
+        let mut place = scale;
+        for digit in fraction.bytes() {
+            place /= 10;
+            part += i128::from(digit - b'0') * place;
+        }
+        total = total.checked_add(whole.checked_mul(scale)?.checked_add(part)?)?;
+        // Go refuses a duration its int64 of nanoseconds cannot hold.
+        if total > i128::from(i64::MAX) {
+            return None;
+        }
         rest = after;
     }
-    // Go refuses a duration past ~292 years; so does this.
-    (total < 9.3e18).then_some(sign * total as i128)
+    Some(sign * total)
 }
 
 /// `text` as a date, `YYYY-MM-DD`, at midnight UTC: Go's `time.DateOnly`.

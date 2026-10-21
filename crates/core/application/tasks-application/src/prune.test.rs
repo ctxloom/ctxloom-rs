@@ -73,6 +73,26 @@ fn test_an_age_in_gos_duration_grammar_is_that_long_before_now() {
         })
     );
     assert_eq!(cut_at(".5h"), Ok(at(NOW - 1800)));
+    assert_eq!(cut_at("1.h"), Ok(at(NOW - 3600)), "Go takes a bare point");
+    assert_eq!(cut_at("1.25m"), Ok(at(NOW - 75)));
+    assert_eq!(
+        cut(
+            "1s",
+            Timestamp {
+                seconds: NOW,
+                nanos: 250
+            }
+        ),
+        Ok(Timestamp {
+            seconds: NOW - 1,
+            nanos: 250
+        }),
+        "now's nanoseconds are kept"
+    );
+    assert!(
+        cut_at("9223372036854775807ns").is_ok(),
+        "the longest duration Go's int64 holds"
+    );
 }
 
 #[test]
@@ -83,6 +103,12 @@ fn test_a_date_is_its_midnight_utc() {
     assert_eq!(cut_at("2000-02-29"), Ok(at(951_782_400)), "400 years leap");
     assert_eq!(cut_at("2026-12-31"), Ok(at(1_798_675_200)));
     assert_eq!(cut_at("2026-03-01"), Ok(at(1_772_323_200)));
+    assert_eq!(
+        cut_at("2026-04-30"),
+        Ok(at(1_777_507_200)),
+        "a 30-day month"
+    );
+    assert_eq!(cut_at("2026-02-28"), Ok(at(1_772_236_800)), "February");
     assert_eq!(cut_at("1969-12-31"), Ok(at(-DAY)));
 }
 
@@ -130,6 +156,12 @@ fn test_an_age_that_is_neither_an_offset_nor_a_date_is_refused() {
         "20260-1-01",
         "2026-01-+1",
         "99999999999999h",
+        "9223372036854775808ns",
+        "2562048h",
+        "2026-01/01",
+        "2026/01-01",
+        "1.5",
+        "1hh",
     ] {
         assert_eq!(
             cut_at(age),
