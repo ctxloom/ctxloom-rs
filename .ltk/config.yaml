@@ -1,0 +1,36 @@
+# llm-tool-killer rules for ctxloom-rs: building, testing and linting go
+# through `just`, whose recipes are terse (one `ok`/`FAIL` line, the full log
+# in target/logs/, VERBOSE=1 for everything) and carry the gates' flags. A raw
+# cargo run puts a full build log in an agent's context and can disagree with
+# the gate. Rule model: https://ctxloom.dev/ltk/rules/
+schema_version: 1
+
+defaults:
+  # Fault-tolerant: an unparseable command is allowed, never blocked.
+  on_parse_error: allow
+
+rules:
+  - id: build-via-just
+    match: { command: [cargo, 'build|check'] }
+    message: "Build through the task runner: its output is terse and its full log is kept."
+    suggest: "just build"
+  - id: test-via-just
+    match: { command: [cargo, 'test|nextest'] }
+    message: "Test through the task runner: nextest with the gates' terse output, features and doc tests."
+    suggest: "just test-pkg <crate>...   # or `just test` for every crate"
+  - id: clippy-via-just
+    match: { command: [cargo, clippy] }
+    message: "Lint through the task runner: warnings denied, and the core's purity rules checked against the root's."
+    suggest: "just lint"
+  - id: fmt-via-just
+    match: { command: [cargo, fmt] }
+    message: "Format through the task runner: it formats this workspace's crates only, never a path dependency."
+    suggest: "just fmt   # or `just fmt-check`"
+  - id: deny-via-just
+    match: { command: [cargo, deny] }
+    message: "Check dependencies through the task runner, which keeps the inclusion graphs in its log."
+    suggest: "just lint-deps"
+  - id: mutants-via-just
+    match: { command: [cargo, mutants] }
+    message: "Mutation-test through the task runner: it judges the staged diff against each tier's threshold."
+    suggest: "just mutants-staged"

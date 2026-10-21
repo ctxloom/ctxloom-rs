@@ -110,3 +110,9 @@ gates-check:
 # and pkill.
 hooks-install: gates-link
     lefthook install
+
+# The tests of the named crates only, by cargo-nextest (the gates' `_tests`):
+# the quick loop on one crate. `just test` runs every crate's.
+[no-exit-message]
+test-pkg +packages: (_require-nextest "test-pkg")
+    @just --justfile '{{TOP}}/justfile' _run test-pkg "{{packages}}" tests just --justfile '{{TOP}}/justfile' _tests {{packages}}
