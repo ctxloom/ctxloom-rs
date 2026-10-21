@@ -15,12 +15,48 @@ and angzarr here.
   generated from that proto.
 - `core/domain/tasks`: decide and apply for add, set-status, edit, retag and
   remove, with localizable rejections.
-- `core/read-model/task-lists`: the list projector, with a resumable cursor.
-- Storage: annals-store-sql's SQLite store, one database per project
-  (CLAUDE.md, "Storage").
-- `root/bin/taskloom`: the binary, empty: the composition root that later
-  slices plug into.
-- Not started: ports, application, adapters.
+- `core/read-model/task-lists`: the list projector, with a resumable cursor,
+  caught up over the sync or the async store port.
+- `core/ports/ports`: project identity, the store opener, names, the clock,
+  command ids, and waiting with jitter.
+- `core/application/tasks-application`: add, tag and list. An add mints a
+  harp and re-mints on `TaskExists` (100 tries, a fresh command id each); on
+  annals' `Recovery::Retry` the same command id runs again in a new unit
+  after capped exponential backoff with full jitter (10ms doubling to 1s,
+  10 attempts). A list hides terminal and Deferred tasks unless `--all` or
+  `--status`, in the order added.
+- `adapters/driven/project-registry`: the work root, `.project-id` (adopting
+  Go's `.ctxloom/project-id` on a write), the registry in Go's schema, and a
+  mint under `index.yaml.lock` that re-checks first, so racing first writes
+  bind one id. A read never mints.
+- `adapters/driven/harp-names`: harp-core behind the names port.
+- `adapters/driving/tasks-cli`: `add`, `list` and `tag`, text and json.
+- `root/bin/taskloom`: the binary, over annals-store-sql's SQLite store at
+  `~/.ctxloom/projects/<project-id>/state.db` (CLAUDE.md, "Storage").
+  Its tests are Go's `crossprocess_test.go` ported: 40 concurrent adds, 20
+  adds among 10 concurrent listings, 40 concurrent tags of one task, each a
+  separate process on one database; they build the binary themselves.
+
+Where the skeleton differs from Go, or from this plan:
+
+- Concurrent writers are serialized by SQLite itself: `BEGIN IMMEDIATE` per
+  unit of work and sqlx's default 5s busy timeout. With retries switched off
+  the acceptance tests still pass, so the backoff is a guard, not what makes
+  them pass.
+- A new database opened by several processes at once failed its migration
+  ("table events already exists"): sqlx takes no migration lock on SQLite.
+  annals-store-sql now migrates under `BEGIN IMMEDIATE`, on annals' branch
+  `concurrent-writers` (not merged), which this workspace's path dependency
+  needs checked out.
+- A read outside a unit of work (`SqliteStore::read_from`) is three
+  statements, not one transaction, so a stream appended to mid-read can come
+  back inconsistent. Lists and read-backs go through it; not fixed yet.
+- harp-core has one word list, Go's "long" group, so project ids are three
+  words from it, not from Go's smaller default group.
+- `list` with no project here says so and lists nothing; Go falls back to
+  `--global`. Hidden `tagma:*` tags are shown, the `@open`/`@terminal`
+  classes are not taken, and JSON has no `derived_priority` and escapes no
+  HTML: they come with tags, statuses and priority.
 
 ## Order of work
 
@@ -29,36 +65,27 @@ complete unit that retires a risk, and each reviewed by an architect before
 the next. A slice cuts through every layer it needs; the sections after this
 one are the reference for what each layer finally holds, not an order.
 
-1. **Walking skeleton: `taskloom add` and `taskloom list`, end to end.**
-   Project resolution from `.project-id` and the registry, the SQLite
-   store at `~/.ctxloom/projects/<project-id>/state.db`, an add handler that
-   mints a harp and retries, the list projector, a CLI with text and json,
-   and the binary. Risk retired: annals' kernel and annals-store-sql in a
-   short-lived CLI process, and **concurrent writers**. Go serialized writers
-   with `flock` on a jsonl log; here several processes write one SQLite
-   database. The acceptance test is Go's `crossprocess_test.go` ported: N
-   parallel adds and N parallel retags of one task lose no write and
-   duplicate no harp.
-2. **The importer**, over the real `~/.ctxloom/tasks/*.jsonl`. Risk retired:
+1. **The importer**, over the real `~/.ctxloom/tasks/*.jsonl`. Risk retired:
    data fidelity. For every task, Go's fold and the Rust state must agree.
    It also gives every later slice real data.
-3. **Healing and repointing a project's store** (see "Project identity:
+2. **Healing and repointing a project's store** (see "Project identity:
    heal and repoint"). Risk retired: tasks that seem lost because a
    directory resolved to the wrong id.
-4. **Tags on tagma.** The `Tag` proto in the tagma repository, imported
+3. **Tags on tagma.** The `Tag` proto in the tagma repository, imported
    here, then validation and queries. Risk retired: the cross-repository
    proto dependency, and query parity between `tagma-core` and Go's
    `tagquery.go`.
-5. **MCP and the companion contract**: `taskloom mcp` with `task_list` and
+4. **MCP and the companion contract**: `taskloom mcp` with `task_list` and
    `task_add`, plus `loadout` and `version --format json`. Risk retired:
    ctxloom loading the Rust binary as its companion. After this the Rust
    taskloom can serve real sessions.
-6. **The remaining commands and tools**: status, edit, tag, show, summary,
-   tags, statuses, prune and lint, and the remaining MCP tools and resources.
-7. **Priority**: choosing or writing the formula evaluator. It is isolated
+5. **The remaining commands and tools**: status, edit, show, summary,
+   tags, statuses, prune and lint, `tag`'s schema handling, and the remaining
+   MCP tools and resources.
+6. **Priority**: choosing or writing the formula evaluator. It is isolated
    from everything else, so it can move earlier if the evaluator looks
    risky.
-8. **`manage`, `watch` and `run`**, then cutover.
+7. **`manage`, `watch` and `run`**, then cutover.
 
 ## Tags on tagma
 
