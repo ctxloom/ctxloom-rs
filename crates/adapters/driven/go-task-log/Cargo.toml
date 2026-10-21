@@ -1,0 +1,23 @@
+[package]
+name = "go-task-log"
+version = "0.1.0"
+description = "Go taskloom's per-project task logs (~/.ctxloom/tasks/<project-id>.jsonl), read behind the GoTaskLogs port"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+annals.workspace = true
+annals-diagnostic.workspace = true
+ports.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+time.workspace = true
+
+[dev-dependencies]
+fluent-syntax.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

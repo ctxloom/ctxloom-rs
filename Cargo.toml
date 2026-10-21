@@ -29,6 +29,7 @@ tasks-application = { path = "crates/core/application/tasks-application" }
 project-registry = { path = "crates/adapters/driven/project-registry" }
 harp-names = { path = "crates/adapters/driven/harp-names" }
 task-store-sqlite = { path = "crates/adapters/driven/task-store-sqlite" }
+go-task-log = { path = "crates/adapters/driven/go-task-log" }
 system = { path = "crates/adapters/driven/system" }
 tasks-cli = { path = "crates/adapters/driving/tasks-cli" }
 
