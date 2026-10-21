@@ -39,6 +39,18 @@ pub struct Watch {
     cursor: u64,
 }
 
+impl Watch {
+    /// A watch of `project` that has seen nothing yet: the first poll
+    /// answers every task.
+    pub fn of(project: Project) -> Watch {
+        Watch {
+            project,
+            list: TaskList::new(Box::new(|_| true)),
+            cursor: 0,
+        }
+    }
+}
+
 /// Watching, as a driving adapter calls it. The futures are `Send`, as
 /// [`crate::TaskService`]'s are.
 pub trait WatchService {
@@ -77,11 +89,7 @@ where
         else {
             return Ok(None);
         };
-        let mut watch = Watch {
-            project,
-            list: TaskList::new(Box::new(|_| true)),
-            cursor: 0,
-        };
+        let mut watch = Watch::of(project);
         self.poll(&mut watch).await?;
         Ok(Some(watch))
     }

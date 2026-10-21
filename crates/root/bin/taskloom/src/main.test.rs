@@ -403,6 +403,7 @@ fn test_every_diagnostic_of_every_crate_renders_from_the_binarys_catalog() {
         tasks_config::diagnostic_samples(),
         presentation::diagnostic_samples(),
         tasks_mcp::diagnostic_samples(),
+        tasks_watch::diagnostic_samples(),
     ]
     .into_iter()
     .flatten()
@@ -500,6 +501,20 @@ fn test_in_json_each_command_writes_one_document_and_errors_an_envelope() {
 }
 
 #[test]
+fn test_in_json_a_stream_writes_one_document_a_line() {
+    let env = Env::new("jq-watch-harp");
+    let added = env.run(&["add", "Ship", "it", "--json"]);
+    assert!(added.ok, "{}", added.stderr);
+    let watching = watch::Watching::start(&env, &["--json"]);
+    assert_eq!(one_document(&watching.line())["event"], "changed");
+    let harp = one_document(&added.stdout)["harp_id"].to_string();
+    let tagged = env.run(&["tag", harp.trim_matches('"'), "--add", "x"]);
+    assert!(tagged.ok, "{}", tagged.stderr);
+    assert_eq!(one_document(&watching.line())["kind"], "tasks");
+    assert!(watching.stop("INT").success());
+}
+
+#[test]
 fn test_in_json_each_project_command_writes_one_document_and_errors_an_envelope() {
     let env = Env::new("jq-project-harp");
     let added = env.run(&["add", "Ship", "it", "--json"]);
@@ -542,3 +557,6 @@ mod project;
 
 #[path = "tags.test.rs"]
 mod tags;
+
+#[path = "watch.test.rs"]
+mod watch;

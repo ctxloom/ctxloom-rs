@@ -4,8 +4,9 @@
 //! clock, ids, timer and randomness, taskloom's configuration, and Go
 //! taskloom's logs to import), mounts the `project` group and `mcp` beside
 //! the task commands, and hands the command line to the CLI. `mcp` serves
-//! the task tools over stdio, each call on a service of its own. It holds
-//! no logic of its own.
+//! the task tools over stdio, each call on a service of its own; `watch`
+//! streams the project's changes until SIGINT or SIGTERM. It holds no
+//! logic of its own.
 
 use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
@@ -33,6 +34,7 @@ fn catalog() -> Result<presentation::Catalog, presentation::CatalogError> {
         go_task_log::EN_US,
         tasks_config::EN_US,
         tasks_mcp::EN_US,
+        tasks_watch::EN_US,
     ])
 }
 
@@ -43,6 +45,14 @@ enum Mounted {
     Project(project_cli::Group),
     #[command(flatten)]
     Mcp(tasks_mcp::Group),
+    #[command(flatten)]
+    Watch(tasks_watch::Group),
+}
+
+/// What runs once the command line has been read, on the runtime.
+enum After {
+    Mcp(Option<String>),
+    Watch(tasks_watch::Settings),
 }
 
 /// The tasks use cases over the real adapters, configured from the work
@@ -96,9 +106,67 @@ fn serve_mcp(
     }
 }
 
+/// Resolves at SIGINT or SIGTERM (Ctrl-C alone off Unix), listening from
+/// the moment it is made, so a signal before the first await is not lost
+/// to the default disposition. Made on the runtime.
+fn interrupted() -> std::io::Result<impl std::future::Future<Output = ()>> {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut interrupt = signal(SignalKind::interrupt())?;
+        let mut terminate = signal(SignalKind::terminate())?;
+        Ok(std::future::poll_fn(move |cx| {
+            let interrupted = interrupt.poll_recv(cx).is_ready();
+            let terminated = terminate.poll_recv(cx).is_ready();
+            if interrupted || terminated {
+                std::task::Poll::Ready(())
+            } else {
+                std::task::Poll::Pending
+            }
+        }))
+    }
+    #[cfg(not(unix))]
+    {
+        Ok(async {
+            let _ = tokio::signal::ctrl_c().await;
+        })
+    }
+}
+
+/// `taskloom watch`: the project's changes on stdout, polled every
+/// debounce, until interrupted.
+fn watch<W: tasks_application::WatchService>(
+    runtime: &tokio::runtime::Runtime,
+    service: &mut W,
+    settings: &tasks_watch::Settings,
+    catalog: &presentation::Catalog,
+) -> ExitCode {
+    let code = runtime.block_on(async {
+        let stop = match interrupted() {
+            Ok(stop) => stop,
+            Err(e) => {
+                eprintln!("{}: cannot listen for signals: {e}", tasks_cli::PROG);
+                return 1;
+            }
+        };
+        let mut ticks = tasks_watch::Interval::every(tasks_watch::DEBOUNCE);
+        tasks_watch::run(
+            service,
+            settings,
+            &mut ticks,
+            stop,
+            catalog,
+            &mut io::stdout().lock(),
+            &mut io::stderr().lock(),
+        )
+        .await
+    });
+    ExitCode::from(code)
+}
+
 fn main() -> ExitCode {
     let runtime = match tokio::runtime::Builder::new_current_thread()
-        .enable_time()
+        .enable_all()
         .build()
     {
         Ok(runtime) => runtime,
@@ -129,9 +197,9 @@ fn main() -> ExitCode {
         version: env!("CARGO_PKG_VERSION").to_string(),
         lock_protocol: project_registry::LOCK_PROTOCOL,
     };
-    // `mcp` is served once the command line has been read, on the same
-    // runtime: the CLI's mounted commands are synchronous.
-    let mut mcp = None;
+    // `mcp` and `watch` run once the command line has been read, on the
+    // same runtime: the CLI's mounted commands are synchronous.
+    let mut after = None;
     let mounted = |group,
                    flags: tasks_cli::Mounted,
                    catalog: &presentation::Catalog,
@@ -146,7 +214,15 @@ fn main() -> ExitCode {
             project_cli::run(group, &settings, catalog, &mut projects, out, err)
         }
         Mounted::Mcp(tasks_mcp::Group::Mcp) => {
-            mcp = Some(flags.project);
+            after = Some(After::Mcp(flags.project));
+            0
+        }
+        Mounted::Watch(tasks_watch::Group::Watch) => {
+            after = Some(After::Watch(tasks_watch::Settings {
+                format: flags.format,
+                project: flags.project,
+                prog: tasks_cli::PROG,
+            }));
             0
         }
     };
@@ -159,8 +235,9 @@ fn main() -> ExitCode {
         &mut io::stdout().lock(),
         &mut io::stderr().lock(),
     ));
-    match mcp {
-        Some(project) => {
+    match after {
+        Some(After::Watch(settings)) => watch(&runtime, &mut service, &settings, &catalog),
+        Some(After::Mcp(project)) => {
             let settings = tasks_mcp::Settings {
                 project,
                 session: context.session,

@@ -163,3 +163,12 @@ fn test_watch_futures_are_send_so_a_server_can_spawn_them() {
     is_send(&watch);
     spawnable(&mut service, &mut watch);
 }
+
+#[test]
+fn test_a_watch_that_has_seen_nothing_answers_every_task_at_its_first_poll() {
+    let mut service = service(&["swift-amber"]);
+    add(&mut service, "One");
+    let mut watch = super::Watch::of(project());
+    let changes = ready(service.poll(&mut watch)).unwrap();
+    assert_eq!(texts(&changes), ["swift-amber To Do"]);
+}
