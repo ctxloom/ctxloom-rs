@@ -12,11 +12,10 @@ pub enum McpError {
     App(AppError),
     /// A tool's arguments do not fit its input schema.
     Arguments { tool: String, detail: String },
-    /// A tool's parameter this server does not serve yet, given a value
-    /// that asks for something.
-    Unserved { tool: String, parameter: String },
     /// No tool has the name called.
     UnknownTool { name: String },
+    /// No resource has the URI read.
+    UnknownResource { uri: String },
     /// The call's thread stopped before it answered (it panicked).
     Crashed { detail: String },
     /// The server could not start, or stopped other than by its client
@@ -27,8 +26,11 @@ pub enum McpError {
 /// What a result says besides its answer, in its `warning`.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum McpNotice {
-    /// A listing found no project here, so lists nothing.
+    /// A read found no project here, so reads nothing.
     NoProject,
+    /// A read found no project in `directory`, which lies outside every
+    /// work root, so read every project instead.
+    EveryProject { directory: String },
 }
 
 impl fmt::Display for McpError {
@@ -38,10 +40,8 @@ impl fmt::Display for McpError {
             McpError::Arguments { tool, detail } => {
                 write!(f, "invalid arguments to {tool}: {detail}")
             }
-            McpError::Unserved { tool, parameter } => {
-                write!(f, "{tool}: {parameter} is not served yet")
-            }
             McpError::UnknownTool { name } => write!(f, "no tool is named {name}"),
+            McpError::UnknownResource { uri } => write!(f, "no resource is at {uri}"),
             McpError::Crashed { detail } => {
                 write!(f, "the call stopped before it answered: {detail}")
             }
@@ -54,6 +54,12 @@ impl fmt::Display for McpNotice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             McpNotice::NoProject => f.write_str("no project here yet: nothing to list"),
+            McpNotice::EveryProject { directory } => write!(
+                f,
+                "no project here: {directory} is in no git repository, has no CTXLOOM_ROOT \
+                 and no project of its own, so this reads every project; pass --project \
+                 <id>, or work in a project, to read one"
+            ),
         }
     }
 }
@@ -65,8 +71,8 @@ impl Diagnostic for McpError {
         match self {
             McpError::App(error) => error.code(),
             McpError::Arguments { .. } => "tasks-mcp-arguments",
-            McpError::Unserved { .. } => "tasks-mcp-unserved",
             McpError::UnknownTool { .. } => "tasks-mcp-unknown-tool",
+            McpError::UnknownResource { .. } => "tasks-mcp-unknown-resource",
             McpError::Crashed { .. } => "tasks-mcp-crashed",
             McpError::Serve { .. } => "tasks-mcp-serve",
         }
@@ -81,11 +87,8 @@ impl Diagnostic for McpError {
                     ("detail", detail.as_str().into()),
                 ]
             }
-            McpError::Unserved { tool, parameter } => vec![
-                ("tool", tool.as_str().into()),
-                ("parameter", parameter.as_str().into()),
-            ],
             McpError::UnknownTool { name } => vec![("name", name.as_str().into())],
+            McpError::UnknownResource { uri } => vec![("uri", uri.as_str().into())],
             McpError::Crashed { detail } | McpError::Serve { detail } => {
                 vec![("detail", detail.as_str().into())]
             }
@@ -97,13 +100,17 @@ impl Diagnostic for McpNotice {
     fn code(&self) -> &'static str {
         match self {
             McpNotice::NoProject => "tasks-mcp-no-project",
+            McpNotice::EveryProject { .. } => "tasks-mcp-every-project",
         }
     }
 
-    // Equivalent mutant: an empty Vec is its only body, `vec![]` too.
-    #[cfg_attr(test, mutants::skip)]
     fn args(&self) -> Vec<(&'static str, Arg)> {
-        Vec::new()
+        match self {
+            McpNotice::NoProject => Vec::new(),
+            McpNotice::EveryProject { directory } => {
+                vec![("directory", directory.as_str().into())]
+            }
+        }
     }
 }
 
@@ -119,12 +126,11 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
             tool: "task_add".to_string(),
             detail: "missing field `text`".to_string(),
         }),
-        Box::new(McpError::Unserved {
-            tool: "task_list".to_string(),
-            parameter: "term".to_string(),
-        }),
         Box::new(McpError::UnknownTool {
             name: "task_frob".to_string(),
+        }),
+        Box::new(McpError::UnknownResource {
+            uri: "taskloom://frob".to_string(),
         }),
         Box::new(McpError::Crashed {
             detail: "task 7 panicked".to_string(),
@@ -133,6 +139,9 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
             detail: "connection closed: initialize request".to_string(),
         }),
         Box::new(McpNotice::NoProject),
+        Box::new(McpNotice::EveryProject {
+            directory: "/tmp/somewhere".to_string(),
+        }),
     ]
 }
 

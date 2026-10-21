@@ -1,9 +1,11 @@
-//! The tasks MCP server: `taskloom mcp`, the tools `task_list` and
-//! `task_add` over stdio, each call translated into the application's use
-//! cases and its answer given in Go taskloom's shapes. The server's
-//! instructions, and each tool's description and input and output
-//! schema, are Go's, copied verbatim; a parity test holds them to the Go
-//! source.
+//! The tasks MCP server: `taskloom mcp`, the tools `task_list`,
+//! `task_add`, `task_set_status`, `task_edit` and `task_tag` and the
+//! resources `taskloom://tag-schema` and `taskloom://tag-vocabulary` over
+//! stdio, each call translated into the application's use cases and its
+//! answer given in Go taskloom's shapes. The server's instructions and
+//! capabilities, each tool's description and input and output schema,
+//! and each resource's description, are Go's, copied verbatim; parity
+//! tests hold them to the Go source.
 //!
 //! A call is served by a [`TaskService`] of its own, made for it by the
 //! composition root, on a blocking thread: two calls share nothing in the
@@ -14,6 +16,7 @@
 //! runs where blocking is allowed.
 
 mod error;
+mod resources;
 mod tools;
 
 use std::future::Future;
@@ -23,7 +26,9 @@ use clap::Subcommand;
 use presentation::Catalog;
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation,
-    ListToolsResult, PaginatedRequestParams, ServerCapabilities, ServerConfig, Tool,
+    ListResourcesResult, ListToolsResult, PaginatedRequestParams, ReadResourceRequestParams,
+    ReadResourceResponse, ReadResourceResult, Resource, ResourceContents, ServerCapabilities,
+    ServerConfig, Tool,
 };
 use rmcp::service::RequestContext;
 use rmcp::transport::IntoTransport;
@@ -31,14 +36,15 @@ use rmcp::{ErrorData, RoleServer, ServerHandler, ServiceExt};
 use tasks_application::TaskService;
 
 pub use error::{diagnostic_samples, McpError, McpNotice, EN_US};
+pub use resources::RESOURCES;
 
 /// The server's instructions to its client, Go taskloom's
 /// (`mcpServerInstructions`) verbatim.
 pub const INSTRUCTIONS: &str = include_str!("instructions.txt");
 
 /// The tools this server offers, as `tools/list` answers: Go taskloom's
-/// `task_add` and `task_list` (name, description, input and output schema)
-/// verbatim, in Go's order.
+/// five (name, description, input and output schema) verbatim, in Go's
+/// order.
 pub const TOOLS: &str = include_str!("tools.json");
 
 /// The command that serves the tools, for the binary to mount.
@@ -68,6 +74,7 @@ pub struct TaskTools<F> {
     settings: Arc<Settings>,
     catalog: Arc<Catalog>,
     tools: Vec<Tool>,
+    resources: Vec<Resource>,
 }
 
 impl<F> TaskTools<F> {
@@ -78,6 +85,7 @@ impl<F> TaskTools<F> {
             settings: Arc::new(settings),
             catalog,
             tools: tools::offered(),
+            resources: resources::offered(),
         }
     }
 }
@@ -142,27 +150,103 @@ where
         name: &str,
         arguments: serde_json::Value,
     ) -> Result<serde_json::Value, McpError> {
-        match name {
-            tools::TASK_LIST => {
-                let query = tools::list_query(arguments, &self.settings)?;
-                let listing = self
-                    .on_its_own(move |mut service| async move { service.list(query).await })
-                    .await?
-                    .map_err(McpError::App)?;
-                Ok(tools::listed(&listing, &self.catalog))
-            }
+        let settings = &self.settings;
+        let written = match name {
+            tools::TASK_LIST => return self.list(arguments).await,
             tools::TASK_ADD => {
-                let task = tools::new_task(arguments, &self.settings)?;
-                let written = self
-                    .on_its_own(move |mut service| async move { service.add(task).await })
+                let task = tools::new_task(arguments, settings)?;
+                self.on_its_own(move |mut service| async move { service.add(task).await })
+                    .await?
+            }
+            tools::TASK_SET_STATUS => {
+                let change = tools::status_change(arguments, settings)?;
+                self.on_its_own(move |mut service| async move { service.set_status(change).await })
+                    .await?
+            }
+            tools::TASK_EDIT => {
+                let edit = tools::text_edit(arguments, settings)?;
+                self.on_its_own(move |mut service| async move { service.edit(edit).await })
+                    .await?
+            }
+            tools::TASK_TAG => {
+                let change = tools::tag_change(arguments, settings)?;
+                self.on_its_own(move |mut service| async move { service.tag(change).await })
+                    .await?
+            }
+            other => {
+                return Err(McpError::UnknownTool {
+                    name: other.to_string(),
+                })
+            }
+        };
+        Ok(tools::written(&written.map_err(McpError::App)?))
+    }
+
+    /// `task_list`: the listing, and with `include_summary` the summary of
+    /// what it reached, both on the call's one service.
+    async fn list(&self, arguments: serde_json::Value) -> Result<serde_json::Value, McpError> {
+        let request = tools::list_request(arguments, &self.settings)?;
+        let compact = request.compact;
+        let (listing, summary) = self
+            .on_its_own(move |mut service| async move {
+                let listing = service.list(request.query.clone()).await?;
+                let summary = match request.summary {
+                    true => Some(
+                        service
+                            .summary(request.summary_scope(&listing.reach))
+                            .await?,
+                    ),
+                    false => None,
+                };
+                Ok((listing, summary))
+            })
+            .await?
+            .map_err(McpError::App)?;
+        Ok(tools::listed(
+            &listing,
+            compact,
+            summary.as_ref(),
+            &self.catalog,
+        ))
+    }
+
+    /// The resource at `uri`, read now: its document, or why not.
+    async fn read(&self, uri: &str) -> Result<String, McpError> {
+        let project = self.settings.project.clone();
+        match uri {
+            resources::TAG_SCHEMA => {
+                let schema = self
+                    .on_its_own(|mut service| async move { service.tag_schema(Vec::new()).await })
                     .await?
                     .map_err(McpError::App)?;
-                Ok(tools::added(&written))
+                Ok(resources::schema_text(&schema))
             }
-            other => Err(McpError::UnknownTool {
-                name: other.to_string(),
+            resources::TAG_VOCABULARY => {
+                let query = tasks_application::ListQuery {
+                    project,
+                    ..tasks_application::ListQuery::default()
+                };
+                let vocabulary = self
+                    .on_its_own(move |mut service| async move { service.tags(query).await })
+                    .await?
+                    .map_err(McpError::App)?;
+                Ok(resources::vocabulary_text(&vocabulary, &self.catalog))
+            }
+            other => Err(McpError::UnknownResource {
+                uri: other.to_string(),
             }),
         }
+    }
+
+    /// `error` as a protocol error: its catalog message, its envelope the
+    /// data.
+    fn protocol_error(
+        &self,
+        error: &McpError,
+        kind: fn(String, Option<serde_json::Value>) -> ErrorData,
+    ) -> ErrorData {
+        let envelope = serde_json::to_value(self.catalog.envelope(error)).ok();
+        kind(self.catalog.message(error), envelope)
     }
 }
 
@@ -171,8 +255,20 @@ where
     F: Fn() -> S + Send + Sync + 'static,
     S: TaskService + Send + 'static,
 {
+    /// Go's capabilities: logging, and the tools and resources, each
+    /// list said to change (though neither does).
     fn get_info(&self) -> ServerConfig {
-        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
+        // Go advertises logging; rmcp deprecates it (SEP-2577) but still
+        // serves it.
+        #[allow(deprecated)]
+        let capabilities = ServerCapabilities::builder()
+            .enable_logging()
+            .enable_resources()
+            .enable_resources_list_changed()
+            .enable_tools()
+            .enable_tool_list_changed()
+            .build();
+        ServerConfig::new(capabilities)
             .with_server_info(Implementation::new(
                 self.settings.name.clone(),
                 self.settings.version.clone(),
@@ -199,11 +295,7 @@ where
         let result = match self.call(&request.name, arguments).await {
             Ok(value) => CallToolResult::structured(value),
             Err(error @ McpError::UnknownTool { .. }) => {
-                let envelope = serde_json::to_value(self.catalog.envelope(&error)).ok();
-                return Err(ErrorData::invalid_params(
-                    self.catalog.message(&error),
-                    envelope,
-                ));
+                return Err(self.protocol_error(&error, ErrorData::invalid_params));
             }
             Err(error) => CallToolResult::error(vec![ContentBlock::text(envelope_text(
                 &self.catalog,
@@ -211,6 +303,47 @@ where
             ))]),
         };
         Ok(result.into())
+    }
+
+    async fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, ErrorData> {
+        Ok(ListResourcesResult::with_all_items(self.resources.clone()))
+    }
+
+    /// The resource's document, as JSON text; an unknown URI is a
+    /// resource-not-found error, any other failure an internal one, each
+    /// carrying the diagnostic's envelope.
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResponse, ErrorData> {
+        match self.read(&request.uri).await {
+            Ok(text) => {
+                let contents =
+                    ResourceContents::text(text, request.uri).with_mime_type(resources::JSON);
+                Ok(ReadResourceResult::new(vec![contents]).into())
+            }
+            Err(error @ McpError::UnknownResource { .. }) => {
+                Err(self.protocol_error(&error, ErrorData::resource_not_found))
+            }
+            Err(error) => Err(self.protocol_error(&error, ErrorData::internal_error)),
+        }
+    }
+
+    /// Any level is accepted, as Go's server accepts it: nothing is
+    /// logged to the client at any level.
+    // Logging is deprecated in rmcp (SEP-2577) but Go advertises it.
+    #[allow(deprecated)]
+    async fn set_level(
+        &self,
+        _request: rmcp::model::SetLevelRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<(), ErrorData> {
+        Ok(())
     }
 }
 

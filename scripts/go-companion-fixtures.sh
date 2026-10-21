@@ -37,9 +37,12 @@ printf '{"Replace":{"%s/cmd/taskloom/zz_companion_dump_test.go":"%s"}}' \
     "$go_checkout" "$harness" > "$work/overlay.json"
 mkdir "$work/out"
 (cd "$go_checkout" && GO_COMPANION_OUT=$work/out \
-    go test -count=1 -overlay "$work/overlay.json" -run '^TestDumpCompanion$' ./cmd/taskloom/ >/dev/null)
+    go test -count=1 -overlay "$work/overlay.json" -run '^TestDumpCompanion$' ./cmd/taskloom/ >"$work/go-test.log") \
+    || { cat "$work/go-test.log" >&2; exit 1; }
 
 mkdir -p "$mcp_fixtures" "$cli_fixtures"
-cp "$work/out/instructions.txt" "$work/out/tools.json" "$mcp_fixtures/"
+cp "$work/out/instructions.txt" "$work/out/capabilities.json" "$work/out/tools.json" \
+    "$work/out/resources.json" "$work/out/tag-schema.json" "$work/out/tag-vocabulary.json" \
+    "$mcp_fixtures/"
 cp "$work/out/loadout.yaml" "$cli_fixtures/"
 echo "go-companion-fixtures: wrote $mcp_fixtures and $cli_fixtures from $go_checkout ($(cd "$go_checkout" && git rev-parse --short HEAD))"
