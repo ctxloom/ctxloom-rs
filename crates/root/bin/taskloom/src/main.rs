@@ -20,10 +20,13 @@ use tasks_application::Service;
 use tasks_cli::Context;
 use tasks_config::TaskloomConfig;
 
-/// Every crate's en-US catalog the binary's diagnostics come from. annals'
-/// own crates export none yet, so their errors print their English.
+/// Every crate's en-US catalog the binary's diagnostics come from: annals'
+/// crates the binary links (annals-diagnostic defines no codes), then its
+/// own.
 fn catalog() -> Result<presentation::Catalog, presentation::CatalogError> {
     tasks_cli::catalog(&[
+        annals::EN_US,
+        annals_store_sql::EN_US,
         project_cli::EN_US,
         project_application::EN_US,
         project_registry::EN_US,

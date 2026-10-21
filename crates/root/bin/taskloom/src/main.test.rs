@@ -392,6 +392,8 @@ fn test_a_tag_where_there_is_no_project_fails_and_binds_none() {
 fn test_every_diagnostic_of_every_crate_renders_from_the_binarys_catalog() {
     let catalog = super::catalog().expect("every catalog loads, no message twice");
     let samples: Vec<Box<dyn annals_diagnostic::Diagnostic>> = [
+        annals::diagnostic_samples(),
+        annals_store_sql::diagnostic_samples(),
         tasks::diagnostic_samples(),
         tasks_application::diagnostic_samples(),
         project_registry::diagnostic_samples(),

@@ -252,11 +252,6 @@ not filed as a task.
 - **`TaskService` takes `&mut self`**, so an MCP server holding one service
   serializes every call. Revisit with MCP (step 4), before its tools
   multiply (step 5).
-- **annals exports no catalogs.** Its crates' `.ftl` files are not
-  reachable from a dependent, so an annals error (a store failure, a
-  kernel error) prints its English `Display`, in text and in the envelope's
-  `message`. annals should export each crate's en-US catalog (as ctxloom's
-  crates export `EN_US`); the binary then embeds them.
 - **JSON escapes no HTML** where Go's encoder escapes `<`, `>` and `&`:
   normalize it when comparing the Go and Rust binaries for parity ("Parity
   and cutover").
@@ -422,8 +417,9 @@ What remains:
   implementing `Render`; a mounted group gets the binary's catalog through
   `run_mounted`, so its errors render as the task commands' do. MCP (step 4) needs `TaskJson` too, so it moves then into a tasks-specific
   presentation crate both use. Output goes to an injected `&mut dyn Write`.
-  annals' crates export no catalog yet, so their codes render their English
-  `Display` until they do.
+  annals' crates export their catalogs as ctxloom's do (`annals::EN_US`,
+  `annals_store_sql::EN_US`), and the binary's catalog embeds those it
+  links, so an annals error renders from its catalog too.
 - MCP over stdio: the tools `task_list`, `task_add`, `task_set_status`,
   `task_edit` and `task_tag`, the resources `taskloom://tag-schema` and
   `taskloom://tag-vocabulary`, and the server instructions, which are
