@@ -710,14 +710,11 @@ fn test_a_listing_with_its_summary_counts_every_task() {
 }
 
 #[test]
-fn test_a_listing_sorted_by_priority_or_by_nothing_known_is_refused() {
+fn test_a_listing_sorts_by_priority_and_by_nothing_else() {
     run(async {
         let (mut client, _) = connect(bound(), settings()).await;
         let priority = client.call("task_list", json!({"sort": "priority"})).await;
-        assert_eq!(
-            envelope(&priority)["code"],
-            "tasks-application-priority-unavailable"
-        );
+        assert_eq!(structured(&priority)["tasks"], json!([]));
         let unknown = client.call("task_list", json!({"sort": "age"})).await;
         assert_eq!(envelope(&unknown)["code"], "tasks-application-unknown-sort");
         let query = client

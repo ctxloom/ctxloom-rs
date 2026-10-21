@@ -5,10 +5,9 @@ Written 2026-10-20. The Go taskloom is `cmd/taskloom` and
 the Go ctxloom repository; about 12.9k lines. This plan ports it onto annals
 and angzarr here.
 
-Steps 1 to 5 and 7 are done: the importer, healing and repointing, tags on
+Steps 1 to 7 are done: the importer, healing and repointing, tags on
 tagma, MCP and the companion contract, the remaining commands and tools,
-and `manage`, `watch` and `run`. What remains is step 6, priority, which
-waits on the human's choice of formula evaluator; then parity and the
+priority, and `manage`, `watch` and `run`. What remains is parity and the
 cutover ("What remains").
 
 ## Where it stands
@@ -381,12 +380,17 @@ Where the port differs from Go:
   importer reads them as Go writes them. It takes no lock on a Go log, so
   a log Go is mid-way through appending to can end in a torn line, which
   stops that project's import; run it again.
-- Priority is not computed (step 6). The CLI's JSON has no
-  `derived_priority`, which Go writes `null` unless asked to sort; the MCP
-  results carry it, always `null`. `--sort priority`, and MCP's `sort:
-  "priority"`, are refused until then
-  (`tasks-application-priority-unavailable`), an unknown sort as Go
-  refuses it, so there is no `priority_warning`.
+- Priority (`core/read-model/task-priority`, on expr-lang; Decided 12),
+  against Go's: an unknown name in a formula is refused when a task is
+  scored, not when the formula compiles, and one in a branch no task
+  takes is never refused. `--limit` with `--sort priority` keeps the
+  highest priorities; Go's single-project listing cuts the page before it
+  sorts, so it keeps the first added, re-ordered. Across projects, a tie
+  within a project keeps harp-id order (Go's keeps log order). A warning
+  is a diagnostic (`tasks-application-priority-*`), a line on stderr or
+  one of `priority_warning`'s lines. Every task's JSON, the CLI's too,
+  carries `derived_priority`, null unless sorted by it, a whole number
+  written without a fraction as Go writes it.
 - `taskloom mcp`, against Go's: a result's `path` is the project's store
   (`state.db`), not Go's jsonl log; there is no `refused` (no
   `--degraded`) and no project-resolution `warning` but "no project
@@ -506,8 +510,6 @@ task.
   which `version`'s `lock_protocol` then has to vouch for. A human
   decision: port them, keep a record of Rust's own (a new on-disk format),
   or accept the gaps above.
-- **Priority's evaluator** (step 6): choose a crate or write a small one
-  ("What remains").
 - **JSON escapes no HTML** where Go's encoder escapes `<`, `>` and `&`:
   normalize it when comparing the Go and Rust binaries ("Parity and
   cutover").
@@ -520,21 +522,7 @@ the next. A slice cuts through every layer it needs; the sections after
 this one are the reference for what each layer finally holds, not an
 order.
 
-6. **Priority**: choosing or writing the formula evaluator (the human's
-   decision), then `derived_priority` and `--sort priority` (and MCP's
-   `sort: "priority"`). It is isolated from everything else. Priority is
-   computed when read and never stored: the `priority_fn` and `decay_fn`
-   formulas with `age_days` and `age_factor`, rank-normalized to `[0, 5]`
-   over non-terminal tasks, and `triage:exploited-in-wild` forced to 5.
-   Go compiles them with `expr`, so this needs a Rust evaluator: choose a
-   crate, or write a small one for the arithmetic the formulas use. Carry
-   over the warnings: no `priority_fn`, every task tied, coverage under
-   50%. Fix the defects Go's tasks-schema.md records: NaN passes every
-   guard, a zero `created_at`, division by zero at −90 days. Then drop
-   the reviewed change to `sort`'s description (Decided 11, change 4),
-   which says priority is refused, so Go's sentence is served again.
-
-Then parity and the cutover:
+Parity and the cutover:
 
 - Port the behavior Go's tests pin: concurrent processes (no lost write, no
   duplicate harp), CLI/MCP notice parity, every project-scoped read taking
@@ -590,7 +578,7 @@ restarted on a freed harp is under "Where it stands".
   `TASKLOOM_CONFIG_*`, then `--config-set`. It carries `schema_version`
   (`--write-upgrades`, not ported) and `tag_schema` extending the default
   schema, where the last declaration wins. Priority's `priority_fn` and
-  `decay_fn` will come through it (step 6).
+  `decay_fn` come through it.
 - The importer for Go's jsonl logs (Decided, 2): `go-task-log`.
 - Harp minting: the same word lists as Go's `harp` (adjective-noun for tasks).
 - Clock.
@@ -709,11 +697,10 @@ restarted on a freed harp is under "Where it stands".
     core ports: the core returns typed values.
 11. **The prose Rust taskloom serves is Go's text plus a reviewed factual
     diff** (decided 2026-10-21). The MCP instructions, the tool
-    descriptions and the loadout are Go's, with ten changes the human
+    descriptions and the loadout are Go's, with the changes the human
     reviewed and approved where Go's text is false of Rust: the SQLite
-    store path in place of the jsonl log, repo homing gone, `sort:
-    "priority"` refused until step 6, `--format` taking text alone, and
-    where the binary is built from and installed. The repository stays
+    store path in place of the jsonl log, repo homing gone, `--format`
+    taking text alone, and where the binary is built from and installed. The repository stays
     `github.com/ctxloom/ctxloom`, because the Rust code replaces the Go
     code there, with the crate path `crates/root/bin/taskloom`. The
     install text is pending: two placeholders stand in the loadout until
@@ -724,6 +711,14 @@ restarted on a freed harp is under "Where it stands".
     exactly once: a Go rewording of a changed sentence fails the pair, and
     any other Go change fails the byte comparison. Other wording is not
     changed: prompt text is the human's voice.
+
+12. **Priority's formulas run on expr-lang** (decided 2026-10-21), the
+    Rust port of the `expr` Go evaluates them with
+    (`github.com/jdx/expr.rs`, pinned `=2.1.0`, default features off).
+    Its values matched Go's on the shipped formulas and the operators
+    they use; it checks names only as a formula runs, and that is
+    accepted (above, "Where it stands"). `task-priority` is the one read
+    model linking beyond the core's crates (CLAUDE.md).
 
 ## Decisions still open
 

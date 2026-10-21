@@ -11,6 +11,7 @@
 mod error;
 mod import;
 mod lint;
+mod priority;
 mod prune;
 mod query;
 mod read;
@@ -39,6 +40,7 @@ pub use import::{
 };
 pub use lint::{Finding, LintReport, Violation, SCHEMA_SUBJECT};
 pub use ports::{GoOp, Project};
+pub use priority::{PriorityNote, PriorityWarning};
 pub use prune::{
     cut, Dangling, PruneRefusal, PruneRequest, PruneService, Pruned, Pruning, Via,
     DEFAULT_OLDER_THAN, DEFAULT_PRUNE_STATUSES,
@@ -158,8 +160,8 @@ pub struct ListQuery {
     /// At most this many tasks, the rest counted as omitted; 0 for no
     /// limit.
     pub limit: usize,
-    /// The order: empty for the listing's own. Go's one sort, [`PRIORITY`],
-    /// waits on priority, which is not computed yet.
+    /// The order: empty for the listing's own, or [`PRIORITY`], Go's one
+    /// sort.
     pub sort: String,
 }
 

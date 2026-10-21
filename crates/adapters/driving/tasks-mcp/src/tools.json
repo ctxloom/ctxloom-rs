@@ -249,7 +249,7 @@
           "type": "integer"
         },
         "sort": {
-          "description": "Optional sort order. \"priority\" is refused with an error: this taskloom does not compute priority yet, and each returned task's derived_priority field is null. Empty (default) leaves today's order unchanged.",
+          "description": "Optional sort order. \"priority\" sorts by derived, rank-normalized priority (descending) — a 0-5 score combining a project's priority_fn/decay_fn formulas over each task's tags, percentile-ranked against the project's non-terminal tasks; see each returned task's derived_priority field. Empty (default) leaves today's order unchanged.",
           "type": "string"
         },
         "statuses": {

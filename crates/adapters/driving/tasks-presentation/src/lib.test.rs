@@ -64,10 +64,33 @@ fn test_a_task_as_json_is_gos_shape_in_gos_order() {
   "tags": [
     "a"
   ],
-  "created_at": "2026-06-10T02:35:20.837009562Z"
+  "created_at": "2026-06-10T02:35:20.837009562Z",
+  "derived_priority": null
 }
 "#
     );
+}
+
+#[test]
+fn test_a_derived_priority_is_written_as_go_writes_a_number() {
+    let task = task("swift-amber", "To Do");
+    let priority = |p: f64| {
+        let mut out = Vec::new();
+        write_json(&mut out, &TaskJson::of(&task).with_priority(Some(p))).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        let line = text
+            .lines()
+            .find(|l| l.contains("derived_priority"))
+            .unwrap();
+        line.trim().to_string()
+    };
+    assert_eq!(priority(5.0), r#""derived_priority": 5"#);
+    assert_eq!(priority(0.0), r#""derived_priority": 0"#);
+    assert_eq!(
+        priority(5.0 * 2.0 / 3.0),
+        r#""derived_priority": 3.3333333333333335"#
+    );
+    assert_eq!(priority(1.25), r#""derived_priority": 1.25"#);
 }
 
 #[test]

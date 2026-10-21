@@ -2439,6 +2439,7 @@ dependencies = [
  "serde_json",
  "system",
  "tagma-core",
+ "task-priority",
  "task-store-sqlite",
  "tasks",
  "tasks-application",
@@ -2479,6 +2480,7 @@ dependencies = [
  "sha2",
  "tagma-core",
  "task-lists",
+ "task-priority",
  "tasks",
 ]
 

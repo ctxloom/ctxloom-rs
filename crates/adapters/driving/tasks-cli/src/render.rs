@@ -94,19 +94,22 @@ pub enum RowView<'a> {
     CompactIn(RowJson<'a, CompactJson<'a>>),
 }
 
-/// `rows` as JSON: each task whole, or compact if `compact`, with its
-/// project if `attributed`.
-pub fn rows_json(rows: &[Row], compact: bool, attributed: bool) -> Vec<RowView<'_>> {
-    rows.iter()
-        .map(|row| row_view(row, compact, attributed))
+/// `listing`'s rows as JSON: each task whole, with its derived priority, or
+/// compact if `compact`; with its project if the listing spans projects.
+pub fn rows_json(listing: &Listing, compact: bool) -> Vec<RowView<'_>> {
+    let attributed = listing.reach.is_every();
+    listing
+        .ranked()
+        .map(|(row, priority)| row_view(row, priority, compact, attributed))
         .collect()
 }
 
-fn row_view(row: &Row, compact: bool, attributed: bool) -> RowView<'_> {
+fn row_view(row: &Row, priority: Option<f64>, compact: bool, attributed: bool) -> RowView<'_> {
+    let whole = || TaskJson::of(&row.task).with_priority(priority);
     match (compact, attributed) {
-        (false, false) => RowView::Whole(TaskJson::of(&row.task)),
+        (false, false) => RowView::Whole(whole()),
         (true, false) => RowView::Compact(CompactJson::of(&row.task)),
-        (false, true) => RowView::WholeIn(RowJson::of(TaskJson::of(&row.task), &row.project)),
+        (false, true) => RowView::WholeIn(RowJson::of(whole(), &row.project)),
         (true, true) => RowView::CompactIn(RowJson::of(CompactJson::of(&row.task), &row.project)),
     }
 }
@@ -155,8 +158,7 @@ impl Render for Tagged<'_> {
 
 impl Render for Listed<'_> {
     fn json(&self) -> impl Serialize + '_ {
-        let listing = self.listing;
-        rows_json(&listing.rows, self.compact, listing.reach.is_every())
+        rows_json(self.listing, self.compact)
     }
 
     fn text(&self, out: &mut dyn Write) -> io::Result<()> {

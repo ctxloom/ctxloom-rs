@@ -1,14 +1,17 @@
 //! The reads over fake ports: what a read reaches, and the listing's
 //! filters, hiding and limit.
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use annals_diagnostic::Diagnostic;
 
 use crate::fakes::{ready, FakeClock, FakeDelay, FakeIdentity, FakeNames, FakeStores, Flaky};
 use crate::{
-    AppError, Hidden, ListQuery, NewTask, Project, Reach, Scope, Service, ShowQuery, TaskService,
+    AppError, Hidden, ListQuery, NewTask, PriorityWarning, Project, Reach, Scope, Service,
+    ShowQuery, TaskService,
 };
+use task_priority::MAX;
 
 pub(crate) type Fake = Service<FakeIdentity, FakeStores, FakeNames, FakeClock, FakeDelay>;
 
@@ -200,24 +203,157 @@ fn test_a_limit_keeps_the_first_tasks_and_counts_the_rest() {
 
 // ------------------------------------------------------------ sort
 
-#[test]
-fn test_a_sort_is_refused_before_anything_is_read() {
-    let mut service = service(&[]);
-    for (sort, error) in [
-        ("priority", AppError::PriorityUnavailable),
-        (
-            "age",
-            AppError::UnknownSort {
-                sort: "age".to_string(),
-            },
-        ),
-    ] {
-        let query = ListQuery {
-            sort: sort.to_string(),
-            ..ListQuery::default()
-        };
-        assert_eq!(ready(service.list(query)).unwrap_err(), error);
+fn by_priority() -> ListQuery {
+    ListQuery {
+        sort: " priority ".to_string(),
+        ..ListQuery::default()
     }
+}
+
+/// Tasks of triage levels 5 and 1, and one untriaged, added in that order.
+fn with_levels() -> Fake {
+    let mut service = service(&["low", "high", "none", "finished"]);
+    tagged(&mut service, "low", "To Do", &["triage:level=5"]);
+    tagged(&mut service, "high", "To Do", &["triage:level=1"]);
+    tagged(&mut service, "none", "In Progress", &[]);
+    tagged(&mut service, "finished", "Done", &["triage:level=1"]);
+    service
+}
+
+#[test]
+fn test_a_sort_by_priority_lists_the_highest_first_with_each_ones_priority() {
+    let mut service = with_levels();
+    let listing = ready(service.list(by_priority())).unwrap();
+    let ranked: Vec<(&str, Option<f64>)> = listing
+        .ranked()
+        .map(|(row, priority)| (row.task.harp_id.as_str(), priority))
+        .collect();
+    assert_eq!(
+        ranked,
+        [
+            ("high", Some(MAX)),
+            ("low", Some(MAX * 2.0 / 3.0)),
+            ("none", Some(MAX / 3.0)),
+        ],
+        "the Done task is hidden, and ranks no live task down"
+    );
+}
+
+#[test]
+fn test_an_unsorted_listing_has_no_priority() {
+    let mut service = with_levels();
+    let listing = ready(service.list(ListQuery::default())).unwrap();
+    assert!(listing.ranked().all(|(_, priority)| priority.is_none()));
+    assert!(listing.priority_notes.is_empty());
+    assert_eq!(
+        ids(&mut service, ListQuery::default()),
+        ["low", "high", "none"]
+    );
+}
+
+#[test]
+fn test_priority_ranks_a_task_against_its_whole_project_not_the_page() {
+    let mut service = with_levels();
+    let query = ListQuery {
+        term: "low".to_string(),
+        ..by_priority()
+    };
+    let listing = ready(service.list(query)).unwrap();
+    let ranked: Vec<Option<f64>> = listing.ranked().map(|(_, p)| p).collect();
+    assert_eq!(ranked, [Some(MAX * 2.0 / 3.0)]);
+}
+
+#[test]
+fn test_the_limit_takes_the_highest_priorities() {
+    let mut service = with_levels();
+    let query = ListQuery {
+        limit: 1,
+        ..by_priority()
+    };
+    let listing = ready(service.list(query)).unwrap();
+    let shown: Vec<&str> = listing.tasks().map(|t| t.harp_id.as_str()).collect();
+    assert_eq!((shown, listing.omitted), (vec!["high"], 2));
+}
+
+#[test]
+fn test_a_ranking_that_means_little_says_so() {
+    let mut service = service(&["a", "b"]);
+    add(&mut service, "a", "");
+    add(&mut service, "b", "");
+    let listing = ready(service.list(by_priority())).unwrap();
+    let warned: Vec<&PriorityWarning> = listing.priority_notes.iter().map(|n| &n.warning).collect();
+    assert_eq!(
+        warned.first(),
+        Some(&&PriorityWarning::AllTied { scored: 0, live: 2 })
+    );
+    assert!(listing.priority_notes.iter().all(|n| n.project.is_none()));
+}
+
+#[test]
+fn test_every_project_is_ranked_in_its_own_section() {
+    let mut service = with_two_projects();
+    service.identity.bound = Some(named("zulu-proj"));
+    let query = ListQuery {
+        global: true,
+        ..by_priority()
+    };
+    let listing = ready(service.list(query)).unwrap();
+    let ranked: Vec<(&str, Option<f64>)> = listing
+        .ranked()
+        .map(|(row, priority)| (row.project.id.as_str(), priority))
+        .collect();
+    assert_eq!(
+        ranked,
+        [
+            ("alpha-proj", Some(MAX)),
+            ("alpha-proj", Some(MAX)),
+            ("zulu-proj", Some(MAX)),
+        ]
+    );
+    let projects: BTreeSet<Option<&str>> = listing
+        .priority_notes
+        .iter()
+        .map(|n| n.project.as_deref())
+        .collect();
+    assert_eq!(
+        projects,
+        BTreeSet::from([Some("alpha-proj"), Some("zulu-proj")])
+    );
+}
+
+/// A configuration whose priority_fn is no formula.
+struct Malformed;
+
+impl ports::Configuration for Malformed {
+    fn tag_schema(&mut self, _: &[String]) -> Result<Vec<String>, annals_diagnostic::Report> {
+        Ok(vec![r#"tagma.priority_fn:"triage:kind"="1 +""#.to_string()])
+    }
+}
+
+#[test]
+fn test_a_formula_that_does_not_compile_refuses_the_sort() {
+    let mut service = with_levels().with_configuration(Malformed);
+    let error = ready(service.list(by_priority())).unwrap_err();
+    assert_eq!(error.code(), "task-priority-malformed");
+    assert!(
+        ready(service.list(ListQuery::default())).is_ok(),
+        "only the sort reads it"
+    );
+}
+
+#[test]
+fn test_an_unknown_sort_is_refused_before_anything_is_read() {
+    let mut service = service(&[]);
+    let query = ListQuery {
+        sort: "age".to_string(),
+        ..ListQuery::default()
+    };
+    assert_eq!(
+        ready(service.list(query)).unwrap_err(),
+        AppError::UnknownSort {
+            sort: "age".to_string(),
+        }
+    );
     assert!(service.identity.pins.is_empty());
     let blank = ListQuery {
         sort: " ".to_string(),

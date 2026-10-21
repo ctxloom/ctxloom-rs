@@ -5,8 +5,8 @@ use std::path::PathBuf;
 
 use serde_json::json;
 use tasks_application::{
-    Hidden, ListQuery, Listing, Project, Reach, Row, Scope, Shown, StatusChange, Summary,
-    TagChange, Task, TextEdit, Timestamp, Written,
+    Hidden, ListQuery, Listing, PriorityNote, PriorityWarning, Project, Reach, Row, Scope, Shown,
+    StatusChange, Summary, TagChange, Task, TextEdit, Timestamp, Written,
 };
 
 use super::{
@@ -72,6 +72,8 @@ fn listing(reach: Reach, tasks: Vec<Task>, shown: Shown) -> Listing {
         hidden: Hidden::default(),
         searched: false,
         omitted: 0,
+        priorities: None,
+        priority_notes: Vec::new(),
     }
 }
 
@@ -256,7 +258,7 @@ fn test_each_change_without_what_its_schema_requires_is_refused_by_name() {
 }
 
 #[test]
-fn test_a_listed_task_carries_its_project_and_no_priority_yet() {
+fn test_a_listed_task_carries_its_project_and_no_priority_unsorted() {
     let listing = listing(Reach::Project(project()), vec![task()], Shown::default());
     let value = listed(&listing, false, None, &catalog());
     assert_eq!(value["path"], "/s/state.db");
@@ -271,6 +273,45 @@ fn test_a_listed_task_carries_its_project_and_no_priority_yet() {
     assert_eq!(row["project_dir"], "/work/tree");
     assert_eq!(row["derived_priority"], json!(null));
     assert_eq!(row["created_at"], "2026-06-10T02:35:20Z");
+}
+
+// Go's taskListResult sorted by priority: each task's derived priority,
+// and the warnings, one line each, in `priority_warning`.
+#[test]
+fn test_a_listing_sorted_by_priority_carries_each_priority_and_its_warnings() {
+    let mut listing = listing_of(Reach::Project(project()), vec![task(), task()]);
+    listing.priorities = Some(vec![5.0, 2.5]);
+    listing.priority_notes = vec![
+        PriorityNote {
+            project: None,
+            warning: PriorityWarning::AllTied { scored: 0, live: 2 },
+        },
+        PriorityNote {
+            project: Some("p".to_string()),
+            warning: PriorityWarning::Inert {
+                target: "a:b".to_string(),
+                live: 2,
+            },
+        },
+    ];
+    let mut sources = vec![crate::EN_US];
+    sources.extend(tasks_application::CATALOGS);
+    let catalog = presentation::Catalog::en_us(&sources).unwrap();
+    let value = listed(&listing, false, None, &catalog);
+    assert_eq!(value["tasks"][0]["derived_priority"], json!(5));
+    assert_eq!(value["tasks"][1]["derived_priority"], json!(2.5));
+    let warning = value["priority_warning"].as_str().unwrap();
+    let lines: Vec<&str> = warning.lines().collect();
+    assert_eq!(lines.len(), 2, "{warning}");
+    assert!(lines[0].starts_with("--sort priority is meaningless here"));
+    assert!(lines[1].starts_with("project p: priority_fn/decay_fn reads a:b"));
+    let unsorted = listed(
+        &listing_of(Reach::Project(project()), vec![task()]),
+        false,
+        None,
+        &catalog,
+    );
+    assert_eq!(unsorted.get("priority_warning"), None);
 }
 
 // Go's taskListResult with compact: the compact rows, and `tasks` null.

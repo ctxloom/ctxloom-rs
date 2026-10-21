@@ -7,8 +7,8 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tasks_application::{
-    ListQuery, Listing, NewTask, Project, Reach, Scope, StatusChange, Summary, TagChange, Task,
-    TextEdit, Written,
+    ListQuery, Listing, NewTask, Project, Reach, Scope, StatusChange, Summary, TagChange, TextEdit,
+    Written,
 };
 use tasks_presentation::{CompactJson, RowJson, SummaryJson, TaskJson};
 
@@ -181,28 +181,9 @@ pub fn tag_change(arguments: Value, settings: &Settings) -> Result<TagChange, Mc
     })
 }
 
-/// A task as a tool answers it: Go's `tasks.Task`, with its
-/// `derived_priority`, which is null until priority is ported, as Go's is
-/// when a listing is not sorted by it.
-#[derive(Serialize)]
-struct ToolTask<'a> {
-    #[serde(flatten)]
-    task: TaskJson<'a>,
-    derived_priority: Option<f64>,
-}
-
-impl<'a> ToolTask<'a> {
-    fn of(task: &'a Task) -> ToolTask<'a> {
-        ToolTask {
-            task: TaskJson::of(task),
-            derived_priority: None,
-        }
-    }
-}
-
 /// A listed task: Go's `taskRow`, the task and the project it is in;
 /// or, compact, Go's `compactTaskRow`.
-type Row<'a> = RowJson<'a, ToolTask<'a>>;
+type Row<'a> = RowJson<'a, TaskJson<'a>>;
 type CompactRow<'a> = RowJson<'a, CompactJson<'a>>;
 
 /// `task_list`'s result: Go's `taskListResult`. `path` is the project's
@@ -232,6 +213,8 @@ struct ListResult<'a> {
     hidden_deferred: usize,
     #[serde(skip_serializing_if = "is_zero")]
     omitted_by_limit: usize,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    priority_warning: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     warning: Option<String>,
 }
@@ -246,7 +229,7 @@ fn is_zero(n: &usize) -> bool {
 #[derive(Serialize)]
 struct WriteResult<'a> {
     path: String,
-    task: ToolTask<'a>,
+    task: TaskJson<'a>,
     project_id: &'a str,
     project_dir: &'a str,
 }
@@ -271,9 +254,13 @@ pub fn listed(
         false => (
             Some(
                 listing
-                    .rows
-                    .iter()
-                    .map(|row| RowJson::of(ToolTask::of(&row.task), &row.project))
+                    .ranked()
+                    .map(|(row, priority)| {
+                        RowJson::of(
+                            TaskJson::of(&row.task).with_priority(priority),
+                            &row.project,
+                        )
+                    })
                     .collect(),
             ),
             Vec::new(),
@@ -314,6 +301,12 @@ pub fn listed(
         hidden_completed: listing.hidden.completed,
         hidden_deferred: listing.hidden.deferred,
         omitted_by_limit: listing.omitted,
+        priority_warning: listing
+            .priority_notes
+            .iter()
+            .map(|note| catalog.message(note))
+            .collect::<Vec<_>>()
+            .join("\n"),
         warning,
     };
     serde_json::to_value(result).unwrap_or_default()
@@ -323,7 +316,7 @@ pub fn listed(
 pub fn written(written: &Written) -> Value {
     let result = WriteResult {
         path: store_path(&written.project),
-        task: ToolTask::of(&written.task),
+        task: TaskJson::of(&written.task),
         project_id: &written.project.id,
         project_dir: &written.project.root,
     };

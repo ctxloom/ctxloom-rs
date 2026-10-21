@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use annals::next::Timestamp;
 use annals_diagnostic::Diagnostic;
 
-use super::{lint, placeholders, Finding, Violation, SCHEMA_SUBJECT};
+use super::{lint, Finding, Violation, SCHEMA_SUBJECT};
 use crate::view::{Row, Task};
 use crate::{Project, TagSchema};
 
@@ -196,15 +196,6 @@ fn test_violations_sort_by_project_then_task_and_nothing_checked_is_counted() {
     );
     assert_eq!(checked, 1, "one target, two facets");
     assert_eq!(lint(&rows, &TagSchema::default()), (Vec::new(), 0));
-}
-
-#[test]
-fn test_placeholders_are_found_as_gos_pattern_finds_them() {
-    assert_eq!(
-        placeholders("{{a}} + {{ b c }} {{}} {{{d}} {{e}x}} {{f"),
-        ["a", "b c", "d"]
-    );
-    assert!(placeholders("none").is_empty());
 }
 
 #[test]

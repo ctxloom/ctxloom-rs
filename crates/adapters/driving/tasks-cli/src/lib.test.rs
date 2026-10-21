@@ -10,9 +10,10 @@ use std::task::{Context as TaskContext, Poll, Waker};
 use annals_diagnostic::Report;
 use tasks_application::{
     AppError, Details, Finding, Hidden, ImportReport, ImportRequest, ImportService, LintReport,
-    ListQuery, Listing, NewTask, Project, ProjectImport, PruneRequest, PruneService, Pruning,
-    Reach, Row, Scope, ShowQuery, StatusChange, StatusInfo, Statuses, Summary, TagChange, TagCount,
-    TagSchema, Task, TaskService, TextEdit, Violation, Vocabulary, Written,
+    ListQuery, Listing, NewTask, PriorityNote, PriorityWarning, Project, ProjectImport,
+    PruneRequest, PruneService, Pruning, Reach, Row, Scope, ShowQuery, StatusChange, StatusInfo,
+    Statuses, Summary, TagChange, TagCount, TagSchema, Task, TaskService, TextEdit, Violation,
+    Vocabulary, Written,
 };
 
 use presentation::{Catalog, Format};
@@ -1010,6 +1011,8 @@ fn listing_in(reach: Reach, tasks: Vec<Task>) -> Listing {
         hidden: Hidden::default(),
         searched: false,
         omitted: 0,
+        priorities: None,
+        priority_notes: Vec::new(),
     }
 }
 
@@ -1217,6 +1220,27 @@ fn test_list_compact_is_each_tasks_headline_in_json() {
         ran.out.contains("[ ] calm-otter"),
         "text ignores it: {}",
         ran.out
+    );
+}
+
+#[test]
+fn test_list_warns_on_stderr_when_its_priority_ranking_means_little() {
+    let mut sorted = listing_in(Reach::Project(project()), Vec::new());
+    sorted.priorities = Some(Vec::new());
+    sorted.priority_notes = vec![PriorityNote {
+        project: Some("p".to_string()),
+        warning: PriorityWarning::AllTied { scored: 0, live: 2 },
+    }];
+    sorted.omitted = 4;
+    let mut fake = Fake {
+        listing: Some(Ok(sorted)),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["list", "--sort", "priority"]);
+    assert_eq!(
+        ran.err,
+        "taskloom: project p: --sort priority is meaningless here: every active task ties at the same raw priority score (only 0 of 2 active tasks carry a tag any priority_fn/decay_fn formula actually reads) \u{2014} the ranking reflects nothing\n\
+         taskloom: 4 more tasks omitted by --limit: raise or drop it to see them (summary's counts are unaffected)\n"
     );
 }
 
