@@ -12,7 +12,8 @@
 #       the loadout document (cmd/taskloom/loadout.yaml)
 #
 # The parity tests compare what Rust taskloom serves with these, byte for
-# byte. Go's own code produces them: scripts/go-companion/
+# byte, after applying the human's reviewed factual changes
+# (fixtures/reviewed.rs in tasks-mcp and tasks-cli), which this leaves alone. Go's own code produces them: scripts/go-companion/
 # companion_dump_test.go, laid into the Go checkout's cmd/taskloom with
 # `go test -overlay`, so the checkout is not written. GO_CTXLOOM names that
 # checkout (default ../../ctxloom/ctxloom/main from here, which resolves

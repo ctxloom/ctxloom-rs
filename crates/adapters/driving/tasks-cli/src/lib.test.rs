@@ -1552,10 +1552,11 @@ fn test_import_that_cannot_start_fails_with_why() {
 
 // ------------------------------------------------------------ companion
 
-/// Go taskloom's loadout document, as `scripts/go-companion-fixtures.sh`
-/// copied it from the Go source (`cmd/taskloom/loadout.yaml`); run it again
-/// to regenerate it.
-const GO_LOADOUT: &str = include_str!("../fixtures/go/loadout.yaml");
+/// Go taskloom's loadout document (`fixtures/go/loadout.yaml`, which
+/// `scripts/go-companion-fixtures.sh` copies from the Go source), with the
+/// reviewed factual changes applied.
+#[path = "../fixtures/reviewed.rs"]
+mod reviewed;
 
 #[test]
 fn test_version_in_json_is_gos_shape_with_the_lock_protocol() {
@@ -1589,13 +1590,14 @@ fn test_a_version_with_no_lock_protocol_leaves_it_out_as_go_does() {
 }
 
 #[test]
-fn test_the_loadout_is_gos_byte_for_byte() {
+fn test_the_loadout_is_gos_reviewed_byte_for_byte() {
+    let reviewed = reviewed::loadout();
     for args in [&["loadout"][..], &["loadout", "--format", "yaml"]] {
         let ran = run_on(&mut Fake::default(), false, args);
         assert_eq!(ran.code, 0, "{args:?}: {}", ran.err);
         assert!(
-            ran.out == GO_LOADOUT,
-            "{args:?}: the loadout differs from Go's"
+            ran.out == reviewed,
+            "{args:?}: the loadout differs from Go's, reviewed"
         );
         assert_eq!(ran.err, "");
     }

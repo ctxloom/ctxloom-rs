@@ -1,6 +1,7 @@
 //! Acceptance: the companion contract, as ctxloom reads it from the real
 //! binary. `version --format json` is fed to a port of the parsing Go
-//! ctxloom does at boot, and `loadout --format yaml` is Go's document.
+//! ctxloom does at boot, and `loadout --format yaml` is Go's document with
+//! the reviewed changes applied.
 
 use std::process::Command;
 
@@ -91,12 +92,13 @@ fn test_the_ported_parse_refuses_what_go_refuses() {
 }
 
 /// Go taskloom's loadout document, as `scripts/go-companion-fixtures.sh`
-/// copied it from the Go source (`cmd/taskloom/loadout.yaml`).
-const GO_LOADOUT: &str =
-    include_str!("../../../../adapters/driving/tasks-cli/fixtures/go/loadout.yaml");
+/// copied it from the Go source (`cmd/taskloom/loadout.yaml`), with the
+/// reviewed factual changes applied.
+#[path = "../../../../adapters/driving/tasks-cli/fixtures/reviewed.rs"]
+mod reviewed;
 
 #[test]
-fn test_the_loadout_probe_prints_gos_document() {
+fn test_the_loadout_probe_prints_gos_document_reviewed() {
     let home = tempfile::tempdir().unwrap();
     let output = Command::new(binary())
         .args(["loadout", "--format", "yaml"])
@@ -107,5 +109,31 @@ fn test_the_loadout_probe_prints_gos_document() {
         .expect("taskloom runs");
     let ran = Ran::of(output);
     assert!(ran.ok, "{}", ran.stderr);
-    assert!(ran.stdout == GO_LOADOUT, "the loadout differs from Go's");
+    assert!(
+        ran.stdout == reviewed::loadout(),
+        "the loadout differs from Go's, reviewed"
+    );
+}
+
+// Nothing served to a model carries a placeholder the human has yet to fill.
+// A JSON text is read as its strings, so an escaped placeholder is seen too.
+#[test]
+#[ignore = "the loadout's two install placeholders (run.installation, mcp.taskloom.installation) await the human's install text; fill them, then un-ignore this"]
+fn test_no_served_text_carries_a_placeholder() {
+    let json = |text: &str| {
+        serde_json::from_str::<serde_json::Value>(text)
+            .unwrap()
+            .to_string()
+    };
+    for (what, text) in [
+        ("the MCP instructions", tasks_mcp::INSTRUCTIONS.to_string()),
+        ("the tools", json(tasks_mcp::TOOLS)),
+        ("the resources", json(tasks_mcp::RESOURCES)),
+        ("the loadout", tasks_cli::LOADOUT.to_string()),
+    ] {
+        assert!(
+            !text.contains("\u{ab}HUMAN:"),
+            "a placeholder is served in {what}"
+        );
+    }
 }

@@ -4,8 +4,10 @@
 //! stdio, each call translated into the application's use cases and its
 //! answer given in Go taskloom's shapes. The server's instructions and
 //! capabilities, each tool's description and input and output schema,
-//! and each resource's description, are Go's, copied verbatim; parity
-//! tests hold them to the Go source.
+//! and each resource's description, are Go's, copied verbatim but for the
+//! human's reviewed factual changes to the instructions and the tool
+//! descriptions (`fixtures/reviewed.rs`); parity tests hold them to the Go
+//! source with those applied.
 //!
 //! A call is served by a [`TaskService`] of its own, made for it by the
 //! composition root, on a blocking thread: two calls share nothing in the
@@ -39,12 +41,14 @@ pub use error::{diagnostic_samples, McpError, McpNotice, EN_US};
 pub use resources::RESOURCES;
 
 /// The server's instructions to its client, Go taskloom's
-/// (`mcpServerInstructions`) verbatim.
+/// (`mcpServerInstructions`) with the reviewed factual changes
+/// (`fixtures/reviewed.rs`).
 pub const INSTRUCTIONS: &str = include_str!("instructions.txt");
 
 /// The tools this server offers, as `tools/list` answers: Go taskloom's
-/// five (name, description, input and output schema) verbatim, in Go's
-/// order.
+/// five (name, description, input and output schema) in Go's order,
+/// verbatim but for the reviewed factual changes to the descriptions
+/// (`fixtures/reviewed.rs`).
 pub const TOOLS: &str = include_str!("tools.json");
 
 /// The command that serves the tools, for the binary to mount.

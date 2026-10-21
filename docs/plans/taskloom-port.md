@@ -171,8 +171,8 @@ cutover ("What remains").
   Go's `{name, version, lock_protocol}`, the lock protocol
   project-registry's `LOCK_PROTOCOL`, 2, since its taker re-checks as
   Go's `takeCurrent` does) and `loadout`, Go's `cmd/taskloom/loadout.yaml`
-  printed verbatim, in yaml alone (`--format yaml` is accepted by
-  `loadout` only).
+  with the reviewed factual changes (Decided 11), printed in yaml alone
+  (`--format yaml` is accepted by `loadout` only).
 - `adapters/driving/tasks-mcp`: `taskloom mcp`, over rmcp (the official
   Rust MCP SDK, pinned at 3.5.1: the newest release at least two weeks old
   on 2026-10-21; server and stdio transport only, no macros). It serves
@@ -182,7 +182,9 @@ cutover ("What remains").
   instructions, capabilities (logging, and `listChanged` on tools and
   resources; a logging level is accepted and nothing is logged), tool
   descriptions and input and output schemas and resource descriptions
-  copied verbatim, and Go's result shapes on tasks-presentation's.
+  copied from Go (the instructions and tool descriptions with the reviewed
+  factual changes, Decided 11; the rest verbatim), and Go's result shapes
+  on tasks-presentation's.
   `task_list` serves every parameter Go's does; outside a work root with
   no project it reads every project, with Go's `global`, `project_count`
   and `notice` (the command line's stderr notice, word for word). The
@@ -246,8 +248,10 @@ cutover ("What remains").
   vocabulary of a seeded project), and the loadout document are fixtures
   `scripts/go-companion-fixtures.sh` extracts from the Go source (a Go
   test laid into `cmd/taskloom` with `go test -overlay`); the parity tests
-  hold Rust's copies to them byte for byte, so a change in Go fails a
-  test until the copy is taken up deliberately.
+  hold Rust's copies to them byte for byte (the instructions, tool
+  descriptions and loadout with the reviewed changes applied, Decided
+  11), so a change in Go fails a test until the copy is taken up
+  deliberately.
 - The importer (`taskloom import`, Decided 2): each Go record becomes the
   command that did what it did, run at the instant Go recorded it (annals'
   `Sampled.now`), so `created_at`, `status_set_at` and `deferred_since`
@@ -398,10 +402,10 @@ Where the port differs from Go:
   resources' documents escape as Go's do. Go's MCP results happen to
   have their keys sorted; Rust's do too (serde_json's map), though
   nothing depends on it.
-- The loadout is Go's document verbatim, its `command: taskloom` included,
-  so it is not yet true of the Rust binary: its prose names Go's
-  `~/.ctxloom/tasks/<project-id>.jsonl` log and Go's install paths (see
-  "Open"). Every tool and resource it and the MCP instructions name is
+- The loadout is Go's document with the reviewed factual changes
+  (Decided 11), its `command: taskloom` included. Its two install texts
+  are placeholders until the human writes them ("Then parity and the
+  cutover"). Every tool and resource it and the MCP instructions name is
   served.
 - Prune, against Go: `--status` refuses `@open`/`@terminal`, which `list`
   takes, until prune takes the classes too. A report counts each task's
@@ -502,9 +506,6 @@ task.
   which `version`'s `lock_protocol` then has to vouch for. A human
   decision: port them, keep a record of Rust's own (a new on-disk format),
   or accept the gaps above.
-- **The loadout's and the MCP instructions' prose is Go's**, naming Go's
-  jsonl log and install paths. Rewording it is the human's call; until
-  then the parity tests keep it Go's.
 - **Priority's evaluator** (step 6): choose a crate or write a small one
   ("What remains").
 - **JSON escapes no HTML** where Go's encoder escapes `<`, `>` and `&`:
@@ -529,7 +530,9 @@ order.
    crate, or write a small one for the arithmetic the formulas use. Carry
    over the warnings: no `priority_fn`, every task tied, coverage under
    50%. Fix the defects Go's tasks-schema.md records: NaN passes every
-   guard, a zero `created_at`, division by zero at −90 days.
+   guard, a zero `created_at`, division by zero at −90 days. Then drop
+   the reviewed change to `sort`'s description (Decided 11, change 4),
+   which says priority is refused, so Go's sentence is served again.
 
 Then parity and the cutover:
 
@@ -541,6 +544,8 @@ Then parity and the cutover:
   registration to the Rust binary (the human's; the clone item under
   "Open" settles first). Risk retired: ctxloom loading the Rust binary
   as its companion.
+- Fill the install placeholders; un-ignore the placeholder test
+  (`test_no_served_text_carries_a_placeholder`, Decided 11).
 
 Loose ends outside the steps:
 
@@ -702,6 +707,23 @@ restarted on a freed harp is under "Where it stands".
     shapes live with its driving adapters (a shared `<domain>-presentation`
     crate where the CLI and MCP server both write them). Formats are not
     core ports: the core returns typed values.
+11. **The prose Rust taskloom serves is Go's text plus a reviewed factual
+    diff** (decided 2026-10-21). The MCP instructions, the tool
+    descriptions and the loadout are Go's, with ten changes the human
+    reviewed and approved where Go's text is false of Rust: the SQLite
+    store path in place of the jsonl log, repo homing gone, `sort:
+    "priority"` refused until step 6, `--format` taking text alone, and
+    where the binary is built from and installed. The repository stays
+    `github.com/ctxloom/ctxloom`, because the Rust code replaces the Go
+    code there, with the crate path `crates/root/bin/taskloom`. The
+    install text is pending: two placeholders stand in the loadout until
+    the human writes it. The parity tests keep Go's fixtures
+    (`scripts/go-companion-fixtures.sh`) and hold each change as an exact
+    `(old, new)` pair beside them (`fixtures/reviewed.rs` in tasks-mcp and
+    tasks-cli), applied to the fixture's raw bytes, each `old` found
+    exactly once: a Go rewording of a changed sentence fails the pair, and
+    any other Go change fails the byte comparison. Other wording is not
+    changed: prompt text is the human's voice.
 
 ## Decisions still open
 
