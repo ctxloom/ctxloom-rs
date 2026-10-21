@@ -8,7 +8,7 @@ and angzarr here.
 ## Where it stands
 
 - `proto/ctxloom/tasks/v1/tasks.proto`: the task aggregate, its commands and
-  events. Events carry the values the task holds after them, never a change
+  events. Its tags are tagma's `tagma.v1.Tag` (step 3, below). Events carry the values the task holds after them, never a change
   to recompute: apply only assigns (angzarr's convention, its
   `operations/error-recovery.mdx` and `FundsDeposited.new_balance`).
 - `core/wire/tasks-proto`: the tasks domain's wire types (`ctxloom.tasks.v1`),
@@ -22,7 +22,8 @@ and angzarr here.
   case's, is `Send`, so a server can spawn them; project identity is
   synchronous and blocks on the registry's lock, so an async server calls it
   through `spawn_blocking`.
-- `core/application/tasks-application`: add, tag, list and import. An add mints a
+- `core/application/tasks-application`: add, tag, list and import, and the
+  tag schema, write-time admission and tag queries (step 3, below). An add mints a
   harp and re-mints on `TaskExists` (100 tries, a fresh command id each); on
   annals' `Recovery::Retry` the same command id runs again in a new unit
   after capped exponential backoff with full jitter (10ms doubling to 1s,
@@ -42,10 +43,13 @@ and angzarr here.
   opener.
 - `adapters/driven/system`: the clock, UUIDv7 command ids, tokio's timer and
   jitter.
+- `adapters/driven/tasks-config`: taskloom's configuration behind the
+  `Configuration` port, as far as the tag schema needs it (step 3, below).
 - `adapters/driving/presentation`: the driving edge's presentation for any
   domain (see "Driving adapters").
-- `adapters/driving/tasks-cli`: `add`, `list`, `tag` and `import`, text and
-  json, its errors and notices rendered from the catalogs.
+- `adapters/driving/tasks-cli`: `add`, `list` (`--tag-query`), `tag` and
+  `import`, with `--config-set`, text and json, its errors and notices
+  rendered from the catalogs.
 - `root/bin/taskloom`: the binary, over annals-store-sql's SQLite store at
   `~/.ctxloom/projects/<project-id>/state.db` (CLAUDE.md, "Storage").
   Its tests are Go's `crossprocess_test.go` ported, each process separate
@@ -75,7 +79,49 @@ and angzarr here.
   real logs. On 2026-10-21's logs (56 files, 23 non-empty, 6241 records)
   all 1162 tasks agreed on every field and a second run applied nothing;
   they held no duplicate add, repair, removal or repeated line, and two
-  records out of time order, which the replay order puts right.
+  records out of time order, which the replay order puts right. Re-run
+  with tags as tagma's (step 3): every task agrees, and all 5200 tags of
+  live tasks parse.
+- Tags on tagma (step 3). tagma's repository (github.com/benjaminabbitt/tagma)
+  gains `proto/tagma/v1/tag.proto` (`optional string namespace`, `string
+  key`, `optional string value`) and `crates/tagma-proto` (prost 0.14,
+  generated at build time, conversions both ways with `tagma_core::Tag`,
+  `PROTO_INCLUDE` for importers), and tagma-core a `Display for Tag`, the
+  canonical spelling Go's port already had. ctxloom-rs takes tagma-core and
+  tagma-proto as path dependencies into tagma's `tag-proto` worktree until
+  that branch merges (Cargo.toml says so). Tags on `TaskState`, `AddTask`,
+  `Retag`, `TaskAdded` and `Retagged` are `repeated tagma.v1.Tag`; the
+  domain dedupes them by tag and sorts them by canonical spelling, as Go
+  sorted its strings.
+  - A write parses its tag strings (trimmed, empties dropped) and admits
+    each it adds, as Go's `validateTag`, before resolving anything: the
+    grammar, the operator words in any case, the reserved `tagma`
+    namespace, a declared enum or range (non-finite refused) and
+    `type=semver` (a strict SemVer 2.0.0 parser written here). Removed
+    tags are never checked. A scalar target's new value displaces the
+    task's old one in the application, before `Retag`: decide never reads
+    the schema.
+  - The tag schema (Go's `tagschema`): the seven facets, immutable, the
+    default declaring nothing; Go's `DefaultTagSchema` is the baseline a
+    project's declarations extend, the last of a facet and target
+    winning. It comes through the `Configuration` port from
+    `tasks-config`: `~/.taskloom/config.yaml`, then the work root's, then
+    `TASKLOOM_CONFIG_*`, then `--config-set`, a layer's `tag_schema`
+    replacing the list below it, as Go's does.
+  - `list --tag-query`: tagma-core's postfix engine, then its infix one
+    when postfix cannot read the query, over the listing's candidates
+    with Go's presence tag, type declarations and SemVer comparator.
+    Every operator agrees with Go's: `fixtures/tag-queries/cases.tsv` is
+    answered by Go's own `filterTasks` (`scripts/compare-go-tag-queries.sh`,
+    writing `go.tsv`) and tagma-core alike, and no tagma-core change was
+    needed.
+  - Display hiding: tagma's `HideConfig` from the schema's hide facts,
+    `tagma:*` hidden by default, in text; JSON keeps every tag, as Go's.
+  - The importer converts at its boundary: a Go tag that does not parse is
+    reported against its record and left out, and a retag takes the task
+    from Go's tags before to Go's tags after, as tags, so a tag Go still
+    holds under another spelling (`sig:"a.b"` beside `sig:a.b`, in a real
+    log) stays.
 
 Where the skeleton differs from Go, or from this plan:
 
@@ -119,9 +165,25 @@ Where the skeleton differs from Go, or from this plan:
   a log Go is mid-way through appending to can end in a torn line, which
   stops that project's import; run it again.
 - `list` with no project here says so and lists nothing; Go falls back to
-  `--global`. Hidden `tagma:*` tags are shown, the `@open`/`@terminal`
-  classes are not taken, and JSON has no `derived_priority` and escapes no
-  HTML: they come with tags, statuses and priority.
+  `--global`. The `@open`/`@terminal` classes are not taken, and JSON has
+  no `derived_priority` and escapes no HTML: they come with statuses and
+  priority.
+- Tags, against Go: a refused write names its first refused tag, where Go
+  names every one, and there is no `--degraded` to write past a refusal.
+  An enum or range declaration that cannot be read refuses the schema when
+  it is parsed (Go refused only when a tag met it). A tag spelled two ways
+  is one tag. An `and`/`or`/`not` key is refused however it is quoted. An
+  environment or `--config-set` list does not split inside double quotes
+  (Go split an enum declaration's members apart), and an override naming
+  no key is refused (Go wrote it, and then its schema refused it).
+  `--tag-query` takes infix as well as Go's postfix. `--write-upgrades` is
+  not ported: there is no config version to upgrade from.
+- angzarr-build maps only angzarr's own packages by absolute path
+  (`extern_path`), so `tasks-proto` nests its generated module as its
+  package is (`ctxloom::tasks::v1`) and re-exports tagma-proto's `v1` at
+  `tagma`, where prost's relative path lands; the domain layer finds `Tag`
+  re-exported in `tasks_proto::v1`. An `extern_path` argument in
+  angzarr-build would retire both.
 
 ## Open, and the step each waits for
 
@@ -164,22 +226,19 @@ complete unit that retires a risk, and each reviewed by an architect before
 the next. A slice cuts through every layer it needs; the sections after this
 one are the reference for what each layer finally holds, not an order.
 
-Step 1, the importer, is done (see "Where it stands").
+Step 1, the importer, and step 3, tags on tagma, are done (see "Where it
+stands").
 
 2. **Healing and repointing a project's store** (see "Project identity:
    heal and repoint"). Risk retired: tasks that seem lost because a
    directory resolved to the wrong id.
-3. **Tags on tagma.** The `Tag` proto in the tagma repository, imported
-   here, then validation and queries. Risk retired: the cross-repository
-   proto dependency, and query parity between `tagma-core` and Go's
-   `tagquery.go`.
 4. **MCP and the companion contract**: `taskloom mcp` with `task_list` and
    `task_add`, plus `loadout` and `version --format json`. Risk retired:
    ctxloom loading the Rust binary as its companion. After this the Rust
    taskloom can serve real sessions.
 5. **The remaining commands and tools**: status, edit, show, summary,
-   tags, statuses, prune and lint, `tag`'s schema handling, and the remaining
-   MCP tools and resources.
+   tags, statuses, prune and lint (which reads the tag schema), and the
+   remaining MCP tools and resources.
 6. **Priority**: choosing or writing the formula evaluator. It is isolated
    from everything else, so it can move earlier if the evaluator looks
    risky.
@@ -187,37 +246,11 @@ Step 1, the importer, is done (see "Where it stands").
 
 ## Tags on tagma
 
-Tags are tagma's `(namespace:)key(=value)` grammar. The Rust engine is
-`tagma-core` (github.com/benjaminabbitt/tagma, `crates/tagma-core`); the Go
-module ctxloom uses is its port. It has no dependencies, so the core may link
-it.
-
-tagma is the one tag model for taskloom, ctxloom and ltk alike, so the tag
-message and its conversions belong to no single domain.
-
-1. A `Tag` message in the tagma repository (e.g. `proto/tagma/v1/tag.proto`,
-   with its prost crate beside `tagma-core`): `optional string namespace`,
-   `string key`, `optional string value`, matching `tagma_core::Tag`, with
-   the conversions both ways. ctxloom-rs imports it as it imports
-   angzarr-proto (a git dependency pinned by commit; a path dependency while
-   the two change together), and `tasks.proto` imports the message. Tags on `TaskState`, `AddTask`,
-   `Retag`, `TaskAdded` and `Retagged` become `repeated Tag`; normalization
-   (dedupe, sort) is over tags, not strings. Any later domain that tags
-   (bundles, sessions, ltk rules) uses the same message.
-2. Validation at write time, from Go `operations.validateTag`: unparseable
-   tags, the words `and`/`or`/`not`, the reserved `tagma` namespace, values
-   outside a declared enum or range (non-finite included), invalid semver for
-   `type=semver`.
-3. The tag schema (Go `internal/shared/tasks/tagschema`):
-   `tagma.<facet>:"<target>"=<value>` declarations from config. The facets are
-   arity, enum, range, hide, type, priority_fn and decay_fn. A schema is
-   immutable, and an absent schema means nothing is declared. Scalar collapse
-   (a new `priority=high` displacing `priority=low`) is resolved by the
-   application before `Retag` is sent: decide never reads the schema.
-4. Tag queries: `tagma-core`'s postfix and infix engines replace Go's
-   `tagquery.go`. Check its operators (`= != > >= < <= ~`, `*:key`, `+:key`,
-   `ns:*`) against Go's before relying on it.
-5. Display hiding: `tagma_core::HideConfig`, with `tagma:*` hidden by default.
+Done (step 3, "Where it stands"). tagma is the one tag model for taskloom,
+ctxloom and ltk alike: a later domain that tags (bundles, sessions, ltk
+rules) imports `tagma.v1.Tag` as `tasks.proto` does. What remains is
+outside this repository: merging tagma's `tag-proto` branch, then pointing
+Cargo.toml's path at tagma's primary checkout or a pinned commit.
 
 ## Ports and application
 
@@ -262,10 +295,11 @@ defects Go's tasks-schema.md records: NaN passes every guard, a zero
   up. A linked worktree goes to its
   primary checkout unless it has its own marker. The work root is
   `CTXLOOM_ROOT`, then the git root, then cwd.
-- Configuration: `~/.taskloom/config.yaml`, then `<root>/.taskloom/config.yaml`,
-  then `TASKLOOM_CONFIG_*`, then `--config-set`. It carries `schema_version`
-  (`--write-upgrades`) and `tag_schema` extending the default schema, where
-  the last declaration wins.
+- Configuration (`tasks-config`, done as far as the tag schema needs it):
+  `~/.taskloom/config.yaml`, then `<root>/.taskloom/config.yaml`, then
+  `TASKLOOM_CONFIG_*`, then `--config-set`. It carries `schema_version`
+  (`--write-upgrades`, not ported) and `tag_schema` extending the default
+  schema, where the last declaration wins.
 - The importer for Go's jsonl logs (Decided, 2): `go-task-log`.
 - Harp minting: the same word lists as Go's `harp` (adjective-noun for tasks).
 - Clock.
