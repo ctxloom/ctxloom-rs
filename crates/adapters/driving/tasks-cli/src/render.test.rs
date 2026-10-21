@@ -6,7 +6,7 @@ use tasks_application::{Hidden, Listing, Project, Reach, Row, Shown, Task, Times
 
 use presentation::{render, write_json, Format};
 
-use super::{headline, project_label, table, Added, Listed, Tagged, TaskJson};
+use super::{table, Added, Listed, Tagged, TaskJson};
 
 fn task(harp: &str, status: &str) -> Task {
     Task {
@@ -29,18 +29,6 @@ fn rendered(write: impl FnOnce(&mut Vec<u8>) -> std::io::Result<()>) -> String {
     let mut out = Vec::new();
     write(&mut out).unwrap();
     String::from_utf8(out).unwrap()
-}
-
-#[test]
-fn test_a_project_is_labelled_by_its_root_then_its_id() {
-    assert_eq!(project_label(&project()), "/work/tree (jolly-mute-magma)");
-}
-
-#[test]
-fn test_a_headline_is_cut_at_80_characters() {
-    let exactly = "x".repeat(80);
-    assert_eq!(headline(&format!("{exactly}\nmore")), exactly);
-    assert_eq!(headline(&"x".repeat(81)), format!("{exactly}\u{2026}"));
 }
 
 #[test]
@@ -192,13 +180,6 @@ fn test_a_listing_across_projects_has_a_table_for_each() {
     assert_eq!(json[1]["project_id"], "brisk-tall-oak");
     assert_eq!(json[1]["project_dir"], "");
     assert_eq!(json[1]["text_hash"], "0123456789ab", "the task whole");
-}
-
-#[test]
-fn test_a_project_with_no_known_directory_is_labelled_by_its_id() {
-    let mut project = project();
-    project.root.clear();
-    assert_eq!(project_label(&project), "jolly-mute-magma");
 }
 
 fn tag(key: &str) -> tasks_application::Tag {

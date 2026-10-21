@@ -2,82 +2,21 @@
 //! does (JSON), in Go taskloom's shapes, on presentation's [`Render`]. A
 //! task's JSON is tasks-presentation's, shared with the MCP server.
 
-use std::collections::BTreeMap;
 use std::io::{self, Write};
 
 use annals_diagnostic::Diagnostic;
 use presentation::{text, Catalog, Envelope, Render};
 use serde::Serialize;
 use tasks_application::{
-    Details, LintReport, Listing, Project, Reach, Row, Shown, StatusInfo, Statuses, Summary, Tag,
-    Task, Vocabulary,
+    Details, LintReport, Listing, Reach, Row, Shown, StatusInfo, Statuses, Summary, Tag, Task,
+    Vocabulary,
 };
-use tasks_presentation::{spelled, TaskJson};
-
-/// How many characters of a task's first line a listing shows.
-pub const HEADLINE_WIDTH: usize = 80;
-
-/// A task as one row of a compact listing: Go's `CompactTask`, its
-/// fields in its order, the text cut to its headline.
-#[derive(Serialize)]
-pub struct CompactJson<'a> {
-    harp_id: &'a str,
-    status: &'a str,
-    checked: bool,
-    tags: Vec<String>,
-    headline: String,
-}
-
-impl<'a> CompactJson<'a> {
-    pub fn of(task: &'a Task) -> CompactJson<'a> {
-        CompactJson {
-            harp_id: &task.harp_id,
-            status: &task.status,
-            checked: task.checked,
-            tags: spelled(&task.tags),
-            headline: headline(&task.text),
-        }
-    }
-}
-
-/// A row of a listing that spans projects (Go's `taskRow`): the task, then
-/// the project it came from.
-#[derive(Serialize)]
-pub struct RowJson<'a, T: Serialize> {
-    #[serde(flatten)]
-    task: T,
-    project_id: &'a str,
-    project_dir: &'a str,
-}
-
-impl<'a, T: Serialize> RowJson<'a, T> {
-    pub fn of(task: T, project: &'a Project) -> RowJson<'a, T> {
-        RowJson {
-            task,
-            project_id: &project.id,
-            project_dir: &project.root,
-        }
-    }
-}
-
-/// `dir (id)`: the project a command ran in; its id alone where its
-/// directory is not known (Go's `formatProjectLabel`).
-pub fn project_label(project: &Project) -> String {
-    if project.root.is_empty() {
-        return project.id.clone();
-    }
-    format!("{} ({})", project.root, project.id)
-}
+pub use tasks_presentation::{headline, project_label, CompactJson, RowJson, HEADLINE_WIDTH};
+use tasks_presentation::{SummaryJson, TagCountJson, TaskJson};
 
 /// The heading of an answer read across every project.
 pub fn projects_heading(out: &mut dyn Write, projects: usize) -> io::Result<()> {
     writeln!(out, "Projects: {projects} (--global)\n")
-}
-
-/// The first line of `text` as a listing shows it: [`HEADLINE_WIDTH`]
-/// characters at most.
-pub fn headline(text: &str) -> String {
-    text::headline(text, HEADLINE_WIDTH)
 }
 
 /// How wide the status column is: wide enough for every default status.
@@ -283,32 +222,9 @@ enum OneOrMany<T> {
 /// Progress, by id (with its project across projects).
 pub struct Summed<'a>(pub &'a Summary);
 
-#[derive(Serialize)]
-struct SummaryJson<'a> {
-    counts: &'a BTreeMap<String, usize>,
-    in_progress: Vec<InProgressJson<'a>>,
-}
-
-#[derive(Serialize)]
-struct InProgressJson<'a> {
-    harp_id: &'a str,
-    project: String,
-}
-
 impl Render for Summed<'_> {
     fn json(&self) -> impl Serialize + '_ {
-        SummaryJson {
-            counts: &self.0.counts,
-            in_progress: self
-                .0
-                .in_progress
-                .iter()
-                .map(|row| InProgressJson {
-                    harp_id: &row.task.harp_id,
-                    project: project_label(&row.project),
-                })
-                .collect(),
-        }
+        SummaryJson::of(self.0)
     }
 
     fn text(&self, out: &mut dyn Write) -> io::Result<()> {
@@ -386,24 +302,9 @@ impl Render for Taxonomy<'_> {
 /// line per tag, its counts aligned.
 pub struct Counted<'a>(pub &'a Vocabulary);
 
-#[derive(Serialize)]
-struct TagCountJson {
-    tag: String,
-    active: usize,
-    total: usize,
-}
-
 impl Render for Counted<'_> {
     fn json(&self) -> impl Serialize + '_ {
-        self.0
-            .tags
-            .iter()
-            .map(|c| TagCountJson {
-                tag: c.tag.to_string(),
-                active: c.active,
-                total: c.total,
-            })
-            .collect::<Vec<_>>()
+        self.0.tags.iter().map(TagCountJson::of).collect::<Vec<_>>()
     }
 
     fn text(&self, out: &mut dyn Write) -> io::Result<()> {

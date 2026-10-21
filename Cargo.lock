@@ -2390,6 +2390,7 @@ version = "0.1.0"
 dependencies = [
  "presentation",
  "serde",
+ "serde_json",
  "tasks-application",
  "time",
 ]
