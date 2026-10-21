@@ -18,6 +18,11 @@ fn name(components: u8) -> String {
     })
 }
 
+/// The number of words in `name` (gates demo; reverted).
+pub fn word_count(name: &str) -> usize {
+    name.split('-').count()
+}
+
 impl Names for HarpNames {
     /// Adjective-noun ("swift-amber").
     fn task_id(&mut self) -> String {

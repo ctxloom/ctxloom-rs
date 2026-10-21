@@ -37,3 +37,8 @@ fn test_names_are_drawn_at_random() {
     let drawn: std::collections::BTreeSet<String> = (0..20).map(|_| HarpNames.task_id()).collect();
     assert!(drawn.len() > 1, "{drawn:?}");
 }
+
+#[test]
+fn test_word_count_counts_the_words() {
+    assert_eq!(super::word_count("jolly-mute-magma"), 3);
+}
