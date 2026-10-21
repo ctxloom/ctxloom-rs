@@ -1,0 +1,22 @@
+[package]
+name = "tasks-cli"
+version = "0.1.0"
+description = "The tasks command line: arguments parsed into use cases, and their answers rendered as text or JSON"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+annals-diagnostic.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tasks-application.workspace = true
+time.workspace = true
+
+[dev-dependencies]
+fluent-syntax.workspace = true
+
+[lints]
+workspace = true
