@@ -1,0 +1,10 @@
+{"op":"add","task":"brisk-heron","text":"   ","ts":"2026-03-01T10:01:00Z"}
+{"op":"status","task":"brisk-heron","status":"Done","ts":"2026-03-01T10:01:30Z"}
+{"op":"add","task":"quiet-maple","text":"Deferred without a trigger","status":"Deferred","ts":"2026-03-01T10:02:00Z"}
+{"op":"add","task":"tidy-otter","text":"Odd statuses","ts":"2026-03-01T10:03:00Z"}
+{"op":"status","task":"tidy-otter","status":"@open","ts":"2026-03-01T10:04:00Z"}
+{"op":"status","task":"tidy-otter","status":"Deferred","ts":"2026-03-01T10:05:00Z"}
+{"op":"text","task":"tidy-otter","text":"  ","ts":"2026-03-01T10:06:00Z"}
+{"op":"add","task":"swift-lark","text":"Untrimmed status","status":" Done ","ts":"2026-03-01T10:07:00Z"}
+{"op":"add","task":"pale-finch","text":"No time at all"}
+{"op":"add","task":"","text":"No harp","ts":"2026-03-01T10:08:00Z"}

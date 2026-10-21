@@ -1992,14 +1992,19 @@ dependencies = [
 name = "taskloom"
 version = "0.1.0"
 dependencies = [
+ "annals",
+ "go-task-log",
  "harp-names",
+ "ports",
  "project-registry",
  "serde_json",
  "system",
  "task-store-sqlite",
+ "tasks",
  "tasks-application",
  "tasks-cli",
  "tempfile",
+ "time",
  "tokio",
 ]
 

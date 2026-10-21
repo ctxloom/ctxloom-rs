@@ -8,7 +8,8 @@ use std::pin::pin;
 use std::task::{Context as TaskContext, Poll, Waker};
 
 use tasks_application::{
-    AppError, ListQuery, Listing, NewTask, Project, TagChange, Task, TaskService, Written,
+    AppError, ImportReport, ImportRequest, ImportService, ListQuery, Listing, NewTask, Project,
+    ProjectImport, TagChange, Task, TaskService, Written,
 };
 
 use super::{run, Context};
@@ -55,6 +56,8 @@ struct Fake {
     listed: Vec<ListQuery>,
     written: Option<Result<Written, AppError>>,
     listing: Option<Result<Listing, AppError>>,
+    imports: Vec<ImportRequest>,
+    report: Option<Result<ImportReport, AppError>>,
 }
 
 impl TaskService for Fake {
@@ -71,6 +74,13 @@ impl TaskService for Fake {
     async fn list(&mut self, query: ListQuery) -> Result<Listing, AppError> {
         self.listed.push(query);
         self.listing.clone().expect("a list answer scripted")
+    }
+}
+
+impl ImportService for Fake {
+    async fn import(&mut self, request: ImportRequest) -> Result<ImportReport, AppError> {
+        self.imports.push(request);
+        self.report.clone().expect("an import answer scripted")
     }
 }
 
@@ -454,4 +464,123 @@ fn test_output_that_cannot_be_written_fails_with_why() {
             "{args:?}"
         );
     }
+}
+
+// ------------------------------------------------------------ import
+
+fn imported(lost: usize) -> ProjectImport {
+    ProjectImport {
+        project_id: "jolly-mute-magma".to_string(),
+        records: 3,
+        tasks: 1,
+        applied: 3,
+        lost: (0..lost)
+            .map(|line| tasks_application::Lost {
+                line: u32::try_from(line).unwrap(),
+                op: tasks_application::GoOp::Status,
+                harp_id: "swift-amber".to_string(),
+                text: String::new(),
+                why: tasks_application::Why::TaskNotImported,
+            })
+            .collect(),
+        ..ProjectImport::default()
+    }
+}
+
+fn report(projects: Vec<ProjectImport>) -> Option<Result<ImportReport, AppError>> {
+    Some(Ok(ImportReport { projects }))
+}
+
+#[test]
+fn test_import_imports_every_project_and_says_what_it_did() {
+    let mut fake = Fake {
+        report: report(vec![imported(0)]),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["import"]);
+    assert_eq!(ran.code, 0, "{}", ran.err);
+    assert_eq!(fake.imports, [ImportRequest { project: None }]);
+    assert_eq!(
+        ran.out,
+        "jolly-mute-magma: 3 records, 1 tasks added, 3 records imported\n"
+    );
+    assert_eq!(ran.err, "");
+}
+
+#[test]
+fn test_import_of_one_project_names_it() {
+    let mut fake = Fake {
+        report: report(vec![imported(0)]),
+        ..Fake::default()
+    };
+    run_on(
+        &mut fake,
+        true,
+        &["import", "--project", "jolly-mute-magma"],
+    );
+    assert_eq!(
+        fake.imports,
+        [ImportRequest {
+            project: Some("jolly-mute-magma".to_string())
+        }]
+    );
+}
+
+#[test]
+fn test_import_answers_json_off_a_terminal() {
+    let mut fake = Fake {
+        report: report(vec![imported(0)]),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, false, &["import"]);
+    let json: serde_json::Value = serde_json::from_str(&ran.out).unwrap();
+    assert_eq!(json["complete"], true);
+    assert_eq!(json["projects"][0]["project_id"], "jolly-mute-magma");
+}
+
+#[test]
+fn test_import_that_left_records_behind_fails_after_saying_which() {
+    let mut fake = Fake {
+        report: report(vec![imported(2)]),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["import"]);
+    assert_eq!(ran.code, 1);
+    assert!(ran.out.contains("not imported: line 1"), "{}", ran.out);
+    assert_eq!(
+        ran.err,
+        "taskloom: not everything was imported: 0 projects stopped, 2 records not imported\n"
+    );
+}
+
+#[test]
+fn test_import_that_stopped_in_a_project_fails() {
+    let mut stopped = imported(0);
+    stopped.failed = Some(annals_diagnostic::Report::new("x-bad", "bad log"));
+    let mut fake = Fake {
+        report: report(vec![stopped, imported(0)]),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["import"]);
+    assert_eq!(ran.code, 1);
+    assert_eq!(
+        ran.err,
+        "taskloom: not everything was imported: 1 projects stopped, 0 records not imported\n"
+    );
+}
+
+#[test]
+fn test_import_that_cannot_start_fails_with_why() {
+    let mut fake = Fake {
+        report: Some(Err(AppError::NoProject)),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["import"]);
+    assert_eq!(ran.code, 1);
+    assert_eq!(ran.out, "");
+    assert!(
+        ran.err.starts_with("taskloom: there is no project"),
+        "{}",
+        ran.err
+    );
 }

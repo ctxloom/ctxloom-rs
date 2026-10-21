@@ -1,19 +1,23 @@
-//! The tasks command line: `add`, `list` and `tag`, translated into the
-//! application's use cases and their answers rendered. Text on a terminal,
+//! The tasks command line: `add`, `list`, `tag` and `import`, translated
+//! into the application's use cases and their answers rendered. Text on a terminal,
 //! JSON otherwise, unless `--format` or `--json` says; the project a write
 //! went to on stderr, so stdout stays parseable. Exit 0, or 1 with the
 //! error on stderr.
 
 mod error;
+mod import;
 mod render;
 
 use std::ffi::OsString;
 use std::io::{self, Write};
 
 use clap::{Parser, Subcommand, ValueEnum};
-use tasks_application::{ListQuery, NewTask, TagChange, TaskService, Written};
+use tasks_application::{
+    ImportRequest, ImportService, ListQuery, NewTask, TagChange, TaskService, Written,
+};
 
 pub use error::{diagnostic_samples, CliError};
+pub use import::ImportJson;
 pub use render::{headline, rfc3339, table, TaskJson, HEADLINE_WIDTH};
 
 /// The program's name: every diagnostic's prefix.
@@ -86,6 +90,10 @@ enum Command {
         #[arg(long)]
         remove: Vec<String>,
     },
+    /// Import Go taskloom's task logs (~/.ctxloom/tasks/<project-id>.jsonl)
+    /// into each project's store: every project's, or --project's alone.
+    /// Running it again imports only what is new.
+    Import,
 }
 
 impl Cli {
@@ -102,7 +110,7 @@ impl Cli {
 
 /// Run the command line `args` (the program name first) against `service`,
 /// writing to `out` and `err`; the exit code.
-pub async fn run<S: TaskService>(
+pub async fn run<S: TaskService + ImportService>(
     args: impl IntoIterator<Item = OsString>,
     context: &Context,
     service: &mut S,
@@ -174,6 +182,15 @@ pub async fn run<S: TaskService>(
                 Err(e) => Err(CliError::App(e)),
             }
         }
+        Command::Import => {
+            let request = ImportRequest {
+                project: cli.project,
+            };
+            match service.import(request).await {
+                Ok(report) => imported(&report, format, out),
+                Err(e) => Err(CliError::App(e)),
+            }
+        }
     };
     match result {
         Ok(()) => 0,
@@ -227,6 +244,30 @@ fn listed(
         }
     };
     wrote.map_err(output_failed)
+}
+
+/// Render the report; refuse when it left something behind, so a script
+/// sees it in the exit code.
+fn imported(
+    report: &tasks_application::ImportReport,
+    format: Format,
+    out: &mut dyn Write,
+) -> Result<(), CliError> {
+    match format {
+        Format::Text => import::text(out, report),
+        Format::Json => render::json(out, &ImportJson::of(report)),
+    }
+    .map_err(output_failed)?;
+    if report.complete() {
+        return Ok(());
+    }
+    let stopped = report
+        .projects
+        .iter()
+        .filter(|p| p.failed.is_some())
+        .count();
+    let lost = report.projects.iter().map(|p| p.lost.len()).sum();
+    Err(CliError::Incomplete { stopped, lost })
 }
 
 fn output_failed(error: io::Error) -> CliError {

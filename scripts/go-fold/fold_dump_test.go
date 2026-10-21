@@ -60,7 +60,9 @@ func TestDumpFold(t *testing.T) {
 		id := strings.TrimSuffix(filepath.Base(p), ".jsonl")
 		f, err := (&eventLog{path: p}).fold()
 		if err != nil {
-			dump[id] = dumpedProject{Error: err.Error(), Tasks: []dumpedTask{}, Anomalies: []dumpedAnomaly{}}
+			// The log's directory is left out, so a dump names no machine's paths.
+			msg := strings.ReplaceAll(err.Error(), dir+string(filepath.Separator), "")
+			dump[id] = dumpedProject{Error: msg, Tasks: []dumpedTask{}, Anomalies: []dumpedAnomaly{}}
 			continue
 		}
 		proj := dumpedProject{Tasks: []dumpedTask{}, Anomalies: []dumpedAnomaly{}}

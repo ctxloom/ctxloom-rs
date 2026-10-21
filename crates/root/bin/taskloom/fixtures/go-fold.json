@@ -1,0 +1,320 @@
+{
+  "domain-refusals": {
+    "tasks": [
+      {
+        "harp_id": "",
+        "removed": false,
+        "text": "No harp",
+        "status": "To Do",
+        "trigger": "",
+        "origin_session": "",
+        "tags": [],
+        "created_at": "2026-03-01T10:08:00Z",
+        "status_set_at": "2026-03-01T10:08:00Z",
+        "deferred_since": null
+      },
+      {
+        "harp_id": "brisk-heron",
+        "removed": false,
+        "text": "",
+        "status": "Done",
+        "trigger": "",
+        "origin_session": "",
+        "tags": [],
+        "created_at": "2026-03-01T10:01:00Z",
+        "status_set_at": "2026-03-01T10:01:30Z",
+        "deferred_since": null
+      },
+      {
+        "harp_id": "pale-finch",
+        "removed": false,
+        "text": "No time at all",
+        "status": "To Do",
+        "trigger": "",
+        "origin_session": "",
+        "tags": [],
+        "created_at": "0001-01-01T00:00:00Z",
+        "status_set_at": "0001-01-01T00:00:00Z",
+        "deferred_since": null
+      },
+      {
+        "harp_id": "quiet-maple",
+        "removed": false,
+        "text": "Deferred without a trigger",
+        "status": "Deferred",
+        "trigger": "",
+        "origin_session": "",
+        "tags": [],
+        "created_at": "2026-03-01T10:02:00Z",
+        "status_set_at": "2026-03-01T10:02:00Z",
+        "deferred_since": "2026-03-01T10:02:00Z"
+      },
+      {
+        "harp_id": "swift-lark",
+        "removed": false,
+        "text": "Untrimmed status",
+        "status": " Done ",
+        "trigger": "",
+        "origin_session": "",
+        "tags": [],
+        "created_at": "2026-03-01T10:07:00Z",
+        "status_set_at": "2026-03-01T10:07:00Z",
+        "deferred_since": null
+      },
+      {
+        "harp_id": "tidy-otter",
+        "removed": false,
+        "text": "",
+        "status": "Deferred",
+        "trigger": "",
+        "origin_session": "",
+        "tags": [],
+        "created_at": "2026-03-01T10:03:00Z",
+        "status_set_at": "2026-03-01T10:05:00Z",
+        "deferred_since": "2026-03-01T10:05:00Z"
+      }
+    ],
+    "anomalies": []
+  },
+  "empty": {
+    "tasks": [],
+    "anomalies": []
+  },
+  "harp-collision": {
+    "tasks": [
+      {
+        "harp_id": "brisk-heron",
+        "removed": false,
+        "text": "First task",
+        "status": "In Progress",
+        "trigger": "",
+        "origin_session": "s1",
+        "tags": [],
+        "created_at": "2026-03-01T10:01:00Z",
+        "status_set_at": "2026-03-01T10:03:00Z",
+        "deferred_since": null
+      },
+      {
+        "harp_id": "quiet-maple",
+        "removed": true,
+        "text": "",
+        "status": "",
+        "trigger": "",
+        "origin_session": "",
+        "tags": [],
+        "created_at": null,
+        "status_set_at": null,
+        "deferred_since": null
+      }
+    ],
+    "anomalies": [
+      {
+        "harp_id": "brisk-heron",
+        "text": "Second task, same harp",
+        "session": "s2",
+        "key": "64b692af74e4",
+        "repaired": false
+      },
+      {
+        "harp_id": "quiet-maple",
+        "text": "The re-add",
+        "session": "s1",
+        "key": "f1c56911b746",
+        "repaired": false
+      }
+    ]
+  },
+  "ignored-records": {
+    "tasks": [
+      {
+        "harp_id": "brisk-heron",
+        "removed": false,
+        "text": "Kept",
+        "status": "To Do",
+        "trigger": "",
+        "origin_session": "",
+        "tags": [
+          "x"
+        ],
+        "created_at": "2026-03-01T10:01:00Z",
+        "status_set_at": "2026-03-01T10:01:00Z",
+        "deferred_since": null
+      },
+      {
+        "harp_id": "quiet-maple",
+        "removed": true,
+        "text": "",
+        "status": "",
+        "trigger": "",
+        "origin_session": "",
+        "tags": [],
+        "created_at": null,
+        "status_set_at": null,
+        "deferred_since": null
+      }
+    ],
+    "anomalies": []
+  },
+  "malformed": {
+    "error": "malformed.jsonl:2: malformed task event: unexpected end of JSON input — inspect/repair the line, or move the file aside and re-add tasks",
+    "tasks": [],
+    "anomalies": []
+  },
+  "plain-history": {
+    "tasks": [
+      {
+        "harp_id": "amber-crane",
+        "removed": false,
+        "text": "No session, custom status",
+        "status": "Blocked",
+        "trigger": "",
+        "origin_session": "",
+        "tags": [],
+        "created_at": "2026-03-01T10:14:00Z",
+        "status_set_at": "2026-03-01T10:14:00Z",
+        "deferred_since": null
+      },
+      {
+        "harp_id": "brisk-heron",
+        "removed": false,
+        "text": "Write the whole tour",
+        "status": "In Progress",
+        "trigger": "",
+        "origin_session": "calm-otter",
+        "tags": [
+          "docs",
+          "urgent"
+        ],
+        "created_at": "2026-03-01T10:00:00.123456789Z",
+        "status_set_at": "2026-03-01T10:02:00.12Z",
+        "deferred_since": null
+      },
+      {
+        "harp_id": "pale-finch",
+        "removed": false,
+        "text": "Archived work",
+        "status": "Archived",
+        "trigger": "",
+        "origin_session": "calm-otter",
+        "tags": [
+          "old"
+        ],
+        "created_at": "2026-03-01T08:13:00Z",
+        "status_set_at": "2026-03-01T08:13:00Z",
+        "deferred_since": null
+      },
+      {
+        "harp_id": "quiet-maple",
+        "removed": false,
+        "text": "Revisit the cache",
+        "status": "Deferred",
+        "trigger": "when CI is green",
+        "origin_session": "calm-otter",
+        "tags": [],
+        "created_at": "2026-03-01T10:01:00.5Z",
+        "status_set_at": "2026-03-01T10:08:00Z",
+        "deferred_since": "2026-03-01T10:08:00Z"
+      },
+      {
+        "harp_id": "swift-lark",
+        "removed": true,
+        "text": "",
+        "status": "",
+        "trigger": "",
+        "origin_session": "",
+        "tags": [],
+        "created_at": null,
+        "status_set_at": null,
+        "deferred_since": null
+      },
+      {
+        "harp_id": "tidy-otter",
+        "removed": false,
+        "text": "Drop the old flag",
+        "status": "Done",
+        "trigger": "",
+        "origin_session": "calm-otter",
+        "tags": [],
+        "created_at": "2026-03-01T10:09:00Z",
+        "status_set_at": "2026-03-01T10:10:00Z",
+        "deferred_since": null
+      }
+    ],
+    "anomalies": []
+  },
+  "repaired-collision": {
+    "tasks": [
+      {
+        "harp_id": "antivirus-lurk",
+        "removed": false,
+        "text": "Displaced task",
+        "status": "Deferred",
+        "trigger": "later",
+        "origin_session": "s2",
+        "tags": [
+          "b"
+        ],
+        "created_at": "2026-03-01T10:02:00.25Z",
+        "status_set_at": "2026-03-01T10:02:00.25Z",
+        "deferred_since": "2026-03-01T10:02:00.25Z"
+      },
+      {
+        "harp_id": "brisk-heron",
+        "removed": false,
+        "text": "First task",
+        "status": "Done",
+        "trigger": "",
+        "origin_session": "s1",
+        "tags": [],
+        "created_at": "2026-03-01T10:01:00Z",
+        "status_set_at": "2026-03-01T10:03:00Z",
+        "deferred_since": null
+      }
+    ],
+    "anomalies": [
+      {
+        "harp_id": "brisk-heron",
+        "text": "Displaced task",
+        "session": "s2",
+        "key": "5ed4446b6676",
+        "repaired": true
+      }
+    ]
+  },
+  "union-merged": {
+    "tasks": [
+      {
+        "harp_id": "brisk-heron",
+        "removed": false,
+        "text": "Merged task, edited",
+        "status": "Done",
+        "trigger": "",
+        "origin_session": "s1",
+        "tags": [
+          "a"
+        ],
+        "created_at": "2026-03-01T10:01:00Z",
+        "status_set_at": "2026-03-01T10:05:00Z",
+        "deferred_since": null
+      },
+      {
+        "harp_id": "quiet-maple",
+        "removed": false,
+        "text": "Tie breaker",
+        "status": "Archived",
+        "trigger": "",
+        "origin_session": "s1",
+        "tags": [],
+        "created_at": "2026-03-01T10:03:00Z",
+        "status_set_at": "2026-03-01T10:04:00Z",
+        "deferred_since": null
+      }
+    ],
+    "anomalies": []
+  },
+  "unknown-op": {
+    "error": "unknown-op.jsonl:2: unrecognized op \"archive\" — this log was likely written by a newer taskloom; upgrade this binary",
+    "tasks": [],
+    "anomalies": []
+  }
+}

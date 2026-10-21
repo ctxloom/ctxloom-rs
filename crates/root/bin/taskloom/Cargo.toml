@@ -8,6 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+go-task-log.workspace = true
 harp-names.workspace = true
 project-registry.workspace = true
 system.workspace = true
@@ -17,8 +18,12 @@ tasks-cli.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+annals.workspace = true
+ports.workspace = true
 serde_json.workspace = true
+tasks.workspace = true
 tempfile.workspace = true
+time.workspace = true
 
 [lints]
 workspace = true
