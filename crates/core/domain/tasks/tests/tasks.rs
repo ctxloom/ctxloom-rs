@@ -630,12 +630,42 @@ fn test_registration_accepts_the_generated_state() {
 // ------------------------------------------------------------ catalog
 
 #[test]
+fn test_a_rejection_renders_its_english_fallback() {
+    assert_eq!(
+        TaskRejection::TaskExists {
+            harp_id: HARP.to_string()
+        }
+        .to_string(),
+        "task swift-amber already exists"
+    );
+    assert_eq!(
+        TaskRejection::TriggerRequired.to_string(),
+        "a Deferred task needs a trigger: the condition that should revive it"
+    );
+}
+
+#[test]
 fn test_every_rejection_has_a_catalog_message_with_exactly_its_args() {
     use fluent_syntax::ast::{Entry, Expression, InlineExpression, PatternElement};
 
     let ftl = include_str!("../locales/en-US/tasks.ftl");
     let resource = fluent_syntax::parser::parse(ftl).expect("the catalog parses");
-    for sample in tasks::diagnostic_samples() {
+    let samples = tasks::diagnostic_samples();
+    // Both ways: every catalog message has a sample, and every sample a
+    // message, so a missing or empty sample list fails too.
+    let mut catalog: Vec<&str> = resource
+        .body
+        .iter()
+        .filter_map(|e| match e {
+            Entry::Message(m) => Some(m.id.name),
+            _ => None,
+        })
+        .collect();
+    catalog.sort_unstable();
+    let mut sampled: Vec<&str> = samples.iter().map(|s| s.code()).collect();
+    sampled.sort_unstable();
+    assert_eq!(catalog, sampled, "catalog messages and samples");
+    for sample in samples {
         let message = resource
             .body
             .iter()
