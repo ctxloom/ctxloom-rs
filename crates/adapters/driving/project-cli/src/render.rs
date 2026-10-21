@@ -1,10 +1,12 @@
 //! The project commands' answers as a person reads them (text) or a
-//! program does (JSON: one document, for jq).
+//! program does (JSON: one document, for jq). A problem carrying a
+//! diagnostic (a damaged database) is rendered from the catalog: its
+//! message in text, its envelope in JSON.
 
 use std::io::{self, Write};
 use std::path::Path;
 
-use presentation::Render;
+use presentation::{Catalog, Envelope, Render};
 use project_application::{Change, Plan, Problem, Registered, Shown};
 use serde::Serialize;
 
@@ -13,7 +15,7 @@ fn shown(path: &Path) -> String {
 }
 
 /// A problem as JSON, tagged by its kind.
-#[derive(Serialize, Debug, PartialEq)]
+#[derive(Serialize, Debug)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum ProblemJson<'a> {
     TwoIds {
@@ -45,10 +47,17 @@ pub enum ProblemJson<'a> {
         project_id: &'a str,
         database: String,
     },
+    Damaged {
+        project_id: &'a str,
+        database: String,
+        /// The store's diagnostic of the damage: its code, args and
+        /// message.
+        damage: Envelope,
+    },
 }
 
 impl<'a> ProblemJson<'a> {
-    pub fn of(problem: &'a Problem) -> ProblemJson<'a> {
+    pub fn of(problem: &'a Problem, catalog: &Catalog) -> ProblemJson<'a> {
         match problem {
             Problem::TwoIds { root, ids } => ProblemJson::TwoIds {
                 root,
@@ -79,12 +88,21 @@ impl<'a> ProblemJson<'a> {
                 project_id: id,
                 database: shown(database),
             },
+            Problem::Damaged {
+                id,
+                database,
+                damage,
+            } => ProblemJson::Damaged {
+                project_id: id,
+                database: shown(database),
+                damage: catalog.envelope(damage),
+            },
         }
     }
 }
 
-/// A problem in a sentence, with what fixes it.
-pub fn problem_line(problem: &Problem) -> String {
+/// A problem in a sentence, with what fixes it, or that nothing here does.
+pub fn problem_line(problem: &Problem, catalog: &Catalog) -> String {
     match problem {
         Problem::TwoIds { root, ids } => format!(
             "{root} is bound to more than one project: {}; run `project repoint <project-id>` to choose one",
@@ -109,6 +127,15 @@ pub fn problem_line(problem: &Problem) -> String {
             "{} is orphaned: no live registered path points at {id}; `project orphans remove {id} --yes` deletes it",
             shown(database)
         ),
+        Problem::Damaged {
+            id,
+            database,
+            damage,
+        } => format!(
+            "{}, the database of {id}: {}; heal reports damage and does not repair it",
+            shown(database),
+            catalog.message(damage)
+        ),
     }
 }
 
@@ -131,7 +158,7 @@ impl<'a> EntryJson<'a> {
 }
 
 /// `project show` as JSON.
-#[derive(Serialize, Debug, PartialEq)]
+#[derive(Serialize, Debug)]
 pub struct ShowJson<'a> {
     project_id: Option<&'a str>,
     /// Where the id came from: flag, environment, marker, legacy-marker or
@@ -147,7 +174,7 @@ pub struct ShowJson<'a> {
 }
 
 impl<'a> ShowJson<'a> {
-    pub fn of(shown_: &'a Shown) -> ShowJson<'a> {
+    pub fn of(shown_: &'a Shown, catalog: &Catalog) -> ShowJson<'a> {
         let survey = &shown_.survey;
         ShowJson {
             project_id: survey.resolved.as_ref().map(|(id, _)| id.as_str()),
@@ -158,13 +185,17 @@ impl<'a> ShowJson<'a> {
             legacy_marker: survey.legacy_marker.as_deref(),
             entries: shown_.entries.iter().map(EntryJson::of).collect(),
             database: shown_.store.as_deref().map(shown),
-            problems: shown_.problems.iter().map(ProblemJson::of).collect(),
+            problems: shown_
+                .problems
+                .iter()
+                .map(|p| ProblemJson::of(p, catalog))
+                .collect(),
         }
     }
 }
 
 /// `project show` as text.
-pub fn show_text(out: &mut dyn Write, shown_: &Shown) -> io::Result<()> {
+pub fn show_text(out: &mut dyn Write, shown_: &Shown, catalog: &Catalog) -> io::Result<()> {
     let survey = &shown_.survey;
     match &survey.resolved {
         Some((id, source)) => writeln!(out, "Project:  {id} (from the {})", source.as_str())?,
@@ -196,7 +227,13 @@ pub fn show_text(out: &mut dyn Write, shown_: &Shown) -> io::Result<()> {
         Some(store) => writeln!(out, "Database: {}", shown(store))?,
         None => writeln!(out, "Database: none")?,
     }
-    problems_text(out, "Problems:", &shown_.problems, "No problems found.")
+    problems_text(
+        out,
+        "Problems:",
+        &shown_.problems,
+        "No problems found.",
+        catalog,
+    )
 }
 
 fn problems_text(
@@ -204,6 +241,7 @@ fn problems_text(
     heading: &str,
     problems: &[Problem],
     none: &str,
+    catalog: &Catalog,
 ) -> io::Result<()> {
     if problems.is_empty() {
         return if none.is_empty() {
@@ -214,7 +252,7 @@ fn problems_text(
     }
     writeln!(out, "{heading}")?;
     for problem in problems {
-        writeln!(out, "  - {}", problem_line(problem))?;
+        writeln!(out, "  - {}", problem_line(problem, catalog))?;
     }
     Ok(())
 }
@@ -260,7 +298,7 @@ pub fn change_line(change: &Change) -> String {
 }
 
 /// A plan as JSON.
-#[derive(Serialize, Debug, PartialEq)]
+#[derive(Serialize, Debug)]
 pub struct PlanJson<'a> {
     applied: bool,
     changes: Vec<ChangeJson<'a>>,
@@ -269,18 +307,22 @@ pub struct PlanJson<'a> {
 }
 
 impl<'a> PlanJson<'a> {
-    pub fn of(plan: &'a Plan) -> PlanJson<'a> {
+    pub fn of(plan: &'a Plan, catalog: &Catalog) -> PlanJson<'a> {
         PlanJson {
             applied: plan.applied,
             changes: plan.changes.iter().map(ChangeJson::of).collect(),
-            unresolved: plan.unresolved.iter().map(ProblemJson::of).collect(),
+            unresolved: plan
+                .unresolved
+                .iter()
+                .map(|p| ProblemJson::of(p, catalog))
+                .collect(),
             previous: plan.previous.as_deref(),
         }
     }
 }
 
 /// A plan as text: what changed, or would with `--yes`, and what is left.
-pub fn plan_text(out: &mut dyn Write, plan: &Plan) -> io::Result<()> {
+pub fn plan_text(out: &mut dyn Write, plan: &Plan, catalog: &Catalog) -> io::Result<()> {
     match (plan.changes.is_empty(), plan.applied) {
         (true, _) => writeln!(out, "Nothing to change.")?,
         (false, true) => writeln!(out, "Changed:")?,
@@ -298,7 +340,7 @@ pub fn plan_text(out: &mut dyn Write, plan: &Plan) -> io::Result<()> {
             "It was {previous}, whose database stays; `project show` reports it once nothing points at it."
         )?;
     }
-    problems_text(out, "Not resolved:", &plan.unresolved, "")
+    problems_text(out, "Not resolved:", &plan.unresolved, "", catalog)
 }
 
 /// An orphan as JSON.
@@ -334,29 +376,31 @@ pub fn orphans_text(out: &mut dyn Write, orphans: &[Problem]) -> io::Result<()> 
     Ok(())
 }
 
-/// `project show`'s answer, in either format.
-pub struct Show<'a>(pub &'a Shown);
+/// `project show`'s answer, in either format, its diagnostics from the
+/// catalog.
+pub struct Show<'a>(pub &'a Shown, pub &'a Catalog);
 
 impl Render for Show<'_> {
     fn json(&self) -> impl Serialize + '_ {
-        ShowJson::of(self.0)
+        ShowJson::of(self.0, self.1)
     }
 
     fn text(&self, out: &mut dyn Write) -> io::Result<()> {
-        show_text(out, self.0)
+        show_text(out, self.0, self.1)
     }
 }
 
-/// A plan, from `heal`, `repoint` or `orphans remove`, in either format.
-pub struct Planned<'a>(pub &'a Plan);
+/// A plan, from `heal`, `repoint` or `orphans remove`, in either format,
+/// its diagnostics from the catalog.
+pub struct Planned<'a>(pub &'a Plan, pub &'a Catalog);
 
 impl Render for Planned<'_> {
     fn json(&self) -> impl Serialize + '_ {
-        PlanJson::of(self.0)
+        PlanJson::of(self.0, self.1)
     }
 
     fn text(&self, out: &mut dyn Write) -> io::Result<()> {
-        plan_text(out, self.0)
+        plan_text(out, self.0, self.1)
     }
 }
 

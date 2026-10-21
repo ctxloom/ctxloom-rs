@@ -1,7 +1,8 @@
 //! What a directory's project identity rests on, and the changes that
-//! repair or rebind it: the port behind the `project` commands.
+//! repair or rebind it, and whether a project's database is sound: the
+//! ports behind the `project` commands.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use annals_diagnostic::Report;
 
@@ -124,6 +125,29 @@ pub trait ProjectAdmin {
         seen: &Survey,
         changes: &[Change],
     ) -> Result<(), Report>;
+}
+
+/// What checking a project's database found.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Checked {
+    /// No database is there: nothing to check, and no damage.
+    Absent,
+    /// The database reported no problem.
+    Intact,
+    /// The database reported problems in its own file: the store's
+    /// diagnostic of them, its code and args.
+    Damaged(Report),
+}
+
+/// A project's database, checked whole for damage, and never repaired.
+///
+/// Synchronous, and it blocks on the database, as [`ProjectAdmin`] does.
+pub trait StoreCheck {
+    /// The database at `store`, checked as it was last committed, opened
+    /// read-only: nothing is created, migrated or written, and no writer
+    /// is waited on. A failure to run the check is the error, never
+    /// damage.
+    fn check(&mut self, store: &Path) -> Result<Checked, Report>;
 }
 
 #[cfg(test)]

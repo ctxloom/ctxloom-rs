@@ -34,6 +34,10 @@ and angzarr here.
   tasks crate. The marker is authoritative and the registry heals toward
   it. A change is reported, and made only when asked, under the registry's
   lock and only while a fresh survey matches the one it was planned from.
+  `heal` first checks the resolved project's database through the
+  `StoreCheck` port and reports damage as an unresolved finding (the
+  store's diagnostic), never repaired; no database is no damage, and a
+  check that cannot run fails the heal before anything changes.
 - `adapters/driven/project-registry`: the work root, `.project-id` (adopting
   Go's `.ctxloom/project-id` on a write), the registry in Go's schema, and a
   mint under `index.yaml.lock` that re-checks first, so racing first writes
@@ -54,7 +58,11 @@ and angzarr here.
   whole log, as Go's fold does.
 - `adapters/driven/task-store-sqlite`: annals-store-sql's SQLite store at
   the project's path, opened on first use and held, behind the store
-  opener.
+  opener; and `StoreCheck`, annals-store-sql's `integrity_check` (SQLite's
+  `PRAGMA integrity_check`) on a fresh read-only open. The port is
+  synchronous, as the project commands are, so the check runs on a
+  runtime of its own on a thread of its own (the binary's caller is
+  already on a runtime).
 - `adapters/driven/system`: the clock, UUIDv7 command ids, tokio's timer and
   jitter.
 - `adapters/driven/tasks-config`: taskloom's configuration behind the
@@ -143,7 +151,11 @@ and angzarr here.
   repointed to the original's and finds its tasks, its own database then
   reported orphaned and removed by name; a lost marker is shown and healed
   from the registry; a linked worktree made by `git worktree add` shares
-  its primary checkout's tasks and gets no marker.
+  its primary checkout's tasks and gets no marker. `heal` over a database
+  whose index was damaged in a copy (annals-store-sql's approach) reports
+  the damage, code and args, in text and in the one JSON document, and
+  leaves the file as it was; a sound database and a missing one are no
+  damage.
 - Tags on tagma (step 3). tagma's repository (github.com/benjaminabbitt/tagma)
   gains `proto/tagma/v1/tag.proto` (`optional string namespace`, `string
   key`, `optional string value`) and `crates/tagma-proto` (prost 0.14,
@@ -202,7 +214,6 @@ Where the skeleton differs from Go, or from this plan:
   marker of its own (`.project-id`, or Go's `.ctxloom/project-id`); in Go,
   with a `.ctxloom` directory of its own.
 - The registry's lock is waited for at most 10s; Go waits without end.
-- `project heal` does not yet run the store's integrity check (see "Open").
 - Concurrent writers are serialized by SQLite itself: `BEGIN IMMEDIATE` per
   unit of work and sqlx's default 5s busy timeout. With retries switched off
   the acceptance tests still pass, so the backoff is a guard, not what makes
@@ -287,11 +298,6 @@ Where the skeleton differs from Go, or from this plan:
 Found in the walking skeleton's review and since; each is settled at the step named,
 not filed as a task.
 
-- **`project heal` runs no integrity check of the store.** SQLite's
-  `PRAGMA integrity_check` has to come through the store adapter, and
-  annals-store-sql offers none: it needs a check on `SqliteStore` in annals
-  (ctxloom writes no SQL, and task-store-sqlite links no sqlx of its own).
-  Then a port for it, called by heal. Waits on that annals change.
 - **A clone with the committed marker writes to the original's database
   unasked.** The marker is authoritative, so a second clone on the machine
   resolves to the same id, and a write goes to the same database with no
@@ -307,11 +313,6 @@ not filed as a task.
   `covers` and the reads after it see one snapshot. Needed before purge
   and prune (step 5, "Purging a stream in annals"): otherwise a purge in
   the middle of a listing yields a blank task.
-- **annals exports no catalogs.** Its crates' `.ftl` files are not
-  reachable from a dependent, so an annals error (a store failure, a
-  kernel error) prints its English `Display`, in text and in the envelope's
-  `message`. annals should export each crate's en-US catalog (as ctxloom's
-  crates export `EN_US`); the binary then embeds them.
 - **JSON escapes no HTML** where Go's encoder escapes `<`, `>` and `&`:
   normalize it when comparing the Go and Rust binaries for parity ("Parity
   and cutover").
@@ -325,8 +326,7 @@ one are the reference for what each layer finally holds, not an order.
 
 Step 1, the importer, step 2, healing and repointing a project's store,
 and step 3, tags on tagma, are done (see "Where it stands"); step 2 leaves
-`project merge` and the integrity check (see "Project identity: heal and
-repoint" and "Open").
+`project merge` (see "Project identity: heal and repoint").
 
 4. **MCP and the companion contract**: `taskloom mcp` with `task_list` and
    `task_add`, `loadout` and `version --format json` are done (see "Where
@@ -443,10 +443,9 @@ still exists: it forks a new id, and every task appears lost.
 The identity logic is shared (`project-application` over the
 `ProjectAdmin` port, `project-cli` for the commands), and taskloom presents
 it as the `project` group; ctxloom can mount the same. `show`, `heal`,
-`repoint` and the orphaned databases are done (see "Where it stands").
-What remains:
+`repoint` and the orphaned databases are done (see "Where it stands"),
+`heal` with the store's integrity check. What remains:
 
-- `project heal` running the store's integrity check (see "Open").
 - `project merge <project-id>`: replay another project's task streams into
   this one, for a fork that gathered tasks on both sides. A harp held on
   both sides is re-minted, and the result says so. Not started: it needs a
@@ -484,8 +483,9 @@ What remains:
   orphans) `project-cli`'s, each implementing `Render`; a mounted group
   gets the binary's catalog through `run_mounted`, so its errors render as
   the task commands' do. Output goes to an injected `&mut dyn Write`.
-  annals' crates export no catalog yet, so their codes render their English
-  `Display` until they do.
+  annals' crates export their catalogs as ctxloom's do (`annals::EN_US`,
+  `annals_store_sql::EN_US`), and the binary's catalog embeds those it
+  links, so an annals error renders from its catalog too.
 - MCP over stdio (`tasks-mcp`; `task_list` and `task_add` so far): the
   tools `task_list`, `task_add`, `task_set_status`, `task_edit` and
   `task_tag`, the resources `taskloom://tag-schema` and

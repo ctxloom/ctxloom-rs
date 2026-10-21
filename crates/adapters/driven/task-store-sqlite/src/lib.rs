@@ -6,6 +6,11 @@
 //! file a writer is still making is annals-store-sql's to wait for; one not
 //! migrated is refused (`annals-store-sql-unmigrated`) until a write
 //! migrates it.
+//!
+//! [`StoreCheck`] checks a project's database whole (SQLite's `PRAGMA
+//! integrity_check`, through annals-store-sql), opened afresh and
+//! read-only: damage is reported as the store's diagnostic, never
+//! repaired, and no database is no damage.
 
 mod error;
 
@@ -14,7 +19,8 @@ use std::path::{Path, PathBuf};
 use annals::next::StoreError;
 use annals_diagnostic::Report;
 use annals_store_sql::sqlite::SqliteStore;
-use ports::{Project, TaskStores};
+use annals_store_sql::Integrity;
+use ports::{Checked, Project, StoreCheck, TaskStores};
 
 pub use error::{diagnostic_samples, StoreOpenError, EN_US};
 
@@ -72,6 +78,43 @@ impl TaskStores for SqliteStores {
         };
         Ok(Some(&mut self.held.insert(held).store))
     }
+}
+
+impl StoreCheck for SqliteStores {
+    /// The database at `store`, opened afresh and read-only, never the
+    /// store held: a check reads only what was last committed, waits on no
+    /// writer, and writes nothing. It runs on a runtime of its own, on a
+    /// thread of its own, since the port is synchronous and its caller may
+    /// be on a runtime already (the binary's).
+    fn check(&mut self, store: &Path) -> Result<Checked, Report> {
+        std::thread::scope(|scope| {
+            let checking = scope.spawn(|| {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_time()
+                    .build()
+                    .map_err(|e| {
+                        Report::of(&StoreOpenError::NoRuntime {
+                            detail: e.to_string(),
+                        })
+                    })?;
+                runtime.block_on(check(store)).map_err(|e| Report::of(&e))
+            });
+            checking
+                .join()
+                .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+        })
+    }
+}
+
+/// The database at `path`, checked read-only; absent if there is none.
+async fn check(path: &Path) -> Result<Checked, StoreError> {
+    let Some(mut store) = SqliteStore::open_existing(path).await? else {
+        return Ok(Checked::Absent);
+    };
+    Ok(match store.integrity_check().await? {
+        Integrity::Intact => Checked::Intact,
+        Integrity::Damaged(damage) => Checked::Damaged(Report::of(&damage)),
+    })
 }
 
 /// Make the directory the database at `path` goes in.

@@ -2285,6 +2285,7 @@ version = "0.1.0"
 dependencies = [
  "annals",
  "annals-diagnostic 0.1.0",
+ "annals-store-sql",
  "clap",
  "go-task-log",
  "harp-names",

@@ -9,6 +9,8 @@ use annals_diagnostic::{Arg, Diagnostic};
 pub enum StoreOpenError {
     /// The directory the database goes in could not be made.
     CreateDir { path: String, detail: String },
+    /// No runtime could be started to open the database and check it.
+    NoRuntime { detail: String },
 }
 
 impl fmt::Display for StoreOpenError {
@@ -16,6 +18,9 @@ impl fmt::Display for StoreOpenError {
         match self {
             StoreOpenError::CreateDir { path, detail } => {
                 write!(f, "cannot create the store's directory {path}: {detail}")
+            }
+            StoreOpenError::NoRuntime { detail } => {
+                write!(f, "cannot start a runtime to check the store: {detail}")
             }
         }
     }
@@ -25,6 +30,7 @@ impl Diagnostic for StoreOpenError {
     fn code(&self) -> &'static str {
         match self {
             StoreOpenError::CreateDir { .. } => "task-store-sqlite-create-dir",
+            StoreOpenError::NoRuntime { .. } => "task-store-sqlite-no-runtime",
         }
     }
 
@@ -34,6 +40,7 @@ impl Diagnostic for StoreOpenError {
                 ("path", path.as_str().into()),
                 ("detail", detail.as_str().into()),
             ],
+            StoreOpenError::NoRuntime { detail } => vec![("detail", detail.as_str().into())],
         }
     }
 }
@@ -48,10 +55,15 @@ pub const EN_US: (&str, &str) = (
 /// One value of every error, for the catalog test.
 pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
     let path = || "/home/u/.ctxloom/projects/jolly-mute-magma".to_string();
-    vec![Box::new(StoreOpenError::CreateDir {
-        path: path(),
-        detail: "permission denied".to_string(),
-    })]
+    vec![
+        Box::new(StoreOpenError::CreateDir {
+            path: path(),
+            detail: "permission denied".to_string(),
+        }),
+        Box::new(StoreOpenError::NoRuntime {
+            detail: "too many open files".to_string(),
+        }),
+    ]
 }
 
 #[cfg(test)]

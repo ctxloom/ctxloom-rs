@@ -2,9 +2,27 @@
 
 use std::path::PathBuf;
 
+use annals_diagnostic::Report;
+use presentation::Catalog;
 use project_application::{Change, IdSource, Plan, Problem, Shown, Survey};
 
 use super::{change_line, orphans_json, orphans_text, plan_text, problem_line, show_text};
+
+/// A store's damage, its catalog message differing from its English.
+const STORE: (&str, &str) = (
+    "fake-store",
+    "fake-store-damaged = from the catalog: { $first } (+{ $more })\n",
+);
+
+fn catalog() -> Catalog {
+    Catalog::en_us(&[STORE]).expect("the catalog loads")
+}
+
+fn damage() -> Report {
+    Report::new("fake-store-damaged", "the English")
+        .arg("first", "row 2 missing from index i")
+        .arg("more", 1u64)
+}
 
 fn s(text: &str) -> String {
     text.to_string()
@@ -48,9 +66,14 @@ fn test_each_problem_says_what_fixes_it() {
             id: s("x"),
             database: PathBuf::from("/h/x"),
         },
+        Problem::Damaged {
+            id: s("m"),
+            database: PathBuf::from("/h/m/state.db"),
+            damage: damage(),
+        },
     ]
     .iter()
-    .map(problem_line)
+    .map(|p| problem_line(p, &catalog()))
     .collect();
     assert_eq!(
         lines,
@@ -62,6 +85,7 @@ fn test_each_problem_says_what_fixes_it() {
             "/w/.project-id names m, the project of /o, which still exists; run `project repoint m --share` if the two are meant to share it",
             "a is registered for /p, which no longer exists",
             "/h/x is orphaned: no live registered path points at x; `project orphans remove x --yes` deletes it",
+            "/h/m/state.db, the database of m: from the catalog: row 2 missing from index i (+1); heal reports damage and does not repair it",
         ]
     );
 }
@@ -100,7 +124,7 @@ fn test_each_change_in_a_line() {
 #[test]
 fn test_a_plan_says_whether_it_changed_anything() {
     assert_eq!(
-        text(|out| plan_text(out, &Plan::default())),
+        text(|out| plan_text(out, &Plan::default(), &catalog())),
         "Nothing to change.\n"
     );
     let mut plan = Plan {
@@ -113,7 +137,7 @@ fn test_a_plan_says_whether_it_changed_anything() {
         applied: false,
     };
     assert_eq!(
-        text(|out| plan_text(out, &plan)),
+        text(|out| plan_text(out, &plan, &catalog())),
         "Would change (run again with --yes to make the change):\n\
          \x20 - delete the database directory of x\n\
          It was old, whose database stays; `project show` reports it once nothing points at it.\n\
@@ -121,7 +145,7 @@ fn test_a_plan_says_whether_it_changed_anything() {
          \x20 - a is registered for /p, which no longer exists\n"
     );
     plan.applied = true;
-    assert!(text(|out| plan_text(out, &plan)).starts_with("Changed:\n"));
+    assert!(text(|out| plan_text(out, &plan, &catalog())).starts_with("Changed:\n"));
 }
 
 #[test]
@@ -142,7 +166,7 @@ fn test_show_as_text_names_a_worktree_gos_marker_and_what_is_missing() {
         problems: Vec::new(),
     };
     assert_eq!(
-        text(|out| show_text(out, &shown)),
+        text(|out| show_text(out, &shown, &catalog())),
         "Project:  none yet (a write would mint one)\n\
          Root:     /primary\n\
          Worktree: /linked (a linked worktree of the root, with no marker of its own)\n\
@@ -154,9 +178,8 @@ fn test_show_as_text_names_a_worktree_gos_marker_and_what_is_missing() {
     );
     let mut sourced = shown.clone();
     sourced.survey.resolved = Some((s("e"), IdSource::Environment));
-    assert!(
-        text(|out| show_text(out, &sourced)).starts_with("Project:  e (from the environment)\n")
-    );
+    assert!(text(|out| show_text(out, &sourced, &catalog()))
+        .starts_with("Project:  e (from the environment)\n"));
 }
 
 #[test]

@@ -3,9 +3,10 @@
 //! project registry, harp names, the SQLite task store, the system's
 //! clock, ids, timer and randomness, taskloom's configuration, and Go
 //! taskloom's logs to import), mounts the `project` group and `mcp` beside
-//! the task commands, and hands the command line to the CLI. `mcp` serves
-//! the task tools over stdio, each call on a service of its own. It holds
-//! no logic of its own.
+//! the task commands, and hands the command line to the CLI. The `project`
+//! group runs over the registry and the SQLite store's integrity check;
+//! `mcp` serves the task tools over stdio, each call on a service of its
+//! own. It holds no logic of its own.
 
 use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
@@ -22,10 +23,13 @@ use tasks_application::{NoGoLogs, Service};
 use tasks_cli::Context;
 use tasks_config::TaskloomConfig;
 
-/// Every crate's en-US catalog the binary's diagnostics come from. annals'
-/// own crates export none yet, so their errors print their English.
+/// Every crate's en-US catalog the binary's diagnostics come from: annals'
+/// crates the binary links (annals-diagnostic defines no codes), then its
+/// own.
 fn catalog() -> Result<presentation::Catalog, presentation::CatalogError> {
     tasks_cli::catalog(&[
+        annals::EN_US,
+        annals_store_sql::EN_US,
         project_cli::EN_US,
         project_application::EN_US,
         project_registry::EN_US,
@@ -121,7 +125,10 @@ fn main() -> ExitCode {
         project_id: std::env::var("CTXLOOM_PROJECT_ID").ok(),
     };
     let go_logs = GoTaskLogDir::in_home(env.home.as_deref());
-    let mut projects = Projects::new(ProjectRegistry::new(env.clone(), HarpNames));
+    let mut projects = Projects::new(
+        ProjectRegistry::new(env.clone(), HarpNames),
+        SqliteStores::default(),
+    );
     let mut service = service(&env, utf8_vars()).with_go_logs(go_logs);
     let context = Context {
         session: std::env::var("CTXLOOM_SESSION_HARP").unwrap_or_default(),

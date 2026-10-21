@@ -9,6 +9,8 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+annals.workspace = true
+annals-store-sql.workspace = true
 clap.workspace = true
 go-task-log.workspace = true
 harp-names.workspace = true
@@ -25,7 +27,6 @@ tasks-mcp.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
-annals.workspace = true
 annals-diagnostic.workspace = true
 ports.workspace = true
 serde.workspace = true
