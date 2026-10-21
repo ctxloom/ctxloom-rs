@@ -31,12 +31,15 @@ harp-names = { path = "crates/adapters/driven/harp-names" }
 task-store-sqlite = { path = "crates/adapters/driven/task-store-sqlite" }
 system = { path = "crates/adapters/driven/system" }
 tasks-cli = { path = "crates/adapters/driving/tasks-cli" }
+presentation = { path = "crates/adapters/driving/presentation" }
 
 # Task and project ids: harp's word lists, as Go's harp ports them.
 harp-core = { git = "https://github.com/benjaminabbitt/harp", rev = "21648c9712ab60a84b609e1321201f158203a4bc" }
 
 # Third-party, for the adapters and the composition root.
 clap = { version = "4.5", features = ["derive"] }
+# The edge's message catalogs: Fluent's standard runtime and its language ids.
+fluent-bundle = "0.15"
 fluent-syntax = "0.11"
 fs4 = "1.1"
 # `#[mutants::skip]`, for a mutant judged equivalent. The core takes it as a
@@ -51,6 +54,9 @@ sha2 = "0.10"
 tempfile = "3"
 time = { version = "0.3", features = ["formatting", "parsing"] }
 tokio = { version = "1", features = ["rt", "time"] }
+unic-langid = "0.9"
+# Display-width columns in text output.
+unicode-width = "0.2"
 uuid = { version = "1", features = ["v7"] }
 
 [workspace.lints.clippy]

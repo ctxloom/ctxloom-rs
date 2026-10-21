@@ -1,0 +1,24 @@
+[package]
+name = "presentation"
+version = "0.1.0"
+description = "Presentation at the driving edge, for any domain: JSON or UTF-8 text, diagnostics rendered from Fluent catalogs, display-width text helpers"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Domain-free: no ctxloom crate but annals-diagnostic, which lib.test.rs
+# checks.
+[dependencies]
+annals-diagnostic.workspace = true
+fluent-bundle.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+unic-langid.workspace = true
+unicode-width.workspace = true
+
+[dev-dependencies]
+fluent-syntax.workspace = true
+
+[lints]
+workspace = true
