@@ -78,6 +78,7 @@ where
     is_send(&service.tag(TagChange::default()));
     is_send(&service.list(ListQuery::default()));
     is_send(&stores.open(&project()));
+    is_send(&stores.open_existing(&project()));
     is_send(&delay.sleep(std::time::Duration::ZERO));
 }
 
@@ -230,9 +231,36 @@ fn test_a_tag_changing_nothing_answers_with_the_task_as_it_is() {
 
 #[test]
 fn test_a_tag_of_no_task_is_refused() {
+    let mut service = service(&["swift-amber"]);
+    add(&mut service, new_task("Ship it")).unwrap();
+    let error = ready(service.tag(change("calm-otter", &["x"], &[]))).unwrap_err();
+    assert_eq!(error.code(), "tasks-no-task");
+}
+
+#[test]
+fn test_a_tag_where_there_is_no_project_fails_and_binds_none() {
     let mut service = service(&[]);
+    let unpinned = TagChange {
+        project: None,
+        ..change("swift-amber", &["x"], &[])
+    };
+    let error = ready(service.tag(unpinned)).unwrap_err();
+    assert_eq!(error, AppError::NoProject);
+    assert_eq!(
+        service.identity.bound, None,
+        "resolved for a read: none minted"
+    );
+    assert!(service.stores.opened.is_empty() && service.stores.looked.is_empty());
+}
+
+#[test]
+fn test_a_tag_in_a_project_with_no_store_yet_is_refused_and_creates_none() {
+    let mut service = service(&[]);
+    service.stores.absent = true;
     let error = ready(service.tag(change("swift-amber", &["x"], &[]))).unwrap_err();
     assert_eq!(error.code(), "tasks-no-task");
+    assert_eq!(service.stores.looked, ["jolly-mute-magma"]);
+    assert!(service.stores.opened.is_empty(), "no store opened to write");
 }
 
 #[test]
@@ -274,6 +302,7 @@ fn test_a_tag_whose_project_does_not_resolve_fails_with_why() {
 #[test]
 fn test_a_tag_whose_store_does_not_open_fails() {
     let mut service = service(&[]);
+    service.identity.bound = Some(project());
     service.stores.store.open_fails = true;
     let error = ready(service.tag(change("swift-amber", &["x"], &[]))).unwrap_err();
     assert_eq!(error.code(), "annals-next-store-unavailable");
@@ -358,15 +387,39 @@ fn test_a_list_answers_with_each_tasks_values_and_its_project() {
 #[test]
 fn test_a_list_where_there_is_no_project_is_empty_and_opens_no_store() {
     let mut service = service(&[]);
+    let listing = ready(service.list(ListQuery::default())).unwrap();
+    assert_eq!(listing.project, None);
+    assert!(listing.tasks.is_empty());
+    assert!(service.stores.opened.is_empty() && service.stores.looked.is_empty());
+    assert_eq!(
+        service.identity.bound, None,
+        "resolved for a read: none minted"
+    );
+}
+
+#[test]
+fn test_a_list_of_a_project_with_no_store_yet_is_empty_and_creates_none() {
+    let mut service = service(&[]);
+    service.stores.absent = true;
     let query = ListQuery {
         project: Some("pinned-id".to_string()),
         ..ListQuery::default()
     };
     let listing = ready(service.list(query)).unwrap();
-    assert_eq!(listing.project, None);
+    assert_eq!(listing.project, Some(project()));
     assert!(listing.tasks.is_empty());
-    assert!(service.stores.opened.is_empty());
+    assert_eq!(service.stores.looked, ["jolly-mute-magma"]);
+    assert!(service.stores.opened.is_empty(), "no store opened to write");
     assert_eq!(service.identity.pins, [Some("pinned-id".to_string())]);
+}
+
+#[test]
+fn test_a_list_opens_its_store_to_read() {
+    let mut service = service(&["swift-amber"]);
+    add(&mut service, new_task("Ship it")).unwrap();
+    listed(&mut service, ListQuery::default());
+    assert_eq!(service.stores.opened, ["jolly-mute-magma"], "the add's");
+    assert_eq!(service.stores.looked, ["jolly-mute-magma"], "the list's");
 }
 
 #[test]

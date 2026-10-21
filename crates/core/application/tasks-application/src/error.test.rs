@@ -46,6 +46,10 @@ fn test_each_error_renders_its_english_fallback() {
         .to_string(),
         "task swift-amber was written but cannot be read back"
     );
+    assert_eq!(
+        AppError::NoProject.to_string(),
+        "there is no project here yet, so no task to change"
+    );
 }
 
 #[test]
@@ -64,6 +68,7 @@ fn test_each_error_gives_its_args_values() {
     }
     .args();
     assert!(matches!(&vanished[0], ("harp_id", Arg::Str(s)) if s == "calm-otter"));
+    assert!(AppError::NoProject.args().is_empty());
 }
 
 #[test]

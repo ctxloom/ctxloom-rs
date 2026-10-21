@@ -184,10 +184,23 @@ where
     }
 
     async fn tag(&mut self, change: TagChange) -> Result<Written, AppError> {
+        // A change to an existing task resolves its project as a read does:
+        // where there is none, or no store yet, there is no task to change,
+        // and nothing is minted or created to say so.
         let project = self
             .identity
-            .for_write(change.project.as_deref())
-            .map_err(AppError::Identity)?;
+            .for_read(change.project.as_deref())
+            .map_err(AppError::Identity)?
+            .ok_or(AppError::NoProject)?;
+        if self
+            .stores
+            .open_existing(&project)
+            .await
+            .map_err(failed)?
+            .is_none()
+        {
+            return Err(rejected(&TaskRejection::NoTask));
+        }
         let store = self.stores.open(&project).await.map_err(failed)?;
         let command_id = self.clock.command_id();
         let retag = Retag {
@@ -225,7 +238,12 @@ where
                 tasks: Vec::new(),
             });
         };
-        let store = self.stores.open(&project).await.map_err(failed)?;
+        let Some(store) = self.stores.open_existing(&project).await.map_err(failed)? else {
+            return Ok(Listing {
+                project: Some(project),
+                tasks: Vec::new(),
+            });
+        };
         let admitted = query.clone();
         let mut list = TaskList::new(Box::new(move |task| admitted.admits(task)));
         list.catch_up_async(store, &self.registry)

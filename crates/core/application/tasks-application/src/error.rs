@@ -22,6 +22,8 @@ pub enum AppError {
     HarpsExhausted { attempts: u32 },
     /// A task the store accepted is not there when read back.
     Vanished { harp_id: String },
+    /// A change to an existing task where the work root has no project.
+    NoProject,
 }
 
 impl fmt::Display for AppError {
@@ -39,6 +41,9 @@ impl fmt::Display for AppError {
             AppError::Vanished { harp_id } => {
                 write!(f, "task {harp_id} was written but cannot be read back")
             }
+            AppError::NoProject => {
+                f.write_str("there is no project here yet, so no task to change")
+            }
         }
     }
 }
@@ -52,6 +57,7 @@ impl Diagnostic for AppError {
             AppError::GaveUp { .. } => "tasks-application-gave-up",
             AppError::HarpsExhausted { .. } => "tasks-application-harps-exhausted",
             AppError::Vanished { .. } => "tasks-application-vanished",
+            AppError::NoProject => "tasks-application-no-project",
         }
     }
 
@@ -66,6 +72,7 @@ impl Diagnostic for AppError {
             ],
             AppError::HarpsExhausted { attempts } => vec![("attempts", (*attempts).into())],
             AppError::Vanished { harp_id } => vec![("harp_id", harp_id.as_str().into())],
+            AppError::NoProject => Vec::new(),
         }
     }
 }
@@ -82,6 +89,7 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(AppError::Vanished {
             harp_id: "swift-amber".to_string(),
         }),
+        Box::new(AppError::NoProject),
     ]
 }
 

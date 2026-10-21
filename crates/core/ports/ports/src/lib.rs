@@ -48,12 +48,21 @@ pub trait ProjectIdentity {
 pub trait TaskStores {
     type Store: AsyncStore + Send;
 
-    /// The project's store, opened (and created) on first use and held
-    /// after.
+    /// The project's store, to write: opened (and created) on first use and
+    /// held after.
     fn open(
         &mut self,
         project: &Project,
     ) -> impl Future<Output = Result<&mut Self::Store, StoreError>> + Send;
+
+    /// The project's store, to read: `None` if it has none yet. Nothing is
+    /// created, so a read of a project never written (a mistyped
+    /// `--project`) leaves no trace. A store already held for a write
+    /// serves it too.
+    fn open_existing(
+        &mut self,
+        project: &Project,
+    ) -> impl Future<Output = Result<Option<&mut Self::Store>, StoreError>> + Send;
 }
 
 /// Fresh, random names. Uniqueness is not promised: a caller checks.

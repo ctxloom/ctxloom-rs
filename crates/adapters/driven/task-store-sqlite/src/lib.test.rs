@@ -9,6 +9,8 @@ use annals::next::AsyncEventStore;
 use annals_diagnostic::Diagnostic;
 use ports::{Project, TaskStores};
 
+use annals_store_sql::sqlite::SqliteStore;
+
 use super::SqliteStores;
 
 fn block_on<F: Future>(future: F) -> F::Output {
@@ -120,4 +122,139 @@ fn test_a_database_that_does_not_open_fails_with_the_stores_error() {
         panic!("unavailable: {error:?}");
     };
     assert_eq!(report.code(), "annals-store-sql-unavailable");
+}
+
+// ------------------------------------------------------------ reads
+
+#[test]
+fn test_reading_a_project_with_no_database_finds_none_and_creates_nothing() {
+    let home = tempfile::tempdir().unwrap();
+    let path = store_in(home.path(), "tpyo");
+    let mut stores = SqliteStores::default();
+    let found = block_on(stores.open_existing(&project("tpyo", path))).unwrap();
+    assert!(found.is_none());
+    assert!(
+        !home.path().join(".ctxloom").exists(),
+        "no directory, no file"
+    );
+    assert!(stores.held.is_none());
+}
+
+#[test]
+fn test_reading_an_existing_database_opens_it_read_only() {
+    let home = tempfile::tempdir().unwrap();
+    let path = store_in(home.path(), "jolly-mute-magma");
+    let project = project("jolly-mute-magma", path);
+    block_on(async {
+        SqliteStores::default().open(&project).await.unwrap();
+        let mut stores = SqliteStores::default();
+        let store = stores
+            .open_existing(&project)
+            .await
+            .unwrap()
+            .expect("found");
+        assert!(store.read_from(&some_stream(), 0).await.is_ok());
+        assert!(!stores.held.as_ref().unwrap().writable);
+    });
+}
+
+#[test]
+fn test_a_store_held_to_write_serves_a_read() {
+    let home = tempfile::tempdir().unwrap();
+    let path = store_in(home.path(), "jolly-mute-magma");
+    let project = project("jolly-mute-magma", path.clone());
+    let mut stores = SqliteStores::default();
+    block_on(async {
+        stores.open(&project).await.unwrap();
+        std::fs::remove_file(&path).unwrap();
+        let found = stores.open_existing(&project).await.unwrap();
+        assert!(found.is_some(), "the held store, though the file is gone");
+    });
+    assert!(stores.held.as_ref().unwrap().writable);
+}
+
+#[test]
+fn test_a_store_held_to_read_is_opened_again_to_write() {
+    let home = tempfile::tempdir().unwrap();
+    let path = store_in(home.path(), "jolly-mute-magma");
+    let project = project("jolly-mute-magma", path);
+    let mut stores = SqliteStores::default();
+    block_on(async {
+        SqliteStores::default().open(&project).await.unwrap();
+        stores
+            .open_existing(&project)
+            .await
+            .unwrap()
+            .expect("found");
+        stores.open(&project).await.unwrap();
+    });
+    assert!(stores.held.as_ref().unwrap().writable);
+}
+
+#[test]
+fn test_reading_another_project_does_not_serve_the_held_one() {
+    let home = tempfile::tempdir().unwrap();
+    let mut stores = SqliteStores::default();
+    block_on(async {
+        let first = project(
+            "jolly-mute-magma",
+            store_in(home.path(), "jolly-mute-magma"),
+        );
+        stores.open(&first).await.unwrap();
+        let other = project("tpyo", store_in(home.path(), "tpyo"));
+        assert!(stores.open_existing(&other).await.unwrap().is_none());
+    });
+}
+
+#[test]
+fn test_reading_a_database_not_yet_migrated_migrates_it_as_a_write_would() {
+    // A writer creates the file, then migrates it under its write lock; a
+    // reader between the two finds it unmigrated, and waits on that lock
+    // for the migration rather than failing.
+    let home = tempfile::tempdir().unwrap();
+    let path = home.path().join("state.db");
+    std::fs::write(&path, "").unwrap();
+    let mut stores = SqliteStores::default();
+    block_on(async {
+        let store = stores
+            .open_existing(&project("jolly-mute-magma", path))
+            .await
+            .unwrap()
+            .expect("found");
+        assert!(store.read_from(&some_stream(), 0).await.is_ok());
+    });
+    assert!(stores.held.as_ref().unwrap().writable);
+}
+
+#[test]
+fn test_a_database_that_cannot_be_read_fails_a_read() {
+    let home = tempfile::tempdir().unwrap();
+    let path = home.path().join("state.db");
+    std::fs::write(&path, "not a database").unwrap();
+    let mut stores = SqliteStores::default();
+    let error = block_on(stores.open_existing(&project("jolly-mute-magma", path)))
+        .map(|found| found.is_some())
+        .unwrap_err();
+    assert!(
+        matches!(error, annals::next::StoreError::Unavailable(_)),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn test_a_read_failing_for_another_reason_fails_with_the_read_only_opens_error() {
+    // A directory where the database goes: the read-only open fails, and
+    // so would a write open, but differently; the read's error is passed
+    // through, and no write is tried.
+    let home = tempfile::tempdir().unwrap();
+    let path = home.path().join("state.db");
+    std::fs::create_dir(&path).unwrap();
+    let mut stores = SqliteStores::default();
+    let error = block_on(stores.open_existing(&project("jolly-mute-magma", path.clone())))
+        .map(|found| found.is_some())
+        .unwrap_err();
+    let read_only = block_on(SqliteStore::open_existing(&path))
+        .map(|found| found.is_some())
+        .unwrap_err();
+    assert_eq!(error.to_string(), read_only.to_string());
 }

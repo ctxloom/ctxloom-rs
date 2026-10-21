@@ -1,13 +1,15 @@
 //! A project's task store: annals-store-sql's SQLite store at the path the
 //! project names (`~/.ctxloom/projects/<project-id>/state.db`), opened on
-//! first use and held after, behind the [`TaskStores`] port.
+//! first use and held after, behind the [`TaskStores`] port. A write opens
+//! it creating what is missing; a read opens it read-only and creates
+//! nothing, finding no store where there is no file.
 
 mod error;
 
 use std::path::{Path, PathBuf};
 
 use annals::next::StoreError;
-use annals_diagnostic::Report;
+use annals_diagnostic::{Diagnostic, Report};
 use annals_store_sql::sqlite::SqliteStore;
 use ports::{Project, TaskStores};
 
@@ -16,23 +18,62 @@ pub use error::{diagnostic_samples, StoreOpenError};
 /// The SQLite store of the project last asked for, held until another is.
 #[derive(Default)]
 pub struct SqliteStores {
-    held: Option<(PathBuf, SqliteStore)>,
+    held: Option<Held>,
+}
+
+/// A store held open, and for what.
+struct Held {
+    path: PathBuf,
+    /// Opened to write (created and migrated if need be), not read-only.
+    writable: bool,
+    store: SqliteStore,
 }
 
 impl TaskStores for SqliteStores {
     type Store = SqliteStore;
 
     async fn open(&mut self, project: &Project) -> Result<&mut SqliteStore, StoreError> {
-        let held = self.held.take().filter(|(path, _)| *path == project.store);
-        let store = match held {
-            Some((_, store)) => store,
+        let held = self
+            .held
+            .take()
+            .filter(|held| held.path == project.store && held.writable);
+        let held = match held {
+            Some(held) => held,
             None => {
                 create_parent(&project.store).map_err(unavailable)?;
-                open_writable(project.store.clone()).await?
+                Held {
+                    path: project.store.clone(),
+                    writable: true,
+                    store: open_writable(project.store.clone()).await?,
+                }
             }
         };
-        let (_, store) = self.held.insert((project.store.clone(), store));
-        Ok(store)
+        Ok(&mut self.held.insert(held).store)
+    }
+
+    async fn open_existing(
+        &mut self,
+        project: &Project,
+    ) -> Result<Option<&mut SqliteStore>, StoreError> {
+        let held = self.held.take().filter(|held| held.path == project.store);
+        let held = match held {
+            Some(held) => held,
+            None => match SqliteStore::open_existing(&project.store).await {
+                Ok(Some(store)) => Held {
+                    path: project.store.clone(),
+                    writable: false,
+                    store,
+                },
+                Ok(None) => return Ok(None),
+                Err(error) if unmigrated(&error) => Held {
+                    path: project.store.clone(),
+                    writable: true,
+                    store: open_writable(project.store.clone()).await?,
+                },
+                Err(error) => return Err(error),
+            },
+        };
+        Ok(Some(&mut self.held.insert(held).store))
     }
 }
 
@@ -46,6 +87,18 @@ fn create_parent(path: &Path) -> Result<(), StoreOpenError> {
         detail: e.to_string(),
     })
 }
+
+/// Whether `error` is a read-only open refusing a database whose
+/// migrations are not all applied. A writer creates the file and then
+/// migrates it under its write lock, so a read between the two finds it
+/// so; the file exists, so opening it to write creates nothing, and waits
+/// on that lock for the migration.
+fn unmigrated(error: &StoreError) -> bool {
+    matches!(error, StoreError::Unavailable(report) if report.code() == UNMIGRATED)
+}
+
+/// annals-store-sql's code for [`unmigrated`].
+const UNMIGRATED: &str = "annals-store-sql-unmigrated";
 
 fn unavailable(error: StoreOpenError) -> StoreError {
     StoreError::Unavailable(Report::of(&error))

@@ -34,8 +34,9 @@ pub fn project() -> Project {
     }
 }
 
-/// A work root with a project, or none yet. A write binds one; the pin a
-/// call gave is recorded.
+/// A work root with a project, or none yet. A write binds one; a pin
+/// resolves, as an explicit id always does; the pin a call gave is
+/// recorded.
 #[derive(Default)]
 pub struct FakeIdentity {
     pub bound: Option<Project>,
@@ -57,7 +58,7 @@ impl ProjectIdentity for FakeIdentity {
         if let Some(report) = &self.fails {
             return Err(report.clone());
         }
-        Ok(self.bound.clone())
+        Ok(self.bound.clone().or_else(|| pinned.map(|_| project())))
     }
 }
 
@@ -215,12 +216,15 @@ impl AsyncUnitOfWork for FlakyUnit<'_> {
     }
 }
 
-/// One store, whichever project is asked for; the projects opened are
-/// recorded.
+/// One store, whichever project is asked for: absent until a write opens
+/// it, if `absent`. The projects opened to write (`opened`) and to read
+/// (`looked`) are recorded.
 #[derive(Default)]
 pub struct FakeStores {
     pub store: Flaky,
+    pub absent: bool,
     pub opened: Vec<String>,
+    pub looked: Vec<String>,
 }
 
 impl TaskStores for FakeStores {
@@ -231,7 +235,16 @@ impl TaskStores for FakeStores {
         if self.store.open_fails {
             return Err(unavailable());
         }
+        self.absent = false;
         Ok(&mut self.store)
+    }
+
+    async fn open_existing(&mut self, project: &Project) -> Result<Option<&mut Flaky>, StoreError> {
+        self.looked.push(project.id.clone());
+        if self.store.open_fails {
+            return Err(unavailable());
+        }
+        Ok((!self.absent).then_some(&mut self.store))
     }
 }
 

@@ -276,3 +276,30 @@ fn test_a_task_added_is_listed_in_text_with_its_project() {
         "a three-word id: {marker}"
     );
 }
+
+#[test]
+fn test_a_list_of_a_project_never_written_creates_nothing() {
+    let env = Env::new("tpyo-harp");
+    let listed = env.run(&["list", "--project", "tpyo", "--json"]);
+    assert!(listed.ok, "{}", listed.stderr);
+    assert_eq!(listed.json(), serde_json::json!([]));
+    assert!(
+        !env.home.path().join(".ctxloom").exists(),
+        "no registry, no project directory, no database"
+    );
+    assert!(!env.project.path().join(".project-id").exists());
+}
+
+#[test]
+fn test_a_tag_where_there_is_no_project_fails_and_binds_none() {
+    let env = Env::new("no-project-harp");
+    let tagged = env.run(&["tag", "swift-amber", "--add", "x"]);
+    assert!(!tagged.ok);
+    assert!(
+        tagged.stderr.contains("no project here yet"),
+        "{}",
+        tagged.stderr
+    );
+    assert!(!env.home.path().join(".ctxloom").exists());
+    assert!(!env.project.path().join(".project-id").exists());
+}
