@@ -168,7 +168,8 @@ pub fn table(out: &mut dyn Write, tasks: &[&Task], shown: &Shown) -> io::Result<
     Ok(())
 }
 
-/// A task `add` wrote: JSON the task; text its id, status and text.
+/// A task `add`, `status` or `edit` wrote: JSON the task; text its id,
+/// status and text.
 pub struct Added<'a>(pub &'a Task);
 
 /// A task `tag` wrote: JSON the task, every tag; text its id, status and

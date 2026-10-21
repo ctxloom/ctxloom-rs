@@ -23,7 +23,7 @@ use annals::next::v1::{command_page, Command, CommandBook, CommandPage, Cover};
 use annals::next::{ids, AsyncEventStore, Payload, Registry, Rulebook, Stream, Upcaster};
 use annals_diagnostic::Report;
 use ports::{Clock, CommandIds, Configuration, Delay, Jitter, Names, ProjectIdentity, TaskStores};
-use tasks::{AddTask, Retag, TaskCommand, TaskRejection, Tasks, TASK_DOMAIN};
+use tasks::{AddTask, Retag, SetStatus, TaskCommand, TaskRejection, Tasks, TASK_DOMAIN};
 
 pub use annals::next::Timestamp;
 pub use error::{diagnostic_samples, AppError, CATALOGS, EN_US};
@@ -81,6 +81,18 @@ pub struct TagChange {
     pub config_set: Vec<String>,
 }
 
+/// A task moved to a status. An empty trigger keeps the one it holds;
+/// Deferred needs one, given or held.
+#[derive(Clone, PartialEq, Debug, Default)]
+pub struct StatusChange {
+    pub project: Option<String>,
+    pub harp_id: String,
+    pub status: String,
+    pub trigger: String,
+    /// Configuration overrides, `<path>=<value>` (`--config-set`).
+    pub config_set: Vec<String>,
+}
+
 /// Which tasks to list. By default the active ones: neither terminal nor
 /// Deferred. `all` lists every task; naming statuses (or the classes
 /// `@open` and `@terminal`) lists exactly the tasks in them. A term keeps
@@ -126,6 +138,10 @@ pub trait TaskService {
     fn add(&mut self, task: NewTask) -> impl Future<Output = Result<Written, AppError>> + Send;
     fn tag(&mut self, change: TagChange) -> impl Future<Output = Result<Written, AppError>> + Send;
     fn list(&mut self, query: ListQuery) -> impl Future<Output = Result<Listing, AppError>> + Send;
+    fn set_status(
+        &mut self,
+        change: StatusChange,
+    ) -> impl Future<Output = Result<Written, AppError>> + Send;
 }
 
 /// The registry the tasks domain runs under.
@@ -227,6 +243,57 @@ impl<I, S, N, C, D, L, G: Configuration> Service<I, S, N, C, D, L, G> {
     }
 }
 
+impl<I, S, N, C, D, L, G> Service<I, S, N, C, D, L, G>
+where
+    I: ProjectIdentity,
+    S: TaskStores,
+    C: Clock + CommandIds,
+    D: Delay + Jitter,
+{
+    /// The project of a change to an existing task, resolved as a read
+    /// resolves it: where there is none, or no store yet, there is no task
+    /// to change, and nothing is minted or created to say so.
+    async fn existing(&mut self, pinned: Option<&str>) -> Result<Project, AppError> {
+        let project = self
+            .identity
+            .for_read(pinned)
+            .map_err(AppError::Identity)?
+            .ok_or(AppError::NoProject)?;
+        match self.stores.open_existing(&project).await.map_err(failed)? {
+            Some(_) => Ok(project),
+            None => Err(rejected(&TaskRejection::NoTask)),
+        }
+    }
+
+    /// Run `command` on the task `harp_id` in `project`'s store, under a
+    /// fresh command id, retried as annals says; the task after it.
+    async fn commit(
+        &mut self,
+        project: &Project,
+        harp_id: &str,
+        command: TaskCommand,
+    ) -> Result<Task, AppError> {
+        let store = self.stores.open(project).await.map_err(failed)?;
+        let command_id = self.clock.command_id();
+        let book = book(harp_id, command);
+        let mut runner = retry::Runner {
+            registry: &self.registry,
+            clock: &mut self.clock,
+            delay: &mut self.delay,
+            backoff: self.backoff,
+        };
+        match runner.run(store, &book, &command_id).await? {
+            retry::Outcome::Committed => {}
+            retry::Outcome::Refused(rejection) => return Err(rejected(&rejection)),
+        }
+        read(store, &self.registry, harp_id)
+            .await?
+            .ok_or_else(|| AppError::Vanished {
+                harp_id: harp_id.to_string(),
+            })
+    }
+}
+
 impl<I, S, N, C, D, L, G> TaskService for Service<I, S, N, C, D, L, G>
 where
     I: ProjectIdentity + Send,
@@ -289,23 +356,7 @@ where
         let schema = self.schema(&change.config_set)?;
         let add = tags::admit_all(&change.add, &schema).map_err(|r| refused(&r))?;
         let mut remove = tags::parse_all(&change.remove).map_err(|r| refused(&r))?;
-        // A change to an existing task resolves its project as a read does:
-        // where there is none, or no store yet, there is no task to change,
-        // and nothing is minted or created to say so.
-        let project = self
-            .identity
-            .for_read(change.project.as_deref())
-            .map_err(AppError::Identity)?
-            .ok_or(AppError::NoProject)?;
-        if self
-            .stores
-            .open_existing(&project)
-            .await
-            .map_err(failed)?
-            .is_none()
-        {
-            return Err(rejected(&TaskRejection::NoTask));
-        }
+        let project = self.existing(change.project.as_deref()).await?;
         let store = self.stores.open(&project).await.map_err(failed)?;
         // A scalar target's new value displaces the one the task holds:
         // resolved here, against the task as it is, so decide never reads
@@ -316,25 +367,23 @@ where
             .unwrap_or_default();
         let (add, displaced) = tags::collapse(&schema, &held, add);
         remove.extend(displaced);
-        let command_id = self.clock.command_id();
         let retag = Retag { add, remove };
-        let book = book(&change.harp_id, retag.into());
-        let mut runner = retry::Runner {
-            registry: &self.registry,
-            clock: &mut self.clock,
-            delay: &mut self.delay,
-            backoff: self.backoff,
+        let task = self.commit(&project, &change.harp_id, retag.into()).await?;
+        Ok(Written {
+            project,
+            task,
+            shown: Shown::of(&schema),
+        })
+    }
+
+    async fn set_status(&mut self, change: StatusChange) -> Result<Written, AppError> {
+        let schema = self.schema(&change.config_set)?;
+        let project = self.existing(change.project.as_deref()).await?;
+        let set = SetStatus {
+            status: change.status,
+            trigger: change.trigger,
         };
-        match runner.run(store, &book, &command_id).await? {
-            retry::Outcome::Committed => {}
-            retry::Outcome::Refused(rejection) => return Err(rejected(&rejection)),
-        }
-        let task =
-            read(store, &self.registry, &change.harp_id)
-                .await?
-                .ok_or(AppError::Vanished {
-                    harp_id: change.harp_id,
-                })?;
+        let task = self.commit(&project, &change.harp_id, set.into()).await?;
         Ok(Written {
             project,
             task,

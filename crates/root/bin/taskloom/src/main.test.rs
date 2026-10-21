@@ -599,6 +599,24 @@ fn test_in_json_each_later_command_writes_one_document_and_errors_an_envelope() 
         &["list", "--status", "@done", "--json"],
         "tasks-application-unknown-status-class",
     );
+
+    let moved = env.run(&["status", &harp, "Deferred", "--trigger", "later", "--json"]);
+    assert!(moved.ok, "{}", moved.stderr);
+    let task = one_document(&moved.stdout);
+    assert_eq!(
+        (&task["status"], &task["trigger"]),
+        (&"Deferred".into(), &"later".into())
+    );
+    let back = env.run(&["status", &harp, "To Do", "--json"]);
+    assert_eq!(one_document(&back.stdout)["trigger"], "later", "kept");
+    refused(
+        &["status", &harp, "@open", "--json"],
+        "tasks-status-reserved",
+    );
+    refused(
+        &["status", "no-such-task", "Done", "--json"],
+        "tasks-no-task",
+    );
 }
 
 #[test]

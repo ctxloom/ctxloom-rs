@@ -5,7 +5,7 @@ use std::io::{self, Write};
 
 use clap::Args;
 use presentation::{Catalog, Format};
-use tasks_application::{ListQuery, Listing, NewTask, Reach, TagChange, TaskService};
+use tasks_application::{ListQuery, Listing, NewTask, Reach, StatusChange, TagChange, TaskService};
 
 use crate::render::{Added, Listed, Tagged};
 use crate::{notify, output_failed, wrote, CliError, Notice};
@@ -53,6 +53,42 @@ pub(crate) async fn add(
         config_set: ctx.config_set,
     };
     let written = service.add(task).await.map_err(CliError::App)?;
+    wrote(
+        &written,
+        &Added(&written.task),
+        ctx.format,
+        ctx.catalog,
+        out,
+        err,
+    )
+}
+
+#[derive(Args, Debug)]
+pub(crate) struct StatusArgs {
+    harp_id: String,
+    /// The status: any name not starting with '@' (see `taskloom statuses`).
+    status: String,
+    /// Revive condition, when the status is Deferred; a task re-deferred
+    /// keeps the one it has.
+    #[arg(long, default_value = "")]
+    trigger: String,
+}
+
+pub(crate) async fn status(
+    args: StatusArgs,
+    ctx: Ctx<'_>,
+    service: &mut impl TaskService,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<(), CliError> {
+    let change = StatusChange {
+        project: ctx.project,
+        harp_id: args.harp_id,
+        status: args.status,
+        trigger: args.trigger,
+        config_set: ctx.config_set,
+    };
+    let written = service.set_status(change).await.map_err(CliError::App)?;
     wrote(
         &written,
         &Added(&written.task),

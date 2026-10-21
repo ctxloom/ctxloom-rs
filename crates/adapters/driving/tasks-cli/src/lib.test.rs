@@ -10,7 +10,7 @@ use std::task::{Context as TaskContext, Poll, Waker};
 use annals_diagnostic::Report;
 use tasks_application::{
     AppError, Hidden, ImportReport, ImportRequest, ImportService, ListQuery, Listing, NewTask,
-    Project, ProjectImport, Reach, Row, TagChange, Task, TaskService, Written,
+    Project, ProjectImport, Reach, Row, StatusChange, TagChange, Task, TaskService, Written,
 };
 
 use presentation::{Catalog, Format};
@@ -60,6 +60,7 @@ fn project() -> Project {
 struct Fake {
     added: Vec<NewTask>,
     tagged: Vec<TagChange>,
+    moved: Vec<StatusChange>,
     listed: Vec<ListQuery>,
     written: Option<Result<Written, AppError>>,
     listing: Option<Result<Listing, AppError>>,
@@ -81,6 +82,11 @@ impl TaskService for Fake {
     async fn list(&mut self, query: ListQuery) -> Result<Listing, AppError> {
         self.listed.push(query);
         self.listing.clone().expect("a list answer scripted")
+    }
+
+    async fn set_status(&mut self, change: StatusChange) -> Result<Written, AppError> {
+        self.moved.push(change);
+        self.written.clone().expect("a status answer scripted")
     }
 }
 
@@ -310,6 +316,64 @@ fn test_a_failed_tag_exits_1() {
     let ran = run_on(&mut fake, true, &["tag", "x", "--add", "a"]);
     assert_eq!(ran.code, 1);
     assert!(ran.err.starts_with("taskloom: task x"), "{}", ran.err);
+}
+
+// ------------------------------------------------------------ status
+
+#[test]
+fn test_status_passes_its_id_status_and_trigger_and_answers_like_add() {
+    let mut fake = Fake {
+        written: written(shapes::task("swift-amber", "Deferred")),
+        ..Fake::default()
+    };
+    let ran = run_on(
+        &mut fake,
+        true,
+        &[
+            "--project",
+            "p",
+            "status",
+            "swift-amber",
+            "Deferred",
+            "--trigger",
+            "the release",
+            "--config-set",
+            "tag_schema=x",
+        ],
+    );
+    assert_eq!(ran.code, 0, "{}", ran.err);
+    assert_eq!(
+        fake.moved,
+        [StatusChange {
+            project: Some("p".to_string()),
+            harp_id: "swift-amber".to_string(),
+            status: "Deferred".to_string(),
+            trigger: "the release".to_string(),
+            config_set: vec!["tag_schema=x".to_string()],
+        }]
+    );
+    assert_eq!(ran.out, "swift-amber\tDeferred\tShip it\n");
+    assert_eq!(ran.err, "taskloom: project /work/tree (jolly-mute-magma)\n");
+    let ran = run_on(&mut fake, false, &["status", "swift-amber", "Done"]);
+    let json: serde_json::Value = serde_json::from_str(&ran.out).unwrap();
+    assert_eq!(json["harp_id"], "swift-amber");
+    assert_eq!(fake.moved[1].trigger, "", "no trigger given");
+}
+
+#[test]
+fn test_status_needs_an_id_and_a_status_and_says_why_it_failed() {
+    let ran = run_on(&mut Fake::default(), true, &["status", "swift-amber"]);
+    assert_eq!(ran.code, 1);
+    let mut fake = Fake {
+        written: Some(Err(AppError::NoProject)),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["status", "swift-amber", "Done"]);
+    assert_eq!(ran.code, 1);
+    assert_eq!(
+        ran.err,
+        "taskloom: there is no project here yet, so no task to change\n"
+    );
 }
 
 // ------------------------------------------------------------ list
@@ -564,9 +628,14 @@ fn test_list_says_on_stderr_what_a_search_hid_and_a_limit_left_out() {
     );
     searched.searched = false;
     searched.omitted = 0;
-    fake.listing = Some(Ok(searched));
+    fake.listing = Some(Ok(searched.clone()));
     let ran = run_on(&mut fake, true, &["list"]);
     assert_eq!(ran.err, "", "an unsearched listing hides by design");
+    searched.searched = true;
+    searched.hidden = Hidden::default();
+    fake.listing = Some(Ok(searched));
+    let ran = run_on(&mut fake, true, &["list", "--term", "x"]);
+    assert_eq!(ran.err, "", "a search that hid nothing says nothing");
 }
 
 #[test]
