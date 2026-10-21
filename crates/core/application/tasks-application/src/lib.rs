@@ -10,6 +10,8 @@
 mod error;
 mod import;
 mod retry;
+mod schema;
+mod semver;
 mod tags;
 mod view;
 
@@ -18,7 +20,7 @@ use std::future::Future;
 use annals::next::v1::{command_page, Command, CommandBook, CommandPage, Cover};
 use annals::next::{ids, AsyncEventStore, Payload, Registry, Rulebook, Stream, Upcaster};
 use annals_diagnostic::Report;
-use ports::{Clock, CommandIds, Delay, Jitter, Names, ProjectIdentity, TaskStores};
+use ports::{Clock, CommandIds, Configuration, Delay, Jitter, Names, ProjectIdentity, TaskStores};
 use task_lists::TaskList;
 use tasks::{
     AddTask, Retag, TaskCommand, TaskRejection, TaskState, Tasks, DEFERRED, STATUS_CLASS_SIGIL,
@@ -33,7 +35,11 @@ pub use import::{
 };
 pub use ports::{GoOp, Project};
 pub use retry::Backoff;
-pub use tags::{Tag, TagRefusal};
+pub use schema::{
+    target, Range, SchemaError, TagSchema, DEFAULT_TAG_SCHEMA, FACETS, FACET_NAMESPACE, SEMVER,
+};
+pub use semver::{Semver, Version};
+pub use tags::{admit, collapse, Tag, TagRefusal, OPERATOR_WORDS};
 pub use view::{is_terminal, text_hash, Task, ARCHIVED, DONE};
 
 /// How many task ids an add mints before giving up, each refused because a
@@ -53,17 +59,23 @@ pub struct NewTask {
     pub tags: Vec<String>,
     /// The session adding it, if one is.
     pub origin_session: String,
+    /// Configuration overrides, `<path>=<value>` (`--config-set`).
+    pub config_set: Vec<String>,
 }
 
 /// Tags to add to and remove from a task: the adds first, then the
 /// removes, so a tag named in both ends up removed. Each is a tag in
-/// tagma's grammar; one that does not parse refuses the change.
+/// tagma's grammar; one that does not parse refuses the change, as does an
+/// added one the tag schema refuses. An added value of a scalar target
+/// displaces the value the task holds.
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct TagChange {
     pub project: Option<String>,
     pub harp_id: String,
     pub add: Vec<String>,
     pub remove: Vec<String>,
+    /// Configuration overrides, `<path>=<value>` (`--config-set`).
+    pub config_set: Vec<String>,
 }
 
 /// Which tasks to list. By default the open ones: neither terminal nor
@@ -74,6 +86,8 @@ pub struct ListQuery {
     pub project: Option<String>,
     pub statuses: Vec<String>,
     pub all: bool,
+    /// Configuration overrides, `<path>=<value>` (`--config-set`).
+    pub config_set: Vec<String>,
 }
 
 impl ListQuery {
@@ -123,16 +137,30 @@ pub fn registry() -> Registry {
 
 /// The use cases over their ports: `clock` stamps commands and mints their
 /// ids; `delay` waits, with jitter, between retries; `go_logs` are the Go
-/// logs an import reads, none until [`Service::with_go_logs`] gives some.
-pub struct Service<I, S, N, C, D, L = NoGoLogs> {
+/// logs an import reads, none until [`Service::with_go_logs`] gives some;
+/// `configuration` is what is configured, nothing until
+/// [`Service::with_configuration`] gives it.
+pub struct Service<I, S, N, C, D, L = NoGoLogs, G = NotConfigured> {
     pub identity: I,
     pub stores: S,
     pub names: N,
     pub clock: C,
     pub delay: D,
     pub go_logs: L,
+    pub configuration: G,
     pub backoff: Backoff,
     registry: Registry,
+}
+
+/// Configuration, as a service without any has it: nothing configured, so
+/// the tag schema is the default one.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct NotConfigured;
+
+impl Configuration for NotConfigured {
+    fn tag_schema(&mut self, _: &[String]) -> Result<Vec<String>, Report> {
+        Ok(Vec::new())
+    }
 }
 
 impl<I, S, N, C, D> Service<I, S, N, C, D> {
@@ -144,15 +172,16 @@ impl<I, S, N, C, D> Service<I, S, N, C, D> {
             clock,
             delay,
             go_logs: NoGoLogs,
+            configuration: NotConfigured,
             backoff: Backoff::DEFAULT,
             registry: registry(),
         }
     }
 }
 
-impl<I, S, N, C, D, L> Service<I, S, N, C, D, L> {
+impl<I, S, N, C, D, L, G> Service<I, S, N, C, D, L, G> {
     /// The same service, importing from `go_logs`.
-    pub fn with_go_logs<M>(self, go_logs: M) -> Service<I, S, N, C, D, M> {
+    pub fn with_go_logs<M>(self, go_logs: M) -> Service<I, S, N, C, D, M, G> {
         Service {
             identity: self.identity,
             stores: self.stores,
@@ -160,13 +189,41 @@ impl<I, S, N, C, D, L> Service<I, S, N, C, D, L> {
             clock: self.clock,
             delay: self.delay,
             go_logs,
+            configuration: self.configuration,
+            backoff: self.backoff,
+            registry: self.registry,
+        }
+    }
+
+    /// The same service, configured by `configuration`.
+    pub fn with_configuration<H>(self, configuration: H) -> Service<I, S, N, C, D, L, H> {
+        Service {
+            identity: self.identity,
+            stores: self.stores,
+            names: self.names,
+            clock: self.clock,
+            delay: self.delay,
+            go_logs: self.go_logs,
+            configuration,
             backoff: self.backoff,
             registry: self.registry,
         }
     }
 }
 
-impl<I, S, N, C, D, L> TaskService for Service<I, S, N, C, D, L>
+impl<I, S, N, C, D, L, G: Configuration> Service<I, S, N, C, D, L, G> {
+    /// The tag schema: the default one, extended by what is configured,
+    /// `overrides` applied.
+    fn schema(&mut self, overrides: &[String]) -> Result<TagSchema, AppError> {
+        let configured = self
+            .configuration
+            .tag_schema(overrides)
+            .map_err(AppError::Configuration)?;
+        TagSchema::resolved(&configured).map_err(|e| AppError::Configuration(Report::of(&e)))
+    }
+}
+
+impl<I, S, N, C, D, L, G> TaskService for Service<I, S, N, C, D, L, G>
 where
     I: ProjectIdentity + Send,
     S: TaskStores + Send,
@@ -174,9 +231,12 @@ where
     C: Clock + CommandIds + Send,
     D: Delay + Jitter + Send,
     L: Send,
+    G: Configuration + Send,
 {
     async fn add(&mut self, task: NewTask) -> Result<Written, AppError> {
-        let tags = tags::parse_all(&task.tags).map_err(|r| refused(&r))?;
+        let schema = self.schema(&task.config_set)?;
+        let tags = tags::admit_all(&task.tags, &schema).map_err(|r| refused(&r))?;
+        let (tags, _) = tags::collapse(&schema, &[], tags);
         let project = self
             .identity
             .for_write(task.project.as_deref())
@@ -217,8 +277,9 @@ where
     }
 
     async fn tag(&mut self, change: TagChange) -> Result<Written, AppError> {
-        let add = tags::parse_all(&change.add).map_err(|r| refused(&r))?;
-        let remove = tags::parse_all(&change.remove).map_err(|r| refused(&r))?;
+        let schema = self.schema(&change.config_set)?;
+        let add = tags::admit_all(&change.add, &schema).map_err(|r| refused(&r))?;
+        let mut remove = tags::parse_all(&change.remove).map_err(|r| refused(&r))?;
         // A change to an existing task resolves its project as a read does:
         // where there is none, or no store yet, there is no task to change,
         // and nothing is minted or created to say so.
@@ -237,6 +298,15 @@ where
             return Err(rejected(&TaskRejection::NoTask));
         }
         let store = self.stores.open(&project).await.map_err(failed)?;
+        // A scalar target's new value displaces the one the task holds:
+        // resolved here, against the task as it is, so decide never reads
+        // the schema.
+        let held = read(store, &self.registry, &change.harp_id)
+            .await?
+            .map(|task| task.tags)
+            .unwrap_or_default();
+        let (add, displaced) = tags::collapse(&schema, &held, add);
+        remove.extend(displaced);
         let command_id = self.clock.command_id();
         let retag = Retag { add, remove };
         let book = book(&change.harp_id, retag.into());

@@ -6,8 +6,8 @@ use annals_diagnostic::{Arg, Diagnostic, Report};
 
 /// Why a use case did not complete. A wrapper of another error
 /// ([`AppError::Rejected`], [`AppError::TagRefused`], [`AppError::Failed`],
-/// [`AppError::Identity`]) is that error's diagnostic: its code, args and
-/// English.
+/// [`AppError::Identity`], [`AppError::Configuration`]) is that error's
+/// diagnostic: its code, args and English.
 #[derive(Clone, PartialEq, Debug)]
 pub enum AppError {
     /// The domain refused the command: tell the person.
@@ -19,6 +19,8 @@ pub enum AppError {
     Failed(Report),
     /// The project could not be resolved.
     Identity(Report),
+    /// The configuration could not be read, or its tag schema is malformed.
+    Configuration(Report),
     /// Every attempt the retry budget allows failed with a retryable error;
     /// `error` is the last.
     GaveUp { attempts: u32, error: Report },
@@ -38,7 +40,8 @@ impl fmt::Display for AppError {
             AppError::Rejected(cause)
             | AppError::TagRefused(cause)
             | AppError::Failed(cause)
-            | AppError::Identity(cause) => cause.fmt(f),
+            | AppError::Identity(cause)
+            | AppError::Configuration(cause) => cause.fmt(f),
             AppError::GaveUp { attempts, error } => {
                 write!(f, "gave up after {attempts} attempts: {error}")
             }
@@ -64,7 +67,8 @@ impl Diagnostic for AppError {
             AppError::Rejected(cause)
             | AppError::TagRefused(cause)
             | AppError::Failed(cause)
-            | AppError::Identity(cause) => cause.code(),
+            | AppError::Identity(cause)
+            | AppError::Configuration(cause) => cause.code(),
             AppError::GaveUp { .. } => "tasks-application-gave-up",
             AppError::HarpsExhausted { .. } => "tasks-application-harps-exhausted",
             AppError::Vanished { .. } => "tasks-application-vanished",
@@ -78,7 +82,8 @@ impl Diagnostic for AppError {
             AppError::Rejected(cause)
             | AppError::TagRefused(cause)
             | AppError::Failed(cause)
-            | AppError::Identity(cause) => cause.args(),
+            | AppError::Identity(cause)
+            | AppError::Configuration(cause) => cause.args(),
             AppError::GaveUp { attempts, error } => vec![
                 ("attempts", (*attempts).into()),
                 ("error", Arg::nested(error)),
@@ -106,7 +111,9 @@ pub const CATALOGS: [(&str, &str); 2] = [tasks::EN_US, EN_US];
 /// refused, and of every reason an import gives for leaving a record behind (not the wrappers, whose codes
 /// are their causes'), for the catalog test.
 pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
-    vec![
+    let tags = crate::tags::samples().into_iter();
+    let schema = crate::schema::samples().into_iter();
+    let mut samples: Vec<Box<dyn Diagnostic>> = vec![
         Box::new(AppError::GaveUp {
             attempts: 10,
             error: Report::new("x-busy", "busy"),
@@ -119,14 +126,13 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(AppError::NoGoLog {
             project: "jolly-mute-magma".to_string(),
         }),
-        Box::new(crate::TagRefusal::Unparseable {
-            tag: "a b".to_string(),
-            detail: "x".to_string(),
-        }),
         Box::new(crate::Why::Displaced),
         Box::new(crate::Why::HarpTaken),
         Box::new(crate::Why::TaskNotImported),
-    ]
+    ];
+    samples.extend(tags.map(|t| Box::new(t) as Box<dyn Diagnostic>));
+    samples.extend(schema.map(|s| Box::new(s) as Box<dyn Diagnostic>));
+    samples
 }
 
 #[cfg(test)]

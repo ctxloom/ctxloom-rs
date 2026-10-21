@@ -176,7 +176,7 @@ pub trait ImportService {
     ) -> impl Future<Output = Result<ImportReport, AppError>> + Send;
 }
 
-impl<I, S, N, C, D, L> ImportService for Service<I, S, N, C, D, L>
+impl<I, S, N, C, D, L, G> ImportService for Service<I, S, N, C, D, L, G>
 where
     I: ProjectIdentity + Send,
     S: TaskStores + Send,
@@ -184,6 +184,7 @@ where
     C: Send,
     D: Delay + Jitter + Send,
     L: GoTaskLogs + Send,
+    G: Send,
 {
     async fn import(&mut self, request: ImportRequest) -> Result<ImportReport, AppError> {
         let projects = match request.project {
@@ -205,7 +206,7 @@ where
     }
 }
 
-impl<I, S, N, C, D, L> Service<I, S, N, C, D, L>
+impl<I, S, N, C, D, L, G> Service<I, S, N, C, D, L, G>
 where
     I: ProjectIdentity + Send,
     S: TaskStores + Send,

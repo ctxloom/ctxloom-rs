@@ -153,6 +153,10 @@ fn test_add_joins_its_words_and_passes_its_flags_and_the_session() {
             "a",
             "--tag",
             "b",
+            "--config-set",
+            "tag_schema=x",
+            "--config-set",
+            "homing=home",
         ],
     );
     assert_eq!(ran.code, 0, "{}", ran.err);
@@ -165,6 +169,7 @@ fn test_add_joins_its_words_and_passes_its_flags_and_the_session() {
             trigger: "later".to_string(),
             tags: vec!["a".to_string(), "b".to_string()],
             origin_session: "cross-proc-harp".to_string(),
+            config_set: vec!["tag_schema=x".to_string(), "homing=home".to_string()],
         }]
     );
     assert_eq!(ran.err, "taskloom: project /work/tree (jolly-mute-magma)\n");
@@ -270,6 +275,7 @@ fn test_tag_passes_its_adds_and_removes_and_answers_with_the_tags() {
             harp_id: "swift-amber".to_string(),
             add: vec!["a".to_string(), "b".to_string()],
             remove: vec!["c".to_string()],
+            config_set: Vec::new(),
         }]
     );
     assert_eq!(ran.err, "taskloom: project /work/tree (jolly-mute-magma)\n");
@@ -344,6 +350,7 @@ fn test_list_passes_its_filters() {
                 "Deferred".to_string()
             ],
             all: true,
+            config_set: Vec::new(),
         }]
     );
     let mut fake = Fake {

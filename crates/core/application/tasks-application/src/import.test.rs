@@ -358,6 +358,13 @@ fn test_a_go_tag_outside_the_grammar_is_reported_and_the_rest_imported() {
         .lost
         .iter()
         .all(|l| l.why.code() == "tasks-application-tag-unparseable"));
+    let named: Vec<&str> = project.lost[0]
+        .why
+        .args()
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect();
+    assert_eq!(named, ["tag", "detail"], "the why is the refusal's");
     assert_eq!(project.applied, 2, "the add, and the tag of y");
     assert_eq!(project.unchanged, 0, "each record changed Go's tags");
     assert_eq!(

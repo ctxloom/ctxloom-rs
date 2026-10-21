@@ -1,7 +1,7 @@
 //! The ports the tasks application needs from outside, beyond annals' own
 //! store port: which project a call is about, where its store is, how ids
-//! are minted, what time it is, how to wait, and Go taskloom's logs to
-//! import. Each is a trait a driven
+//! are minted, what time it is, how to wait, what is configured, and Go
+//! taskloom's logs to import. Each is a trait a driven
 //! adapter (or the composition root) implements; nothing here does I/O.
 //!
 //! Every future a port returns is `Send`, as annals requires of its async
@@ -96,6 +96,20 @@ pub trait Delay {
 pub trait Jitter {
     /// A duration drawn uniformly from zero to `ceiling`, inclusive.
     fn up_to(&mut self, ceiling: Duration) -> Duration;
+}
+
+/// Taskloom's configuration, as far as the use cases read it: the tag
+/// schema's declarations.
+///
+/// Synchronous, and it blocks on the filesystem, as [`ProjectIdentity`]
+/// does.
+pub trait Configuration {
+    /// The tag schema's declarations as configured (the default schema's
+    /// are not among them): every layer read, a higher one's list
+    /// replacing a lower one's, and `overrides` (`<path>=<value>`, as
+    /// `--config-set` gives them) applied last. Empty when no layer sets
+    /// one.
+    fn tag_schema(&mut self, overrides: &[String]) -> Result<Vec<String>, Report>;
 }
 
 /// One record of Go taskloom's task log, `~/.ctxloom/tasks/<project-id>.jsonl`:

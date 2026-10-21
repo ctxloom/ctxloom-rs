@@ -60,6 +60,11 @@ struct Cli {
     /// Project id to act on (overrides CTXLOOM_PROJECT_ID and the working directory's).
     #[arg(long, global = true)]
     project: Option<String>,
+    /// Override a configuration key for this run: <path>=<value>, e.g.
+    /// tag_schema=<declaration>,... (repeatable; beats TASKLOOM_CONFIG_*
+    /// and every config.yaml).
+    #[arg(long = "config-set", global = true, value_name = "PATH=VALUE")]
+    config_set: Vec<String>,
     #[command(subcommand)]
     command: Command,
 }
@@ -175,6 +180,7 @@ pub async fn run<S: TaskService + ImportService>(
                 trigger,
                 tags,
                 origin_session: context.session.clone(),
+                config_set: cli.config_set,
             };
             match service.add(task).await {
                 Ok(written) => wrote(&written, &Added(&written.task), format, catalog, out, err),
@@ -191,6 +197,7 @@ pub async fn run<S: TaskService + ImportService>(
                 harp_id,
                 add,
                 remove,
+                config_set: cli.config_set,
             };
             match service.tag(change).await {
                 Ok(written) => wrote(&written, &Tagged(&written.task), format, catalog, out, err),
@@ -202,6 +209,7 @@ pub async fn run<S: TaskService + ImportService>(
                 project: cli.project,
                 statuses: status,
                 all,
+                config_set: cli.config_set,
             };
             match service.list(query).await {
                 Ok(listing) => listed(&listing, format, catalog, out, err),
