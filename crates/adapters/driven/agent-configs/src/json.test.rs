@@ -215,6 +215,12 @@ fn test_nesting_is_read_to_its_limit_and_no_deeper() {
     let at = |depth: usize| "[".repeat(depth) + &"]".repeat(depth);
     assert!(parse(at(super::MAX_DEPTH + 1).as_bytes()).is_ok());
     assert!(parse(at(super::MAX_DEPTH + 2).as_bytes()).is_err());
+    let objects = |depth: usize| "{\"a\": ".repeat(depth) + "1" + &"}".repeat(depth);
+    assert!(parse(objects(super::MAX_DEPTH).as_bytes()).is_ok());
+    assert!(
+        parse(objects(super::MAX_DEPTH + 1).as_bytes()).is_err(),
+        "objects count toward the limit too"
+    );
 }
 
 #[test]

@@ -33,6 +33,23 @@ fn test_a_flat_name_escapes_what_ntfs_refuses_and_cuts_on_a_character() {
     assert!(tail.chars().all(|c| c == '\u{e9}'), "{tail}");
 }
 
+/// Go's `FlatName` gave each of these (its body run on them verbatim).
+#[test]
+fn test_a_flat_name_cut_inside_a_character_steps_forward_as_gos() {
+    assert_eq!(
+        flat_name(&format!("/{}x", "\u{e9}".repeat(60))),
+        format!("{}x__e3ac857167b96b7b", "\u{e9}".repeat(47))
+    );
+    assert_eq!(
+        flat_name(&"a".repeat(96)),
+        format!("{}__ee4caa5518a866f3", "a".repeat(96))
+    );
+    assert_eq!(
+        flat_name(&"a".repeat(97)),
+        format!("{}__2a2c60fe96afac91", "a".repeat(96))
+    );
+}
+
 /// Go's record `fixture`, for the file at `target`, in `dir` under the
 /// name Go gives it.
 fn lay(dir: &Path, fixture: &str, target: &str, stamp: &str) {

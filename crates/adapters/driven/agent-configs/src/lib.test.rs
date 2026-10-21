@@ -556,10 +556,16 @@ fn test_a_path_is_joined_and_cleaned_as_gos() {
 fn test_a_write_stages_beside_a_staging_file_left_by_another() {
     let (home, mut configs) = files();
     let path = home.path().join(".claude.json");
+    // Staging names are `.<base>.<pid>.<n>.tmp`, and the base is
+    // `.claude.json`: the first two are taken.
     let left = home
         .path()
-        .join(format!(".claude.json.{}.0.tmp", std::process::id()));
+        .join(format!("..claude.json.{}.0.tmp", std::process::id()));
     std::fs::write(&left, "someone's").unwrap();
+    let next = home
+        .path()
+        .join(format!("..claude.json.{}.1.tmp", std::process::id()));
+    std::fs::write(&next, "another's").unwrap();
     configs
         .register(
             CLAUDE_CODE,
@@ -571,5 +577,23 @@ fn test_a_write_stages_beside_a_staging_file_left_by_another() {
         )
         .unwrap();
     assert_eq!(std::fs::read_to_string(&left).unwrap(), "someone's");
+    assert_eq!(std::fs::read_to_string(&next).unwrap(), "another's");
     assert!(std::fs::read_to_string(&path).unwrap().contains("taskloom"));
+}
+
+#[test]
+fn test_staging_gives_up_after_a_thousand_names_taken() {
+    let dir = tempfile::tempdir().unwrap();
+    let name = |n: u32| {
+        dir.path()
+            .join(format!(".f.{}.{n}.tmp", std::process::id()))
+    };
+    for n in 0..1000 {
+        std::fs::write(name(n), "").unwrap();
+    }
+    let (staged, _) = super::fresh(dir.path(), "f").unwrap();
+    assert_eq!(staged, name(1000), "the thousandth retry is the last");
+    let refused = super::fresh(dir.path(), "f").unwrap_err();
+    assert_eq!(refused.kind(), std::io::ErrorKind::AlreadyExists);
+    assert!(!name(1001).exists(), "no retry past the thousandth");
 }

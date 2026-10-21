@@ -392,7 +392,8 @@ pub enum Value {
 pub fn encode(value: &Value) -> String {
     match value {
         Value::String(s) => quote(s),
-        Value::Array(items) if items.is_empty() => "[]".to_string(),
+        // An empty array joins to `[]` itself; only an empty object needs
+        // its own arm, without the inner spaces.
         Value::Array(items) => {
             let items: Vec<String> = items.iter().map(encode).collect();
             format!("[{}]", items.join(", "))
@@ -452,20 +453,19 @@ impl Edit {
 pub fn append_member(src: &[u8], obj: &Node, key: &str, value: &Value) -> Edit {
     let text = format!("{}: {}", quote(key), encode(value));
     let members = obj.members().unwrap_or_default();
-    let close = obj.end - 1;
-    let first = members.first().map_or(close, |m| m.key_start);
+    let first = members.first().map_or(obj.end, |m| m.key_start);
     let block = src[obj.start..first].contains(&b'\n');
     let Some(last) = members.last() else {
         if block {
             return seed_block(src, obj.start, obj.end, &text);
         }
-        // The interior is kept, after the member: `{}`, `{ }` and `{  }`
-        // stay three documents, so a removal can give each back.
-        let interior = String::from_utf8_lossy(&src[obj.start + 1..close]);
+        // Inserted after the brace, so the interior is kept after the
+        // member: `{}`, `{ }` and `{  }` stay three documents, so a removal
+        // can give each back.
         return Edit {
             start: obj.start + 1,
-            end: close,
-            text: format!(" {text} {interior}"),
+            end: obj.start + 1,
+            text: format!(" {text} "),
         };
     };
     let after = last.value.end;
