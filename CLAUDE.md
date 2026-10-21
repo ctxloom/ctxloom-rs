@@ -93,31 +93,63 @@ crate's catalog test checks messages and samples both ways.
 
 ## Use `just`
 
-`just test` (cargo-nextest, required: a missing nextest fails the gate),
-`just lint` (clippy, warnings denied) and `just lint-deps` (cargo-deny) are
-the checks. Every gate is terse: a pass prints one `ok   <gate> (<scope>)
-<duration>` line; a failure prints `FAIL <gate>: <summary> (full log:
-target/logs/<gate>.log)` and only the relevant extract (failing tests'
-output, short clippy messages, the files rustfmt would change, deny's
+`just build`, `just test` (cargo-nextest, required: a missing nextest fails
+the gate), `just lint` (clippy, warnings denied) and `just lint-deps`
+(cargo-deny) are the checks. Every gate is terse: a pass prints one `ok
+<gate> (<scope>) <duration>` line; a failure prints `FAIL <gate>: <summary>
+(full log: target/logs/<gate>.log)` and only the relevant extract (failing
+tests' output, short clippy messages, the files rustfmt would change, deny's
 errors, the mutation verdict and survivors). Read the log for the rest;
-`VERBOSE=1 just <gate>` shows the full output. lefthook shows a gate's
-output only when it fails. `just fmt` and `just fmt-check` cover this
-workspace's crates only, never the path dependencies (annals, angzarr-build).
-Lefthook's pre-commit first formats the staged Rust files rather than
-refusing an unformatted commit (`just fmt-staged`): it formats each file's
-staged content into the index, and the working file too when it has no
-unstaged change; a partially staged file's working copy is left exactly as
-it was, and is named as formatted in the commit only. `just fmt-check`
-remains the check for CI and manual runs. It then runs gitleaks, clippy and cargo-deny, and judges the staged
-change alone: `just
-test-staged` tests the changed crates and their dependents, and `just
-mutants-staged` mutation-tests the staged diff (`cargo mutants --in-diff`),
-holding new logic to its tier: every hand-written tier (domain, read models,
-ports, application and adapters) 90% or more; the composition root is
-listed but not held (the justfile's `mutation_thresholds` has every tier). A
-mutant judged equivalent or untestable gets `#[mutants::skip]` on its
-function, with a one-line comment above it saying why (in the core, as
-`#[cfg_attr(test, mutants::skip)]` with `mutants` a dev-dependency, so the
-core links nothing new); never an exclude in
-`.cargo/mutants.toml` or a lowered threshold. The last run's mutants.out
-(each mutant's log, outcomes.json) is kept in target/logs/mutants-staged/.
+`VERBOSE=1 just <gate>` shows the full output. `just fmt` and `just
+fmt-check` cover this workspace's crates only, never the path dependencies
+(annals, angzarr-build).
+
+## The pre-commit gates are shared; ctxloom-rs gives their parameters
+
+The gates and their recipes live in the shared gates repository
+(`gates.just`, `lefthook.yml`), checked out at `gates_dir` (justfile,
+`../../gates`) relative to ctxloom-rs's main checkout, so every worktree
+finds the same one. The justfile imports `.gates/gates.just` and
+lefthook.yml extends `.gates/lefthook.yml`; `.gates` is a gitignored link
+made by `just gates-link`, once per checkout (worktrees included). `just
+hooks-install` links and installs the hooks, once per clone: every worktree
+shares them. A commit without the link is refused by `just gates-check`
+(which makes the link, so the next commit goes through); a commit with no
+gates checkout at `gates_dir` is refused, saying where to clone it. Change a
+gate there, not here; ctxloom-rs keeps only its parameters
+(`mutation_thresholds`, `workspace_wide`, `staged_tree`, `feature_rules`,
+`features_prepare`), its `build` and `lint`, `deny.toml`, `.gitleaks.toml`
+and `.cargo/mutants.toml`.
+
+lefthook runs the gates one at a time, stopping at the first failure, and
+shows each gate's pass line and any failure's extract. A failing gate is a
+finding: fix the cause and commit again; never `--no-verify`, and never
+weaken a gate to get through.
+
+1. **fmt** formats the staged `*.rs` files in the index (`just
+   fmt-staged`) rather than refusing an unformatted commit. A fully staged
+   file's working copy gets the same content; a partially staged file's
+   working copy is left exactly as it was, and named (`partially staged:
+   <file> is committed formatted; its working copy is left as it was`).
+   `just fmt-check` is the check for CI and manual runs.
+2. **secrets**: gitleaks over the staged changes (`.gitleaks.toml`). A fake
+   secret in a test ends its line with `gitleaks:allow`.
+3. **clippy**: `just lint`, including the core's purity rules
+   (`crates/core/clippy.toml`).
+4. **deps**: `just lint-deps`, cargo-deny (`deny.toml`).
+5. **tests**: `just test-staged` tests the changed crates and their
+   dependents in the staged tree (HEAD plus the staged diff, a sibling
+   worktree of the checkout); a staged `workspace_wide` file tests the whole
+   workspace.
+6. **mutants**: `just mutants-staged` mutation-tests the staged diff
+   (`cargo mutants --in-diff`), holding new logic to its tier: every
+   hand-written tier (domain, read models, ports, application and adapters)
+   90% or more; the composition root is listed but not held (the justfile's
+   `mutation_thresholds` has every tier); the generated wire code is
+   excluded (`.cargo/mutants.toml`). A mutant judged equivalent or
+   untestable gets `#[mutants::skip]` on its function, with a one-line
+   comment above it saying why (in the core, as `#[cfg_attr(test,
+   mutants::skip)]` with `mutants` a dev-dependency, so the core links
+   nothing new); never an exclude in `.cargo/mutants.toml` or a lowered
+   threshold. The last run's mutants.out (each mutant's log, outcomes.json)
+   is kept in target/logs/mutants-staged/.

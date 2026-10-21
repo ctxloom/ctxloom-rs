@@ -1,47 +1,14 @@
-# Git hooks, managed by lefthook (`just hooks-install`). A failing hook is a
-# finding: fix the cause and commit again; never bypass with --no-verify.
-#
-# Every `run:` is one simple command, so it means the same under whatever
-# /bin/sh the committing machine has; anything longer is a just recipe.
-
-# Show a command's output only when it fails, then the per-command summary.
-# Each gate prints one line on a pass and the extract that matters on a
-# failure, with its full log in target/logs/ (the justfile's `_run`).
-output:
-  - failure
-  - summary
+# Git hooks, managed by lefthook (`just hooks-install`). The gates are the
+# shared gates repository's lefthook.yml, reached through the `.gates` link
+# (`just gates-link`); ctxloom-rs's parameters for them are in its justfile.
+extends:
+  - .gates/lefthook.yml
 
 pre-commit:
-  # One at a time in priority order, stopping at the first failure.
-  piped: true
   commands:
-    fmt:
-      # Formats the staged Rust files in the index (the commit) rather than
-      # refusing the commit; a partially staged file's working copy is left
-      # untouched (`just fmt-staged` says how). Not lefthook's stage_fixed:
-      # lefthook 1.13.6 restores the unstaged hunks it set aside at the
-      # wrong lines when formatting moved them. `just fmt-check` is the
-      # check, for CI and manual runs.
-      priority: 1
-      glob: "*.rs"
-      run: just fmt-staged
-    secrets:
-      priority: 2
-      run: just secrets-scan-staged
-    clippy:
-      # Includes the core's purity rules (crates/core/clippy.toml).
-      priority: 3
-      run: just lint
-    deps:
-      priority: 4
-      run: just lint-deps
-    tests:
-      # The tests of the crates the commit changes and of their workspace
-      # dependents, over the STAGED tree (`just test-staged` says how).
-      priority: 5
-      run: just test-staged
-    mutants:
-      # cargo mutants over the staged diff, judged per tier by the justfile's
-      # mutation_thresholds; last, because it is the slowest.
-      priority: 6
-      run: just mutants-staged
+    gates:
+      # lefthook skips an extends file it cannot read, so without this a
+      # missing link would let the commit through with no gate run. Its
+      # place in the order does not matter: whenever the link is broken it
+      # is the only command lefthook has.
+      run: just gates-check
