@@ -453,6 +453,22 @@ fn test_a_tag_changing_nothing_answers_with_the_task_as_it_is() {
 }
 
 #[test]
+fn test_a_tag_with_nothing_to_add_or_remove_is_refused_before_anything_is_read() {
+    let mut service = configured(&["unreadable"]);
+    for (add, remove) in [(&[][..], &[][..]), (&[" "], &[""])] {
+        let error = ready(service.tag(change("swift-amber", add, remove))).unwrap_err();
+        assert_eq!(error.code(), "tasks-tag-required");
+    }
+    assert!(
+        service.configuration.asked.is_empty(),
+        "no configuration read"
+    );
+    assert!(service.identity.pins.is_empty(), "no project resolved");
+    let error = ready(service.tag(change("swift-amber", &[], &[" x "]))).unwrap_err();
+    assert_eq!(error.code(), "x-config", "one tag is something to do");
+}
+
+#[test]
 fn test_a_tag_of_no_task_is_refused() {
     let mut service = service(&["swift-amber"]);
     add(&mut service, new_task("Ship it")).unwrap();

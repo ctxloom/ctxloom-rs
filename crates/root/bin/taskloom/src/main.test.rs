@@ -615,6 +615,33 @@ fn test_in_json_each_change_writes_one_document_and_errors_an_envelope() {
         (&"Ship it today".into(), &"To Do".into())
     );
     jq.refused(&["edit", harp, " ", "--json"], "tasks-text-required");
+    jq.refused(&["tag", harp, "--json"], "tasks-tag-required");
+    let tagged = jq.ok(&[
+        "tag",
+        harp,
+        "--add",
+        "triage:level=3",
+        "--add",
+        "x",
+        "--json",
+    ]);
+    assert_eq!(tagged["tags"], serde_json::json!(["triage:level=3", "x"]));
+    let collapsed = jq.ok(&[
+        "tag",
+        harp,
+        "--add",
+        "triage:level=1",
+        "--remove",
+        "x",
+        "--add",
+        "x",
+        "--json",
+    ]);
+    assert_eq!(
+        collapsed["tags"],
+        serde_json::json!(["triage:level=1"]),
+        "the scalar collapsed, the add then the remove"
+    );
 }
 
 #[test]

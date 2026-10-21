@@ -396,6 +396,16 @@ where
     }
 
     async fn tag(&mut self, change: TagChange) -> Result<Written, AppError> {
+        // Nothing to add or remove is refused before anything is read, as
+        // Go's `tag` refuses it.
+        if change
+            .add
+            .iter()
+            .chain(&change.remove)
+            .all(|t| t.trim().is_empty())
+        {
+            return Err(rejected(&TaskRejection::TagRequired));
+        }
         let schema = self.schema(&change.config_set)?;
         let add = tags::admit_all(&change.add, &schema).map_err(|r| refused(&r))?;
         let mut remove = tags::parse_all(&change.remove).map_err(|r| refused(&r))?;
