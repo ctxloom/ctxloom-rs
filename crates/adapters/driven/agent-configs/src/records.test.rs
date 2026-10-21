@@ -98,3 +98,42 @@ fn test_a_record_that_cannot_be_read_says_nothing() {
     assert!(!added(dir.path(), &target, "/mcpServers"));
     assert!(!added(&dir.path().join("absent"), &target, "/mcpServers"));
 }
+
+#[test]
+fn test_a_flat_name_keeps_exactly_the_last_ninety_six_bytes() {
+    let at = |n: usize| flat_name(&"a".repeat(n));
+    assert_eq!(at(96).len(), 96 + 18);
+    assert_eq!(at(97).len(), 96 + 18);
+    assert!(at(96).starts_with(&"a".repeat(96)));
+    let name = flat_name(&format!("b{}", "\u{e9}".repeat(48)));
+    assert_eq!(
+        &name[..name.len() - 18],
+        "\u{e9}".repeat(48),
+        "cut forward to a character"
+    );
+    assert!(flat_name(" ").starts_with(" __"), "a space is kept");
+}
+
+#[test]
+fn test_only_a_record_of_this_file_and_this_kind_is_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join(".claude.json").display().to_string();
+    lay(
+        dir.path(),
+        "indented-no-servers",
+        &target,
+        "20261021T070716.759601638Z",
+    );
+    let named = std::fs::read_dir(dir.path())
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let other = named.with_extension("yaml.bak");
+    std::fs::rename(&named, &other).unwrap();
+    assert!(
+        !added(dir.path(), &target, "/mcpServers"),
+        "not a record's suffix"
+    );
+}

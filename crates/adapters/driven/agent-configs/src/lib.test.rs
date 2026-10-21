@@ -551,3 +551,25 @@ fn test_a_path_is_joined_and_cleaned_as_gos() {
     }
     assert_eq!(go_join(Path::new(""), ""), PathBuf::from("."));
 }
+
+#[test]
+fn test_a_write_stages_beside_a_staging_file_left_by_another() {
+    let (home, mut configs) = files();
+    let path = home.path().join(".claude.json");
+    let left = home
+        .path()
+        .join(format!(".claude.json.{}.0.tmp", std::process::id()));
+    std::fs::write(&left, "someone's").unwrap();
+    configs
+        .register(
+            CLAUDE_CODE,
+            &path,
+            "taskloom",
+            "taskloom",
+            Some(&server()),
+            false,
+        )
+        .unwrap();
+    assert_eq!(std::fs::read_to_string(&left).unwrap(), "someone's");
+    assert!(std::fs::read_to_string(&path).unwrap().contains("taskloom"));
+}

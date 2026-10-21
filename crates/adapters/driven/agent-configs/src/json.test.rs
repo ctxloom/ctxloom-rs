@@ -187,3 +187,43 @@ fn test_an_append_then_a_removal_gives_the_bytes_back() {
         assert_eq!(removed(&appended(src), "k"), src, "{src:?}");
     }
 }
+
+#[test]
+fn test_a_block_seed_takes_the_files_first_content_indent() {
+    let seeded = |src: &str| {
+        let doc = parse(src.as_bytes()).unwrap();
+        let (_, inner) = doc.member("s").unwrap();
+        let edit = append_member(src.as_bytes(), &inner.value, "k", &s("v"));
+        String::from_utf8(edit.apply(src.as_bytes())).unwrap()
+    };
+    // A blank indented line and a lone "\r" carry no content; the first
+    // indented line that does sets the step.
+    assert_eq!(
+        seeded("{\n   \n \r\n\t\"s\": {\n\t}\n}"),
+        "{\n   \n \r\n\t\"s\": {\n\t\t\"k\": \"v\"\n\t}\n}"
+    );
+    assert_eq!(
+        seeded("{\"s\": {\n}}"),
+        "{\"s\": {\n  \"k\": \"v\"\n}}",
+        "no indent: two spaces"
+    );
+    assert_eq!(seeded("{\"s\": {}}"), "{\"s\": { \"k\": \"v\" }}");
+}
+
+#[test]
+fn test_nesting_is_read_to_its_limit_and_no_deeper() {
+    let at = |depth: usize| "[".repeat(depth) + &"]".repeat(depth);
+    assert!(parse(at(super::MAX_DEPTH + 1).as_bytes()).is_ok());
+    assert!(parse(at(super::MAX_DEPTH + 2).as_bytes()).is_err());
+}
+
+#[test]
+fn test_a_space_is_not_escaped_and_an_empty_array_is_bare() {
+    assert_eq!(quote(" \u{1f}"), "\" \\u001f\"");
+    assert_eq!(encode(&Value::Array(vec![])), "[]");
+    let mut empty = BTreeMap::new();
+    empty.insert("a".to_string(), Value::Array(vec![]));
+    assert_eq!(encode(&Value::Object(empty)), "{ \"a\": [] }");
+    let doc = parse(b"{\"a\": {}, \"bb\": 1}").unwrap();
+    assert_eq!(doc.members().unwrap()[1].key_start, 10);
+}
