@@ -5,10 +5,14 @@ use std::path::PathBuf;
 
 use serde_json::json;
 use tasks_application::{
-    Hidden, ListQuery, Listing, Project, Reach, Row, Shown, Task, Timestamp, Written,
+    Hidden, ListQuery, Listing, Project, Reach, Row, Scope, Shown, StatusChange, Summary,
+    TagChange, Task, TextEdit, Timestamp, Written,
 };
 
-use super::{added, list_query, listed, new_task, offered};
+use super::{
+    list_request, listed, new_task, offered, status_change, tag_change, text_edit, written,
+    ListRequest,
+};
 use crate::{McpError, Settings};
 
 fn settings() -> Settings {
@@ -75,60 +79,88 @@ fn catalog() -> presentation::Catalog {
     presentation::Catalog::en_us(&[crate::EN_US]).unwrap()
 }
 
-#[test]
-fn test_the_tools_offered_are_task_add_and_task_list() {
-    let names: Vec<String> = offered().into_iter().map(|t| t.name.into_owned()).collect();
-    assert_eq!(names, ["task_add", "task_list"]);
+fn pinned() -> Settings {
+    Settings {
+        project: Some("pinned-proj-id".to_string()),
+        ..settings()
+    }
 }
 
 #[test]
-fn test_a_listing_asks_for_its_statuses_and_whether_to_include_the_hidden() {
-    let query = list_query(
-        json!({"statuses": ["To Do", "Done"], "include_completed": true}),
-        &settings(),
+fn test_the_tools_offered_are_gos_five_in_gos_order() {
+    let names: Vec<String> = offered().into_iter().map(|t| t.name.into_owned()).collect();
+    assert_eq!(
+        names,
+        [
+            "task_add",
+            "task_edit",
+            "task_list",
+            "task_set_status",
+            "task_tag"
+        ]
+    );
+}
+
+#[test]
+fn test_a_listing_asks_for_everything_its_arguments_name() {
+    let request = list_request(
+        json!({
+            "statuses": ["To Do", "@open"], "include_completed": true, "term": "ship",
+            "tag_query": "a/b/and", "include_summary": true, "global": true,
+            "sort": "priority", "compact": true, "limit": 5,
+        }),
+        &pinned(),
     )
     .unwrap();
     assert_eq!(
-        query,
-        ListQuery {
-            project: None,
-            statuses: vec!["To Do".to_string(), "Done".to_string()],
-            all: true,
-            ..ListQuery::default()
+        request,
+        ListRequest {
+            query: ListQuery {
+                project: Some("pinned-proj-id".to_string()),
+                statuses: vec!["To Do".to_string(), "@open".to_string()],
+                all: true,
+                tag_query: "a/b/and".to_string(),
+                config_set: Vec::new(),
+                term: "ship".to_string(),
+                global: true,
+                limit: 5,
+                sort: "priority".to_string(),
+            },
+            compact: true,
+            summary: true,
         }
     );
     assert_eq!(
-        list_query(json!({}), &settings()).unwrap(),
-        ListQuery::default()
+        list_request(json!({"statuses": null}), &settings()).unwrap(),
+        ListRequest::default()
     );
 }
 
+// Go's limit: 0 or less is no cap.
 #[test]
-fn test_a_parameter_not_served_is_refused_unless_it_asks_for_nothing() {
-    let asking_nothing = json!({
-        "term": "", "tag_query": "", "include_summary": false, "global": false,
-        "sort": "", "compact": false, "limit": 0,
-    });
-    assert!(list_query(asking_nothing, &settings()).is_ok());
-    for (parameter, value) in [
-        ("term", json!("x")),
-        ("tag_query", json!("a/b/and")),
-        ("include_summary", json!(true)),
-        ("global", json!(true)),
-        ("sort", json!("priority")),
-        ("compact", json!(true)),
-        ("limit", json!(5)),
-    ] {
-        let mut arguments = serde_json::Map::new();
-        arguments.insert(parameter.to_string(), value);
-        assert_eq!(
-            list_query(arguments.into(), &settings()),
-            Err(McpError::Unserved {
-                tool: "task_list".to_string(),
-                parameter: parameter.to_string(),
-            })
-        );
+fn test_a_limit_of_zero_or_less_is_none() {
+    for limit in [0, -3] {
+        let request = list_request(json!({ "limit": limit }), &settings()).unwrap();
+        assert_eq!(request.query.limit, 0, "{limit}");
     }
+}
+
+#[test]
+fn test_a_summary_counts_the_projects_the_listing_reached() {
+    let request = list_request(json!({"include_summary": true}), &pinned()).unwrap();
+    let every = Reach::Every {
+        projects: 2,
+        fallback: Some("/tmp".to_string()),
+    };
+    assert_eq!(
+        request.summary_scope(&every),
+        Scope {
+            project: Some("pinned-proj-id".to_string()),
+            global: true,
+            config_set: Vec::new(),
+        }
+    );
+    assert!(!request.summary_scope(&Reach::Project(project())).global);
 }
 
 #[test]
@@ -152,17 +184,150 @@ fn test_an_add_asks_for_its_task_in_the_servers_session() {
 }
 
 #[test]
+fn test_each_change_asks_for_its_task_by_harp_in_the_pinned_project() {
+    assert_eq!(
+        status_change(
+            json!({"harp_id": "swift-amber", "status": "Deferred", "trigger": "later"}),
+            &pinned()
+        )
+        .unwrap(),
+        StatusChange {
+            project: Some("pinned-proj-id".to_string()),
+            harp_id: "swift-amber".to_string(),
+            status: "Deferred".to_string(),
+            trigger: "later".to_string(),
+            config_set: Vec::new(),
+        }
+    );
+    assert_eq!(
+        status_change(json!({"harp_id": "h", "status": "Done"}), &settings())
+            .unwrap()
+            .trigger,
+        ""
+    );
+    assert_eq!(
+        text_edit(json!({"harp_id": "swift-amber", "text": "New"}), &pinned()).unwrap(),
+        TextEdit {
+            project: Some("pinned-proj-id".to_string()),
+            harp_id: "swift-amber".to_string(),
+            text: "New".to_string(),
+            config_set: Vec::new(),
+        }
+    );
+    assert_eq!(
+        tag_change(
+            json!({"harp_id": "swift-amber", "add": ["a"], "remove": ["b"]}),
+            &pinned()
+        )
+        .unwrap(),
+        TagChange {
+            project: Some("pinned-proj-id".to_string()),
+            harp_id: "swift-amber".to_string(),
+            add: vec!["a".to_string()],
+            remove: vec!["b".to_string()],
+            config_set: Vec::new(),
+        }
+    );
+    let bare = tag_change(json!({"harp_id": "h", "add": null}), &settings()).unwrap();
+    assert!(bare.add.is_empty() && bare.remove.is_empty());
+}
+
+#[test]
+fn test_each_change_without_what_its_schema_requires_is_refused_by_name() {
+    for (tool, arguments) in [
+        (
+            "task_set_status",
+            status_change(json!({"harp_id": "h"}), &settings()).err(),
+        ),
+        (
+            "task_edit",
+            text_edit(json!({"text": "x"}), &settings()).err(),
+        ),
+        (
+            "task_tag",
+            tag_change(json!({"harp_id": "h", "colour": 1}), &settings()).err(),
+        ),
+    ] {
+        assert!(
+            matches!(&arguments, Some(McpError::Arguments { tool: t, .. }) if t == tool),
+            "{tool}: {arguments:?}"
+        );
+    }
+}
+
+#[test]
 fn test_a_listed_task_carries_its_project_and_no_priority_yet() {
     let listing = listing(Reach::Project(project()), vec![task()], Shown::default());
-    let value = listed(&listing, &catalog());
+    let value = listed(&listing, false, None, &catalog());
     assert_eq!(value["path"], "/s/state.db");
+    assert_eq!(value["project_id"], "jolly-mute-magma");
     assert_eq!(value.get("warning"), None);
+    assert_eq!(value.get("global"), None);
+    assert_eq!(value.get("compact_tasks"), None);
+    assert_eq!(value.get("summary"), None);
     let row = &value["tasks"][0];
     assert_eq!(row["harp_id"], "swift-amber");
     assert_eq!(row["project_id"], "jolly-mute-magma");
     assert_eq!(row["project_dir"], "/work/tree");
     assert_eq!(row["derived_priority"], json!(null));
     assert_eq!(row["created_at"], "2026-06-10T02:35:20Z");
+}
+
+// Go's taskListResult with compact: the compact rows, and `tasks` null.
+#[test]
+fn test_a_compact_listing_is_each_tasks_headline_and_tasks_null() {
+    let mut long = task();
+    long.text = "First line\nthe rest".to_string();
+    let listing = listing(Reach::Project(project()), vec![long], Shown::default());
+    let value = listed(&listing, true, None, &catalog());
+    assert_eq!(value["tasks"], json!(null));
+    assert_eq!(
+        value["compact_tasks"],
+        json!([{
+            "harp_id": "swift-amber", "status": "To Do", "checked": false, "tags": ["a"],
+            "headline": "First line", "project_id": "jolly-mute-magma", "project_dir": "/work/tree",
+        }])
+    );
+    let empty = listing_of(Reach::Project(project()), Vec::new());
+    let value = listed(&empty, true, None, &catalog());
+    assert_eq!(
+        value.get("compact_tasks"),
+        None,
+        "omitted when empty, as Go's"
+    );
+}
+
+fn listing_of(reach: Reach, tasks: Vec<Task>) -> Listing {
+    listing(reach, tasks, Shown::default())
+}
+
+#[test]
+fn test_a_listing_says_what_it_hid_and_what_its_limit_left_out() {
+    let mut listing = listing_of(Reach::Project(project()), vec![task()]);
+    listing.hidden = Hidden {
+        completed: 2,
+        deferred: 1,
+    };
+    listing.omitted = 4;
+    let value = listed(&listing, false, None, &catalog());
+    assert_eq!(value["hidden_completed"], 2);
+    assert_eq!(value["hidden_deferred"], 1);
+    assert_eq!(value["omitted_by_limit"], 4);
+}
+
+#[test]
+fn test_a_summary_comes_with_the_listing_when_asked_for() {
+    let listing = listing_of(Reach::Project(project()), vec![task()]);
+    let summary = Summary {
+        reach: Reach::Project(project()),
+        counts: [("To Do".to_string(), 1)].into(),
+        in_progress: Vec::new(),
+    };
+    let value = listed(&listing, false, Some(&summary), &catalog());
+    assert_eq!(
+        value["summary"],
+        json!({"counts": {"To Do": 1}, "in_progress": []})
+    );
 }
 
 #[test]
@@ -172,7 +337,7 @@ fn test_an_added_task_is_answered_with_its_store_and_project() {
         task: task(),
         shown: Shown::default(),
     };
-    let value = added(&written);
+    let value = super::written(&written);
     assert_eq!(value["path"], "/s/state.db");
     assert_eq!(value["project_id"], "jolly-mute-magma");
     assert_eq!(value["project_dir"], "/work/tree");
@@ -188,30 +353,69 @@ fn test_a_result_spells_every_tag_canonically_hidden_ones_too() {
     task.tags = vec![tag("triage:cwe=79"), tag("x=\"y z\""), tag("a")];
     let shown = hiding(&[r#"tagma.hide:"triage:cwe"=true"#]);
     let spelled = json!(["triage:cwe=79", "x=\"y z\"", "a"]);
-    let written = Written {
+    let wrote = Written {
         project: project(),
         task: task.clone(),
         shown: shown.clone(),
     };
-    assert_eq!(added(&written)["task"]["tags"], spelled);
+    assert_eq!(written(&wrote)["task"]["tags"], spelled);
     let listing = listing(Reach::Project(project()), vec![task], shown);
-    assert_eq!(listed(&listing, &catalog())["tasks"][0]["tags"], spelled);
+    assert_eq!(
+        listed(&listing, false, None, &catalog())["tasks"][0]["tags"],
+        spelled
+    );
 }
 
-// Go falls back to every project where none is found outside a work
-// root, and says so in `global` and `notice`; until that is served, such
-// a listing is answered as no project, as it was before the fallback.
 #[test]
-fn test_a_listing_of_no_project_or_every_project_is_answered_as_no_project() {
-    let every = Reach::Every {
-        projects: 1,
+fn test_a_listing_of_no_project_says_so_and_lists_nothing() {
+    let value = listed(
+        &listing_of(Reach::NoProject, Vec::new()),
+        false,
+        None,
+        &catalog(),
+    );
+    assert_eq!(
+        value,
+        json!({"path": "", "tasks": [], "warning": "no project here yet: nothing to list"})
+    );
+}
+
+// Go's no-project fallback: outside every work root a listing reads every
+// project, says so in `global` and `project_count`, and says why in
+// `notice`; each row carries its own project.
+#[test]
+fn test_a_listing_of_every_project_says_so_and_why_when_it_fell_back() {
+    let fell_back = Reach::Every {
+        projects: 3,
         fallback: Some("/tmp/somewhere".to_string()),
     };
-    for reach in [Reach::NoProject, every] {
-        let value = listed(&listing(reach, vec![task()], Shown::default()), &catalog());
-        assert_eq!(value["path"], "");
-        assert_eq!(value.get("project_id"), None);
-        assert_eq!(value["tasks"], json!([]));
-        assert!(value["warning"].as_str().is_some_and(|w| !w.is_empty()));
-    }
+    let value = listed(
+        &listing_of(fell_back, vec![task()]),
+        false,
+        None,
+        &catalog(),
+    );
+    assert_eq!(value["path"], "");
+    assert_eq!(value.get("project_id"), None);
+    assert_eq!(value.get("warning"), None);
+    assert_eq!(value["global"], true);
+    assert_eq!(value["project_count"], 3);
+    assert!(
+        value["notice"]
+            .as_str()
+            .is_some_and(|n| n.starts_with("no project here: /tmp/somewhere is in no git")),
+        "{value}"
+    );
+    assert_eq!(value["tasks"][0]["project_id"], "jolly-mute-magma");
+    let asked = Reach::Every {
+        projects: 3,
+        fallback: None,
+    };
+    let value = listed(&listing_of(asked, Vec::new()), false, None, &catalog());
+    assert_eq!(value["global"], true);
+    assert_eq!(
+        value.get("notice"),
+        None,
+        "an explicit global needs no notice"
+    );
 }

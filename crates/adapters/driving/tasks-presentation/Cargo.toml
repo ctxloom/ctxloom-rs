@@ -8,12 +8,13 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+presentation.workspace = true
 serde.workspace = true
 tasks-application.workspace = true
 time.workspace = true
 
 [dev-dependencies]
-presentation.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

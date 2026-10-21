@@ -349,6 +349,26 @@ fn test_a_malformed_or_unreadable_configuration_refuses_every_write() {
     assert!(service.stores.opened.is_empty());
 }
 
+// The tag schema a write is held to, as a reader asks for it: the default
+// extended by what is configured, the overrides passed on; and refused as
+// a write is, where the configuration is.
+#[test]
+fn test_the_tag_schema_is_the_one_a_write_is_held_to() {
+    let mut service = configured(&[r#"tagma.range:"triage:level"="1,9""#]);
+    let overrides = vec!["tag_schema=x".to_string()];
+    let schema = ready(service.tag_schema(overrides.clone())).unwrap();
+    assert_eq!(
+        schema.range_of("triage:level"),
+        Some(crate::Range { min: 1.0, max: 9.0 })
+    );
+    assert!(schema.is_scalar("triage:kind"), "the default still holds");
+    assert_eq!(service.configuration.asked, [overrides]);
+    assert!(service.identity.pins.is_empty(), "no project is resolved");
+    let mut service = configured(&["tagma.arty:x=1"]);
+    let error = ready(service.tag_schema(Vec::new())).unwrap_err();
+    assert_eq!(error.code(), "tasks-application-schema-unknown-facet");
+}
+
 // Scalar collapse, resolved before the retag is sent: Go's
 // TestScalarCollapse_* cases, over the default schema's scalars.
 #[test]

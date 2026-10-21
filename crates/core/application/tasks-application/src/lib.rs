@@ -195,6 +195,12 @@ pub trait TaskService {
         query: ListQuery,
     ) -> impl Future<Output = Result<Vocabulary, AppError>> + Send;
     fn lint(&mut self, scope: Scope) -> impl Future<Output = Result<LintReport, AppError>> + Send;
+    /// The tag schema a write is held to: the default one, extended by
+    /// what is configured, `config_set` applied. No project is resolved.
+    fn tag_schema(
+        &mut self,
+        config_set: Vec<String>,
+    ) -> impl Future<Output = Result<TagSchema, AppError>> + Send;
 }
 
 /// The registry the tasks domain runs under.
@@ -488,6 +494,10 @@ where
 
     async fn lint(&mut self, scope: Scope) -> Result<LintReport, AppError> {
         self.linted(scope).await
+    }
+
+    async fn tag_schema(&mut self, config_set: Vec<String>) -> Result<TagSchema, AppError> {
+        self.schema(&config_set)
     }
 }
 

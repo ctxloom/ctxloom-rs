@@ -32,6 +32,16 @@ fn test_an_arity_declares_its_target_scalar() {
     assert!(!schema.is_scalar("triage:other"));
 }
 
+// Every arity declared is listed, scalar or not, as Go's
+// `Targets(ArityFacet)` lists them: the tag-schema resource reports each.
+#[test]
+fn test_every_declared_arity_is_listed_by_target_scalar_or_not() {
+    let schema = parse(&[r#"tagma.arity:"b:y"=scalar"#, r#"tagma.arity:"a:x"=multi"#]);
+    let arities: Vec<(&str, bool)> = schema.arities().collect();
+    assert_eq!(arities, [("a:x", false), ("b:y", true)]);
+    assert_eq!(TagSchema::default().arities().count(), 0);
+}
+
 #[test]
 fn test_each_facet_is_kept_by_its_target() {
     let schema = parse(&[

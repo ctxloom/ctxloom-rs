@@ -26,14 +26,13 @@ fn test_a_use_case_error_is_its_own_diagnostic() {
 
 #[test]
 fn test_each_error_names_what_went_wrong() {
-    let unserved = McpError::Unserved {
-        tool: "task_list".to_string(),
-        parameter: "term".to_string(),
+    let unknown = McpError::UnknownResource {
+        uri: "taskloom://frob".to_string(),
     };
-    assert_eq!(unserved.to_string(), "task_list: term is not served yet");
+    assert_eq!(unknown.to_string(), "no resource is at taskloom://frob");
     assert!(matches!(
-        &unserved.args()[..],
-        [("tool", Arg::Str(t)), ("parameter", Arg::Str(p))] if t == "task_list" && p == "term"
+        &unknown.args()[..],
+        [("uri", Arg::Str(u))] if u == "taskloom://frob"
     ));
     let arguments = McpError::Arguments {
         tool: "task_add".to_string(),
@@ -50,6 +49,17 @@ fn test_each_error_names_what_went_wrong() {
     assert_eq!(arg_names(&crashed), ["detail"]);
     assert_eq!(McpNotice::NoProject.code(), "tasks-mcp-no-project");
     assert!(McpNotice::NoProject.args().is_empty());
+    let every = McpNotice::EveryProject {
+        directory: "/tmp/x".to_string(),
+    };
+    assert_eq!(every.code(), "tasks-mcp-every-project");
+    assert!(every
+        .to_string()
+        .starts_with("no project here: /tmp/x is in no git"));
+    assert!(matches!(
+        &every.args()[..],
+        [("directory", Arg::Str(d))] if d == "/tmp/x"
+    ));
 }
 
 #[test]

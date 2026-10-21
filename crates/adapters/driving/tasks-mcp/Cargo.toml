@@ -1,7 +1,7 @@
 [package]
 name = "tasks-mcp"
 version = "0.1.0"
-description = "The tasks MCP server: task_list and task_add over stdio, translated into the application's use cases"
+description = "The tasks MCP server: the task tools and tag resources over stdio, translated into the application's use cases"
 edition.workspace = true
 # rmcp's own.
 rust-version = "1.88"

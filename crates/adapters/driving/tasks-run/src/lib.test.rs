@@ -14,8 +14,8 @@ use presentation::{Catalog, Format};
 use serde_json::Value;
 use tasks_application::{
     AppError, Details, Hidden, LintReport, ListQuery, Listing, NewTask, Project, Reach, Row, Scope,
-    ShowQuery, Shown, StatusChange, Statuses, Summary, TagChange, Task, TaskService, TextEdit,
-    Timestamp, Vocabulary, Written,
+    ShowQuery, Shown, StatusChange, Statuses, Summary, TagChange, TagSchema, Task, TaskService,
+    TextEdit, Timestamp, Vocabulary, Written,
 };
 
 use super::{
@@ -123,6 +123,10 @@ impl TaskService for Fake {
 
     async fn lint(&mut self, _: Scope) -> Result<LintReport, AppError> {
         unreachable!("run lints nothing")
+    }
+
+    async fn tag_schema(&mut self, _: Vec<String>) -> Result<TagSchema, AppError> {
+        unreachable!("run reads no tag schema")
     }
 }
 

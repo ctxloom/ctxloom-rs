@@ -185,6 +185,12 @@ impl TagSchema {
         self.scalar.get(target).copied().unwrap_or(false)
     }
 
+    /// Every declared `(target, scalar)` arity, by target: those declared
+    /// anything but scalar too.
+    pub fn arities(&self) -> impl Iterator<Item = (&str, bool)> {
+        self.scalar.iter().map(|(t, s)| (t.as_str(), *s))
+    }
+
     /// The values `target` admits, if declared.
     pub fn enum_of(&self, target: &str) -> Option<&[String]> {
         self.enums.get(target).map(Vec::as_slice)

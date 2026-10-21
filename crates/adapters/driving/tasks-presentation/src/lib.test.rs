@@ -1,9 +1,15 @@
 //! A task's shape as a program reads it.
 
-use presentation::write_json;
-use tasks_application::{Task, Timestamp};
+use std::path::PathBuf;
 
-use super::{rfc3339, spelled, TaskJson};
+use presentation::write_json;
+use serde_json::json;
+use tasks_application::{Project, Reach, Row, Summary, TagCount, Task, Timestamp};
+
+use super::{
+    headline, project_label, rfc3339, spelled, CompactJson, RowJson, SummaryJson, TagCountJson,
+    TaskJson,
+};
 
 fn task(harp: &str, status: &str) -> Task {
     Task {
@@ -90,4 +96,87 @@ fn test_each_tag_is_spelled_canonically() {
         .map(|t| spelled_tag(t))
         .collect();
     assert_eq!(spelled(&tags), ["triage:cwe=79", "a:b", "x=\"y z\""]);
+}
+
+fn project() -> Project {
+    Project {
+        id: "jolly-mute-magma".to_string(),
+        root: "/work/tree".to_string(),
+        store: PathBuf::from("/s/state.db"),
+    }
+}
+
+fn value(shape: &impl serde::Serialize) -> serde_json::Value {
+    serde_json::to_value(shape).unwrap()
+}
+
+#[test]
+fn test_a_project_is_labelled_by_its_root_then_its_id() {
+    assert_eq!(project_label(&project()), "/work/tree (jolly-mute-magma)");
+}
+
+#[test]
+fn test_a_project_with_no_known_directory_is_labelled_by_its_id() {
+    let mut project = project();
+    project.root.clear();
+    assert_eq!(project_label(&project), "jolly-mute-magma");
+}
+
+#[test]
+fn test_a_headline_is_cut_at_80_characters() {
+    let exactly = "x".repeat(80);
+    assert_eq!(headline(&format!("{exactly}\nmore")), exactly);
+    assert_eq!(headline(&"x".repeat(81)), format!("{exactly}\u{2026}"));
+}
+
+#[test]
+fn test_a_compact_task_is_its_headline_with_its_project() {
+    let mut task = task("swift-amber", "Done");
+    task.text = "First line\nthe rest".to_string();
+    task.tags = vec![spelled_tag("x=\"y z\"")];
+    let project = project();
+    assert_eq!(
+        value(&RowJson::of(CompactJson::of(&task), &project)),
+        json!({
+            "harp_id": "swift-amber",
+            "status": "Done",
+            "checked": true,
+            "tags": ["x=\"y z\""],
+            "headline": "First line",
+            "project_id": "jolly-mute-magma",
+            "project_dir": "/work/tree",
+        })
+    );
+}
+
+#[test]
+fn test_a_summary_is_its_counts_and_each_task_in_progress_by_its_project() {
+    let summary = Summary {
+        reach: Reach::Project(project()),
+        counts: [("In Progress".to_string(), 1), ("To Do".to_string(), 2)].into(),
+        in_progress: vec![Row {
+            project: project(),
+            task: task("swift-amber", "In Progress"),
+        }],
+    };
+    assert_eq!(
+        value(&SummaryJson::of(&summary)),
+        json!({
+            "counts": {"In Progress": 1, "To Do": 2},
+            "in_progress": [{"harp_id": "swift-amber", "project": "/work/tree (jolly-mute-magma)"}],
+        })
+    );
+}
+
+#[test]
+fn test_a_tag_in_use_is_spelled_canonically_with_its_counts() {
+    let count = TagCount {
+        tag: spelled_tag("triage:kind=defect"),
+        active: 1,
+        total: 3,
+    };
+    assert_eq!(
+        value(&TagCountJson::of(&count)),
+        json!({"tag": "triage:kind=defect", "active": 1, "total": 3})
+    );
 }

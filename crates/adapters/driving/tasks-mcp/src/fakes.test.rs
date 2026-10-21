@@ -1,8 +1,10 @@
 //! The real use cases over fake ports, for the server's tests: a store
-//! whose first commits conflict, a wait between retries that can be held
-//! open, and an identity that records the thread it was asked on.
+//! whose first commits conflict, kept from one call's service to the
+//! next; a wait between retries that can be held open; and an identity
+//! that records the thread it was asked on.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::ThreadId;
 use std::time::Duration;
@@ -25,10 +27,12 @@ pub fn project() -> Project {
     }
 }
 
-/// A work root with a project, or none; every thread it was asked on is
-/// recorded.
+/// A work root with a project, or none; or no work root at all, in
+/// `rootless`, the one project there is found only by reading every
+/// project. Every thread it was asked on is recorded.
 pub struct FakeIdentity {
     pub bound: bool,
+    pub rootless: Option<String>,
     pub asked_on: Arc<Mutex<Vec<ThreadId>>>,
 }
 
@@ -54,14 +58,12 @@ impl ProjectIdentity for FakeIdentity {
 
     fn every_project(&mut self) -> Result<Vec<Project>, Report> {
         self.asked();
-        Ok(Vec::new())
+        Ok(vec![project()])
     }
 
-    /// Always in a work root: the server's reads never fall back to every
-    /// project here.
     fn rootless_directory(&mut self) -> Result<Option<String>, Report> {
         self.asked();
-        Ok(None)
+        Ok(self.rootless.clone())
     }
 }
 
@@ -173,10 +175,21 @@ impl AsyncUnitOfWork for ContendedUnit<'_> {
     }
 }
 
-/// One store, made on a write's open; none for a read before one.
+/// One store, made on a write's open; none for a read before one. It is
+/// taken from `home` when the service is made and put back when it is
+/// dropped, so the next call's service finds what this one wrote.
 pub struct FakeStores {
     store: Option<Contended>,
     conflicts: u32,
+    home: Arc<Mutex<Option<Contended>>>,
+}
+
+impl Drop for FakeStores {
+    fn drop(&mut self) {
+        if let Some(store) = self.store.take() {
+            *self.home.lock().unwrap() = Some(store);
+        }
+    }
 }
 
 impl TaskStores for FakeStores {
@@ -198,11 +211,18 @@ impl TaskStores for FakeStores {
     }
 }
 
-pub struct FakeNames;
+/// Harps minted in turn across every call's service: `swift-amber`,
+/// then `swift-amber-2`, and so on.
+pub struct FakeNames {
+    minted: Arc<AtomicU32>,
+}
 
 impl Names for FakeNames {
     fn task_id(&mut self) -> String {
-        "swift-amber".to_string()
+        match self.minted.fetch_add(1, Ordering::Relaxed) {
+            0 => "swift-amber".to_string(),
+            n => format!("swift-amber-{}", n + 1),
+        }
     }
 
     fn project_id(&mut self) -> String {
@@ -210,9 +230,10 @@ impl Names for FakeNames {
     }
 }
 
-#[derive(Default)]
+/// A fixed instant, and command ids unique across every call's service,
+/// as the system's are: a command id seen again is a redelivery.
 pub struct FakeClock {
-    ids: u8,
+    ids: Arc<AtomicU32>,
 }
 
 impl Clock for FakeClock {
@@ -226,8 +247,10 @@ impl Clock for FakeClock {
 
 impl CommandIds for FakeClock {
     fn command_id(&mut self) -> Uuid {
-        self.ids += 1;
-        Uuid::from_bytes([self.ids; 16])
+        let id = self.ids.fetch_add(1, Ordering::Relaxed) + 1;
+        let mut bytes = [0; 16];
+        bytes[..4].copy_from_slice(&id.to_be_bytes());
+        Uuid::from_bytes(bytes)
     }
 }
 
@@ -260,10 +283,14 @@ pub type FakeService = Service<FakeIdentity, FakeStores, FakeNames, FakeClock, H
 #[derive(Default)]
 pub struct World {
     pub bound: bool,
+    pub rootless: Option<String>,
     pub conflicts: u32,
+    pub store: Arc<Mutex<Option<Contended>>>,
     pub hold: Mutex<Option<(oneshot::Sender<()>, oneshot::Receiver<()>)>>,
     pub asked_on: Arc<Mutex<Vec<ThreadId>>>,
     pub made: Mutex<u32>,
+    pub minted: Arc<AtomicU32>,
+    pub ids: Arc<AtomicU32>,
 }
 
 impl World {
@@ -272,15 +299,23 @@ impl World {
         *self.made.lock().unwrap() += 1;
         let identity = FakeIdentity {
             bound: self.bound,
+            rootless: self.rootless.clone(),
             asked_on: Arc::clone(&self.asked_on),
         };
         let stores = FakeStores {
-            store: None,
+            store: self.store.lock().unwrap().take(),
             conflicts: self.conflicts,
+            home: Arc::clone(&self.store),
         };
         let delay = HeldDelay {
             hold: self.hold.lock().unwrap().take(),
         };
-        Service::new(identity, stores, FakeNames, FakeClock::default(), delay)
+        let names = FakeNames {
+            minted: Arc::clone(&self.minted),
+        };
+        let clock = FakeClock {
+            ids: Arc::clone(&self.ids),
+        };
+        Service::new(identity, stores, names, clock, delay)
     }
 }
