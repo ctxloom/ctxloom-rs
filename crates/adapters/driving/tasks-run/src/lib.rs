@@ -3,11 +3,12 @@
 //! task is launched; without one, on a terminal, a line-buffered picker
 //! on stderr offers the open tasks (`a` shows every status, `q` quits).
 //!
-//! The launch is `ctxloom run [--session <origin>] --seed-task <harp>
-//! [--seed-status "To Do"] --prompt "Work on this task (`<harp>`): <text>"`,
+//! The launch is ``ctxloom run [--session <origin>] --seed-task <harp>
+//! [--seed-status "To Do"] --prompt "Work on this task (`<harp>`): <text>"``,
 //! Go's argv: ctxloom mints the new session, continues the task's
 //! originating session when it has one, and marks the task In Progress
-//! (`--no-start` asks it to reset the task to To Do instead). ctxloom
+//! in Go taskloom's log, not this store (`--no-start` asks it to reset
+//! the task to To Do instead). ctxloom
 //! inherits stdin, stdout and stderr; taskloom writes nothing on stdout.
 //! Who is launched is a [`Launch`]: [`Ctxloom`], `ctxloom` found on a
 //! PATH, in the binary.

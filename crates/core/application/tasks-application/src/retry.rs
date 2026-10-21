@@ -61,7 +61,7 @@ pub(crate) enum Outcome {
     Refused(TaskRejection),
 }
 
-/// What [`run`] needs besides the store and the command.
+/// What [`Runner::run`] needs besides the store and the command.
 pub(crate) struct Runner<'a, C, D> {
     pub registry: &'a Registry,
     pub clock: &'a mut C,
