@@ -207,7 +207,14 @@ pub async fn run<S: TaskService + ImportService>(
                 config_set: cli.config_set,
             };
             match service.tag(change).await {
-                Ok(written) => wrote(&written, &Tagged(&written.task), format, catalog, out, err),
+                Ok(written) => wrote(
+                    &written,
+                    &Tagged(&written.task, &written.shown),
+                    format,
+                    catalog,
+                    out,
+                    err,
+                ),
                 Err(e) => Err(CliError::App(e)),
             }
         }
@@ -296,6 +303,7 @@ fn listed(
     let view = Listed {
         project: listing.project.as_ref(),
         tasks: &listing.tasks,
+        shown: &listing.shown,
     };
     let noticed = match listing.project {
         None => notify(&Notice::NoProject, catalog, err),

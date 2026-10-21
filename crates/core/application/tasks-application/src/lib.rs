@@ -41,8 +41,8 @@ pub use schema::{
     target, Range, SchemaError, TagSchema, DEFAULT_TAG_SCHEMA, FACETS, FACET_NAMESPACE, SEMVER,
 };
 pub use semver::{Semver, Version};
-pub use tags::{admit, collapse, Tag, TagRefusal, OPERATOR_WORDS};
-pub use view::{is_terminal, text_hash, Task, ARCHIVED, DONE};
+pub use tags::{admit, collapse, parse as parse_tag, Tag, TagRefusal, OPERATOR_WORDS};
+pub use view::{is_terminal, text_hash, Shown, Task, ARCHIVED, DONE};
 
 /// How many task ids an add mints before giving up, each refused because a
 /// task already holds it: Go's `harp.UniqueFrom`.
@@ -108,11 +108,13 @@ impl ListQuery {
     }
 }
 
-/// A task written, and the project it was written in.
+/// A task written, the project it was written in, and which of its tags a
+/// person is shown.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Written {
     pub project: Project,
     pub task: Task,
+    pub shown: Shown,
 }
 
 /// A project's tasks, in the order they were added; no project when the
@@ -121,6 +123,8 @@ pub struct Written {
 pub struct Listing {
     pub project: Option<Project>,
     pub tasks: Vec<Task>,
+    /// Which of their tags a person is shown.
+    pub shown: Shown,
 }
 
 /// The use cases, as a driving adapter calls them. Their futures are
@@ -272,7 +276,12 @@ where
                     let task = read(store, &self.registry, &harp_id)
                         .await?
                         .ok_or(AppError::Vanished { harp_id })?;
-                    return Ok(Written { project, task });
+                    let shown = Shown::of(&schema);
+                    return Ok(Written {
+                        project,
+                        task,
+                        shown,
+                    });
                 }
                 retry::Outcome::Refused(TaskRejection::TaskExists { .. }) => continue,
                 retry::Outcome::Refused(rejection) => return Err(rejected(&rejection)),
@@ -333,7 +342,11 @@ where
                 .ok_or(AppError::Vanished {
                     harp_id: change.harp_id,
                 })?;
-        Ok(Written { project, task })
+        Ok(Written {
+            project,
+            task,
+            shown: Shown::of(&schema),
+        })
     }
 
     async fn list(&mut self, query: ListQuery) -> Result<Listing, AppError> {
@@ -361,12 +374,14 @@ where
             return Ok(Listing {
                 project: None,
                 tasks: Vec::new(),
+                shown: Shown::of(&schema),
             });
         };
         let Some(store) = self.stores.open_existing(&project).await.map_err(failed)? else {
             return Ok(Listing {
                 project: Some(project),
                 tasks: Vec::new(),
+                shown: Shown::of(&schema),
             });
         };
         let admitted = query.clone();
@@ -393,6 +408,7 @@ where
         Ok(Listing {
             project: Some(project),
             tasks,
+            shown: Shown::of(&schema),
         })
     }
 }

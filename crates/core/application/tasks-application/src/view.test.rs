@@ -69,3 +69,34 @@ fn tag(key: &str) -> tasks::Tag {
         value: None,
     }
 }
+
+// ------------------------------------------------------------ shown
+
+fn spelled(s: &str) -> tasks::Tag {
+    crate::tags::parse(s).unwrap().unwrap()
+}
+
+#[test]
+fn test_tagma_tags_are_hidden_by_default_and_the_rest_shown() {
+    let shown = super::Shown::default();
+    assert!(!shown.shows(&spelled("tagma:x")));
+    assert!(!shown.shows(&spelled("tagma.hide:x=true")));
+    assert!(shown.shows(&spelled("urgent")));
+    assert!(shown.shows(&spelled("tagmatic:x")));
+}
+
+#[test]
+fn test_the_schemas_hide_facts_decide_what_is_shown() {
+    let schema = crate::TagSchema::parse([
+        r#"tagma.hide:"triage:cwe"=true"#,
+        r#"tagma.hide:"tagma:*"=false"#,
+    ])
+    .unwrap();
+    let shown = super::Shown::of(&schema);
+    let tags = [
+        spelled("triage:cwe=79"),
+        spelled("triage:kind=chore"),
+        spelled("tagma:x"),
+    ];
+    assert_eq!(shown.shown(&tags), [&tags[1], &tags[2]]);
+}

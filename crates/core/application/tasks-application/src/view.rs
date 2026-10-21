@@ -61,6 +61,37 @@ pub fn text_hash(text: &str) -> String {
         .collect()
 }
 
+/// Which of a task's tags a person is shown: tagma's display hiding
+/// (SPEC §7), from the tag schema's `hide` facts, with `tagma:*` hidden
+/// unless a fact says otherwise. Storage, matching and JSON are never
+/// touched: only what a person reads.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Shown(tagma_core::HideConfig);
+
+impl Shown {
+    /// What `schema`'s hide facts show.
+    pub fn of(schema: &crate::TagSchema) -> Shown {
+        Shown(tagma_core::HideConfig::from_patterns(schema.hide_facts()))
+    }
+
+    /// Whether `tag` is shown.
+    pub fn shows(&self, tag: &Tag) -> bool {
+        !tagma_core::tag_hidden(&tag.to_core(), &self.0)
+    }
+
+    /// Those of `tags` shown, in their order.
+    pub fn shown<'a>(&self, tags: &'a [Tag]) -> Vec<&'a Tag> {
+        tags.iter().filter(|t| self.shows(t)).collect()
+    }
+}
+
+/// What no hide fact shows: everything but `tagma:*`.
+impl Default for Shown {
+    fn default() -> Self {
+        Shown::of(&crate::TagSchema::default())
+    }
+}
+
 #[cfg(test)]
 #[path = "view.test.rs"]
 mod tests;

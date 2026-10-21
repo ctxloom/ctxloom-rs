@@ -93,6 +93,7 @@ impl ImportService for Fake {
 
 fn written(task: Task) -> Option<Result<Written, AppError>> {
     Some(Ok(Written {
+        shown: tasks_application::Shown::default(),
         project: project(),
         task,
     }))
@@ -315,6 +316,7 @@ fn test_a_failed_tag_exits_1() {
 
 fn listing(tasks: Vec<Task>) -> Option<Result<Listing, AppError>> {
     Some(Ok(Listing {
+        shown: tasks_application::Shown::default(),
         project: Some(project()),
         tasks,
     }))
@@ -399,6 +401,7 @@ fn test_list_where_there_is_no_project_says_so_and_lists_nothing() {
     for (terminal, shown) in [(true, "(no tasks)\n"), (false, "[]\n")] {
         let mut fake = Fake {
             listing: Some(Ok(Listing {
+                shown: tasks_application::Shown::default(),
                 project: None,
                 tasks: Vec::new(),
             })),

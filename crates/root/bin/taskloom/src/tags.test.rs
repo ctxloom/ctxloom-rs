@@ -139,3 +139,32 @@ fn test_list_selects_by_a_tag_query_postfix_or_infix() {
     assert!(!ran.ok);
     assert_eq!(code(&ran.stderr), "tasks-application-tag-query");
 }
+
+// Go's TestTagCmd_TextHidesConfiguredTagJSONKeepsIt, through the binary.
+#[test]
+fn test_a_tag_the_schema_hides_is_left_out_of_text_and_kept_in_json() {
+    let env = Env::new("calm-otter-fox");
+    configure(
+        env.project.path(),
+        "tag_schema:\n  - 'tagma.hide:\"triage:cwe\"=true'\n",
+    );
+    let ran = env.run(&[
+        "add",
+        "Ship it",
+        "--tag",
+        "triage:cwe=79",
+        "--tag",
+        "x",
+        "--json",
+    ]);
+    assert!(ran.ok, "{}", ran.stderr);
+    let harp = ran.json()["harp_id"].as_str().unwrap().to_string();
+    let text = env.run(&["list", "--format", "text"]);
+    assert!(text.stdout.contains("Ship it  [x]"), "{}", text.stdout);
+    let tagged = env.run(&["tag", &harp, "--add", "y", "--format", "text"]);
+    assert_eq!(tagged.stdout, format!("{harp}\tTo Do\tx,y\n"));
+    assert_eq!(
+        env.list()[0]["tags"],
+        serde_json::json!(["triage:cwe=79", "x", "y"])
+    );
+}

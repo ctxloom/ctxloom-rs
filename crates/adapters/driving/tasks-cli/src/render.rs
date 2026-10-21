@@ -5,7 +5,7 @@ use std::io::{self, Write};
 
 use presentation::{text, Render};
 use serde::Serialize;
-use tasks_application::{Project, Tag, Task, Timestamp};
+use tasks_application::{Project, Shown, Tag, Task, Timestamp};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
@@ -72,10 +72,19 @@ pub fn headline(text: &str) -> String {
 /// How wide the status column is: wide enough for every default status.
 const STATUS_WIDTH: usize = 11;
 
+/// The tags of `tags` a person is shown, in their canonical spelling.
+fn shown(tags: &[Tag], shown: &Shown) -> Vec<String> {
+    shown
+        .shown(tags)
+        .into_iter()
+        .map(ToString::to_string)
+        .collect()
+}
+
 /// The list view: one line per task, blank lines between, the id column as
-/// wide as the widest id, columns measured in display width; `(no tasks)`
-/// for none.
-pub fn table(out: &mut dyn Write, tasks: &[Task]) -> io::Result<()> {
+/// wide as the widest id, columns measured in display width, the tags
+/// `shown` shows; `(no tasks)` for none.
+pub fn table(out: &mut dyn Write, tasks: &[Task], shown: &Shown) -> io::Result<()> {
     if tasks.is_empty() {
         return writeln!(out, "(no tasks)");
     }
@@ -93,8 +102,9 @@ pub fn table(out: &mut dyn Write, tasks: &[Task]) -> io::Result<()> {
         if !task.trigger.is_empty() {
             line = format!("{line}  (trigger: {})", task.trigger);
         }
-        if !task.tags.is_empty() {
-            line = format!("{line}  [{}]", spelled(&task.tags).join(", "));
+        let tags = self::shown(&task.tags, shown);
+        if !tags.is_empty() {
+            line = format!("{line}  [{}]", tags.join(", "));
         }
         writeln!(
             out,
@@ -109,13 +119,16 @@ pub fn table(out: &mut dyn Write, tasks: &[Task]) -> io::Result<()> {
 /// A task `add` wrote: JSON the task; text its id, status and text.
 pub struct Added<'a>(pub &'a Task);
 
-/// A task `tag` wrote: JSON the task; text its id, status and tags.
-pub struct Tagged<'a>(pub &'a Task);
+/// A task `tag` wrote: JSON the task, every tag; text its id, status and
+/// the tags a person is shown.
+pub struct Tagged<'a>(pub &'a Task, pub &'a Shown);
 
-/// A listing: JSON an array of tasks; text the project, then the table.
+/// A listing: JSON an array of tasks, every tag; text the project, then
+/// the table, the tags a person is shown.
 pub struct Listed<'a> {
     pub project: Option<&'a Project>,
     pub tasks: &'a [Task],
+    pub shown: &'a Shown,
 }
 
 impl Render for Added<'_> {
@@ -141,7 +154,7 @@ impl Render for Tagged<'_> {
             "{}\t{}\t{}",
             task.harp_id,
             task.status,
-            spelled(&task.tags).join(",")
+            shown(&task.tags, self.1).join(",")
         )
     }
 }
@@ -155,7 +168,7 @@ impl Render for Listed<'_> {
         if let Some(project) = self.project {
             writeln!(out, "Project: {}\n", project_label(project))?;
         }
-        table(out, self.tasks)
+        table(out, self.tasks, self.shown)
     }
 }
 
