@@ -34,8 +34,9 @@ the architecture; there is no other table of crates.
 - `adapters/driving`: CLI, MCP, gRPC: translation only.
 - `root/bin`: binaries, the composition root.
 
-ctxloom-rs produces several binaries, each a crate under
-`root/bin` that composes the same core, application and adapters. Below
+ctxloom-rs is to produce several binaries (so far, `taskloom`), each a
+crate under `root/bin` that composes the same core, application and
+adapters. Below
 `root/bin`, a crate is named for its domain or role, never for a binary.
 
 `crates/core/clippy.toml` holds the core's purity rules (no I/O, clock, env,
@@ -49,12 +50,16 @@ and `just lint` refuses to run if they disagree.
 Dependencies point inward; a review refuses a change that breaks these:
 
 - The core depends on nothing outside it. A domain or read model links only
-  annals, annals-diagnostic, prost, angzarr-proto, and tagma's tagma-core
-  (the tag grammar and query engine) and tagma-proto (its `Tag` message): no
-  I/O, async runtime or clock in decide, apply or a projection.
+  annals, annals-diagnostic, prost, its wire crate (generated over
+  angzarr-proto), and tagma's tagma-core (the tag grammar and query engine)
+  and tagma-proto (its `Tag` message): no I/O, async runtime or clock in
+  decide, apply or a projection.
 - A driven adapter sees only ports (and wire types), never a use case. A
   driving adapter sees only the application layer, never a domain's
-  internals. Adapters never depend on each other.
+  internals. Adapters never depend on each other, with one exception:
+  driving adapters share the presentation crates, `presentation`
+  (domain-free; its tests keep it so) and a domain's own, such as
+  `tasks-presentation` (the task JSON the CLI and MCP server both write).
 - A domain never depends on a read model (the write side reads no
   projection); a read model never depends on the application layer (a query
   issues no command).
@@ -85,7 +90,11 @@ opened at `~/.ctxloom/projects/<project-id>/state.db`.
 Any store is held to annals' store contract (`annals::store_contract!` or
 `annals::async_store_contract!`), the checks `InMemoryStore` passes. Domain
 and projector tests run through annals' kernel over `InMemoryStore`, as the
-daemon runs over SQLite.
+binary runs over SQLite.
+
+The path dependencies are local checkouts (Cargo.toml says where): annals
+must be on its branch `concurrent-writers`, and tagma is its `tag-proto`
+worktree.
 
 ## Errors are localizable: a code, args, and an en-US message
 
@@ -100,7 +109,8 @@ Each crate with diagnostics exports its embedded en-US catalog as `EN_US`
 catalog from every crate's `EN_US` (presentation's `Catalog`), and the
 driving adapters render with it: a diagnostic's catalog message in text,
 its `{code, args, message}` envelope in JSON. A new crate's `EN_US` joins
-the binary's catalog list, and its samples the binary's every-diagnostic
+the binary's catalog list (`catalog()` in its `main.rs`, beside annals'
+and annals-store-sql's), and its samples the binary's every-diagnostic
 catalog test.
 
 ## Use `just`
@@ -158,10 +168,15 @@ weaken a gate to get through.
    hand-written tier (domain, read models, ports, application and adapters)
    90% or more; the composition root is listed but not held (the justfile's
    `mutation_thresholds` has every tier); the generated wire code is
-   excluded (`.cargo/mutants.toml`). A mutant judged equivalent or
-   untestable gets `#[mutants::skip]` on its function, with a one-line
-   comment above it saying why (in the core, as `#[cfg_attr(test,
-   mutants::skip)]` with `mutants` a dev-dependency, so the core links
-   nothing new); never an exclude in `.cargo/mutants.toml` or a lowered
-   threshold. The last run's mutants.out (each mutant's log, outcomes.json)
-   is kept in target/logs/mutants-staged/.
+   excluded (`.cargo/mutants.toml`). Each mutant runs only its own crate's
+   tests (`test_workspace = false`), under `cargo test`: a dependent's
+   tests, the binary's acceptance tests included, kill nothing, so a crate
+   kills its own mutants. A mutant judged equivalent or untestable gets
+   `#[cfg_attr(test, mutants::skip)]` on its function, with `mutants` a
+   dev-dependency (`mutants.workspace = true`, so nothing new is linked)
+   and a one-line comment above it saying why; never an exclude in
+   `.cargo/mutants.toml` or a lowered threshold. cargo mutants runs in a
+   session of its own (`setsid`), and whatever it leaves running (a
+   process a test spawned whose stop a mutant broke) is killed and named
+   in the gate's log; the verdict does not change. The last run's mutants.out (each
+   mutant's log, outcomes.json) is kept in target/logs/mutants-staged/.

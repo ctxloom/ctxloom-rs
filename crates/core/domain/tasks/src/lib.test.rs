@@ -1,7 +1,7 @@
-//! A task, driven through annals' kernel exactly as the daemon drives it:
+//! A task, driven through annals' kernel exactly as the binary drives it:
 //! `Kernel::handle` over a unit of work, which checks, identifies,
 //! deduplicates against the store, decides and commits. The store is
-//! annals' `InMemoryStore` behind the same port the daemon's SQLite adapter
+//! annals' `InMemoryStore` behind the same port the binary's SQLite adapter
 //! implements, so these hold the domain's rules, the generated layer and the
 //! store-backed pipeline together.
 
@@ -77,7 +77,7 @@ impl Task {
             .map_err(Box::new)
     }
 
-    /// The task's stream, replayed from the store as a restarted daemon
+    /// The task's stream, replayed from the store as the next process
     /// would.
     fn stream(&mut self) -> Stream<Tasks> {
         let slice = self

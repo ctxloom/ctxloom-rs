@@ -1,7 +1,7 @@
-//! A task list, projected as the daemon projects it: each command runs
-//! through annals' kernel with the list attached as a projection, so the
-//! list sees each committed event with the task's state just after it. A
-//! fresh list catches up from the store, as after a daemon restart.
+//! A task list, projected live: each command runs through annals' kernel
+//! with the list attached as a projection, so the list sees each committed
+//! event with the task's state just after it. A fresh list catches up from the store, as every read and watch of the
+//! binary's does.
 
 use std::marker::PhantomData;
 
@@ -225,7 +225,7 @@ fn test_since_gives_the_changes_after_a_cursor() {
 
 #[test]
 fn test_since_a_cursor_past_the_sequence_is_none() {
-    // A cursor the list never issued (a daemon restarted under the reader):
+    // A cursor the list never issued (a list rebuilt under the reader):
     // the reader takes the list whole.
     let mut project = Project::new();
     let mut list = every_task();
