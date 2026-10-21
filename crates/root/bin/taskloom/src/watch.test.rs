@@ -1,10 +1,12 @@
 //! Acceptance: `taskloom watch`, the real binary in a temporary home: its
 //! first line at once, a line for a task another process adds, one JSON
 //! document a line, and a clean exit at SIGINT or SIGTERM, or when its
-//! stdin closes, so no process is left behind even by a test that dies.
-//! The test waits on the stream's lines (each wait bounded, so a stream
-//! that never answers fails rather than hangs), never on a sleep. Then
-//! the stream in process, its ticks injected, over a prune's halves.
+//! stdin closes, so a test that dies leaves no process behind while the
+//! watch's stop works (one whose stop a mutant broke is killed by the
+//! mutation gate, which kills whatever its run leaves). The test waits on
+//! the stream's lines (each wait bounded, so a stream that never answers
+//! fails rather than hangs), never on a sleep. Then the stream in
+//! process, its ticks injected, over a prune's halves.
 
 use std::io::{BufRead, BufReader};
 use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
