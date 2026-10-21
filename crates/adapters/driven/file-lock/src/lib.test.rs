@@ -237,14 +237,18 @@ fn test_a_held_lock_is_waited_for_until_it_is_released() {
         let dir = tempfile::tempdir().unwrap();
         let lock_path = dir.path().join("x.lock");
         let mut holder = Some(hold(&lock_path));
-        let mut pauses = 0;
+        let mut pauses_while_held = 0;
+        // Pauses once the holder let go are a child another thread forked
+        // (`mkfifo`) still sharing its descriptor, until that child execs.
         let file = take_once(&lock_path, kind, None, &mut || {
-            pauses += 1;
-            holder = None;
+            match holder.take() {
+                Some(_released) => pauses_while_held += 1,
+                None => std::thread::yield_now(),
+            }
             Ok(())
         })
         .expect("taken once the holder let go");
-        assert_eq!(pauses, 1, "{kind:?} paused while held, and only then");
+        assert_eq!(pauses_while_held, 1, "{kind:?} paused while held");
         drop(file);
     }
 }
