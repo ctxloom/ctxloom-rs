@@ -3,7 +3,10 @@
 use std::fs;
 use std::path::Path;
 
-use super::{load, lock, path, save, write_atomically, Index, SCHEMA_VERSION};
+use super::{
+    load, lock, lock_within, path, save, take_current, take_once, until, write_atomically, Index,
+    LOCK_ATTEMPTS, SCHEMA_VERSION,
+};
 use crate::RegistryError;
 
 const GO_WRITTEN: &str = "\
@@ -186,4 +189,130 @@ fn test_nothing_is_written_or_locked_at_a_relative_path() {
     refused(save(relative, &Index::default()));
     refused(lock(relative).map(drop));
     assert!(!Path::new("relative-registry-dir").exists());
+}
+
+// ------------------------------------------------------------ the lock
+
+/// Open and lock the lock file at `path`, as one attempt of [`lock`] does.
+fn take(path: &Path) -> Result<fs::File, RegistryError> {
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(path)
+        .unwrap();
+    fs4::FileExt::lock(&file).unwrap();
+    Ok(file)
+}
+
+#[test]
+fn test_a_lock_taken_on_a_file_since_unlinked_is_taken_again() {
+    // `ctxloom clean` reaps lock sidecars: a lock granted on a file that
+    // was unlinked meanwhile excludes nobody, since the next taker creates
+    // and locks a new file at the path.
+    let dir = tempfile::tempdir().unwrap();
+    let lock_path = dir.path().join("index.yaml.lock");
+    let mut attempts = 0;
+    let locked = take_current(&lock_path, || {
+        attempts += 1;
+        let file = take(&lock_path)?;
+        if attempts == 1 {
+            // Reaped, and a new taker's file made in its place.
+            fs::remove_file(&lock_path).unwrap();
+            fs::write(&lock_path, "").unwrap();
+        }
+        Ok(file)
+    })
+    .unwrap();
+    assert_eq!(attempts, 2, "the first grant was on a reaped file");
+    let other = fs::File::open(&lock_path).expect("the lock file is back");
+    assert!(
+        fs4::FileExt::try_lock(&other).is_err(),
+        "what is held is the file at the path"
+    );
+    drop(locked);
+    assert!(fs4::FileExt::try_lock(&other).is_ok());
+}
+
+#[test]
+fn test_a_lock_replaced_every_time_gives_up_naming_the_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let lock_path = dir.path().join("index.yaml.lock");
+    let mut attempts = 0;
+    let refused = take_current(&lock_path, || {
+        attempts += 1;
+        let file = take(&lock_path)?;
+        fs::remove_file(&lock_path).unwrap();
+        Ok(file)
+    });
+    assert_eq!(attempts, LOCK_ATTEMPTS);
+    assert!(matches!(
+        refused.map(drop),
+        Err(RegistryError::LockReplaced { path, attempts })
+            if path == lock_path.display().to_string() && attempts == LOCK_ATTEMPTS
+    ));
+}
+
+#[test]
+fn test_a_failed_attempt_fails_the_lock() {
+    let dir = tempfile::tempdir().unwrap();
+    let lock_path = dir.path().join("index.yaml.lock");
+    let refused = take_current(&lock_path, || Err(RegistryError::NoHome));
+    assert!(matches!(refused.map(drop), Err(RegistryError::NoHome)));
+}
+
+#[test]
+fn test_a_lock_held_past_the_wait_fails_saying_who_to_look_for() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("index.yaml");
+    let held = lock(&file).unwrap();
+    let refused = lock_within(&file, std::time::Duration::from_millis(30));
+    let lock_path = dir.path().join("index.yaml.lock").display().to_string();
+    assert!(matches!(
+        refused.as_ref().map(drop),
+        Err(RegistryError::LockTimeout { path, waited_ms: 30 }) if *path == lock_path
+    ));
+    drop(held);
+    lock_within(&file, std::time::Duration::ZERO).expect("free once released");
+}
+
+#[test]
+fn test_a_held_lock_is_waited_for_until_it_is_released() {
+    let dir = tempfile::tempdir().unwrap();
+    let lock_path = dir.path().join("index.yaml.lock");
+    let mut holder = Some(take(&lock_path).unwrap());
+    let mut pauses = 0;
+    let file = take_once(&lock_path, &mut || {
+        pauses += 1;
+        holder = None;
+        Ok(())
+    })
+    .expect("taken once the holder let go");
+    assert_eq!(
+        pauses, 1,
+        "it paused while the lock was held, and only then"
+    );
+    drop(file);
+}
+
+#[test]
+fn test_a_pause_that_gives_up_fails_the_take() {
+    let dir = tempfile::tempdir().unwrap();
+    let lock_path = dir.path().join("index.yaml.lock");
+    let _holder = take(&lock_path).unwrap();
+    let refused = take_once(&lock_path, &mut || Err(RegistryError::NoHome));
+    assert!(matches!(refused, Err(RegistryError::NoHome)));
+}
+
+#[test]
+fn test_a_pause_waits_while_the_wait_lasts_and_gives_up_after() {
+    let dir = tempfile::tempdir().unwrap();
+    let lock_path = dir.path().join("index.yaml.lock");
+    let mut long = until(&lock_path, std::time::Duration::from_secs(60));
+    assert!(long().is_ok(), "a minute has not passed");
+    let mut none = until(&lock_path, std::time::Duration::ZERO);
+    assert!(matches!(
+        none(),
+        Err(RegistryError::LockTimeout { waited_ms: 0, .. })
+    ));
 }

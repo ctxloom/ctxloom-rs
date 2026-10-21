@@ -21,6 +21,8 @@ fn test_each_error_renders_its_english_fallback() {
             "no free project id after 100 tries",
             "the working directory cannot be read: No such file or directory (os error 2)",
             "index.yaml is not an absolute path: nothing is written relative to the working directory",
+            "the project registry's lock /home/u/.ctxloom/projects/index.yaml.lock is still held after 10000ms: another ctxloom or taskloom process holds it; try again once it exits",
+            "the project registry's lock /home/u/.ctxloom/projects/index.yaml.lock was replaced 16 times while being taken: try again",
         ]
     );
 }
@@ -58,6 +60,22 @@ fn test_each_error_gives_its_args_values() {
     assert!(matches!(&relative.args()[..], [("path", Arg::Str(p))] if p == "p"));
     let exhausted = RegistryError::Exhausted { attempts: 7 }.args();
     assert!(matches!(exhausted[0], ("attempts", Arg::Uint(7))));
+    let timeout = RegistryError::LockTimeout {
+        path: "p".to_string(),
+        waited_ms: 9,
+    };
+    assert!(matches!(
+        &timeout.args()[..],
+        [("path", Arg::Str(p)), ("waited_ms", Arg::Uint(9))] if p == "p"
+    ));
+    let replaced = RegistryError::LockReplaced {
+        path: "p".to_string(),
+        attempts: 3,
+    };
+    assert!(matches!(
+        &replaced.args()[..],
+        [("path", Arg::Str(p)), ("attempts", Arg::Uint(3))] if p == "p"
+    ));
 }
 
 #[test]

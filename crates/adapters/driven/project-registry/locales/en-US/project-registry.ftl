@@ -5,3 +5,5 @@ project-registry-unreadable = the project registry { $path } cannot be read: { $
 project-registry-exhausted = no free project id after { $attempts } tries
 project-registry-no-cwd = the working directory cannot be read: { $detail }
 project-registry-relative-path = { $path } is not an absolute path: nothing is written relative to the working directory
+project-registry-lock-timeout = the project registry's lock { $path } is still held after { $waited_ms }ms: another ctxloom or taskloom process holds it; try again once it exits
+project-registry-lock-replaced = the project registry's lock { $path } was replaced { $attempts } times while being taken: try again

@@ -28,6 +28,11 @@ pub enum RegistryError {
     /// A file the registry would write or lock is at a relative path, which
     /// would land wherever the process happens to run.
     RelativePath { path: String },
+    /// The registry's lock was held by another process for longer than
+    /// the wait.
+    LockTimeout { path: String, waited_ms: u64 },
+    /// Each lock taken was on a lock file unlinked meanwhile.
+    LockReplaced { path: String, attempts: u32 },
 }
 
 impl RegistryError {
@@ -61,6 +66,14 @@ impl fmt::Display for RegistryError {
                 f,
                 "{path} is not an absolute path: nothing is written relative to the working directory"
             ),
+            RegistryError::LockTimeout { path, waited_ms } => write!(
+                f,
+                "the project registry's lock {path} is still held after {waited_ms}ms: another ctxloom or taskloom process holds it; try again once it exits"
+            ),
+            RegistryError::LockReplaced { path, attempts } => write!(
+                f,
+                "the project registry's lock {path} was replaced {attempts} times while being taken: try again"
+            ),
         }
     }
 }
@@ -75,6 +88,8 @@ impl Diagnostic for RegistryError {
             RegistryError::Exhausted { .. } => "project-registry-exhausted",
             RegistryError::NoWorkingDirectory { .. } => "project-registry-no-cwd",
             RegistryError::RelativePath { .. } => "project-registry-relative-path",
+            RegistryError::LockTimeout { .. } => "project-registry-lock-timeout",
+            RegistryError::LockReplaced { .. } => "project-registry-lock-replaced",
         }
     }
 
@@ -97,6 +112,14 @@ impl Diagnostic for RegistryError {
                 vec![("detail", detail.as_str().into())]
             }
             RegistryError::RelativePath { path } => vec![("path", path.as_str().into())],
+            RegistryError::LockTimeout { path, waited_ms } => vec![
+                ("path", path.as_str().into()),
+                ("waited_ms", (*waited_ms).into()),
+            ],
+            RegistryError::LockReplaced { path, attempts } => vec![
+                ("path", path.as_str().into()),
+                ("attempts", (*attempts).into()),
+            ],
         }
     }
 }
@@ -126,6 +149,14 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         }),
         Box::new(RegistryError::RelativePath {
             path: "index.yaml".to_string(),
+        }),
+        Box::new(RegistryError::LockTimeout {
+            path: "/home/u/.ctxloom/projects/index.yaml.lock".to_string(),
+            waited_ms: 10000,
+        }),
+        Box::new(RegistryError::LockReplaced {
+            path: "/home/u/.ctxloom/projects/index.yaml.lock".to_string(),
+            attempts: 16,
         }),
     ]
 }

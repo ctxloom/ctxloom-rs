@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use time::format_description::well_known::Rfc3339;
@@ -132,26 +133,114 @@ pub fn write_atomically(path: &Path, bytes: &[u8]) -> Result<(), RegistryError> 
     Ok(())
 }
 
+/// How long [`lock`] waits for whoever holds the registry's lock before
+/// giving up: Go waits without end, so a process that hangs holding it
+/// would stall every other.
+pub const LOCK_WAIT: Duration = Duration::from_secs(10);
+
+/// How often a wait for the lock tries again.
+const LOCK_POLL: Duration = Duration::from_millis(20);
+
+/// How many times a lock granted on a file no longer at its path is taken
+/// again before giving up: Go's `lockAttempts`.
+pub const LOCK_ATTEMPTS: u32 = 16;
+
 /// An exclusive lock on the registry at `path`, held until dropped.
 pub struct Locked {
     _file: File,
 }
 
-/// Take the lock of the registry at `path`, an absolute path, waiting for
-/// whoever holds it.
+/// Take the lock of the registry at `path`, an absolute path, waiting up
+/// to [`LOCK_WAIT`] for whoever holds it.
 pub fn lock(path: &Path) -> Result<Locked, RegistryError> {
+    lock_within(path, LOCK_WAIT)
+}
+
+/// [`lock`], waiting up to `wait`.
+pub fn lock_within(path: &Path, wait: Duration) -> Result<Locked, RegistryError> {
     let lock_path = absolute(path)?.with_file_name("index.yaml.lock");
     if let Some(dir) = lock_path.parent() {
         fs::create_dir_all(dir).map_err(|e| RegistryError::io(dir, e))?;
     }
+    let mut pause = until(&lock_path, wait);
+    take_current(&lock_path, || take_once(&lock_path, &mut pause))
+}
+
+/// The lock `take` grants, taken again while what it granted is no longer
+/// the file at `lock_path`: `ctxloom clean` reaps lock files, and a lock
+/// on a file since unlinked excludes nobody, because the next taker
+/// creates a new file at the path and locks that. Go's `takeCurrent`.
+pub(crate) fn take_current(
+    lock_path: &Path,
+    mut take: impl FnMut() -> Result<File, RegistryError>,
+) -> Result<Locked, RegistryError> {
+    for _ in 0..LOCK_ATTEMPTS {
+        let file = take()?;
+        if same_file_at(&file, lock_path) {
+            return Ok(Locked { _file: file });
+        }
+    }
+    Err(RegistryError::LockReplaced {
+        path: lock_path.display().to_string(),
+        attempts: LOCK_ATTEMPTS,
+    })
+}
+
+/// The lock file at `lock_path`, opened (created if need be) and locked,
+/// calling `pause` each time another holds it, until `pause` gives up.
+pub(crate) fn take_once(
+    lock_path: &Path,
+    pause: &mut impl FnMut() -> Result<(), RegistryError>,
+) -> Result<File, RegistryError> {
     let file = OpenOptions::new()
         .create(true)
         .truncate(false)
         .write(true)
-        .open(&lock_path)
-        .map_err(|e| RegistryError::io(&lock_path, e))?;
-    fs4::FileExt::lock(&file).map_err(|e| RegistryError::io(&lock_path, e))?;
-    Ok(Locked { _file: file })
+        .open(lock_path)
+        .map_err(|e| RegistryError::io(lock_path, e))?;
+    loop {
+        match fs4::FileExt::try_lock(&file) {
+            Ok(()) => return Ok(file),
+            Err(fs4::TryLockError::WouldBlock) => pause()?,
+            Err(fs4::TryLockError::Error(e)) => return Err(RegistryError::io(lock_path, e)),
+        }
+    }
+}
+
+/// A pause between tries for the lock at `lock_path` that sleeps a poll,
+/// and gives up once `wait` has passed since it was made.
+pub(crate) fn until(lock_path: &Path, wait: Duration) -> impl FnMut() -> Result<(), RegistryError> {
+    let deadline = Instant::now() + wait;
+    let path = lock_path.display().to_string();
+    move || match deadline.checked_duration_since(Instant::now()) {
+        Some(left) if !left.is_zero() => {
+            std::thread::sleep(left.min(LOCK_POLL));
+            Ok(())
+        }
+        _ => Err(RegistryError::LockTimeout {
+            path: path.clone(),
+            waited_ms: u64::try_from(wait.as_millis()).unwrap_or(u64::MAX),
+        }),
+    }
+}
+
+/// Whether `file` is the file at `path` now.
+#[cfg(unix)]
+fn same_file_at(file: &File, path: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match (file.metadata(), fs::metadata(path)) {
+        (Ok(held), Ok(on_disk)) => held.dev() == on_disk.dev() && held.ino() == on_disk.ino(),
+        _ => false,
+    }
+}
+
+/// Whether `file` is the file at `path` now: elsewhere an open file cannot
+/// be unlinked, so it is.
+#[cfg(not(unix))]
+// Not compiled on unix, where the mutation tests run.
+#[cfg_attr(test, mutants::skip)]
+fn same_file_at(_file: &File, path: &Path) -> bool {
+    path.exists()
 }
 
 #[cfg(test)]

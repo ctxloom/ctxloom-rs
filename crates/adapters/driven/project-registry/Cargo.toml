@@ -18,6 +18,7 @@ time.workspace = true
 
 [dev-dependencies]
 fluent-syntax.workspace = true
+mutants.workspace = true
 
 [lints]
 workspace = true

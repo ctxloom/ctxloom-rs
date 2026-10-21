@@ -1267,6 +1267,7 @@ dependencies = [
  "annals-diagnostic 0.1.0",
  "fluent-syntax",
  "fs4",
+ "mutants",
  "ports",
  "serde",
  "serde_norway",
