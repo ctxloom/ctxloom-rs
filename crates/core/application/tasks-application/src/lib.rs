@@ -47,7 +47,7 @@ pub use query::{QueryError, QUERY_GRAMMAR};
 pub use read::{Details, Hidden, Listing, Reach, Statuses, Summary, TagCount, Vocabulary};
 pub use retry::Backoff;
 pub use schema::{
-    target, Range, SchemaError, TagSchema, DEFAULT_TAG_SCHEMA, FACETS, FACET_NAMESPACE, SEMVER,
+    Range, SchemaError, TagSchema, DEFAULT_TAG_SCHEMA, FACETS, FACET_NAMESPACE, SEMVER,
 };
 pub use semver::{Semver, Version};
 pub use tags::{admit, collapse, parse as parse_tag, Tag, TagRefusal, OPERATOR_WORDS};

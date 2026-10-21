@@ -237,20 +237,12 @@ impl TagSchema {
     }
 }
 
-/// The `namespace:key` (or bare `key`) a tag's facts are declared against.
-pub fn target(tag: &Tag) -> String {
-    match &tag.namespace {
-        Some(namespace) => format!("{namespace}:{}", tag.key),
-        None => tag.key.clone(),
-    }
-}
-
 /// Whether `target` is the target of some namespaced tag with no value:
 /// the only shape a scalar declaration can constrain.
 fn is_namespaced_key(target: &str) -> bool {
     match tagma_core::Tag::parse(target) {
         Ok(tag) => {
-            tag.value.is_none() && tag.namespace.is_some() && self::target(&tag.into()) == target
+            tag.value.is_none() && tag.namespace.is_some() && Tag::from(tag).target() == target
         }
         Err(_) => false,
     }

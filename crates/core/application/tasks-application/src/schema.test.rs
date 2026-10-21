@@ -3,8 +3,7 @@
 
 use annals_diagnostic::Diagnostic;
 
-use super::{target, Range, TagSchema, Why, DEFAULT_TAG_SCHEMA, FACETS};
-use crate::Tag;
+use super::{Range, TagSchema, Why, DEFAULT_TAG_SCHEMA, FACETS};
 
 fn parse(declarations: &[&str]) -> TagSchema {
     TagSchema::parse(declarations).expect("a valid schema")
@@ -229,17 +228,6 @@ fn test_the_default_schema_parses_and_a_project_extends_it() {
         Some(Range { min: 1.0, max: 9.0 })
     );
     assert!(extended.is_scalar("area:x") && extended.is_scalar("triage:kind"));
-}
-
-#[test]
-fn test_a_tags_target_is_its_namespace_and_key() {
-    let tag = |ns: Option<&str>, key: &str| Tag {
-        namespace: ns.map(str::to_string),
-        key: key.to_string(),
-        value: Some("v".to_string()),
-    };
-    assert_eq!(target(&tag(Some("triage"), "kind")), "triage:kind");
-    assert_eq!(target(&tag(None, "urgent")), "urgent");
 }
 
 #[test]

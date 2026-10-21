@@ -221,7 +221,7 @@ fn by_target(tags: &[crate::Tag]) -> BTreeMap<String, Vec<String>> {
     let mut values: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for tag in tags {
         let Some(value) = &tag.value else { continue };
-        let held = values.entry(schema::target(tag)).or_default();
+        let held = values.entry(tag.target()).or_default();
         if !held.contains(value) {
             held.push(value.clone());
         }

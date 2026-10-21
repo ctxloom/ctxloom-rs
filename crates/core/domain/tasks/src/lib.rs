@@ -247,6 +247,15 @@ impl Tag {
     pub fn to_core(&self) -> tagma_core::Tag {
         self.clone().into()
     }
+
+    /// The `namespace:key` (or bare `key`) the tag's facts are declared
+    /// against, and a formula's placeholder names.
+    pub fn target(&self) -> String {
+        match &self.namespace {
+            Some(namespace) => format!("{namespace}:{}", self.key),
+            None => self.key.clone(),
+        }
+    }
 }
 
 /// The canonical spelling (tagma's `Display`): each component bare where it

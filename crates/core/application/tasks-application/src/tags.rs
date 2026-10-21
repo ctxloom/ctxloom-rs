@@ -15,7 +15,7 @@ use annals_diagnostic::{Arg, Diagnostic};
 
 pub use tasks::Tag;
 
-use crate::schema::{self, TagSchema, FACET_NAMESPACE, SEMVER};
+use crate::schema::{TagSchema, FACET_NAMESPACE, SEMVER};
 use crate::semver::Version;
 
 /// The words tagma's query grammar reads as operators, in any case: a tag
@@ -233,7 +233,7 @@ pub fn admit(tag: &Tag, schema: &TagSchema) -> Result<(), TagRefusal> {
     let Some(value) = &tag.value else {
         return Ok(());
     };
-    let target = schema::target(tag);
+    let target = tag.target();
     if let Some(members) = schema.enum_of(&target) {
         if !members.contains(value) {
             return Err(TagRefusal::NotInEnum {
@@ -297,7 +297,7 @@ pub fn admit_all(spelled: &[String], schema: &TagSchema) -> Result<Vec<Tag>, Tag
 /// tag with no namespace is never collapsed.
 pub fn collapse(schema: &TagSchema, held: &[Tag], add: Vec<Tag>) -> (Vec<Tag>, Vec<Tag>) {
     let scalar = |tag: &Tag| {
-        let target = schema::target(tag);
+        let target = tag.target();
         (tag.namespace.is_some() && schema.is_scalar(&target)).then_some(target)
     };
     let mut last: BTreeMap<String, usize> = BTreeMap::new();
