@@ -2018,6 +2018,8 @@ dependencies = [
  "go-task-log",
  "harp-names",
  "ports",
+ "project-application",
+ "project-cli",
  "project-registry",
  "serde_json",
  "system",

@@ -384,3 +384,6 @@ fn test_a_tag_where_there_is_no_project_fails_and_binds_none() {
 
 #[path = "import.test.rs"]
 mod import;
+
+#[path = "project.test.rs"]
+mod project;

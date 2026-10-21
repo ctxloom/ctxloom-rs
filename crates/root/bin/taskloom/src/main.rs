@@ -2,14 +2,16 @@
 //! process's environment, wires the tasks use cases to their adapters (the
 //! project registry, harp names, the SQLite task store, the system's
 //! clock, ids, timer and randomness, and Go taskloom's logs to import),
-//! and hands the command line to the CLI. It holds no logic of its own.
+//! mounts the `project` group beside the task commands, and hands the
+//! command line to the CLI. It holds no logic of its own.
 
-use std::io::{self, IsTerminal};
+use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use go_task_log::GoTaskLogDir;
 use harp_names::HarpNames;
+use project_application::Projects;
 use project_registry::{Environment, ProjectRegistry};
 use system::System;
 use task_store_sqlite::SqliteStores;
@@ -34,6 +36,7 @@ fn main() -> ExitCode {
         project_id: std::env::var("CTXLOOM_PROJECT_ID").ok(),
     };
     let go_logs = GoTaskLogDir::in_home(env.home.as_deref());
+    let mut projects = Projects::new(ProjectRegistry::new(env.clone(), HarpNames));
     let identity = ProjectRegistry::new(env, HarpNames);
     let mut service = Service::new(identity, SqliteStores::default(), HarpNames, System, System)
         .with_go_logs(go_logs);
@@ -41,10 +44,20 @@ fn main() -> ExitCode {
         session: std::env::var("CTXLOOM_SESSION_HARP").unwrap_or_default(),
         stdout_is_terminal: io::stdout().is_terminal(),
     };
-    let code = runtime.block_on(tasks_cli::run(
+    let project_group =
+        |group, flags: tasks_cli::Mounted, out: &mut dyn Write, err: &mut dyn Write| {
+            let settings = project_cli::Settings {
+                json: flags.json,
+                project: flags.project,
+                prog: tasks_cli::PROG,
+            };
+            project_cli::run(group, &settings, &mut projects, out, err)
+        };
+    let code = runtime.block_on(tasks_cli::run_mounted::<_, project_cli::Group>(
         std::env::args_os(),
         &context,
         &mut service,
+        project_group,
         &mut io::stdout().lock(),
         &mut io::stderr().lock(),
     ));
