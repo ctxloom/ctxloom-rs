@@ -13,9 +13,9 @@ use tasks_application::{
     ProjectImport, TagChange, Task, TaskService, Written,
 };
 
-use presentation::Catalog;
+use presentation::{Catalog, Format};
 
-use super::{run, Context};
+use super::{run, run_mounted, Context, Mounted};
 
 mod shapes {
     use tasks_application::{Task, Timestamp};
@@ -698,4 +698,92 @@ fn test_import_that_cannot_start_fails_with_why() {
         "{}",
         ran.err
     );
+}
+
+// ------------------------------------------------------------ mounted
+
+/// Another crate's commands, as a binary mounts them.
+#[derive(clap::Subcommand, Debug, PartialEq)]
+enum Extra {
+    /// Say hello.
+    Hello { name: String },
+}
+
+fn run_extra(terminal: bool, args: &[&str]) -> (Ran, Vec<(Extra, Mounted)>) {
+    let context = Context {
+        session: String::new(),
+        stdout_is_terminal: terminal,
+    };
+    let args: Vec<OsString> = std::iter::once("taskloom")
+        .chain(args.iter().copied())
+        .map(OsString::from)
+        .collect();
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let mut handed = Vec::new();
+    let catalog = catalog();
+    let mounted = |command: Extra,
+                   flags: Mounted,
+                   given: &Catalog,
+                   out: &mut dyn std::io::Write,
+                   err: &mut dyn std::io::Write| {
+        assert!(std::ptr::eq(given, &catalog), "the run's own catalog");
+        writeln!(out, "out").unwrap();
+        writeln!(err, "err").unwrap();
+        handed.push((command, flags));
+        7
+    };
+    let code = ready(run_mounted(
+        args,
+        &context,
+        &catalog,
+        &mut Fake::default(),
+        mounted,
+        &mut out,
+        &mut err,
+    ));
+    let ran = Ran {
+        code,
+        out: String::from_utf8(out).unwrap(),
+        err: String::from_utf8(err).unwrap(),
+    };
+    (ran, handed)
+}
+
+#[test]
+fn test_a_mounted_command_gets_the_global_flags_and_gives_the_exit_code() {
+    let (ran, handed) = run_extra(true, &["--project", "p", "hello", "world", "--json"]);
+    assert_eq!(
+        (ran.code, ran.out.as_str(), ran.err.as_str()),
+        (7, "out\n", "err\n")
+    );
+    assert_eq!(
+        handed,
+        [(
+            Extra::Hello {
+                name: "world".to_string()
+            },
+            Mounted {
+                format: Format::Json,
+                project: Some("p".to_string()),
+            }
+        )]
+    );
+    let (_, handed) = run_extra(true, &["hello", "x"]);
+    assert_eq!(
+        handed[0].1,
+        Mounted {
+            format: Format::Text,
+            project: None,
+        },
+        "text on a terminal"
+    );
+}
+
+#[test]
+fn test_mounted_commands_are_listed_beside_the_task_commands() {
+    let (ran, handed) = run_extra(true, &["--help"]);
+    assert_eq!(ran.code, 0);
+    assert!(handed.is_empty());
+    assert!(ran.out.contains("hello"), "{}", ran.out);
+    assert!(ran.out.contains("import"), "{}", ran.out);
 }

@@ -1,7 +1,7 @@
 [package]
 name = "ports"
 version = "0.1.0"
-description = "The ports the tasks application needs from outside that annals does not provide: project identity, the store opener, names, time, ids and waiting"
+description = "The ports the tasks and project applications need from outside that annals does not provide: project identity and its survey, the store opener, names, time, ids and waiting"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

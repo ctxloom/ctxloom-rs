@@ -1,0 +1,22 @@
+[package]
+name = "project-cli"
+version = "0.1.0"
+description = "The project command group (show, heal, repoint, orphans), for any binary to mount: arguments parsed into the project use cases, and their answers rendered as text or JSON"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+annals-diagnostic.workspace = true
+clap.workspace = true
+presentation.workspace = true
+project-application.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+fluent-syntax.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

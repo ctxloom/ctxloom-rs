@@ -1,10 +1,11 @@
 //! The tasks command line: `add`, `list`, `tag` and `import`, translated
 //! into the application's use cases and their answers rendered through
-//! presentation. Text on a terminal, JSON otherwise, unless `--format` or
-//! `--json` says; stdout holds the answer alone (one JSON document), and
-//! notices, such as the project a write went to, go to stderr. Exit 0, or 1
-//! with the error on stderr: its catalog message in text, its envelope in
-//! JSON.
+//! presentation, with room for another crate's commands mounted beside
+//! them ([`run_mounted`]). Text on a terminal, JSON otherwise, unless
+//! `--format` or `--json` says; stdout holds the answer alone (one JSON
+//! document), and notices, such as the project a write went to, go to
+//! stderr. Exit 0, or 1 with the error on stderr: its catalog message in
+//! text, its envelope in JSON.
 
 mod error;
 mod import;
@@ -50,7 +51,7 @@ pub fn catalog(adapters: &[Source]) -> Result<Catalog, CatalogError> {
 
 #[derive(Parser, Debug)]
 #[command(name = PROG, about = "Manage the per-project task store")]
-struct Cli {
+struct Cli<X: Subcommand> {
     /// Output format: text, or json (the default when stdout is not a terminal).
     #[arg(long, global = true)]
     format: Option<Format>,
@@ -61,11 +62,11 @@ struct Cli {
     #[arg(long, global = true)]
     project: Option<String>,
     #[command(subcommand)]
-    command: Command,
+    command: Command<X>,
 }
 
 #[derive(Subcommand, Debug)]
-enum Command {
+enum Command<X: Subcommand> {
     /// Add a new task.
     Add {
         /// The task's text; several words are joined with spaces.
@@ -104,9 +105,26 @@ enum Command {
     /// into each project's store: every project's, or --project's alone.
     /// Running it again imports only what is new.
     Import,
+    /// Commands another crate defines, mounted beside these.
+    #[command(flatten)]
+    Mounted(X),
 }
 
-impl Cli {
+/// Nothing mounted.
+#[derive(Subcommand, Debug)]
+pub enum Unmounted {}
+
+/// What a mounted command is handed besides itself: the global flags
+/// parsed.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Mounted {
+    /// The format asked for, or chosen by whether stdout is a terminal.
+    pub format: Format,
+    /// `--project`.
+    pub project: Option<String>,
+}
+
+impl<X: Subcommand> Cli<X> {
     /// The format asked for, else text on a terminal and JSON off one.
     fn format(&self, context: &Context) -> Format {
         Format::choose(self.json, self.format, context.stdout_is_terminal)
@@ -143,8 +161,28 @@ pub async fn run<S: TaskService + ImportService>(
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> u8 {
+    let unmounted =
+        |never: Unmounted, _: Mounted, _: &Catalog, _: &mut dyn Write, _: &mut dyn Write| {
+            match never {}
+        };
+    run_mounted(args, context, catalog, service, unmounted, out, err).await
+}
+
+/// [`run`], with the commands `X` mounted beside the task commands: one
+/// of them parsed is handed to `mounted` with the global flags and the
+/// catalog it renders its diagnostics from, and its exit code is the
+/// run's.
+pub async fn run_mounted<S: TaskService + ImportService, X: Subcommand>(
+    args: impl IntoIterator<Item = OsString>,
+    context: &Context,
+    catalog: &Catalog,
+    service: &mut S,
+    mounted: impl FnOnce(X, Mounted, &Catalog, &mut dyn Write, &mut dyn Write) -> u8,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> u8 {
     let args: Vec<OsString> = args.into_iter().collect();
-    let cli = match Cli::try_parse_from(&args) {
+    let cli = match Cli::<X>::try_parse_from(&args) {
         Ok(cli) => cli,
         Err(e) => {
             // Help and --version are answers, on stdout; the rest are
@@ -207,6 +245,13 @@ pub async fn run<S: TaskService + ImportService>(
                 Ok(listing) => listed(&listing, format, catalog, out, err),
                 Err(e) => Err(CliError::App(e)),
             }
+        }
+        Command::Mounted(command) => {
+            let flags = Mounted {
+                format,
+                project: cli.project,
+            };
+            return mounted(command, flags, catalog, out, err);
         }
         Command::Import => {
             let request = ImportRequest {

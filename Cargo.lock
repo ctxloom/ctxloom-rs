@@ -1318,12 +1318,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "project-application"
+version = "0.1.0"
+dependencies = [
+ "annals-diagnostic 0.1.0",
+ "fluent-syntax",
+ "ports",
+]
+
+[[package]]
+name = "project-cli"
+version = "0.1.0"
+dependencies = [
+ "annals-diagnostic 0.1.0",
+ "clap",
+ "fluent-syntax",
+ "presentation",
+ "project-application",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "project-registry"
 version = "0.1.0"
 dependencies = [
  "annals-diagnostic 0.1.0",
  "fluent-syntax",
  "fs4",
+ "mutants",
  "ports",
  "serde",
  "serde_norway",
@@ -2082,6 +2105,8 @@ dependencies = [
  "harp-names",
  "ports",
  "presentation",
+ "project-application",
+ "project-cli",
  "project-registry",
  "serde_json",
  "system",

@@ -391,6 +391,8 @@ fn test_every_diagnostic_of_every_crate_renders_from_the_binarys_catalog() {
         project_registry::diagnostic_samples(),
         task_store_sqlite::diagnostic_samples(),
         tasks_cli::diagnostic_samples(),
+        project_application::diagnostic_samples(),
+        project_cli::diagnostic_samples(),
         go_task_log::diagnostic_samples(),
         presentation::diagnostic_samples(),
     ]
@@ -477,7 +479,33 @@ fn test_in_json_each_command_writes_one_document_and_errors_an_envelope() {
         one_document(&incomplete.stderr)["code"],
         "tasks-cli-import-incomplete"
     );
+
+    let shown = env.run(&["project", "show", "--json"]);
+    assert!(shown.ok, "{}", shown.stderr);
+    let project = one_document(&shown.stdout)["project_id"]
+        .as_str()
+        .expect("the project added to")
+        .to_string();
+    for args in [
+        &["project", "heal", "--json"][..],
+        &["project", "orphans", "--json"],
+        &["project", "repoint", &project, "--json"],
+    ] {
+        let ran = env.run(args);
+        assert!(ran.ok, "{args:?}: {}", ran.stderr);
+        one_document(&ran.stdout);
+    }
+    let refused = env.run(&["project", "repoint", "no-such-project", "--json"]);
+    assert!(!refused.ok);
+    assert_eq!(refused.stdout, "", "an error leaves stdout empty");
+    assert_eq!(
+        one_document(&refused.stderr)["code"],
+        "project-application-unknown-project"
+    );
 }
 
 #[path = "import.test.rs"]
 mod import;
+
+#[path = "project.test.rs"]
+mod project;

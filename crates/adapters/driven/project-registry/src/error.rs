@@ -28,6 +28,19 @@ pub enum RegistryError {
     /// A file the registry would write or lock is at a relative path, which
     /// would land wherever the process happens to run.
     RelativePath { path: String },
+    /// The registry's lock was held by another process for longer than
+    /// the wait.
+    LockTimeout { path: String, waited_ms: u64 },
+    /// Each lock taken was on a lock file unlinked meanwhile.
+    LockReplaced { path: String, attempts: u32 },
+    /// The registry, a marker or the projects directory changed between
+    /// planning a change and making it.
+    Changed,
+    /// What a removal would delete is not a database's directory.
+    NotADatabase { path: String },
+    /// A linked worktree whose git directory is gone: its primary checkout
+    /// was deleted or moved.
+    StaleWorktree { root: String, git_dir: String },
 }
 
 impl RegistryError {
@@ -61,6 +74,24 @@ impl fmt::Display for RegistryError {
                 f,
                 "{path} is not an absolute path: nothing is written relative to the working directory"
             ),
+            RegistryError::LockTimeout { path, waited_ms } => write!(
+                f,
+                "the project registry's lock {path} is still held after {waited_ms}ms: another ctxloom or taskloom process holds it; try again once it exits"
+            ),
+            RegistryError::LockReplaced { path, attempts } => write!(
+                f,
+                "the project registry's lock {path} was replaced {attempts} times while being taken: try again"
+            ),
+            RegistryError::Changed => f.write_str(
+                "the project registry or a marker changed while the change was planned: nothing was changed; run it again",
+            ),
+            RegistryError::NotADatabase { path } => {
+                write!(f, "{path} is not a project's database directory: not removed")
+            }
+            RegistryError::StaleWorktree { root, git_dir } => write!(
+                f,
+                "{root} is a linked worktree whose git directory {git_dir} is gone: run `git worktree repair` from its primary checkout, or remove the worktree"
+            ),
         }
     }
 }
@@ -75,12 +106,17 @@ impl Diagnostic for RegistryError {
             RegistryError::Exhausted { .. } => "project-registry-exhausted",
             RegistryError::NoWorkingDirectory { .. } => "project-registry-no-cwd",
             RegistryError::RelativePath { .. } => "project-registry-relative-path",
+            RegistryError::LockTimeout { .. } => "project-registry-lock-timeout",
+            RegistryError::LockReplaced { .. } => "project-registry-lock-replaced",
+            RegistryError::Changed => "project-registry-changed",
+            RegistryError::NotADatabase { .. } => "project-registry-not-a-database",
+            RegistryError::StaleWorktree { .. } => "project-registry-stale-worktree",
         }
     }
 
     fn args(&self) -> Vec<(&'static str, Arg)> {
         match self {
-            RegistryError::NoHome => Vec::new(),
+            RegistryError::NoHome | RegistryError::Changed => Vec::new(),
             RegistryError::Io { path, detail } | RegistryError::Unreadable { path, detail } => {
                 vec![
                     ("path", path.as_str().into()),
@@ -96,7 +132,21 @@ impl Diagnostic for RegistryError {
             RegistryError::NoWorkingDirectory { detail } => {
                 vec![("detail", detail.as_str().into())]
             }
-            RegistryError::RelativePath { path } => vec![("path", path.as_str().into())],
+            RegistryError::RelativePath { path } | RegistryError::NotADatabase { path } => {
+                vec![("path", path.as_str().into())]
+            }
+            RegistryError::LockTimeout { path, waited_ms } => vec![
+                ("path", path.as_str().into()),
+                ("waited_ms", (*waited_ms).into()),
+            ],
+            RegistryError::StaleWorktree { root, git_dir } => vec![
+                ("root", root.as_str().into()),
+                ("git_dir", git_dir.as_str().into()),
+            ],
+            RegistryError::LockReplaced { path, attempts } => vec![
+                ("path", path.as_str().into()),
+                ("attempts", (*attempts).into()),
+            ],
         }
     }
 }
@@ -133,6 +183,22 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         }),
         Box::new(RegistryError::RelativePath {
             path: "index.yaml".to_string(),
+        }),
+        Box::new(RegistryError::LockTimeout {
+            path: "/home/u/.ctxloom/projects/index.yaml.lock".to_string(),
+            waited_ms: 10000,
+        }),
+        Box::new(RegistryError::LockReplaced {
+            path: "/home/u/.ctxloom/projects/index.yaml.lock".to_string(),
+            attempts: 16,
+        }),
+        Box::new(RegistryError::Changed),
+        Box::new(RegistryError::NotADatabase {
+            path: "/home/u/.ctxloom/projects/jolly-mute-magma".to_string(),
+        }),
+        Box::new(RegistryError::StaleWorktree {
+            root: "/work/linked".to_string(),
+            git_dir: "/work/main/.git/worktrees/linked".to_string(),
         }),
     ]
 }

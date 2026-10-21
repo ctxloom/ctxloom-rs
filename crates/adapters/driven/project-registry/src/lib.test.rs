@@ -11,7 +11,7 @@ use tempfile::TempDir;
 use super::{index, Environment, ProjectRegistry, MINT_ATTEMPTS};
 
 /// Project ids in the order given, then `then` forever.
-struct Scripted {
+pub(crate) struct Scripted {
     ids: VecDeque<String>,
     then: String,
     minted: u32,
@@ -28,7 +28,7 @@ impl Names for Scripted {
     }
 }
 
-fn names(ids: &[&str]) -> Scripted {
+pub(crate) fn names(ids: &[&str]) -> Scripted {
     Scripted {
         ids: ids.iter().map(|s| s.to_string()).collect(),
         then: "always-the-same".to_string(),
@@ -37,13 +37,13 @@ fn names(ids: &[&str]) -> Scripted {
 }
 
 /// A home and a work tree, apart.
-struct World {
-    home: TempDir,
-    tree: TempDir,
+pub(crate) struct World {
+    pub(crate) home: TempDir,
+    pub(crate) tree: TempDir,
 }
 
 impl World {
-    fn new() -> World {
+    pub(crate) fn new() -> World {
         World {
             home: tempfile::tempdir().unwrap(),
             tree: tempfile::tempdir().unwrap(),
@@ -52,11 +52,11 @@ impl World {
 
     /// The work tree, canonical (a temporary directory's path may run
     /// through a symlink, as macOS's /tmp does).
-    fn tree(&self) -> PathBuf {
+    pub(crate) fn tree(&self) -> PathBuf {
         fs::canonicalize(self.tree.path()).unwrap()
     }
 
-    fn env(&self) -> Environment {
+    pub(crate) fn env(&self) -> Environment {
         Environment {
             home: Some(self.home.path().to_path_buf()),
             cwd: Ok(self.tree()),
@@ -65,19 +65,19 @@ impl World {
         }
     }
 
-    fn registry(&self, ids: &[&str]) -> ProjectRegistry<Scripted> {
+    pub(crate) fn registry(&self, ids: &[&str]) -> ProjectRegistry<Scripted> {
         ProjectRegistry::new(self.env(), names(ids))
     }
 
-    fn index(&self) -> index::Index {
+    pub(crate) fn index(&self) -> index::Index {
         index::load(&index::path(self.home.path())).unwrap()
     }
 
-    fn marker(&self) -> Option<String> {
+    pub(crate) fn marker(&self) -> Option<String> {
         fs::read_to_string(self.tree().join(".project-id")).ok()
     }
 
-    fn store(&self, id: &str) -> PathBuf {
+    pub(crate) fn store(&self, id: &str) -> PathBuf {
         self.home
             .path()
             .join(".ctxloom/projects")
@@ -86,7 +86,7 @@ impl World {
     }
 }
 
-fn text(path: &Path) -> String {
+pub(crate) fn text(path: &Path) -> String {
     path.display().to_string()
 }
 
@@ -442,4 +442,210 @@ fn test_without_a_home_there_is_no_store_and_no_registry() {
             .unwrap_err();
         assert_eq!(error.code(), "project-registry-no-home");
     }
+}
+
+// ------------------------------------------------------------ linked worktrees
+
+/// Repositories and worktrees made by git itself, in temporary
+/// directories, with no configuration but their own.
+pub(crate) mod git {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+
+    use tempfile::TempDir;
+
+    pub struct Repo {
+        dir: TempDir,
+        bare: bool,
+    }
+
+    fn run(cwd: &Path, args: &[&str]) {
+        let out = Command::new("git")
+            .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
+            .args(["-c", "init.defaultBranch=main"])
+            .args(args)
+            .current_dir(cwd)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .output()
+            .expect("git runs");
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    impl Repo {
+        /// A repository with one commit, checked out.
+        pub fn new() -> Repo {
+            let repo = Repo {
+                dir: tempfile::tempdir().unwrap(),
+                bare: false,
+            };
+            fs::create_dir(repo.root()).unwrap();
+            run(&repo.root(), &["init", "-q"]);
+            run(
+                &repo.root(),
+                &["commit", "-q", "--allow-empty", "-m", "first"],
+            );
+            repo
+        }
+
+        /// A bare repository with one commit.
+        pub fn bare() -> Repo {
+            let source = Repo::new();
+            let repo = Repo {
+                dir: tempfile::tempdir().unwrap(),
+                bare: true,
+            };
+            let root = repo.root();
+            run(
+                source.dir.path(),
+                &[
+                    "clone",
+                    "-q",
+                    "--bare",
+                    &source.root().display().to_string(),
+                    &root.display().to_string(),
+                ],
+            );
+            repo
+        }
+
+        /// The checkout (or the bare repository), canonical.
+        pub fn root(&self) -> PathBuf {
+            fs::canonicalize(self.dir.path()).unwrap().join("main")
+        }
+
+        /// A linked worktree named `name` beside the checkout, canonical.
+        pub fn worktree(&self, name: &str) -> PathBuf {
+            let at = fs::canonicalize(self.dir.path()).unwrap().join(name);
+            self.worktree_at(&at)
+        }
+
+        /// A linked worktree at `at`, canonical.
+        pub fn worktree_at(&self, at: &Path) -> PathBuf {
+            let branch = at.file_name().unwrap().to_string_lossy().to_string();
+            let mut args = vec!["worktree", "add", "-q", "-b", &branch];
+            let shown = at.display().to_string();
+            args.push(&shown);
+            if self.bare {
+                args.push("main");
+            }
+            run(&self.root(), &args);
+            fs::canonicalize(at).unwrap()
+        }
+    }
+}
+
+impl World {
+    /// The world, working in `cwd`.
+    pub(crate) fn env_in(&self, cwd: &Path) -> Environment {
+        Environment {
+            cwd: Ok(cwd.to_path_buf()),
+            ..self.env()
+        }
+    }
+}
+
+#[test]
+fn test_a_linked_worktree_reads_its_primary_checkouts_project() {
+    let world = World::new();
+    let repo = git::Repo::new();
+    let linked = repo.worktree("linked");
+    fs::write(repo.root().join(".project-id"), "jolly-mute-magma\n").unwrap();
+    let mut registry = ProjectRegistry::new(world.env_in(&linked.join(".")), names(&[]));
+    let project = registry.for_read(None).unwrap().unwrap();
+    assert_eq!(project.id, "jolly-mute-magma");
+    assert_eq!(
+        project.root,
+        text(&repo.root()),
+        "the project's root is the primary"
+    );
+    assert_eq!(
+        registry.work_root().unwrap(),
+        linked,
+        "the work root is the worktree"
+    );
+}
+
+#[test]
+fn test_a_linked_worktree_finds_its_primary_checkouts_registry_entry() {
+    let world = World::new();
+    let repo = git::Repo::new();
+    let linked = repo.worktree("linked");
+    let mut index = index::Index::default();
+    index.register("high-tight-gulf", &text(&repo.root()));
+    index.register("own-old-id", &text(&linked));
+    index::save(&index::path(world.home.path()), &index).unwrap();
+    let project = ProjectRegistry::new(world.env_in(&linked), names(&[]))
+        .for_read(None)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        project.id, "high-tight-gulf",
+        "the primary's, not its own entry's"
+    );
+}
+
+#[test]
+fn test_a_write_in_a_new_worktree_binds_the_primary_checkout_and_marks_only_it() {
+    let world = World::new();
+    let repo = git::Repo::new();
+    let linked = repo.worktree("linked");
+    let project = ProjectRegistry::new(world.env_in(&linked), names(&["fresh-new-id"]))
+        .for_write(None)
+        .unwrap();
+    assert_eq!(project.id, "fresh-new-id");
+    assert!(
+        !linked.join(".project-id").exists(),
+        "no marker in the worktree, to be committed and merged back"
+    );
+    assert_eq!(
+        fs::read_to_string(repo.root().join(".project-id")).unwrap(),
+        "fresh-new-id\n"
+    );
+    assert_eq!(world.index().id_for(&repo.root()), Some("fresh-new-id"));
+    assert_eq!(world.index().id_for(&linked), None);
+    let primary = ProjectRegistry::new(world.env_in(&repo.root()), names(&[]))
+        .for_read(None)
+        .unwrap()
+        .unwrap();
+    assert_eq!(primary.id, "fresh-new-id", "one project for both");
+}
+
+#[test]
+fn test_a_linked_worktree_with_its_own_marker_keeps_its_own_project() {
+    let world = World::new();
+    let repo = git::Repo::new();
+    let linked = repo.worktree("linked");
+    fs::write(repo.root().join(".project-id"), "jolly-mute-magma\n").unwrap();
+    fs::write(linked.join(".project-id"), "its-own-id\n").unwrap();
+    let project = ProjectRegistry::new(world.env_in(&linked), names(&[]))
+        .for_read(None)
+        .unwrap()
+        .unwrap();
+    assert_eq!(project.id, "its-own-id");
+    assert_eq!(project.root, text(&linked));
+}
+
+#[test]
+fn test_a_linked_worktree_with_gos_older_marker_keeps_its_own_project() {
+    let world = World::new();
+    let repo = git::Repo::new();
+    let linked = repo.worktree("linked");
+    fs::write(repo.root().join(".project-id"), "jolly-mute-magma\n").unwrap();
+    fs::create_dir(linked.join(".ctxloom")).unwrap();
+    fs::write(linked.join(".ctxloom/project-id"), "go-minted-id\n").unwrap();
+    let project = ProjectRegistry::new(world.env_in(&linked), names(&[]))
+        .for_write(None)
+        .unwrap();
+    assert_eq!(project.id, "go-minted-id");
+    assert_eq!(
+        fs::read_to_string(linked.join(".project-id")).unwrap(),
+        "go-minted-id\n",
+        "adopted where it was"
+    );
 }

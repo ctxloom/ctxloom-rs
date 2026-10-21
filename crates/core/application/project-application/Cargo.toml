@@ -1,0 +1,18 @@
+[package]
+name = "project-application"
+version = "0.1.0"
+description = "The project use cases: show what a directory's identity rests on, heal its skew, repoint it, and list and remove orphaned databases"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+annals-diagnostic.workspace = true
+ports.workspace = true
+
+[dev-dependencies]
+fluent-syntax.workspace = true
+
+[lints]
+workspace = true

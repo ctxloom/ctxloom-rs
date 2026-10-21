@@ -1,0 +1,173 @@
+//! Each problem, change and plan as text, and the shapes text alone shows.
+
+use std::path::PathBuf;
+
+use project_application::{Change, IdSource, Plan, Problem, Shown, Survey};
+
+use super::{change_line, orphans_json, orphans_text, plan_text, problem_line, show_text};
+
+fn s(text: &str) -> String {
+    text.to_string()
+}
+
+fn text(write: impl FnOnce(&mut Vec<u8>) -> std::io::Result<()>) -> String {
+    let mut out = Vec::new();
+    write(&mut out).unwrap();
+    String::from_utf8(out).unwrap()
+}
+
+#[test]
+fn test_each_problem_says_what_fixes_it() {
+    let lines: Vec<String> = [
+        Problem::TwoIds {
+            root: s("/w"),
+            ids: vec![s("a"), s("b")],
+        },
+        Problem::MissingMarker {
+            root: s("/w"),
+            id: s("a"),
+        },
+        Problem::LegacyMarkerOnly {
+            root: s("/w"),
+            id: s("g"),
+        },
+        Problem::Unregistered {
+            root: s("/w"),
+            id: s("m"),
+        },
+        Problem::Shared {
+            root: s("/w"),
+            id: s("m"),
+            other: s("/o"),
+        },
+        Problem::Gone {
+            id: s("a"),
+            path: s("/p"),
+        },
+        Problem::Orphan {
+            id: s("x"),
+            database: PathBuf::from("/h/x"),
+        },
+    ]
+    .iter()
+    .map(problem_line)
+    .collect();
+    assert_eq!(
+        lines,
+        [
+            "/w is bound to more than one project: a, b; run `project repoint <project-id>` to choose one",
+            "/w is registered as a but has no .project-id; run `project heal`",
+            "/w names g only in Go's .ctxloom/project-id; run `project heal` to adopt it",
+            "/w/.project-id names m, which the registry does not hold for it; run `project heal`",
+            "/w/.project-id names m, the project of /o, which still exists; run `project repoint m --share` if the two are meant to share it",
+            "a is registered for /p, which no longer exists",
+            "/h/x is orphaned: no live registered path points at x; `project orphans remove x --yes` deletes it",
+        ]
+    );
+}
+
+#[test]
+fn test_each_change_in_a_line() {
+    let lines: Vec<String> = [
+        Change::WriteMarker {
+            root: s("/w"),
+            id: s("a"),
+        },
+        Change::Register {
+            id: s("a"),
+            path: s("/w"),
+        },
+        Change::Unregister {
+            id: s("b"),
+            path: s("/w"),
+        },
+        Change::RemoveDatabase { id: s("x") },
+    ]
+    .iter()
+    .map(change_line)
+    .collect();
+    assert_eq!(
+        lines,
+        [
+            "write a into /w/.project-id",
+            "register a for /w",
+            "unregister b for /w",
+            "delete the database directory of x",
+        ]
+    );
+}
+
+#[test]
+fn test_a_plan_says_whether_it_changed_anything() {
+    assert_eq!(
+        text(|out| plan_text(out, &Plan::default())),
+        "Nothing to change.\n"
+    );
+    let mut plan = Plan {
+        changes: vec![Change::RemoveDatabase { id: s("x") }],
+        previous: Some(s("old")),
+        unresolved: vec![Problem::Gone {
+            id: s("a"),
+            path: s("/p"),
+        }],
+        applied: false,
+    };
+    assert_eq!(
+        text(|out| plan_text(out, &plan)),
+        "Would change (run again with --yes to make the change):\n\
+         \x20 - delete the database directory of x\n\
+         It was old, whose database stays; `project show` reports it once nothing points at it.\n\
+         Not resolved:\n\
+         \x20 - a is registered for /p, which no longer exists\n"
+    );
+    plan.applied = true;
+    assert!(text(|out| plan_text(out, &plan)).starts_with("Changed:\n"));
+}
+
+#[test]
+fn test_show_as_text_names_a_worktree_gos_marker_and_what_is_missing() {
+    let shown = Shown {
+        survey: Survey {
+            work_root: s("/linked"),
+            root: s("/primary"),
+            resolved: None,
+            marker: None,
+            legacy_marker: Some(s("g")),
+            registry: Vec::new(),
+            databases: Vec::new(),
+            projects: PathBuf::from("/h"),
+        },
+        entries: Vec::new(),
+        store: None,
+        problems: Vec::new(),
+    };
+    assert_eq!(
+        text(|out| show_text(out, &shown)),
+        "Project:  none yet (a write would mint one)\n\
+         Root:     /primary\n\
+         Worktree: /linked (a linked worktree of the root, with no marker of its own)\n\
+         Marker:   none\n\
+         Go's marker: g\n\
+         Registry: no entry for the root\n\
+         Database: none\n\
+         No problems found.\n"
+    );
+    let mut sourced = shown.clone();
+    sourced.survey.resolved = Some((s("e"), IdSource::Environment));
+    assert!(
+        text(|out| show_text(out, &sourced)).starts_with("Project:  e (from the environment)\n")
+    );
+}
+
+#[test]
+fn test_orphans_leave_out_other_problems_and_say_when_there_are_none() {
+    let gone = [Problem::Gone {
+        id: s("a"),
+        path: s("/p"),
+    }];
+    assert!(orphans_json(&gone).is_empty());
+    assert_eq!(
+        text(|out| orphans_text(out, &gone)),
+        "No orphaned databases.\n"
+    );
+}

@@ -7,26 +7,38 @@
 //! one pinned (`--project`), `CTXLOOM_PROJECT_ID`, the marker
 //! `<root>/.project-id`, Go's older marker `<root>/.ctxloom/project-id`
 //! (adopted into `.project-id` on a write), and the registry entry for the
-//! root's path. A write with none of these mints an id, under the
+//! root's path. A linked worktree with no marker of its own (neither) is
+//! its primary checkout's project, found through git's common directory:
+//! resolved, bound and marked there, so no marker is written in the
+//! worktree to be committed and merged back over the primary's. A write with none of these mints an id, under the
 //! registry's lock, and binds it in both the registry and the marker; a read
 //! with none finds no project. The store is
 //! `~/.ctxloom/projects/<id>/state.db`.
 //!
-//! Healing a marker and registry that disagree, and repointing a directory
-//! at another id, are not here yet.
+//! The same registry is behind the `ProjectAdmin` port: a survey of what
+//! a directory's identity rests on, and changes to markers, the registry
+//! and the projects directory, made under the registry's lock only while
+//! a fresh survey matches the one they were planned from. The lock is
+//! taken again when what it was granted is no longer the file at its path
+//! (`ctxloom clean` reaps lock files), and waited for at most
+//! [`LOCK_WAIT`].
 
+mod admin;
 mod error;
 mod id;
 mod index;
 mod path;
+mod worktree;
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use annals_diagnostic::Report;
-use ports::{Names, Project, ProjectIdentity};
+use ports::{IdSource, Names, Project, ProjectIdentity};
 
 pub use error::{diagnostic_samples, RegistryError, EN_US};
+pub use index::LOCK_WAIT;
 
 /// How many project ids a mint draws before giving up, each already
 /// registered: Go's `harp.UniqueFrom`.
@@ -50,11 +62,26 @@ pub struct Environment {
 pub struct ProjectRegistry<N> {
     env: Environment,
     names: N,
+    /// How long a change waits for the registry's lock.
+    lock_wait: Duration,
 }
 
 impl<N: Names> ProjectRegistry<N> {
     pub fn new(env: Environment, names: N) -> Self {
-        ProjectRegistry { env, names }
+        ProjectRegistry {
+            env,
+            names,
+            lock_wait: index::LOCK_WAIT,
+        }
+    }
+
+    /// The same, waiting up to `wait` for the registry's lock rather than
+    /// [`LOCK_WAIT`].
+    pub fn with_lock_wait(self, wait: Duration) -> Self {
+        ProjectRegistry {
+            lock_wait: wait,
+            ..self
+        }
     }
 
     /// The work root, canonical: CTXLOOM_ROOT (under the working directory
@@ -85,12 +112,24 @@ impl<N: Names> ProjectRegistry<N> {
             })
     }
 
-    fn home(&self) -> Result<&Path, RegistryError> {
+    pub(crate) fn home(&self) -> Result<&Path, RegistryError> {
         self.env
             .home
             .as_deref()
             .filter(|h| !h.as_os_str().is_empty())
             .ok_or(RegistryError::NoHome)
+    }
+
+    /// The directory the work root's identity is kept in: the work root
+    /// itself when it has a marker of its own or is no linked worktree,
+    /// else its primary checkout, so a linked worktree is its primary
+    /// checkout's project and writes no marker of its own.
+    pub fn identity_root(&self) -> Result<PathBuf, RegistryError> {
+        let root = self.work_root()?;
+        if has_marker(&root) {
+            return Ok(root);
+        }
+        Ok(worktree::primary_checkout(&root)?.unwrap_or(root))
     }
 
     /// The project `id` names, resolved for `root`.
@@ -109,39 +148,50 @@ impl<N: Names> ProjectRegistry<N> {
     }
 
     /// The id given explicitly: the pin, else CTXLOOM_PROJECT_ID.
-    fn pinned(&self, pinned: Option<&str>) -> Result<Option<String>, RegistryError> {
+    pub(crate) fn pinned(
+        &self,
+        pinned: Option<&str>,
+    ) -> Result<Option<(String, IdSource)>, RegistryError> {
         if let Some(id) = pinned.filter(|p| !p.is_empty()) {
-            return id::valid(id, "--project").map(Some);
+            return id::valid(id, "--project").map(|id| Some((id, IdSource::Flag)));
         }
         match self.env.project_id.as_deref().filter(|p| !p.is_empty()) {
-            Some(id) => id::valid(id, "CTXLOOM_PROJECT_ID").map(Some),
+            Some(id) => {
+                id::valid(id, "CTXLOOM_PROJECT_ID").map(|id| Some((id, IdSource::Environment)))
+            }
             None => Ok(None),
         }
     }
 
-    /// The id the work root is already bound to, adopting Go's older marker
-    /// into `.project-id` when `adopt`.
-    fn bound(&self, root: &Path, adopt: bool) -> Result<Option<String>, RegistryError> {
+    /// The id the work root is already bound to, and what binds it,
+    /// adopting Go's older marker into `.project-id` when `adopt`.
+    pub(crate) fn bound(
+        &self,
+        root: &Path,
+        adopt: bool,
+    ) -> Result<Option<(String, IdSource)>, RegistryError> {
         if let Some(id) = read_marker(&marker(root))? {
-            return Ok(Some(id));
+            return Ok(Some((id, IdSource::Marker)));
         }
         if let Some(id) = read_marker(&legacy_marker(root))? {
             if adopt {
                 write_marker(root, &id)?;
             }
-            return Ok(Some(id));
+            return Ok(Some((id, IdSource::LegacyMarker)));
         }
         let home = self.home()?;
         let index = index::load(&index::path(home))?;
-        Ok(index.id_for(root).map(str::to_string))
+        Ok(index
+            .id_for(root)
+            .map(|id| (id.to_string(), IdSource::Registry)))
     }
 
     /// Bind the work root to a project id under the registry's lock: the
     /// one another process bound while this one waited, else a new one.
     fn bind(&mut self, root: &Path) -> Result<String, RegistryError> {
         let path = index::path(self.home()?);
-        let _locked = index::lock(&path)?;
-        if let Some(id) = self.bound(root, true)? {
+        let _locked = index::lock_within(&path, self.lock_wait)?;
+        if let Some((id, _)) = self.bound(root, true)? {
             return Ok(id);
         }
         let mut index = index::load(&path)?;
@@ -170,11 +220,11 @@ impl<N: Names> ProjectRegistry<N> {
         pinned: Option<&str>,
         write: bool,
     ) -> Result<Option<Project>, RegistryError> {
-        let root = self.work_root()?;
+        let root = self.identity_root()?;
         let id = match self.pinned(pinned)? {
-            Some(id) => Some(id),
+            Some((id, _)) => Some(id),
             None => match self.bound(&root, write)? {
-                Some(id) => Some(id),
+                Some((id, _)) => Some(id),
                 None if write => Some(self.bind(&root)?),
                 None => None,
             },
@@ -198,17 +248,23 @@ impl<N: Names> ProjectIdentity for ProjectRegistry<N> {
 }
 
 /// The marker naming `root`'s project.
-fn marker(root: &Path) -> PathBuf {
+pub(crate) fn marker(root: &Path) -> PathBuf {
     root.join(".project-id")
 }
 
 /// Go's older, private marker.
-fn legacy_marker(root: &Path) -> PathBuf {
+pub(crate) fn legacy_marker(root: &Path) -> PathBuf {
     root.join(".ctxloom").join("project-id")
 }
 
+/// Whether `root` holds a marker, either one, blank or not: a marker is
+/// the tree's own say in its identity.
+fn has_marker(root: &Path) -> bool {
+    marker(root).exists() || legacy_marker(root).exists()
+}
+
 /// The id a marker at `path` holds; none if it is absent or blank.
-fn read_marker(path: &Path) -> Result<Option<String>, RegistryError> {
+pub(crate) fn read_marker(path: &Path) -> Result<Option<String>, RegistryError> {
     let text = match fs::read_to_string(path) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -220,7 +276,7 @@ fn read_marker(path: &Path) -> Result<Option<String>, RegistryError> {
     }
 }
 
-fn write_marker(root: &Path, id: &str) -> Result<(), RegistryError> {
+pub(crate) fn write_marker(root: &Path, id: &str) -> Result<(), RegistryError> {
     index::write_atomically(&marker(root), format!("{id}\n").as_bytes())
 }
 
