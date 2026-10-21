@@ -7,7 +7,7 @@ TOP := `git rev-parse --show-toplevel`
 # root/bin at 0 reports its survivors and refuses nothing: the composition root
 # holds no logic, and the binary's wiring is shown by running it, not by unit
 # tests.
-mutation_thresholds := "crates/core/domain=85 crates/core/read-model=85 crates/core/ports=85 crates/core/application=80 crates/adapters=50 crates/root/bin=0"
+mutation_thresholds := "crates/core/domain=85 crates/core/read-model=85 crates/core/ports=85 crates/core/application=85 crates/adapters=50 crates/root/bin=0"
 
 # Staged paths outside any crate that can change what every crate builds or
 # tests (bash globs, `*` crossing `/`): one of these staged tests the whole
