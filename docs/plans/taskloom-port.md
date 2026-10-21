@@ -22,7 +22,7 @@ and angzarr here.
   case's, is `Send`, so a server can spawn them; project identity is
   synchronous and blocks on the registry's lock, so an async server calls it
   through `spawn_blocking`.
-- `core/application/tasks-application`: add, tag and list. An add mints a
+- `core/application/tasks-application`: add, tag, list and import. An add mints a
   harp and re-mints on `TaskExists` (100 tries, a fresh command id each); on
   annals' `Recovery::Retry` the same command id runs again in a new unit
   after capped exponential backoff with full jitter (10ms doubling to 1s,
@@ -33,12 +33,17 @@ and angzarr here.
   mint under `index.yaml.lock` that re-checks first, so racing first writes
   bind one id. A read never mints.
 - `adapters/driven/harp-names`: harp-core behind the names port.
+- `adapters/driven/go-task-log`: Go's `~/.ctxloom/tasks/<project-id>.jsonl`
+  behind the `GoTaskLogs` port, read only (not even its lock file). A line
+  Go's fold would refuse (malformed, no op, an unknown op) refuses the
+  whole log, as Go's fold does.
 - `adapters/driven/task-store-sqlite`: annals-store-sql's SQLite store at
   the project's path, opened on first use and held, behind the store
   opener.
 - `adapters/driven/system`: the clock, UUIDv7 command ids, tokio's timer and
   jitter.
-- `adapters/driving/tasks-cli`: `add`, `list` and `tag`, text and json.
+- `adapters/driving/tasks-cli`: `add`, `list`, `tag` and `import`, text and
+  json.
 - `root/bin/taskloom`: the binary, over annals-store-sql's SQLite store at
   `~/.ctxloom/projects/<project-id>/state.db` (CLAUDE.md, "Storage").
   Its tests are Go's `crossprocess_test.go` ported, each process separate
@@ -48,6 +53,27 @@ and angzarr here.
   row a whole task of the final listing), the same at first sight, and 40
   concurrent tags of one task. Reads create nothing: `list --project tpyo`
   leaves no trace, and `tag` where there is no project binds none.
+- The importer (`taskloom import`, Decided 2): each Go record becomes the
+  command that did what it did, run at the instant Go recorded it (annals'
+  `Sampled.now`), so `created_at`, `status_set_at` and `deferred_since`
+  keep Go's times with no proto change. Records replay in Go's fold order
+  (a byte-identical repeated line once, then a stable sort by time), and a
+  port of Go's fold decides what counts: a displaced duplicate add is
+  reported unless a `repair` add names it (`repair_of`, Go's
+  `anomalyKey`), a record to a harp with no live task is ignored, a retag
+  changing nothing records nothing. A record's command id is a UUIDv5 of
+  its line (annals' fact namespace, prefixed), so re-running finds what an
+  earlier run imported, resumes one that stopped, and picks up what Go
+  appended since. It binds no directory: the project is the log's id.
+  It exits 1 when it left anything behind, naming each record and why.
+  Its acceptance test compares the store task by task with Go's own fold
+  (`scripts/go-fold`, laid into Go's package with `go test -overlay`) over
+  synthetic fixtures, one per kind of record (`fixtures/go-logs`);
+  `scripts/compare-go-import.sh` runs the same comparison over copies of
+  real logs. On 2026-10-21's logs (56 files, 23 non-empty, 6241 records)
+  all 1162 tasks agreed on every field and a second run applied nothing;
+  they held no duplicate add, repair, removal or repeated line, and two
+  records out of time order, which the replay order puts right.
 
 Where the skeleton differs from Go, or from this plan:
 
@@ -79,6 +105,17 @@ Where the skeleton differs from Go, or from this plan:
   `list --status` as on writes.
 - harp-core has one word list, Go's "long" group, so project ids are three
   words from it, not from Go's smaller default group.
+- The importer brings over only what the tasks domain accepts. What Go's
+  fold kept but the domain refuses (empty text, Deferred with no trigger,
+  a status that is empty or starts with `@`, a blank harp) is reported,
+  not imported, as is every later record to a task whose add was refused.
+  A Go status is kept raw and a Rust one trimmed, so `" Done "` imports as
+  `Done` unreported. An unresolved displaced add is reported and not
+  imported: Go's `taskloom repair`, then a re-import, brings it (Decided
+  5 drops `repair` here). Go decodes JSON keys case-insensitively; the
+  importer reads them as Go writes them. It takes no lock on a Go log, so
+  a log Go is mid-way through appending to can end in a torn line, which
+  stops that project's import; run it again.
 - `list` with no project here says so and lists nothing; Go falls back to
   `--global`. Hidden `tagma:*` tags are shown, the `@open`/`@terminal`
   classes are not taken, and JSON has no `derived_priority` and escapes no
@@ -120,9 +157,8 @@ complete unit that retires a risk, and each reviewed by an architect before
 the next. A slice cuts through every layer it needs; the sections after this
 one are the reference for what each layer finally holds, not an order.
 
-1. **The importer**, over the real `~/.ctxloom/tasks/*.jsonl`. Risk retired:
-   data fidelity. For every task, Go's fold and the Rust state must agree.
-   It also gives every later slice real data.
+Step 1, the importer, is done (see "Where it stands").
+
 2. **Healing and repointing a project's store** (see "Project identity:
    heal and repoint"). Risk retired: tasks that seem lost because a
    directory resolved to the wrong id.
@@ -223,7 +259,7 @@ defects Go's tasks-schema.md records: NaN passes every guard, a zero
   then `TASKLOOM_CONFIG_*`, then `--config-set`. It carries `schema_version`
   (`--write-upgrades`) and `tag_schema` extending the default schema, where
   the last declaration wins.
-- The importer for Go's jsonl logs (Decided, 2).
+- The importer for Go's jsonl logs (Decided, 2): `go-task-log`.
 - Harp minting: the same word lists as Go's `harp` (adjective-noun for tasks).
 - Clock.
 
