@@ -36,11 +36,12 @@ harp-core = { git = "https://github.com/benjaminabbitt/harp", rev = "21648c9712a
 # Third-party, for the adapters and the composition root.
 clap = { version = "4.5", features = ["derive"] }
 fluent-syntax = "0.11"
-fs4 = { version = "0.13", features = ["sync"] }
+fs4 = "1.1"
 rand = "0.9"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_yaml = "0.9"
+# serde_yaml's maintained fork: serde_yaml's libyaml is unmaintained (RustSec).
+serde_norway = "0.9"
 sha2 = "0.10"
 tempfile = "3"
 time = { version = "0.3", features = ["formatting", "parsing"] }
