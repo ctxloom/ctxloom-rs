@@ -6,12 +6,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use annals::next::contract::{cover, page};
 use annals::next::v1::Snapshot;
-use annals::next::{EventStore, Store, UnitOfWork};
-use store_sqlite::SqliteStore;
+use annals::next::{AsyncEventStore, AsyncStore, AsyncUnitOfWork};
 
-mod contract {
-    annals::store_contract!(store_sqlite::SqliteStore::open_in_memory().unwrap());
-}
+use super::{diagnostic_samples, SqliteError, SqliteStore};
+
+annals::async_store_contract!(#[tokio::test], SqliteStore::open_in_memory().await.unwrap());
 
 /// A path for a database file of this test run's own.
 fn database() -> std::path::PathBuf {
@@ -23,8 +22,8 @@ fn database() -> std::path::PathBuf {
     ))
 }
 
-#[test]
-fn test_what_was_committed_survives_reopening_the_file() {
+#[tokio::test]
+async fn test_what_was_committed_survives_reopening_the_file() {
     let path = database();
     let stream = cover("tasks", 1);
     let snapshot = Snapshot {
@@ -33,41 +32,52 @@ fn test_what_was_committed_survives_reopening_the_file() {
         rules_version: "v1".to_string(),
     };
     {
-        let mut store = SqliteStore::open(&path).unwrap();
-        let mut unit = store.begin();
-        unit.append(&stream, 0, &[page(0, 1), page(1, 2)]).unwrap();
-        unit.commit().unwrap();
-        store.write_snapshot(&stream, &snapshot).unwrap();
+        let mut store = SqliteStore::open(&path).await.unwrap();
+        let mut unit = store.begin().await;
+        unit.append(&stream, 0, &[page(0, 1), page(1, 2)])
+            .await
+            .unwrap();
+        unit.commit().await.unwrap();
+        store.write_snapshot(&stream, &snapshot).await.unwrap();
     }
-    let mut store = SqliteStore::open(&path).unwrap();
+    let mut store = SqliteStore::open(&path).await.unwrap();
     assert_eq!(
-        store.read(&stream).unwrap().unwrap().pages,
+        store.read_from(&stream, 0).await.unwrap().unwrap().pages,
         [page(0, 1), page(1, 2)]
     );
-    assert_eq!(store.read_snapshot(&stream), Ok(Some(snapshot)));
-    assert_eq!(store.covers("tasks"), Ok(vec![stream]));
+    assert_eq!(store.read_snapshot(&stream).await, Ok(Some(snapshot)));
+    assert_eq!(store.covers("tasks").await, Ok(vec![stream]));
     drop(store);
     std::fs::remove_file(&path).unwrap();
 }
 
-#[test]
-fn test_a_dropped_unit_leaves_the_file_as_it_was() {
+#[tokio::test]
+async fn test_a_dropped_unit_leaves_the_file_as_it_was() {
     let path = database();
     let stream = cover("tasks", 1);
     {
-        let mut store = SqliteStore::open(&path).unwrap();
-        let mut unit = store.begin();
-        unit.append(&stream, 0, &[page(0, 1)]).unwrap();
+        let mut store = SqliteStore::open(&path).await.unwrap();
+        let mut unit = store.begin().await;
+        unit.append(&stream, 0, &[page(0, 1)]).await.unwrap();
     }
-    let mut store = SqliteStore::open(&path).unwrap();
-    assert_eq!(store.read(&stream), Ok(None));
+    let mut store = SqliteStore::open(&path).await.unwrap();
+    assert_eq!(store.read_from(&stream, 0).await, Ok(None));
+    drop(store);
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[tokio::test]
+async fn test_reopening_a_migrated_file_migrates_nothing_twice() {
+    let path = database();
+    drop(SqliteStore::open(&path).await.unwrap());
+    let mut store = SqliteStore::open(&path).await.unwrap();
+    assert_eq!(store.covers("tasks").await, Ok(vec![]));
     drop(store);
     std::fs::remove_file(&path).unwrap();
 }
 
 #[test]
 fn test_an_error_renders_its_english_fallback_with_its_detail() {
-    use store_sqlite::SqliteError;
     assert_eq!(
         SqliteError::Unavailable {
             detail: "disk I/O error".to_string()
@@ -90,7 +100,7 @@ fn test_every_error_has_a_catalog_message_with_exactly_its_args() {
 
     let ftl = include_str!("../locales/en-US/store-sqlite.ftl");
     let resource = fluent_syntax::parser::parse(ftl).expect("the catalog parses");
-    let samples = store_sqlite::diagnostic_samples();
+    let samples = diagnostic_samples();
     // Both ways: every catalog message has a sample, and every sample a
     // message, so a missing or empty sample list fails too.
     let mut catalog: Vec<&str> = resource

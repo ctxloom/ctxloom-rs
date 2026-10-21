@@ -228,3 +228,7 @@ fn normalized(tags: &[String]) -> BTreeSet<String> {
         .map(str::to_string)
         .collect()
 }
+
+#[cfg(test)]
+#[path = "lib.test.rs"]
+mod tests;

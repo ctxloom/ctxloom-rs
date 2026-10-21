@@ -1,12 +1,12 @@
 //! annals' store port on SQLite: one database per project, opened on a file
-//! (or in memory, for tests). Held to annals' store contract, so the kernel
-//! behaves over it exactly as over `InMemoryStore`.
+//! (or in memory, for tests), migrated on open. Held to annals' store
+//! contract, so the kernel behaves over it exactly as over `InMemoryStore`.
 //!
-//! Pages are stored as written, never decoded except to read them back; the
-//! command id is copied into its own indexed column for the deduplication
-//! lookup. A stream's main timeline is the edition `''`: SQLite keeps NULLs
-//! distinct in a key, and annals refuses an empty edition, so `''` names no
-//! real one (and sorts first, as `covers` lists the main timeline first).
+//! sqlx runs the queries and the migrations (`migrations/`); every query is
+//! built with sea-query from the identifiers in `schema`, never written as a
+//! string. Pages are stored as written, never decoded except to read them
+//! back; the command id is copied into its own indexed column for the
+//! deduplication lookup.
 
 // clippy::result_large_err: annals' StoreError is about 152 bytes, over
 // clippy's 128-byte default, so every function here returning it is flagged.
@@ -17,193 +17,190 @@
 // boxing them would only be undone at each method.
 #![allow(clippy::result_large_err)]
 
+mod schema;
+
 use std::fmt;
 use std::path::Path;
+use std::str::FromStr;
 
 use annals::next::v1::event_meta::Causation;
 use annals::next::v1::{Cover, EventPage, Snapshot, Uuid};
-use annals::next::{EventStore, Slice, Store, StoreError, UnitOfWork};
+use annals::next::{AsyncEventStore, AsyncStore, AsyncUnitOfWork, Slice, StoreError};
 use annals_diagnostic::{Arg, Diagnostic, Report};
 use prost::Message;
-use rusqlite::{params, Connection, OptionalExtension};
+use sea_query::{Expr, Func, OnConflict, Order, Query, SelectStatement, SqliteQueryBuilder};
+use sea_query_binder::SqlxBinder;
+use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection, SqliteRow};
+use sqlx::{ConnectOptions, Connection, Row, Sqlite, Transaction};
 
-const SCHEMA: &str = "
-CREATE TABLE IF NOT EXISTS events (
-    domain TEXT NOT NULL,
-    edition TEXT NOT NULL,
-    root BLOB NOT NULL,
-    sequence INTEGER NOT NULL,
-    command_id BLOB,
-    page BLOB NOT NULL,
-    PRIMARY KEY (domain, edition, root, sequence)
-) WITHOUT ROWID;
-CREATE INDEX IF NOT EXISTS events_by_command
-    ON events (domain, edition, root, command_id);
-CREATE TABLE IF NOT EXISTS snapshots (
-    domain TEXT NOT NULL,
-    edition TEXT NOT NULL,
-    root BLOB NOT NULL,
-    snapshot BLOB NOT NULL,
-    PRIMARY KEY (domain, edition, root)
-) WITHOUT ROWID;
-";
+use schema::{Events, Snapshots};
 
 /// A project's events and snapshots in one SQLite database.
 pub struct SqliteStore {
-    conn: Connection,
+    conn: SqliteConnection,
 }
 
 impl SqliteStore {
-    /// The database at `path`, created if absent.
-    pub fn open(path: &Path) -> Result<SqliteStore, StoreError> {
-        SqliteStore::on(Connection::open(path).map_err(unavailable)?)
+    /// The database at `path`, created if absent and migrated.
+    pub async fn open(path: &Path) -> Result<SqliteStore, StoreError> {
+        let options = SqliteConnectOptions::new()
+            .filename(path)
+            .create_if_missing(true);
+        SqliteStore::on(options).await
     }
 
-    /// A database held only in memory.
-    pub fn open_in_memory() -> Result<SqliteStore, StoreError> {
-        SqliteStore::on(Connection::open_in_memory().map_err(unavailable)?)
+    /// A database held only in memory, migrated.
+    pub async fn open_in_memory() -> Result<SqliteStore, StoreError> {
+        SqliteStore::on(SqliteConnectOptions::from_str("sqlite::memory:").map_err(unavailable)?)
+            .await
     }
 
-    fn on(conn: Connection) -> Result<SqliteStore, StoreError> {
-        conn.execute_batch(SCHEMA).map_err(unavailable)?;
+    async fn on(options: SqliteConnectOptions) -> Result<SqliteStore, StoreError> {
+        let mut conn = options.connect().await.map_err(unavailable)?;
+        sqlx::migrate!("./migrations")
+            .run(&mut conn)
+            .await
+            .map_err(unavailable)?;
         Ok(SqliteStore { conn })
     }
 }
 
-impl EventStore for SqliteStore {
-    fn append(
+impl AsyncEventStore for SqliteStore {
+    async fn append(
         &mut self,
         stream: &Cover,
         expected: u64,
         pages: &[EventPage],
     ) -> Result<u64, StoreError> {
         // The length check and the inserts are one transaction.
-        let tx = self.conn.transaction().map_err(unavailable)?;
-        let length = append(&tx, stream, expected, pages)?;
-        tx.commit().map_err(unavailable)?;
+        let mut tx = self.conn.begin().await.map_err(unavailable)?;
+        let length = append(&mut tx, stream, expected, pages).await?;
+        tx.commit().await.map_err(unavailable)?;
         Ok(length)
     }
 
-    fn read_from(&mut self, stream: &Cover, from: u64) -> Result<Option<Slice>, StoreError> {
-        read_from(&self.conn, stream, from)
+    async fn read_from(&mut self, stream: &Cover, from: u64) -> Result<Option<Slice>, StoreError> {
+        read_from(&mut self.conn, stream, from).await
     }
 
-    fn find_command(
+    async fn find_command(
         &mut self,
         stream: &Cover,
         command_id: &Uuid,
     ) -> Result<Vec<EventPage>, StoreError> {
-        find_command(&self.conn, stream, command_id)
+        find_command(&mut self.conn, stream, command_id).await
     }
 
-    fn covers(&mut self, domain: &str) -> Result<Vec<Cover>, StoreError> {
-        covers(&self.conn, domain)
+    async fn covers(&mut self, domain: &str) -> Result<Vec<Cover>, StoreError> {
+        covers(&mut self.conn, domain).await
     }
 
-    fn read_snapshot(&mut self, stream: &Cover) -> Result<Option<Snapshot>, StoreError> {
-        read_snapshot(&self.conn, stream)
+    async fn read_snapshot(&mut self, stream: &Cover) -> Result<Option<Snapshot>, StoreError> {
+        read_snapshot(&mut self.conn, stream).await
     }
 
-    fn write_snapshot(&mut self, stream: &Cover, snapshot: &Snapshot) -> Result<(), StoreError> {
+    async fn write_snapshot(
+        &mut self,
+        stream: &Cover,
+        snapshot: &Snapshot,
+    ) -> Result<(), StoreError> {
         let (domain, edition, root) = key(stream);
-        self.conn
-            .execute(
-                "INSERT OR REPLACE INTO snapshots (domain, edition, root, snapshot)
-                 VALUES (?1, ?2, ?3, ?4)",
-                params![domain, edition, root, snapshot.encode_to_vec()],
+        let (sql, values) = Query::insert()
+            .into_table(Snapshots::Table)
+            .columns([
+                Snapshots::Domain,
+                Snapshots::Edition,
+                Snapshots::Root,
+                Snapshots::Snapshot,
+            ])
+            .values([
+                domain.into(),
+                edition.into(),
+                root.into(),
+                snapshot.encode_to_vec().into(),
+            ])
+            .map_err(unavailable)?
+            .on_conflict(
+                OnConflict::columns([Snapshots::Domain, Snapshots::Edition, Snapshots::Root])
+                    .update_column(Snapshots::Snapshot)
+                    .to_owned(),
             )
+            .build_sqlx(SqliteQueryBuilder);
+        sqlx::query_with(&sql, values)
+            .execute(&mut self.conn)
+            .await
             .map_err(unavailable)?;
         Ok(())
     }
 }
 
-impl Store for SqliteStore {
+impl AsyncStore for SqliteStore {
     type Unit<'s> = SqliteUnit<'s>;
 
     /// A unit of work: `BEGIN IMMEDIATE`, so it holds the write lock from
     /// its first read and its length checks cannot go stale. A failure to
     /// begin is answered by every operation on the unit.
-    fn begin(&mut self) -> SqliteUnit<'_> {
-        let failed = self
-            .conn
-            .execute_batch("BEGIN IMMEDIATE")
-            .err()
-            .map(unavailable);
+    async fn begin(&mut self) -> SqliteUnit<'_> {
         SqliteUnit {
-            conn: &mut self.conn,
-            failed,
-            finished: false,
+            tx: self
+                .conn
+                .begin_with("BEGIN IMMEDIATE")
+                .await
+                .map_err(unavailable),
         }
     }
 }
 
 /// A unit of work: one SQLite transaction, committed by
-/// [`UnitOfWork::commit`] and rolled back if dropped.
+/// [`AsyncUnitOfWork::commit`] and rolled back if dropped.
 pub struct SqliteUnit<'s> {
-    conn: &'s mut Connection,
-    /// Why the transaction could not begin, if it could not.
-    failed: Option<StoreError>,
-    /// Committed: nothing to roll back.
-    finished: bool,
+    tx: Result<Transaction<'s, Sqlite>, StoreError>,
 }
 
 impl SqliteUnit<'_> {
-    /// The connection, or why the transaction never began (each operation
-    /// answers that, cloned).
-    fn conn(&self) -> Result<&Connection, StoreError> {
-        match &self.failed {
-            Some(error) => Err(error.clone()),
-            None => Ok(self.conn),
+    /// The transaction's connection, or why the transaction never began.
+    fn conn(&mut self) -> Result<&mut SqliteConnection, StoreError> {
+        match &mut self.tx {
+            Ok(tx) => Ok(&mut **tx),
+            Err(error) => Err(error.clone()),
         }
     }
 }
 
-impl EventStore for SqliteUnit<'_> {
-    fn append(
+impl AsyncEventStore for SqliteUnit<'_> {
+    async fn append(
         &mut self,
         stream: &Cover,
         expected: u64,
         pages: &[EventPage],
     ) -> Result<u64, StoreError> {
-        append(self.conn()?, stream, expected, pages)
+        append(self.conn()?, stream, expected, pages).await
     }
 
-    fn read_from(&mut self, stream: &Cover, from: u64) -> Result<Option<Slice>, StoreError> {
-        read_from(self.conn()?, stream, from)
+    async fn read_from(&mut self, stream: &Cover, from: u64) -> Result<Option<Slice>, StoreError> {
+        read_from(self.conn()?, stream, from).await
     }
 
-    fn find_command(
+    async fn find_command(
         &mut self,
         stream: &Cover,
         command_id: &Uuid,
     ) -> Result<Vec<EventPage>, StoreError> {
-        find_command(self.conn()?, stream, command_id)
+        find_command(self.conn()?, stream, command_id).await
     }
 
-    fn covers(&mut self, domain: &str) -> Result<Vec<Cover>, StoreError> {
-        covers(self.conn()?, domain)
+    async fn covers(&mut self, domain: &str) -> Result<Vec<Cover>, StoreError> {
+        covers(self.conn()?, domain).await
     }
 
-    fn read_snapshot(&mut self, stream: &Cover) -> Result<Option<Snapshot>, StoreError> {
-        read_snapshot(self.conn()?, stream)
-    }
-}
-
-impl UnitOfWork for SqliteUnit<'_> {
-    fn commit(mut self) -> Result<(), StoreError> {
-        self.conn()?.execute_batch("COMMIT").map_err(unavailable)?;
-        self.finished = true;
-        Ok(())
+    async fn read_snapshot(&mut self, stream: &Cover) -> Result<Option<Snapshot>, StoreError> {
+        read_snapshot(self.conn()?, stream).await
     }
 }
 
-impl Drop for SqliteUnit<'_> {
-    fn drop(&mut self) {
-        if !self.finished && self.failed.is_none() {
-            // A rollback that fails leaves SQLite to roll the transaction
-            // back when the connection closes; nothing here can do more.
-            let _ = self.conn.execute_batch("ROLLBACK");
-        }
+impl AsyncUnitOfWork for SqliteUnit<'_> {
+    async fn commit(self) -> Result<(), StoreError> {
+        self.tx?.commit().await.map_err(unavailable)
     }
 }
 
@@ -222,26 +219,37 @@ fn key(stream: &Cover) -> (String, String, Vec<u8>) {
     )
 }
 
-/// The stream's length: its pages run from 0 without a gap.
-fn length(conn: &Connection, stream: &Cover) -> Result<u64, StoreError> {
+/// A select over `stream`'s rows.
+fn on_stream(stream: &Cover) -> SelectStatement {
     let (domain, edition, root) = key(stream);
-    let count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM events WHERE domain = ?1 AND edition = ?2 AND root = ?3",
-            params![domain, edition, root],
-            |row| row.get(0),
-        )
+    Query::select()
+        .from(Events::Table)
+        .and_where(Expr::col(Events::Domain).eq(domain))
+        .and_where(Expr::col(Events::Edition).eq(edition))
+        .and_where(Expr::col(Events::Root).eq(root))
+        .to_owned()
+}
+
+/// The stream's length: its pages run from 0 without a gap.
+async fn length(conn: &mut SqliteConnection, stream: &Cover) -> Result<u64, StoreError> {
+    let (sql, values) = on_stream(stream)
+        .expr(Func::count(Expr::col(Events::Sequence)))
+        .build_sqlx(SqliteQueryBuilder);
+    let row = sqlx::query_with(&sql, values)
+        .fetch_one(conn)
+        .await
         .map_err(unavailable)?;
+    let count: i64 = row.try_get(0).map_err(unavailable)?;
     Ok(count.unsigned_abs())
 }
 
-fn append(
-    conn: &Connection,
+async fn append(
+    conn: &mut SqliteConnection,
     stream: &Cover,
     expected: u64,
     pages: &[EventPage],
 ) -> Result<u64, StoreError> {
-    let actual = length(conn, stream)?;
+    let actual = length(conn, stream).await?;
     if expected != actual {
         return Err(StoreError::Conflict {
             stream: stream.clone(),
@@ -264,40 +272,59 @@ fn append(
             Some(Causation::CommandId(id)) => Some(id.value.to_vec()),
             _ => None,
         };
-        conn.execute(
-            "INSERT INTO events (domain, edition, root, sequence, command_id, page)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                domain,
-                edition,
-                root,
-                sequence_column(page.sequence),
-                command_id,
-                page.encode_to_vec()
-            ],
-        )
-        .map_err(unavailable)?;
+        let (sql, values) = Query::insert()
+            .into_table(Events::Table)
+            .columns([
+                Events::Domain,
+                Events::Edition,
+                Events::Root,
+                Events::Sequence,
+                Events::CommandId,
+                Events::Page,
+            ])
+            .values([
+                domain.clone().into(),
+                edition.clone().into(),
+                root.clone().into(),
+                sequence_column(page.sequence).into(),
+                command_id.into(),
+                page.encode_to_vec().into(),
+            ])
+            .map_err(unavailable)?
+            .build_sqlx(SqliteQueryBuilder);
+        sqlx::query_with(&sql, values)
+            .execute(&mut *conn)
+            .await
+            .map_err(unavailable)?;
     }
     Ok(actual + pages.len() as u64)
 }
 
-fn read_from(conn: &Connection, stream: &Cover, from: u64) -> Result<Option<Slice>, StoreError> {
-    let next_sequence = length(conn, stream)?;
+async fn read_from(
+    conn: &mut SqliteConnection,
+    stream: &Cover,
+    from: u64,
+) -> Result<Option<Slice>, StoreError> {
+    let next_sequence = length(conn, stream).await?;
     if next_sequence == 0 {
         return Ok(None);
     }
     let pages = select_pages(
         conn,
         stream,
-        "AND sequence >= ?4 ORDER BY sequence",
-        sequence_column(from),
-    )?;
+        on_stream(stream)
+            .and_where(Expr::col(Events::Sequence).gte(sequence_column(from)))
+            .to_owned(),
+    )
+    .await?;
     let last = select_pages(
         conn,
         stream,
-        "AND sequence = ?4",
-        sequence_column(next_sequence - 1),
-    )?;
+        on_stream(stream)
+            .and_where(Expr::col(Events::Sequence).eq(sequence_column(next_sequence - 1)))
+            .to_owned(),
+    )
+    .await?;
     Ok(Some(Slice {
         stream: stream.clone(),
         next_sequence,
@@ -309,40 +336,40 @@ fn read_from(conn: &Connection, stream: &Cover, from: u64) -> Result<Option<Slic
     }))
 }
 
-fn find_command(
-    conn: &Connection,
+async fn find_command(
+    conn: &mut SqliteConnection,
     stream: &Cover,
     command_id: &Uuid,
 ) -> Result<Vec<EventPage>, StoreError> {
     select_pages(
         conn,
         stream,
-        "AND command_id = ?4 ORDER BY sequence",
-        command_id.value.to_vec(),
+        on_stream(stream)
+            .and_where(Expr::col(Events::CommandId).eq(command_id.value.to_vec()))
+            .to_owned(),
     )
+    .await
 }
 
-/// The pages of `stream` matching `filter` (SQL after the stream's key,
-/// binding `?4` to `value`), decoded.
-fn select_pages(
-    conn: &Connection,
+/// The pages `select` (a select over `stream`'s rows) matches, in sequence
+/// order, decoded.
+async fn select_pages(
+    conn: &mut SqliteConnection,
     stream: &Cover,
-    filter: &str,
-    value: impl rusqlite::ToSql,
+    mut select: SelectStatement,
 ) -> Result<Vec<EventPage>, StoreError> {
-    let (domain, edition, root) = key(stream);
-    let sql = format!(
-        "SELECT sequence, page FROM events WHERE domain = ?1 AND edition = ?2 AND root = ?3 {filter}"
-    );
-    let mut statement = conn.prepare(&sql).map_err(unavailable)?;
-    let rows = statement
-        .query_map(params![domain, edition, root, value], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, Vec<u8>>(1)?))
-        })
+    let (sql, values) = select
+        .columns([Events::Sequence, Events::Page])
+        .order_by(Events::Sequence, Order::Asc)
+        .build_sqlx(SqliteQueryBuilder);
+    let rows: Vec<SqliteRow> = sqlx::query_with(&sql, values)
+        .fetch_all(conn)
+        .await
         .map_err(unavailable)?;
-    let mut pages = Vec::new();
+    let mut pages = Vec::with_capacity(rows.len());
     for row in rows {
-        let (sequence, bytes) = row.map_err(unavailable)?;
+        let sequence: i64 = row.try_get(0).map_err(unavailable)?;
+        let bytes: Vec<u8> = row.try_get(1).map_err(unavailable)?;
         let page = EventPage::decode(bytes.as_slice()).map_err(|e| StoreError::Unreadable {
             stream: stream.clone(),
             sequence: sequence.unsigned_abs(),
@@ -353,20 +380,23 @@ fn select_pages(
     Ok(pages)
 }
 
-fn covers(conn: &Connection, domain: &str) -> Result<Vec<Cover>, StoreError> {
-    let mut statement = conn
-        .prepare(
-            "SELECT DISTINCT edition, root FROM events WHERE domain = ?1 ORDER BY edition, root",
-        )
+async fn covers(conn: &mut SqliteConnection, domain: &str) -> Result<Vec<Cover>, StoreError> {
+    let (sql, values) = Query::select()
+        .distinct()
+        .columns([Events::Edition, Events::Root])
+        .from(Events::Table)
+        .and_where(Expr::col(Events::Domain).eq(domain))
+        .order_by(Events::Edition, Order::Asc)
+        .order_by(Events::Root, Order::Asc)
+        .build_sqlx(SqliteQueryBuilder);
+    let rows: Vec<SqliteRow> = sqlx::query_with(&sql, values)
+        .fetch_all(conn)
+        .await
         .map_err(unavailable)?;
-    let rows = statement
-        .query_map(params![domain], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?))
-        })
-        .map_err(unavailable)?;
-    let mut covers = Vec::new();
+    let mut covers = Vec::with_capacity(rows.len());
     for row in rows {
-        let (edition, root) = row.map_err(unavailable)?;
+        let edition: String = row.try_get(0).map_err(unavailable)?;
+        let root: Vec<u8> = row.try_get(1).map_err(unavailable)?;
         let root: [u8; 16] = root
             .as_slice()
             .try_into()
@@ -380,25 +410,33 @@ fn covers(conn: &Connection, domain: &str) -> Result<Vec<Cover>, StoreError> {
     Ok(covers)
 }
 
-fn read_snapshot(conn: &Connection, stream: &Cover) -> Result<Option<Snapshot>, StoreError> {
+async fn read_snapshot(
+    conn: &mut SqliteConnection,
+    stream: &Cover,
+) -> Result<Option<Snapshot>, StoreError> {
     let (domain, edition, root) = key(stream);
-    let bytes: Option<Vec<u8>> = conn
-        .query_row(
-            "SELECT snapshot FROM snapshots WHERE domain = ?1 AND edition = ?2 AND root = ?3",
-            params![domain, edition, root],
-            |row| row.get(0),
-        )
-        .optional()
+    let (sql, values) = Query::select()
+        .column(Snapshots::Snapshot)
+        .from(Snapshots::Table)
+        .and_where(Expr::col(Snapshots::Domain).eq(domain))
+        .and_where(Expr::col(Snapshots::Edition).eq(edition))
+        .and_where(Expr::col(Snapshots::Root).eq(root))
+        .build_sqlx(SqliteQueryBuilder);
+    let row: Option<SqliteRow> = sqlx::query_with(&sql, values)
+        .fetch_optional(conn)
+        .await
         .map_err(unavailable)?;
-    bytes
-        .map(|b| {
-            Snapshot::decode(b.as_slice()).map_err(|e| StoreError::Unreadable {
-                stream: stream.clone(),
-                sequence: 0,
-                reason: undecodable(e),
-            })
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let bytes: Vec<u8> = row.try_get(0).map_err(unavailable)?;
+    Snapshot::decode(bytes.as_slice())
+        .map(Some)
+        .map_err(|e| StoreError::Unreadable {
+            stream: stream.clone(),
+            sequence: 0,
+            reason: undecodable(e),
         })
-        .transpose()
 }
 
 /// A sequence as SQLite's 64-bit signed integer. Sequences count events in
@@ -468,3 +506,7 @@ fn undecodable(error: prost::DecodeError) -> Report {
         detail: error.to_string(),
     })
 }
+
+#[cfg(test)]
+#[path = "lib.test.rs"]
+mod tests;

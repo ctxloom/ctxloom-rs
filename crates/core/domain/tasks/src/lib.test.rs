@@ -5,17 +5,17 @@
 //! implements, so these hold the domain's rules, the generated layer and the
 //! store-backed pipeline together.
 
+use crate::{
+    AddTask, EditText, RemovalReason, RemoveTask, Retag, Retagged, SetStatus, StatusChanged,
+    TaskAdded, TaskCommand, TaskEvent, TaskRejection, TaskRemoved, TaskState, Tasks, TextEdited,
+    DEFERRED, TO_DO,
+};
 use annals::next::v1::{command_page, CommandBook, CommandPage, Cover, Uuid};
 use annals::next::{
     ids, EventStore, Failure, Handled, InMemoryStore, Kernel, KernelError, MemoryDeadLetters,
     Payload, Registry, Routes, Rulebook, Sampled, Stream, Timestamp, Upcaster,
 };
 use annals_diagnostic::Diagnostic;
-use tasks::{
-    AddTask, EditText, RemovalReason, RemoveTask, Retag, Retagged, SetStatus, StatusChanged,
-    TaskAdded, TaskCommand, TaskEvent, TaskRejection, TaskRemoved, TaskState, Tasks, TextEdited,
-    DEFERRED, TO_DO,
-};
 
 const HARP: &str = "swift-amber";
 
@@ -650,7 +650,7 @@ fn test_every_rejection_has_a_catalog_message_with_exactly_its_args() {
 
     let ftl = include_str!("../locales/en-US/tasks.ftl");
     let resource = fluent_syntax::parser::parse(ftl).expect("the catalog parses");
-    let samples = tasks::diagnostic_samples();
+    let samples = crate::diagnostic_samples();
     // Both ways: every catalog message has a sample, and every sample a
     // message, so a missing or empty sample list fails too.
     let mut catalog: Vec<&str> = resource

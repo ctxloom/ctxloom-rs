@@ -11,11 +11,14 @@ publish.workspace = true
 annals.workspace = true
 annals-diagnostic.workspace = true
 prost.workspace = true
-rusqlite = { version = "0.40.2", features = ["bundled"] }
+sea-query = "0.32"
+sea-query-binder = { version = "0.7", features = ["sqlx-sqlite"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
 
 [dev-dependencies]
 annals = { workspace = true, features = ["contract"] }
 fluent-syntax = "0.11"
+tokio = { version = "1.54.0", features = ["macros", "rt"] }
 
 [lints]
 workspace = true

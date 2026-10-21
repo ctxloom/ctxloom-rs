@@ -130,3 +130,7 @@ impl Projection<Tasks> for TaskList {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "lib.test.rs"]
+mod tests;
