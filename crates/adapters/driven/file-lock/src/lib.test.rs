@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use super::{
     lock, lock_file, lock_within, path, take_current, take_once, until, Kind, LockError, Waits,
-    LOCK_ATTEMPTS,
+    LOCK_ATTEMPTS, LOCK_WAIT,
 };
 
 /// Open and lock the lock file at `path` exclusively, as another process
@@ -38,6 +38,15 @@ fn held_exclusively(path: &Path) -> bool {
     fs4::FileExt::try_lock_shared(&file).is_err()
 }
 
+/// Whether `path` comes free for an exclusive taker within the wait every
+/// taker allows, as it must once its holders are dropped. Not at once: a
+/// lock is held while any descriptor on its open file description lives,
+/// and a child another thread of this test binary forks (spawning
+/// `mkfifo`, say) shares every descriptor here until it execs.
+fn released(path: &Path) -> bool {
+    lock_within(path, LOCK_WAIT).is_ok()
+}
+
 fn never() -> impl FnMut() -> Result<(), LockError> {
     || panic!("paused, with nobody holding the lock")
 }
@@ -50,7 +59,7 @@ fn test_an_exclusive_lock_excludes_every_other_holder_until_dropped() {
     assert!(held(&lock_path));
     assert!(held_exclusively(&lock_path));
     drop(locked);
-    assert!(!held(&lock_path), "released on drop");
+    assert!(released(&lock_path), "released on drop");
 }
 
 #[test]
@@ -65,7 +74,7 @@ fn test_shared_locks_stand_together_and_keep_an_exclusive_one_out() {
     );
     assert!(!held_exclusively(&lock_path), "and let a shared one in");
     drop((one, two));
-    assert!(!held(&lock_path));
+    assert!(released(&lock_path));
 }
 
 #[test]
@@ -152,7 +161,7 @@ fn test_a_lock_taken_on_a_file_since_unlinked_is_taken_again() {
     assert_eq!(attempts, 2, "the first grant was on a reaped file");
     assert!(held(&lock_path), "what is held is the file at the path");
     drop(locked);
-    assert!(!held(&lock_path));
+    assert!(released(&lock_path));
 }
 
 #[test]
@@ -196,7 +205,30 @@ fn test_a_lock_held_past_the_wait_fails_saying_which() {
         Err(LockError::Timeout { path, waited_ms: 30 }) if path == lock_path.display().to_string()
     ));
     drop(holder);
-    lock_within(&lock_path, Duration::ZERO).expect("free once released");
+    assert!(released(&lock_path), "free once released");
+}
+
+#[test]
+fn test_a_lock_is_held_while_any_descriptor_sharing_it_lives() {
+    // A child forked by another thread holds a copy of every descriptor
+    // until it execs (Rust and Go set close-on-exec, which acts only at the
+    // exec), and flock is per open file description: so a guard dropped
+    // in that window leaves its lock held, and a zero wait taken then is
+    // refused. Forced here with the copy the fork would make.
+    let dir = tempfile::tempdir().unwrap();
+    let lock_path = dir.path().join("x.lock");
+    let locked = lock_within(&lock_path, Duration::ZERO).unwrap();
+    let forked = locked._file.try_clone().unwrap();
+    drop(locked);
+    assert!(
+        matches!(
+            lock_within(&lock_path, Duration::ZERO),
+            Err(LockError::Timeout { waited_ms: 0, .. })
+        ),
+        "a zero wait tries once, and the copy still holds it"
+    );
+    drop(forked);
+    assert!(released(&lock_path), "free once the last copy closes");
 }
 
 #[test]
@@ -254,7 +286,8 @@ fn test_a_lock_file_it_creates_records_what_it_guards_and_one_there_is_kept() {
     drop(locked);
     // Another taker's file is left exactly as it is.
     fs::write(&lock_path, "/elsewhere\n").unwrap();
-    drop(lock(&lock_path, Kind::Exclusive, Some(guarded), &mut never()).unwrap());
+    let mut wait = until(&lock_path, LOCK_WAIT);
+    drop(lock(&lock_path, Kind::Exclusive, Some(guarded), &mut wait).unwrap());
     assert_eq!(fs::read(&lock_path).unwrap(), b"/elsewhere\n");
     // A taker guarding nothing records nothing.
     let bare = dir.path().join("bare.lock");
@@ -311,8 +344,8 @@ fn test_a_file_lock_holds_its_sidecar_and_the_reap_interlock_shared_until_droppe
         "the sidecar records the file it guards"
     );
     drop(locked);
-    assert!(!held(&sidecar.lock));
-    assert!(!held(&interlock));
+    assert!(released(&sidecar.lock));
+    assert!(released(&interlock));
 }
 
 #[test]
@@ -341,11 +374,11 @@ fn test_a_file_lock_whose_sidecar_is_held_waits_out_the_wait_then_refuses() {
             if *path == sidecar.lock.display().to_string()
     ));
     assert!(
-        !held(&sidecar.interlock.unwrap()),
+        released(&sidecar.interlock.unwrap()),
         "the interlock is let go with the refusal"
     );
     drop(holder);
-    lock_file(&at.home(), &at.target(), short(0, 0)).expect("free once released");
+    lock_file(&at.home(), &at.target(), Waits::DEFAULT).expect("free once released");
 }
 
 #[test]
@@ -361,7 +394,7 @@ fn test_a_reap_in_progress_refuses_the_lock_before_its_sidecar_is_touched() {
     ));
     assert!(!sidecar.lock.exists(), "no sidecar is made during a reap");
     drop(reaping);
-    lock_file(&at.home(), &at.target(), short(0, 0)).expect("taken once the reap ends");
+    lock_file(&at.home(), &at.target(), Waits::DEFAULT).expect("taken once the reap ends");
 }
 
 #[test]

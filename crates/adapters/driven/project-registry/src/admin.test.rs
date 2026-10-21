@@ -316,6 +316,9 @@ fn test_a_change_is_made_under_the_registry_lock() {
     assert_eq!(refused.unwrap_err().code(), "project-registry-lock-timeout");
     assert!(world.index().projects.is_empty());
     drop(held);
+    // A change waits as it does in use: a child forked by another thread
+    // here (git) can hold the released lock until it execs.
+    let mut registry = registry.with_lock_wait(index::LOCK_WAIT);
     registry.apply(None, &seen, &change).unwrap();
     assert_eq!(world.index().projects.len(), 1);
 }

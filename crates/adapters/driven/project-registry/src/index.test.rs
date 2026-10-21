@@ -8,6 +8,14 @@ use super::{
 };
 use crate::RegistryError;
 
+/// Whether the registry lock at `lock_file` comes free within the wait a
+/// change allows, as it must once its guard is dropped. Not at once: flock
+/// is per open file description, and a child another thread here forks
+/// (git, for the worktree tests) shares every descriptor until it execs.
+fn released(lock_file: &Path) -> bool {
+    file_lock::lock_within(lock_file, LOCK_WAIT).is_ok()
+}
+
 /// The lock, waited for as a change waits.
 pub(crate) fn lock(path: &Path) -> Result<super::Locked, RegistryError> {
     lock_within(path, LOCK_WAIT)
@@ -137,7 +145,8 @@ fn test_the_lock_is_the_file_go_locks_and_excludes_another_holder() {
         "held exclusively while the guard lives"
     );
     drop(held);
-    assert!(FileExt::try_lock(&other).is_ok(), "released on drop");
+    drop(other);
+    assert!(released(&lock_file), "released on drop");
 }
 
 #[test]
@@ -209,7 +218,7 @@ fn test_a_lock_held_past_the_wait_fails_saying_who_to_look_for() {
         Err(RegistryError::LockTimeout { path, waited_ms: 30 }) if *path == lock_path
     ));
     drop(held);
-    lock_within(&file, std::time::Duration::ZERO).expect("free once released");
+    lock(&file).expect("free once released");
 }
 
 #[test]
