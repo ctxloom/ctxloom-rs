@@ -2103,6 +2103,7 @@ dependencies = [
  "tasks",
  "tasks-application",
  "tasks-cli",
+ "tasks-config",
  "tempfile",
  "time",
  "tokio",
@@ -2130,6 +2131,7 @@ dependencies = [
  "annals",
  "annals-diagnostic 0.1.0",
  "fluent-syntax",
+ "mutants",
  "ports",
  "sha2",
  "tagma-core",
@@ -2149,6 +2151,18 @@ dependencies = [
  "serde_json",
  "tasks-application",
  "time",
+]
+
+[[package]]
+name = "tasks-config"
+version = "0.1.0"
+dependencies = [
+ "annals-diagnostic 0.1.0",
+ "fluent-syntax",
+ "ports",
+ "serde",
+ "serde_norway",
+ "tempfile",
 ]
 
 [[package]]

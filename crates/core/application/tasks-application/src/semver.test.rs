@@ -107,3 +107,27 @@ fn test_a_numeric_identifier_is_below_an_alphanumeric_one() {
         "more identifiers rank higher"
     );
 }
+
+#[test]
+fn test_identifiers_order_the_same_partially() {
+    use super::Identifier;
+    let (one, a) = (
+        Identifier::Numeric(1),
+        Identifier::Alphanumeric("a".to_string()),
+    );
+    assert_eq!(one.partial_cmp(&a), Some(Ordering::Less));
+    assert_eq!(a.partial_cmp(&one), Some(Ordering::Greater));
+}
+
+#[test]
+fn test_a_part_that_is_no_number_says_so() {
+    for (bad, why) in [
+        ("a.0.0", "is not a number"),
+        ("1..0", "is not a number"),
+        ("01.0.0", "leading zero"),
+        ("1.0.0-01", "leading zero"),
+    ] {
+        let error = Version::parse(bad).unwrap_err();
+        assert!(error.contains(why), "{bad}: {error}");
+    }
+}

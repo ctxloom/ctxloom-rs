@@ -16,6 +16,7 @@ system.workspace = true
 task-store-sqlite.workspace = true
 tasks-application.workspace = true
 tasks-cli.workspace = true
+tasks-config.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]

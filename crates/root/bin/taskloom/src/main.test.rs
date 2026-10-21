@@ -92,6 +92,11 @@ impl Env {
     /// Run `taskloom args` in the project directory, with only HOME, PATH
     /// and the session in its environment. Safe to call concurrently.
     fn run(&self, args: &[&str]) -> Ran {
+        self.run_with(args, &[])
+    }
+
+    /// [`Env::run`], with `vars` in its environment too.
+    fn run_with(&self, args: &[&str], vars: &[(&str, &str)]) -> Ran {
         let output = Command::new(binary())
             .args(args)
             .current_dir(self.project.path())
@@ -99,6 +104,7 @@ impl Env {
             .env("HOME", self.home.path())
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
             .env("CTXLOOM_SESSION_HARP", self.session)
+            .envs(vars.iter().copied())
             .output()
             .expect("taskloom runs");
         Ran::of(output)
@@ -392,6 +398,7 @@ fn test_every_diagnostic_of_every_crate_renders_from_the_binarys_catalog() {
         task_store_sqlite::diagnostic_samples(),
         tasks_cli::diagnostic_samples(),
         go_task_log::diagnostic_samples(),
+        tasks_config::diagnostic_samples(),
         presentation::diagnostic_samples(),
     ]
     .into_iter()
@@ -481,3 +488,6 @@ fn test_in_json_each_command_writes_one_document_and_errors_an_envelope() {
 
 #[path = "import.test.rs"]
 mod import;
+
+#[path = "tags.test.rs"]
+mod tags;

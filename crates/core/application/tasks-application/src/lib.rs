@@ -158,6 +158,8 @@ pub struct Service<I, S, N, C, D, L = NoGoLogs, G = NotConfigured> {
 pub struct NotConfigured;
 
 impl Configuration for NotConfigured {
+    // Equivalent: `Ok(vec![])` is the empty list this returns.
+    #[cfg_attr(test, mutants::skip)]
     fn tag_schema(&mut self, _: &[String]) -> Result<Vec<String>, Report> {
         Ok(Vec::new())
     }
