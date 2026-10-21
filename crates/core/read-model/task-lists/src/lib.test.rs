@@ -304,3 +304,132 @@ fn test_an_async_catch_up_projects_only_what_is_new() {
     ready(list.catch_up_async(&mut store, &project.registry)).unwrap();
     assert_eq!(list.sequence(), 1, "already projected");
 }
+
+// ------------------------------------------------------------ pruning
+
+fn pruned() -> RemoveTask {
+    RemoveTask {
+        reason: RemovalReason::Pruned,
+    }
+}
+
+fn removed() -> RemoveTask {
+    RemoveTask {
+        reason: RemovalReason::Removed,
+    }
+}
+
+#[test]
+fn test_a_task_minted_on_a_pruned_harp_is_listed_though_its_stream_restarted() {
+    // Prune records the removal, then purges the stream; a new task minted
+    // on the freed harp starts the stream again from its first sequence,
+    // which the list must not skip as already projected.
+    let mut project = Project::new();
+    let mut list = every_task();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    project.run(&mut list, FIRST, status("Done", ""));
+    project.run(&mut list, FIRST, pruned());
+    assert!(list.entries().is_empty(), "the removal drops it at once");
+    let deleted = annals::next::Purge::purge(&mut project.store, &cover(FIRST)).unwrap();
+    assert_eq!(deleted, 3);
+
+    project.run(&mut list, FIRST, add(FIRST, "Again"));
+    let texts: Vec<&str> = list.entries().iter().map(|t| t.text.as_str()).collect();
+    assert_eq!(texts, ["Again"], "the new task, not the pruned one");
+    assert_eq!(
+        list.sequence(),
+        4,
+        "the add, its status, the removal, the new add"
+    );
+}
+
+#[test]
+fn test_a_task_removed_by_name_keeps_its_streams_place() {
+    // Only a prune frees a stream; a removal by name keeps it, so its
+    // events redelivered are still seen as projected.
+    let mut project = Project::new();
+    let mut list = every_task();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    project.run(&mut list, FIRST, removed());
+    list.catch_up(&mut project.store, &project.registry)
+        .unwrap();
+    assert!(list.entries().is_empty());
+    assert_eq!(
+        list.sequence(),
+        2,
+        "nothing redelivered was projected again"
+    );
+}
+
+#[test]
+fn test_a_list_caught_up_after_a_prune_holds_the_task_minted_since() {
+    let mut project = Project::new();
+    let mut list = every_task();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    project.run(&mut list, FIRST, pruned());
+    annals::next::Purge::purge(&mut project.store, &cover(FIRST)).unwrap();
+    let mut other = every_task();
+    project.run(&mut other, FIRST, add(FIRST, "Again"));
+    list.catch_up(&mut project.store, &project.registry)
+        .unwrap();
+    let texts: Vec<&str> = list.entries().iter().map(|t| t.text.as_str()).collect();
+    assert_eq!(texts, ["Again"]);
+}
+
+/// A store whose every stream reads back empty: what a stream purged
+/// between a listing's `covers` and its read can look like.
+struct Hollow(InMemoryStore);
+
+impl annals::next::EventStore for Hollow {
+    fn append(
+        &mut self,
+        stream: &Cover,
+        expected: u64,
+        pages: &[annals::next::v1::EventPage],
+    ) -> Result<u64, annals::next::StoreError> {
+        self.0.append(stream, expected, pages)
+    }
+
+    fn read_from(
+        &mut self,
+        stream: &Cover,
+        _: u64,
+    ) -> Result<Option<annals::next::Slice>, annals::next::StoreError> {
+        Ok(Some(annals::next::Slice {
+            stream: stream.clone(),
+            next_sequence: 0,
+            last_recorded_at: None,
+            pages: Vec::new(),
+        }))
+    }
+
+    fn find_command(
+        &mut self,
+        stream: &Cover,
+        command_id: &Uuid,
+    ) -> Result<Vec<annals::next::v1::EventPage>, annals::next::StoreError> {
+        self.0.find_command(stream, command_id)
+    }
+
+    fn covers(&mut self, domain: &str) -> Result<Vec<Cover>, annals::next::StoreError> {
+        self.0.covers(domain)
+    }
+}
+
+#[test]
+fn test_a_stream_that_replays_to_no_events_is_never_a_blank_task() {
+    let mut project = Project::new();
+    let mut live = every_task();
+    project.run(&mut live, FIRST, add(FIRST, "First"));
+    let mut store = Hollow(std::mem::take(&mut project.store));
+
+    let mut list = every_task();
+    list.catch_up(&mut store, &project.registry).unwrap();
+    assert!(list.entries().is_empty(), "{:?}", list.entries());
+    assert_eq!(list.sequence(), 0);
+
+    let mut list = every_task();
+    let mut store = Ready(store);
+    ready(list.catch_up_async(&mut store, &project.registry)).unwrap();
+    assert!(list.entries().is_empty(), "{:?}", list.entries());
+}
