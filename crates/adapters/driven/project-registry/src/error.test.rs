@@ -23,6 +23,8 @@ fn test_each_error_renders_its_english_fallback() {
             "index.yaml is not an absolute path: nothing is written relative to the working directory",
             "the project registry's lock /home/u/.ctxloom/projects/index.yaml.lock is still held after 10000ms: another ctxloom or taskloom process holds it; try again once it exits",
             "the project registry's lock /home/u/.ctxloom/projects/index.yaml.lock was replaced 16 times while being taken: try again",
+            "the project registry or a marker changed while the change was planned: nothing was changed; run it again",
+            "/home/u/.ctxloom/projects/jolly-mute-magma is not a project's database directory: not removed",
         ]
     );
 }
@@ -58,6 +60,10 @@ fn test_each_error_gives_its_args_values() {
         path: "p".to_string(),
     };
     assert!(matches!(&relative.args()[..], [("path", Arg::Str(p))] if p == "p"));
+    let not_db = RegistryError::NotADatabase {
+        path: "p".to_string(),
+    };
+    assert!(matches!(&not_db.args()[..], [("path", Arg::Str(p))] if p == "p"));
     let exhausted = RegistryError::Exhausted { attempts: 7 }.args();
     assert!(matches!(exhausted[0], ("attempts", Arg::Uint(7))));
     let timeout = RegistryError::LockTimeout {

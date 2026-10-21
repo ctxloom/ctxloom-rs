@@ -133,7 +133,7 @@ pub fn write_atomically(path: &Path, bytes: &[u8]) -> Result<(), RegistryError> 
     Ok(())
 }
 
-/// How long [`lock`] waits for whoever holds the registry's lock before
+/// How long a change waits for whoever holds the registry's lock before
 /// giving up: Go waits without end, so a process that hangs holding it
 /// would stall every other.
 pub const LOCK_WAIT: Duration = Duration::from_secs(10);
@@ -151,12 +151,7 @@ pub struct Locked {
 }
 
 /// Take the lock of the registry at `path`, an absolute path, waiting up
-/// to [`LOCK_WAIT`] for whoever holds it.
-pub fn lock(path: &Path) -> Result<Locked, RegistryError> {
-    lock_within(path, LOCK_WAIT)
-}
-
-/// [`lock`], waiting up to `wait`.
+/// to `wait` (in use, [`LOCK_WAIT`]) for whoever holds it.
 pub fn lock_within(path: &Path, wait: Duration) -> Result<Locked, RegistryError> {
     let lock_path = absolute(path)?.with_file_name("index.yaml.lock");
     if let Some(dir) = lock_path.parent() {

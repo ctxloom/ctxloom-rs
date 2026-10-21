@@ -11,7 +11,7 @@ use tempfile::TempDir;
 use super::{index, Environment, ProjectRegistry, MINT_ATTEMPTS};
 
 /// Project ids in the order given, then `then` forever.
-struct Scripted {
+pub(crate) struct Scripted {
     ids: VecDeque<String>,
     then: String,
     minted: u32,
@@ -28,7 +28,7 @@ impl Names for Scripted {
     }
 }
 
-fn names(ids: &[&str]) -> Scripted {
+pub(crate) fn names(ids: &[&str]) -> Scripted {
     Scripted {
         ids: ids.iter().map(|s| s.to_string()).collect(),
         then: "always-the-same".to_string(),
@@ -37,13 +37,13 @@ fn names(ids: &[&str]) -> Scripted {
 }
 
 /// A home and a work tree, apart.
-struct World {
-    home: TempDir,
-    tree: TempDir,
+pub(crate) struct World {
+    pub(crate) home: TempDir,
+    pub(crate) tree: TempDir,
 }
 
 impl World {
-    fn new() -> World {
+    pub(crate) fn new() -> World {
         World {
             home: tempfile::tempdir().unwrap(),
             tree: tempfile::tempdir().unwrap(),
@@ -52,11 +52,11 @@ impl World {
 
     /// The work tree, canonical (a temporary directory's path may run
     /// through a symlink, as macOS's /tmp does).
-    fn tree(&self) -> PathBuf {
+    pub(crate) fn tree(&self) -> PathBuf {
         fs::canonicalize(self.tree.path()).unwrap()
     }
 
-    fn env(&self) -> Environment {
+    pub(crate) fn env(&self) -> Environment {
         Environment {
             home: Some(self.home.path().to_path_buf()),
             cwd: Ok(self.tree()),
@@ -65,19 +65,19 @@ impl World {
         }
     }
 
-    fn registry(&self, ids: &[&str]) -> ProjectRegistry<Scripted> {
+    pub(crate) fn registry(&self, ids: &[&str]) -> ProjectRegistry<Scripted> {
         ProjectRegistry::new(self.env(), names(ids))
     }
 
-    fn index(&self) -> index::Index {
+    pub(crate) fn index(&self) -> index::Index {
         index::load(&index::path(self.home.path())).unwrap()
     }
 
-    fn marker(&self) -> Option<String> {
+    pub(crate) fn marker(&self) -> Option<String> {
         fs::read_to_string(self.tree().join(".project-id")).ok()
     }
 
-    fn store(&self, id: &str) -> PathBuf {
+    pub(crate) fn store(&self, id: &str) -> PathBuf {
         self.home
             .path()
             .join(".ctxloom/projects")
@@ -86,7 +86,7 @@ impl World {
     }
 }
 
-fn text(path: &Path) -> String {
+pub(crate) fn text(path: &Path) -> String {
     path.display().to_string()
 }
 
@@ -542,7 +542,7 @@ pub(crate) mod git {
 
 impl World {
     /// The world, working in `cwd`.
-    fn env_in(&self, cwd: &Path) -> Environment {
+    pub(crate) fn env_in(&self, cwd: &Path) -> Environment {
         Environment {
             cwd: Ok(cwd.to_path_buf()),
             ..self.env()

@@ -33,6 +33,11 @@ pub enum RegistryError {
     LockTimeout { path: String, waited_ms: u64 },
     /// Each lock taken was on a lock file unlinked meanwhile.
     LockReplaced { path: String, attempts: u32 },
+    /// The registry, a marker or the projects directory changed between
+    /// planning a change and making it.
+    Changed,
+    /// What a removal would delete is not a database's directory.
+    NotADatabase { path: String },
 }
 
 impl RegistryError {
@@ -74,6 +79,12 @@ impl fmt::Display for RegistryError {
                 f,
                 "the project registry's lock {path} was replaced {attempts} times while being taken: try again"
             ),
+            RegistryError::Changed => f.write_str(
+                "the project registry or a marker changed while the change was planned: nothing was changed; run it again",
+            ),
+            RegistryError::NotADatabase { path } => {
+                write!(f, "{path} is not a project's database directory: not removed")
+            }
         }
     }
 }
@@ -90,12 +101,14 @@ impl Diagnostic for RegistryError {
             RegistryError::RelativePath { .. } => "project-registry-relative-path",
             RegistryError::LockTimeout { .. } => "project-registry-lock-timeout",
             RegistryError::LockReplaced { .. } => "project-registry-lock-replaced",
+            RegistryError::Changed => "project-registry-changed",
+            RegistryError::NotADatabase { .. } => "project-registry-not-a-database",
         }
     }
 
     fn args(&self) -> Vec<(&'static str, Arg)> {
         match self {
-            RegistryError::NoHome => Vec::new(),
+            RegistryError::NoHome | RegistryError::Changed => Vec::new(),
             RegistryError::Io { path, detail } | RegistryError::Unreadable { path, detail } => {
                 vec![
                     ("path", path.as_str().into()),
@@ -111,7 +124,9 @@ impl Diagnostic for RegistryError {
             RegistryError::NoWorkingDirectory { detail } => {
                 vec![("detail", detail.as_str().into())]
             }
-            RegistryError::RelativePath { path } => vec![("path", path.as_str().into())],
+            RegistryError::RelativePath { path } | RegistryError::NotADatabase { path } => {
+                vec![("path", path.as_str().into())]
+            }
             RegistryError::LockTimeout { path, waited_ms } => vec![
                 ("path", path.as_str().into()),
                 ("waited_ms", (*waited_ms).into()),
@@ -157,6 +172,10 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(RegistryError::LockReplaced {
             path: "/home/u/.ctxloom/projects/index.yaml.lock".to_string(),
             attempts: 16,
+        }),
+        Box::new(RegistryError::Changed),
+        Box::new(RegistryError::NotADatabase {
+            path: "/home/u/.ctxloom/projects/jolly-mute-magma".to_string(),
         }),
     ]
 }

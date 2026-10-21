@@ -4,10 +4,15 @@ use std::fs;
 use std::path::Path;
 
 use super::{
-    load, lock, lock_within, path, save, take_current, take_once, until, write_atomically, Index,
-    LOCK_ATTEMPTS, SCHEMA_VERSION,
+    load, lock_within, path, save, take_current, take_once, until, write_atomically, Index,
+    LOCK_ATTEMPTS, LOCK_WAIT, SCHEMA_VERSION,
 };
 use crate::RegistryError;
+
+/// The lock, waited for as a change waits.
+pub(crate) fn lock(path: &Path) -> Result<super::Locked, RegistryError> {
+    lock_within(path, LOCK_WAIT)
+}
 
 const GO_WRITTEN: &str = "\
 schema_version: 1
