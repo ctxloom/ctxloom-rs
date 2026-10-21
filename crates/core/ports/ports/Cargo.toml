@@ -1,0 +1,15 @@
+[package]
+name = "ports"
+version = "0.1.0"
+description = "The ports the tasks application needs from outside that annals does not provide: project identity, the store opener, names, time, ids and waiting"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+annals.workspace = true
+annals-diagnostic.workspace = true
+
+[lints]
+workspace = true

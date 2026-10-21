@@ -42,4 +42,6 @@ allow-git = [
   "https://github.com/angzarr-io/angzarr-project",
   # annals (annals-diagnostic, through angzarr-build).
   "https://github.com/benjaminabbitt/annals",
+  # harp-core: the word lists task and project ids are minted from.
+  "https://github.com/benjaminabbitt/harp",
 ]

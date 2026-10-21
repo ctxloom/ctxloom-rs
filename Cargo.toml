@@ -21,7 +21,31 @@ annals = { path = "../../annals/crates/annals" }
 annals-diagnostic = { path = "../../annals/crates/annals-diagnostic" }
 angzarr-build = { path = "../../angzarr/angzarr-cli/main/crates/angzarr-build" }
 tasks-proto = { path = "crates/core/wire/tasks-proto" }
+annals-store-sql = { path = "../../annals/crates/annals-store-sql", features = ["sqlite"] }
 tasks = { path = "crates/core/domain/tasks" }
+task-lists = { path = "crates/core/read-model/task-lists" }
+ports = { path = "crates/core/ports/ports" }
+tasks-application = { path = "crates/core/application/tasks-application" }
+project-registry = { path = "crates/adapters/driven/project-registry" }
+harp-names = { path = "crates/adapters/driven/harp-names" }
+tasks-cli = { path = "crates/adapters/driving/tasks-cli" }
+
+# Task and project ids: harp's word lists, as Go's harp ports them.
+harp-core = { git = "https://github.com/benjaminabbitt/harp", rev = "21648c9712ab60a84b609e1321201f158203a4bc" }
+
+# Third-party, for the adapters and the composition root.
+clap = { version = "4.5", features = ["derive"] }
+fluent-syntax = "0.11"
+fs4 = { version = "0.13", features = ["sync"] }
+rand = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+sha2 = "0.10"
+tempfile = "3"
+time = { version = "0.3", features = ["formatting", "parsing"] }
+tokio = { version = "1", features = ["rt", "time"] }
+uuid = { version = "1", features = ["v7"] }
 
 [workspace.lints.clippy]
 invisible_characters = "deny"

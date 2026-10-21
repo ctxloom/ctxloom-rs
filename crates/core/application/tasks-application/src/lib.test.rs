@@ -1,0 +1,370 @@
+//! The use cases, over fake ports and annals' in-memory store, run through
+//! annals' kernel as the binary runs them over SQLite.
+
+use annals::next::v1::event_meta::Causation;
+use annals::next::AsyncEventStore;
+use annals_diagnostic::{Diagnostic, Report};
+use tasks::TaskState;
+
+use crate::fakes::{
+    project, ready, FakeClock, FakeDelay, FakeIdentity, FakeNames, FakeStores, Fault, Flaky,
+};
+use crate::{
+    cover, AppError, ListQuery, NewTask, Service, TagChange, TaskService, Written, HARP_ATTEMPTS,
+};
+
+type Fake = Service<FakeIdentity, FakeStores, FakeNames, FakeClock, FakeDelay>;
+
+fn service(names: &[&str]) -> Fake {
+    Service::new(
+        FakeIdentity::default(),
+        FakeStores::default(),
+        FakeNames::of(names),
+        FakeClock::default(),
+        FakeDelay::default(),
+    )
+}
+
+fn new_task(text: &str) -> NewTask {
+    NewTask {
+        text: text.to_string(),
+        ..NewTask::default()
+    }
+}
+
+fn add(service: &mut Fake, task: NewTask) -> Result<Written, AppError> {
+    ready(service.add(task))
+}
+
+fn listed(service: &mut Fake, query: ListQuery) -> Vec<String> {
+    ready(service.list(query))
+        .unwrap()
+        .tasks
+        .into_iter()
+        .map(|t| t.harp_id)
+        .collect()
+}
+
+/// The command ids recorded on `harp`'s events.
+fn command_ids(service: &mut Fake, harp: &str) -> Vec<annals::next::v1::Uuid> {
+    let slice = ready(service.stores.store.read_from(&cover(harp), 0))
+        .unwrap()
+        .expect("the stream");
+    slice
+        .pages
+        .iter()
+        .filter_map(|p| match p.meta.as_ref()?.causation.as_ref()? {
+            Causation::CommandId(id) => Some(id.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+// ------------------------------------------------------------ add
+
+#[test]
+fn test_an_add_mints_a_harp_and_answers_with_the_task_and_its_project() {
+    let mut service = service(&["swift-amber"]);
+    let task = NewTask {
+        project: Some("pinned-id".to_string()),
+        text: "Ship it".to_string(),
+        status: "In Progress".to_string(),
+        trigger: String::new(),
+        tags: vec!["b".to_string(), "a".to_string()],
+        origin_session: "calm-otter-fox".to_string(),
+    };
+    let written = add(&mut service, task).unwrap();
+    assert_eq!(written.project, project());
+    assert_eq!(written.task.harp_id, "swift-amber");
+    assert_eq!(written.task.text, "Ship it");
+    assert_eq!(written.task.status, "In Progress");
+    assert_eq!(written.task.tags, ["a", "b"]);
+    assert_eq!(written.task.origin_session, "calm-otter-fox");
+    assert_eq!(
+        written.task.created_at.seconds, 1_700_000_001,
+        "recorded at the clock's instant"
+    );
+    assert_eq!(service.identity.pins, [Some("pinned-id".to_string())]);
+    assert_eq!(service.stores.opened, ["jolly-mute-magma"]);
+}
+
+#[test]
+fn test_an_add_whose_harp_is_taken_mints_another_with_a_fresh_command_id() {
+    let mut service = service(&["swift-amber", "swift-amber", "calm-otter"]);
+    add(&mut service, new_task("First")).unwrap();
+    let second = add(&mut service, new_task("Second")).unwrap();
+    assert_eq!(second.task.harp_id, "calm-otter");
+    assert_eq!(second.task.text, "Second");
+    assert_eq!(service.names.minted, 3);
+    assert_eq!(service.clock.ids.len(), 3, "one command id per harp tried");
+    let landed = command_ids(&mut service, "calm-otter");
+    assert_eq!(landed, [service.clock.ids[2].clone()]);
+    assert_eq!(command_ids(&mut service, "swift-amber").len(), 1);
+}
+
+#[test]
+fn test_an_add_gives_up_once_every_harp_it_mints_is_taken() {
+    let mut service = service(&["swift-amber"]);
+    service.names.then = Some("swift-amber".to_string());
+    add(&mut service, new_task("First")).unwrap();
+    service.names.minted = 0;
+    let error = add(&mut service, new_task("Second")).unwrap_err();
+    assert_eq!(error, AppError::HarpsExhausted { attempts: 100 });
+    assert_eq!(service.names.minted, HARP_ATTEMPTS);
+}
+
+#[test]
+fn test_an_add_the_domain_refuses_is_answered_with_its_rejection() {
+    let mut service = service(&["swift-amber"]);
+    let error = add(&mut service, new_task("   ")).unwrap_err();
+    let AppError::Rejected(rejection) = &error else {
+        panic!("rejected: {error:?}");
+    };
+    assert_eq!(rejection.code(), "tasks-text-required");
+    assert_eq!(service.names.minted, 1, "not re-minted");
+}
+
+#[test]
+fn test_an_add_retries_its_one_command_id_through_store_failures() {
+    let mut service = service(&["swift-amber"]);
+    service.stores.store = Flaky::failing(&[Fault::Unavailable, Fault::LandsThenFails]);
+    let written = add(&mut service, new_task("Ship it")).unwrap();
+    assert_eq!(written.task.harp_id, "swift-amber");
+    assert_eq!(service.stores.store.begun, 3);
+    assert_eq!(service.delay.slept.len(), 2);
+    assert_eq!(service.clock.ids.len(), 1, "the same command id each time");
+    assert_eq!(command_ids(&mut service, "swift-amber").len(), 1);
+}
+
+#[test]
+fn test_an_add_that_cannot_resolve_its_project_fails_with_why() {
+    let mut service = service(&["swift-amber"]);
+    service.identity.fails = Some(Report::new("project-registry-x", "no home"));
+    let error = add(&mut service, new_task("Ship it")).unwrap_err();
+    assert_eq!(
+        error,
+        AppError::Identity(Report::new("project-registry-x", "no home"))
+    );
+    assert!(service.stores.opened.is_empty());
+}
+
+#[test]
+fn test_an_add_whose_store_does_not_open_fails() {
+    let mut service = service(&["swift-amber"]);
+    service.stores.store.open_fails = true;
+    let error = add(&mut service, new_task("Ship it")).unwrap_err();
+    assert_eq!(error.code(), "annals-next-store-unavailable");
+}
+
+// ------------------------------------------------------------ tag
+
+fn change(harp: &str, add: &[&str], remove: &[&str]) -> TagChange {
+    TagChange {
+        project: Some("pinned-id".to_string()),
+        harp_id: harp.to_string(),
+        add: add.iter().map(|s| s.to_string()).collect(),
+        remove: remove.iter().map(|s| s.to_string()).collect(),
+    }
+}
+
+#[test]
+fn test_a_tag_adds_then_removes_and_answers_with_the_task() {
+    let mut service = service(&["swift-amber"]);
+    let task = NewTask {
+        tags: vec!["old".to_string()],
+        ..new_task("Ship it")
+    };
+    add(&mut service, task).unwrap();
+    let written =
+        ready(service.tag(change("swift-amber", &["new", "both"], &["old", "both"]))).unwrap();
+    assert_eq!(written.task.tags, ["new"]);
+    assert_eq!(written.project, project());
+    assert_eq!(
+        service.identity.pins.last(),
+        Some(&Some("pinned-id".to_string()))
+    );
+}
+
+#[test]
+fn test_a_tag_changing_nothing_answers_with_the_task_as_it_is() {
+    let mut service = service(&["swift-amber"]);
+    let task = NewTask {
+        tags: vec!["kept".to_string()],
+        ..new_task("Ship it")
+    };
+    add(&mut service, task).unwrap();
+    let written = ready(service.tag(change("swift-amber", &["kept"], &[]))).unwrap();
+    assert_eq!(written.task.tags, ["kept"]);
+}
+
+#[test]
+fn test_a_tag_of_no_task_is_refused() {
+    let mut service = service(&[]);
+    let error = ready(service.tag(change("swift-amber", &["x"], &[]))).unwrap_err();
+    assert_eq!(error.code(), "tasks-no-task");
+}
+
+#[test]
+fn test_a_tag_retries_through_store_failures() {
+    let mut service = service(&["swift-amber"]);
+    add(&mut service, new_task("Ship it")).unwrap();
+    service.stores.store.faults = [Fault::Conflict, Fault::LandsThenFails].into();
+    let written = ready(service.tag(change("swift-amber", &["x"], &[]))).unwrap();
+    assert_eq!(written.task.tags, ["x"]);
+    assert_eq!(service.delay.slept.len(), 2);
+    assert_eq!(
+        command_ids(&mut service, "swift-amber").len(),
+        2,
+        "add, retag"
+    );
+}
+
+#[test]
+fn test_a_tag_that_gives_up_says_so() {
+    let mut service = service(&["swift-amber"]);
+    add(&mut service, new_task("Ship it")).unwrap();
+    service.backoff.attempts = 2;
+    service.stores.store.faults = [Fault::Unavailable, Fault::Unavailable].into();
+    let error = ready(service.tag(change("swift-amber", &["x"], &[]))).unwrap_err();
+    assert!(
+        matches!(error, AppError::GaveUp { attempts: 2, .. }),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn test_a_tag_whose_project_does_not_resolve_fails_with_why() {
+    let mut service = service(&[]);
+    service.identity.fails = Some(Report::new("project-registry-x", "no home"));
+    let error = ready(service.tag(change("swift-amber", &["x"], &[]))).unwrap_err();
+    assert_eq!(error.code(), "project-registry-x");
+}
+
+#[test]
+fn test_a_tag_whose_store_does_not_open_fails() {
+    let mut service = service(&[]);
+    service.stores.store.open_fails = true;
+    let error = ready(service.tag(change("swift-amber", &["x"], &[]))).unwrap_err();
+    assert_eq!(error.code(), "annals-next-store-unavailable");
+}
+
+// ------------------------------------------------------------ list
+
+/// A service holding tasks in each default status, added in this order.
+fn with_every_status() -> Fake {
+    let mut service = service(&["to-do", "doing", "deferred", "done", "archived", "other"]);
+    for (status, trigger) in [
+        ("To Do", ""),
+        ("In Progress", ""),
+        ("Deferred", "the release"),
+        ("Done", ""),
+        ("Archived", ""),
+        ("Blocked", ""),
+    ] {
+        let task = NewTask {
+            status: status.to_string(),
+            trigger: trigger.to_string(),
+            ..new_task(status)
+        };
+        add(&mut service, task).unwrap();
+    }
+    service
+}
+
+#[test]
+fn test_a_list_by_default_holds_the_open_tasks_in_the_order_added() {
+    let mut service = with_every_status();
+    assert_eq!(
+        listed(&mut service, ListQuery::default()),
+        ["to-do", "doing", "other"]
+    );
+}
+
+#[test]
+fn test_a_list_of_all_holds_every_task() {
+    let mut service = with_every_status();
+    let all = ListQuery {
+        all: true,
+        ..ListQuery::default()
+    };
+    assert_eq!(
+        listed(&mut service, all),
+        ["to-do", "doing", "deferred", "done", "archived", "other"]
+    );
+}
+
+#[test]
+fn test_a_list_of_named_statuses_holds_exactly_their_tasks() {
+    let mut service = with_every_status();
+    let named = ListQuery {
+        statuses: vec!["Done".to_string(), "Deferred".to_string()],
+        ..ListQuery::default()
+    };
+    assert_eq!(listed(&mut service, named), ["deferred", "done"]);
+}
+
+#[test]
+fn test_tasks_added_at_one_instant_list_by_harp_id() {
+    let mut service = service(&["zebra-b", "alpha-a"]);
+    add(&mut service, new_task("First")).unwrap();
+    service.clock.seconds = 0;
+    add(&mut service, new_task("Second")).unwrap();
+    assert_eq!(
+        listed(&mut service, ListQuery::default()),
+        ["alpha-a", "zebra-b"]
+    );
+}
+
+#[test]
+fn test_a_list_answers_with_each_tasks_values_and_its_project() {
+    let mut service = service(&["swift-amber"]);
+    let added = add(&mut service, new_task("Ship it")).unwrap();
+    let listing = ready(service.list(ListQuery::default())).unwrap();
+    assert_eq!(listing.project, Some(project()));
+    assert_eq!(listing.tasks, [added.task]);
+}
+
+#[test]
+fn test_a_list_where_there_is_no_project_is_empty_and_opens_no_store() {
+    let mut service = service(&[]);
+    let query = ListQuery {
+        project: Some("pinned-id".to_string()),
+        ..ListQuery::default()
+    };
+    let listing = ready(service.list(query)).unwrap();
+    assert_eq!(listing.project, None);
+    assert!(listing.tasks.is_empty());
+    assert!(service.stores.opened.is_empty());
+    assert_eq!(service.identity.pins, [Some("pinned-id".to_string())]);
+}
+
+#[test]
+fn test_a_list_whose_project_does_not_resolve_fails_with_why() {
+    let mut service = service(&[]);
+    service.identity.fails = Some(Report::new("project-registry-x", "no home"));
+    let error = ready(service.list(ListQuery::default())).unwrap_err();
+    assert_eq!(error.code(), "project-registry-x");
+}
+
+#[test]
+fn test_a_list_whose_store_does_not_open_fails() {
+    let mut service = service(&[]);
+    service.identity.bound = Some(project());
+    service.stores.store.open_fails = true;
+    let error = ready(service.list(ListQuery::default())).unwrap_err();
+    assert_eq!(error.code(), "annals-next-store-unavailable");
+}
+
+#[test]
+fn test_the_default_query_admits_open_statuses_only() {
+    let query = ListQuery::default();
+    let task = |status: &str| TaskState {
+        status: status.to_string(),
+        ..TaskState::default()
+    };
+    assert!(query.admits(&task("To Do")));
+    assert!(query.admits(&task("Blocked")));
+    assert!(!query.admits(&task("Done")));
+    assert!(!query.admits(&task("Archived")));
+    assert!(!query.admits(&task("Deferred")));
+}
