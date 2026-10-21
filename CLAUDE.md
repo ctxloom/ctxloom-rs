@@ -1,3 +1,8 @@
+# Introduction
+Note that this is a port of ctxloom into rust from golang, piece by piece, with architect review of each piece as its ported.
+
+We're starting with the highest risk pieces first and the smallest complete units that can derisk early.
+
 # Working rules
 
 ## Tests go in `*.test.rs` files beside the code they test
