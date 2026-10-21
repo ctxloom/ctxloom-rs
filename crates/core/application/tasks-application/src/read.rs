@@ -95,6 +95,16 @@ impl Listing {
     }
 }
 
+/// The tasks `show` was asked for, in the order asked, and where it read
+/// them.
+#[derive(Clone, PartialEq, Debug)]
+pub struct Details {
+    pub reach: Reach,
+    pub rows: Vec<Row>,
+    /// Which of their tags a person is shown.
+    pub shown: Shown,
+}
+
 /// A status filter: statuses by name, and the classes `@open` (every
 /// status not terminal, whatever its name) and `@terminal`.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
@@ -270,6 +280,35 @@ where
                 })
                 .collect(),
         ))
+    }
+
+    /// The tasks `query` names, every one of them found once.
+    pub(crate) async fn details(&mut self, query: crate::ShowQuery) -> Result<Details, AppError> {
+        let schema = self.schema(&query.config_set)?;
+        let scan = self.scan(query.project.as_deref(), query.global).await?;
+        let (mut rows, mut missing, mut held) = (Vec::new(), Vec::new(), Vec::new());
+        for id in &query.harp_ids {
+            let found: Vec<&Row> = scan.rows.iter().filter(|r| r.task.harp_id == *id).collect();
+            match found.as_slice() {
+                [] => missing.push(id.clone()),
+                [row] => rows.push((*row).clone()),
+                twice => held.push((
+                    id.clone(),
+                    twice.iter().map(|r| r.project.id.clone()).collect(),
+                )),
+            }
+        }
+        if !missing.is_empty() {
+            return Err(AppError::NotFound { harp_ids: missing });
+        }
+        if !held.is_empty() {
+            return Err(AppError::Ambiguous { held });
+        }
+        Ok(Details {
+            reach: scan.reach,
+            rows,
+            shown: Shown::of(&schema),
+        })
     }
 
     /// The listing `query` asks for.

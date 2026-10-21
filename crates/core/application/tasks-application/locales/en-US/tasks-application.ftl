@@ -6,6 +6,14 @@ tasks-application-no-go-log = Go taskloom has no task log for project { $project
 tasks-application-unknown-status-class = { $status } is no status class (the classes are { $classes }): '@' is reserved for them, so no status starts with it
 tasks-application-unknown-sort = { $sort } is no sort: the only one is priority
 tasks-application-priority-unavailable = sorting by priority is not available yet: this taskloom does not compute priority
+tasks-application-not-found = no task holds { $count ->
+    [one] this harp id
+   *[other] these harp ids
+}: { $harp_ids } (see `taskloom list`)
+tasks-application-ambiguous = { $count ->
+    [one] a harp id is
+   *[other] harp ids are
+} held by more than one project ({ $held }): pass --project <id> instead of --global to choose one
 tasks-application-import-displaced = another task holds this harp in Go's log: run Go's `taskloom repair`, then import again
 tasks-application-import-harp-taken = a task not imported from this record already holds this harp
 tasks-application-import-task-not-imported = its task was not imported

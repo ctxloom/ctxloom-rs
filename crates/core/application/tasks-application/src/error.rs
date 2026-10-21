@@ -41,6 +41,27 @@ pub enum AppError {
     UnknownSort { sort: String },
     /// The sort by priority, which is not computed yet.
     PriorityUnavailable,
+    /// Ids asked for that no task holds: every one of them.
+    NotFound { harp_ids: Vec<String> },
+    /// Ids held in more than one project, read across projects: each with
+    /// the projects holding it.
+    Ambiguous { held: Vec<(String, Vec<String>)> },
+}
+
+/// Each of `ids`, quoted, comma-separated.
+fn quoted(ids: &[String]) -> String {
+    ids.iter()
+        .map(|id| format!("{id:?}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Each id held twice and the projects that hold it.
+fn held_in(held: &[(String, Vec<String>)]) -> String {
+    held.iter()
+        .map(|(id, projects)| format!("{id:?} in {}", projects.join(", ")))
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 impl fmt::Display for AppError {
@@ -78,6 +99,16 @@ impl fmt::Display for AppError {
             AppError::PriorityUnavailable => f.write_str(
                 "sorting by priority is not available yet: this taskloom does not compute priority",
             ),
+            AppError::NotFound { harp_ids } => write!(
+                f,
+                "no task holds these harp ids: {} (see `taskloom list`)",
+                quoted(harp_ids)
+            ),
+            AppError::Ambiguous { held } => write!(
+                f,
+                "harp ids held by more than one project ({}): pass --project <id> instead of --global to choose one",
+                held_in(held)
+            ),
         }
     }
 }
@@ -99,6 +130,8 @@ impl Diagnostic for AppError {
             AppError::UnknownStatusClass { .. } => "tasks-application-unknown-status-class",
             AppError::UnknownSort { .. } => "tasks-application-unknown-sort",
             AppError::PriorityUnavailable => "tasks-application-priority-unavailable",
+            AppError::NotFound { .. } => "tasks-application-not-found",
+            AppError::Ambiguous { .. } => "tasks-application-ambiguous",
         }
     }
 
@@ -123,6 +156,13 @@ impl Diagnostic for AppError {
                 ("classes", crate::read::classes().into()),
             ],
             AppError::UnknownSort { sort } => vec![("sort", sort.as_str().into())],
+            AppError::NotFound { harp_ids } => vec![
+                ("harp_ids", quoted(harp_ids).into()),
+                ("count", harp_ids.len().into()),
+            ],
+            AppError::Ambiguous { held } => {
+                vec![("held", held_in(held).into()), ("count", held.len().into())]
+            }
         }
     }
 }
@@ -164,6 +204,15 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
             sort: "age".to_string(),
         }),
         Box::new(AppError::PriorityUnavailable),
+        Box::new(AppError::NotFound {
+            harp_ids: vec!["swift-amber".to_string(), "calm-otter".to_string()],
+        }),
+        Box::new(AppError::Ambiguous {
+            held: vec![(
+                "swift-amber".to_string(),
+                vec!["jolly-mute-magma".to_string(), "brisk-tall-oak".to_string()],
+            )],
+        }),
         Box::new(crate::Why::Displaced),
         Box::new(crate::Why::HarpTaken),
         Box::new(crate::Why::TaskNotImported),

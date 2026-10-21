@@ -5,7 +5,7 @@ use std::io::{self, Write};
 
 use presentation::{text, Render};
 use serde::Serialize;
-use tasks_application::{Listing, Project, Reach, Row, Shown, Tag, Task, Timestamp};
+use tasks_application::{Details, Listing, Project, Reach, Row, Shown, Tag, Task, Timestamp};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
@@ -274,6 +274,65 @@ impl Render for Listed<'_> {
         let tasks: Vec<&Task> = listing.tasks().collect();
         table(out, &tasks, &listing.shown)
     }
+}
+
+/// The tasks `show` found: JSON one task with its project when one id was
+/// asked for, else an array of them (Go's rule: a group is a list, one
+/// value an object); text each task whole, a blank line between, each
+/// headed by its project when read across projects.
+pub struct Detailed<'a>(pub &'a Details);
+
+impl Render for Detailed<'_> {
+    fn json(&self) -> impl Serialize + '_ {
+        let rows = &self.0.rows;
+        match rows.as_slice() {
+            [one] => OneOrMany::One(attributed(one)),
+            _ => OneOrMany::Many(rows.iter().map(attributed).collect()),
+        }
+    }
+
+    fn text(&self, out: &mut dyn Write) -> io::Result<()> {
+        let every = self.0.reach.is_every();
+        for (i, row) in self.0.rows.iter().enumerate() {
+            if i > 0 {
+                writeln!(out)?;
+            }
+            if every {
+                writeln!(out, "project: {}", project_label(&row.project))?;
+            }
+            detail(out, &row.task, &self.0.shown)?;
+        }
+        Ok(())
+    }
+}
+
+/// `row`'s task whole, with its project.
+fn attributed(row: &Row) -> RowJson<'_, TaskJson<'_>> {
+    RowJson::of(TaskJson::of(&row.task), &row.project)
+}
+
+/// One value, or several.
+#[derive(Serialize)]
+#[serde(untagged)]
+enum OneOrMany<T> {
+    One(T),
+    Many(Vec<T>),
+}
+
+/// One task whole: its check, id and status; the tags a person is shown
+/// and its trigger, if any; then its whole text.
+fn detail(out: &mut dyn Write, task: &Task, shown: &Shown) -> io::Result<()> {
+    let check = if task.checked { "x" } else { " " };
+    writeln!(out, "[{check}] {}  {}", task.harp_id, task.status)?;
+    let tags = self::shown(&task.tags, shown);
+    if !tags.is_empty() {
+        writeln!(out, "    tags: {}", tags.join(", "))?;
+    }
+    if !task.trigger.is_empty() {
+        writeln!(out, "    trigger: {}", task.trigger)?;
+    }
+    writeln!(out)?;
+    writeln!(out, "{}", task.text)
 }
 
 #[cfg(test)]

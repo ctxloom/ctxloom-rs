@@ -6,10 +6,10 @@ use std::io::{self, Write};
 use clap::Args;
 use presentation::{Catalog, Format};
 use tasks_application::{
-    ListQuery, Listing, NewTask, Reach, StatusChange, TagChange, TaskService, TextEdit,
+    ListQuery, Listing, NewTask, Reach, ShowQuery, StatusChange, TagChange, TaskService, TextEdit,
 };
 
-use crate::render::{Added, Listed, Tagged};
+use crate::render::{Added, Detailed, Listed, Tagged};
 use crate::{notify, output_failed, wrote, CliError, Notice};
 
 /// What every task command is handed besides its own arguments: the
@@ -230,6 +230,44 @@ pub(crate) async fn list(
             presentation::render(out, ctx.format, &view)
         })
         .map_err(output_failed)
+}
+
+#[derive(Args, Debug)]
+pub(crate) struct ShowArgs {
+    /// The tasks' ids: every one must be found.
+    #[arg(required = true, num_args = 1..)]
+    harp_ids: Vec<String>,
+    /// Find them in every project, not just this one.
+    #[arg(long)]
+    global: bool,
+}
+
+pub(crate) async fn show(
+    args: ShowArgs,
+    ctx: Ctx<'_>,
+    service: &mut impl TaskService,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<(), CliError> {
+    let query = ShowQuery {
+        project: ctx.project,
+        global: args.global,
+        harp_ids: args.harp_ids,
+        config_set: ctx.config_set,
+    };
+    let details = service.show(query).await.map_err(CliError::App)?;
+    read_in(&details.reach, ctx.catalog, err)
+        .and_then(|()| presentation::render(out, ctx.format, &Detailed(&details)))
+        .map_err(output_failed)
+}
+
+/// Say on stderr which project a read was in: the one here, by name, or
+/// why it was not.
+pub(crate) fn read_in(reach: &Reach, catalog: &Catalog, err: &mut dyn Write) -> io::Result<()> {
+    match reach {
+        Reach::Project(project) => notify(&Notice::project(project), catalog, err),
+        Reach::NoProject | Reach::Every { .. } => reached(reach, catalog, err),
+    }
 }
 
 /// Say on stderr where a read went when it is not the project here: no

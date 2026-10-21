@@ -9,9 +9,9 @@ use std::task::{Context as TaskContext, Poll, Waker};
 
 use annals_diagnostic::Report;
 use tasks_application::{
-    AppError, Hidden, ImportReport, ImportRequest, ImportService, ListQuery, Listing, NewTask,
-    Project, ProjectImport, Reach, Row, StatusChange, TagChange, Task, TaskService, TextEdit,
-    Written,
+    AppError, Details, Hidden, ImportReport, ImportRequest, ImportService, ListQuery, Listing,
+    NewTask, Project, ProjectImport, Reach, Row, ShowQuery, StatusChange, TagChange, Task,
+    TaskService, TextEdit, Written,
 };
 
 use presentation::{Catalog, Format};
@@ -63,6 +63,8 @@ struct Fake {
     tagged: Vec<TagChange>,
     moved: Vec<StatusChange>,
     edits: Vec<TextEdit>,
+    shows: Vec<ShowQuery>,
+    details: Option<Result<Details, AppError>>,
     listed: Vec<ListQuery>,
     written: Option<Result<Written, AppError>>,
     listing: Option<Result<Listing, AppError>>,
@@ -94,6 +96,11 @@ impl TaskService for Fake {
     async fn edit(&mut self, edit: TextEdit) -> Result<Written, AppError> {
         self.edits.push(edit);
         self.written.clone().expect("an edit answer scripted")
+    }
+
+    async fn show(&mut self, query: ShowQuery) -> Result<Details, AppError> {
+        self.shows.push(query);
+        self.details.clone().expect("a show answer scripted")
     }
 }
 
@@ -436,6 +443,122 @@ fn test_edit_needs_text_and_says_why_it_failed() {
         ran.err.starts_with("taskloom: there is no project"),
         "{}",
         ran.err
+    );
+}
+
+// ------------------------------------------------------------ show
+
+fn details(reach: Reach, tasks: Vec<Task>) -> Option<Result<Details, AppError>> {
+    let listing = listing_in(reach, tasks);
+    Some(Ok(Details {
+        reach: listing.reach,
+        rows: listing.rows,
+        shown: listing.shown,
+    }))
+}
+
+#[test]
+fn test_show_passes_its_ids_and_names_the_project_on_stderr() {
+    let mut task = shapes::task("swift-amber", "Deferred");
+    task.text = "Ship it\nwith every line".to_string();
+    task.trigger = "the release".to_string();
+    task.tags = vec![tag("a"), tag("b")];
+    let mut fake = Fake {
+        details: details(Reach::Project(project()), vec![task]),
+        ..Fake::default()
+    };
+    let ran = run_on(
+        &mut fake,
+        true,
+        &["--project", "p", "show", "swift-amber", "--global"],
+    );
+    assert_eq!(ran.code, 0, "{}", ran.err);
+    assert_eq!(
+        fake.shows,
+        [ShowQuery {
+            project: Some("p".to_string()),
+            global: true,
+            harp_ids: vec!["swift-amber".to_string()],
+            config_set: Vec::new(),
+        }]
+    );
+    assert_eq!(
+        ran.out,
+        "[ ] swift-amber  Deferred\n    tags: a, b\n    trigger: the release\n\nShip it\nwith every line\n"
+    );
+    assert_eq!(ran.err, "taskloom: project /work/tree (jolly-mute-magma)\n");
+}
+
+#[test]
+fn test_show_of_one_id_is_an_object_and_of_several_an_array() {
+    let mut fake = Fake {
+        details: details(
+            Reach::Project(project()),
+            vec![shapes::task("swift-amber", "To Do")],
+        ),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, false, &["show", "swift-amber"]);
+    let json: serde_json::Value = serde_json::from_str(&ran.out).unwrap();
+    assert_eq!(json["harp_id"], "swift-amber");
+    assert_eq!(json["project_id"], "jolly-mute-magma");
+    fake.details = details(
+        Reach::Project(project()),
+        vec![
+            shapes::task("swift-amber", "To Do"),
+            shapes::task("calm-otter", "To Do"),
+        ],
+    );
+    let ran = run_on(&mut fake, false, &["show", "swift-amber", "calm-otter"]);
+    let json: Vec<serde_json::Value> = serde_json::from_str(&ran.out).unwrap();
+    assert_eq!(json[1]["harp_id"], "calm-otter");
+}
+
+#[test]
+fn test_show_across_projects_heads_each_task_with_its_project() {
+    let every = Reach::Every {
+        projects: 1,
+        fallback: None,
+    };
+    let mut fake = Fake {
+        details: details(
+            every,
+            vec![
+                shapes::task("swift-amber", "To Do"),
+                shapes::task("calm-otter", "Done"),
+            ],
+        ),
+        ..Fake::default()
+    };
+    let ran = run_on(
+        &mut fake,
+        true,
+        &["show", "swift-amber", "calm-otter", "--global"],
+    );
+    assert_eq!(
+        ran.out,
+        "project: /work/tree (jolly-mute-magma)\n[ ] swift-amber  To Do\n\nShip it\n\n\
+         project: /work/tree (jolly-mute-magma)\n[ ] calm-otter  Done\n\nShip it\n"
+    );
+    assert_eq!(ran.err, "");
+}
+
+#[test]
+fn test_show_needs_an_id_and_says_which_were_not_found() {
+    let ran = run_on(&mut Fake::default(), true, &["show"]);
+    assert_eq!(ran.code, 1);
+    let mut fake = Fake {
+        details: Some(Err(AppError::NotFound {
+            harp_ids: vec!["nope".to_string()],
+        })),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["show", "nope"]);
+    assert_eq!(ran.code, 1);
+    assert_eq!(ran.out, "");
+    assert_eq!(
+        ran.err,
+        "taskloom: no task holds this harp id: \"nope\" (see `taskloom list`)\n"
     );
 }
 

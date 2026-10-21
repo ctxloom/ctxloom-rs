@@ -626,6 +626,20 @@ fn test_in_json_each_later_command_writes_one_document_and_errors_an_envelope() 
         (&"Ship it today".into(), &"To Do".into())
     );
     refused(&["edit", &harp, " ", "--json"], "tasks-text-required");
+
+    let shown = env.run(&["show", &harp, "--json"]);
+    assert!(shown.ok, "{}", shown.stderr);
+    assert_eq!(one_document(&shown.stdout)["text"], "Ship it today");
+    let twice = env.run(&["show", &harp, &harp, "--global", "--json"]);
+    assert!(twice.ok, "{}", twice.stderr);
+    assert_eq!(
+        one_document(&twice.stdout).as_array().map(Vec::len),
+        Some(2)
+    );
+    refused(
+        &["show", &harp, "no-such-task", "--json"],
+        "tasks-application-not-found",
+    );
 }
 
 #[test]

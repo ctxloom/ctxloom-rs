@@ -6,7 +6,9 @@ use std::path::PathBuf;
 use annals_diagnostic::Diagnostic;
 
 use crate::fakes::{ready, FakeClock, FakeDelay, FakeIdentity, FakeNames, FakeStores, Flaky};
-use crate::{AppError, Hidden, ListQuery, NewTask, Project, Reach, Service, TaskService};
+use crate::{
+    AppError, Hidden, ListQuery, NewTask, Project, Reach, Service, ShowQuery, TaskService,
+};
 
 pub(crate) type Fake = Service<FakeIdentity, FakeStores, FakeNames, FakeClock, FakeDelay>;
 
@@ -327,4 +329,95 @@ fn test_a_tag_query_over_every_project_tells_their_tasks_apart() {
         ..ListQuery::default()
     };
     assert_eq!(ready(service.list(query)).unwrap().rows.len(), 3);
+}
+
+// ------------------------------------------------------------ show
+
+fn asked(ids: &[&str]) -> ShowQuery {
+    ShowQuery {
+        harp_ids: ids.iter().map(|s| s.to_string()).collect(),
+        ..ShowQuery::default()
+    }
+}
+
+#[test]
+fn test_show_answers_with_each_task_asked_for_in_the_order_asked_whatever_its_status() {
+    let mut service = with_every_status();
+    let details = ready(service.show(asked(&["done", "to-do", "done"]))).unwrap();
+    let ids: Vec<&str> = details
+        .rows
+        .iter()
+        .map(|r| r.task.harp_id.as_str())
+        .collect();
+    assert_eq!(ids, ["done", "to-do", "done"], "a repeated id twice");
+    assert_eq!(details.rows[0].task.text, "Done");
+    assert_eq!(details.reach, Reach::Project(crate::fakes::project()));
+}
+
+#[test]
+fn test_show_fails_naming_every_id_no_task_holds() {
+    let mut service = with_every_status();
+    let error = ready(service.show(asked(&["nope-a", "done", "nope-b"]))).unwrap_err();
+    assert_eq!(
+        error,
+        AppError::NotFound {
+            harp_ids: vec!["nope-a".to_string(), "nope-b".to_string()]
+        }
+    );
+    assert!(
+        error.to_string().contains("\"nope-a\", \"nope-b\""),
+        "{error}"
+    );
+}
+
+#[test]
+fn test_show_across_projects_fails_on_an_id_two_hold_naming_them() {
+    let mut service = service(&["swift-amber", "swift-amber", "calm-otter", "swift-amber"]);
+    for id in ["alpha-proj", "zulu-proj"] {
+        service
+            .stores
+            .others
+            .insert(id.to_string(), Flaky::default());
+    }
+    service.identity.bound = Some(named("alpha-proj"));
+    add(&mut service, "in alpha", "");
+    add(&mut service, "in alpha too", "");
+    service.identity.bound = Some(named("zulu-proj"));
+    add(&mut service, "in zulu", "");
+    service.identity.every = vec![named("alpha-proj"), named("zulu-proj")];
+    let global = ShowQuery {
+        global: true,
+        ..asked(&["swift-amber", "calm-otter"])
+    };
+    let error = ready(service.show(global.clone())).unwrap_err();
+    assert_eq!(
+        error,
+        AppError::Ambiguous {
+            held: vec![(
+                "swift-amber".to_string(),
+                vec!["alpha-proj".to_string(), "zulu-proj".to_string()]
+            )]
+        }
+    );
+    assert!(
+        error
+            .to_string()
+            .contains("\"swift-amber\" in alpha-proj, zulu-proj"),
+        "{error}"
+    );
+    let one = ShowQuery {
+        harp_ids: vec!["calm-otter".to_string()],
+        ..global
+    };
+    let details = ready(service.show(one)).unwrap();
+    assert_eq!(details.rows[0].project.id, "alpha-proj");
+    let here = ready(service.show(asked(&["swift-amber"]))).unwrap();
+    assert_eq!(here.rows[0].task.text, "in zulu", "this project's alone");
+}
+
+#[test]
+fn test_show_where_there_is_no_project_finds_nothing() {
+    let mut service = service(&[]);
+    let error = ready(service.show(asked(&["swift-amber"]))).unwrap_err();
+    assert_eq!(error.code(), "tasks-application-not-found");
 }

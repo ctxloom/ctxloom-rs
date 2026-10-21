@@ -33,7 +33,7 @@ pub use import::{
 };
 pub use ports::{GoOp, Project};
 pub use query::{QueryError, QUERY_GRAMMAR};
-pub use read::{Hidden, Listing, Reach};
+pub use read::{Details, Hidden, Listing, Reach};
 pub use retry::Backoff;
 pub use schema::{
     target, Range, SchemaError, TagSchema, DEFAULT_TAG_SCHEMA, FACETS, FACET_NAMESPACE, SEMVER,
@@ -103,6 +103,17 @@ pub struct TextEdit {
     pub config_set: Vec<String>,
 }
 
+/// The tasks to show, by id, every one of which must be found: in the
+/// work root's project, or with `global` in every project.
+#[derive(Clone, PartialEq, Debug, Default)]
+pub struct ShowQuery {
+    pub project: Option<String>,
+    pub global: bool,
+    pub harp_ids: Vec<String>,
+    /// Configuration overrides, `<path>=<value>` (`--config-set`).
+    pub config_set: Vec<String>,
+}
+
 /// Which tasks to list. By default the active ones: neither terminal nor
 /// Deferred. `all` lists every task; naming statuses (or the classes
 /// `@open` and `@terminal`) lists exactly the tasks in them. A term keeps
@@ -153,6 +164,7 @@ pub trait TaskService {
         change: StatusChange,
     ) -> impl Future<Output = Result<Written, AppError>> + Send;
     fn edit(&mut self, edit: TextEdit) -> impl Future<Output = Result<Written, AppError>> + Send;
+    fn show(&mut self, query: ShowQuery) -> impl Future<Output = Result<Details, AppError>> + Send;
 }
 
 /// The registry the tasks domain runs under.
@@ -416,6 +428,10 @@ where
 
     async fn list(&mut self, query: ListQuery) -> Result<Listing, AppError> {
         self.listing(query).await
+    }
+
+    async fn show(&mut self, query: ShowQuery) -> Result<Details, AppError> {
+        self.details(query).await
     }
 }
 
