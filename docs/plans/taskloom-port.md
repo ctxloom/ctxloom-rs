@@ -22,12 +22,6 @@ and angzarr here.
   slices plug into.
 - Not started: ports, application, adapters.
 
-## Shape: taskloom is one binary of ctxloom-rs
-
-ctxloom-rs produces several binaries; taskloom is the first. Nothing below
-`root/bin` is named for a binary: crates are named for their domain or role,
-and every binary composes the same core, application and adapters.
-
 ## Order of work
 
 Per CLAUDE.md: the highest-risk pieces first, each slice the smallest
@@ -35,10 +29,7 @@ complete unit that retires a risk, and each reviewed by an architect before
 the next. A slice cuts through every layer it needs; the sections after this
 one are the reference for what each layer finally holds, not an order.
 
-1. **Restructure for many binaries**: done. The wire crate is named for
-   its domain (`tasks-proto`), `root/bin/taskloom` exists, and CLAUDE.md
-   says no crate below `root/bin` is named for a binary.
-2. **Walking skeleton: `taskloom add` and `taskloom list`, end to end.**
+1. **Walking skeleton: `taskloom add` and `taskloom list`, end to end.**
    Project resolution from `.project-id` and the registry, the SQLite
    store at `~/.ctxloom/projects/<project-id>/state.db`, an add handler that
    mints a harp and retries, the list projector, a CLI with text and json,
@@ -48,26 +39,26 @@ one are the reference for what each layer finally holds, not an order.
    database. The acceptance test is Go's `crossprocess_test.go` ported: N
    parallel adds and N parallel retags of one task lose no write and
    duplicate no harp.
-3. **The importer**, over the real `~/.ctxloom/tasks/*.jsonl`. Risk retired:
+2. **The importer**, over the real `~/.ctxloom/tasks/*.jsonl`. Risk retired:
    data fidelity. For every task, Go's fold and the Rust state must agree.
    It also gives every later slice real data.
-4. **Healing and repointing a project's store** (see "Project identity:
+3. **Healing and repointing a project's store** (see "Project identity:
    heal and repoint"). Risk retired: tasks that seem lost because a
    directory resolved to the wrong id.
-5. **Tags on tagma.** The `Tag` proto in the tagma repository, imported
+4. **Tags on tagma.** The `Tag` proto in the tagma repository, imported
    here, then validation and queries. Risk retired: the cross-repository
    proto dependency, and query parity between `tagma-core` and Go's
    `tagquery.go`.
-6. **MCP and the companion contract**: `taskloom mcp` with `task_list` and
+5. **MCP and the companion contract**: `taskloom mcp` with `task_list` and
    `task_add`, plus `loadout` and `version --format json`. Risk retired:
    ctxloom loading the Rust binary as its companion. After this the Rust
    taskloom can serve real sessions.
-7. **The remaining commands and tools**: status, edit, tag, show, summary,
+6. **The remaining commands and tools**: status, edit, tag, show, summary,
    tags, statuses, prune and lint, and the remaining MCP tools and resources.
-8. **Priority**: choosing or writing the formula evaluator. It is isolated
+7. **Priority**: choosing or writing the formula evaluator. It is isolated
    from everything else, so it can move earlier if the evaluator looks
    risky.
-9. **`manage`, `watch` and `run`**, then cutover.
+8. **`manage`, `watch` and `run`**, then cutover.
 
 ## Tags on tagma
 

@@ -34,7 +34,7 @@ the architecture; there is no other table of crates.
 - `adapters/driving`: CLI, MCP, gRPC: translation only.
 - `root/bin`: binaries, the composition root.
 
-ctxloom-rs produces several binaries, taskloom first, each a crate under
+ctxloom-rs produces several binaries, each a crate under
 `root/bin` that composes the same core, application and adapters. Below
 `root/bin`, a crate is named for its domain or role, never for a binary.
 
