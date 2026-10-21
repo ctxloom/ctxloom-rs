@@ -58,10 +58,27 @@ and angzarr here.
   jitter.
 - `adapters/driving/presentation`: the driving edge's presentation for any
   domain (see "Driving adapters").
+- `adapters/driving/tasks-presentation`: the tasks domain's shapes on the
+  driving edge (`TaskJson`, RFC 3339 instants), shared by the CLI and the
+  MCP server, so one jq filter reads both.
 - `adapters/driving/tasks-cli`: `add`, `list`, `tag` and `import`, text and
   json, its errors and notices rendered from the catalogs, and
   `run_mounted`, which flattens another crate's commands in beside them
   and hands one parsed to its caller with the global flags and the catalog.
+  Also the companion contract: `version` (`--format json` is Go's
+  `{name, version, lock_protocol}`, the lock protocol project-registry's
+  `LOCK_PROTOCOL`, 2, since its taker re-checks as Go's `takeCurrent`
+  does) and `loadout`, Go's `cmd/taskloom/loadout.yaml` printed verbatim,
+  in yaml alone (`--format yaml` is accepted by `loadout` only).
+- `adapters/driving/tasks-mcp`: `taskloom mcp`, over rmcp (the official
+  Rust MCP SDK, pinned at 3.5.1: the newest release at least two weeks old
+  on 2026-10-21; server and stdio transport only, no macros). It serves
+  `task_add` and `task_list` with Go's instructions, descriptions and
+  input and output schemas copied verbatim, and Go's result shapes on
+  `TaskJson`; an error is a tool error whose text is the diagnostic's
+  envelope, an unknown tool a protocol error carrying it. Each call runs
+  on a service of its own, made by the composition root, on a blocking
+  thread (see "Decided", 7).
 - `adapters/driving/project-cli`: the `project` group (`show`, `heal
   [--yes]`, `repoint <project-id> [--share] [--yes]`, `orphans`, `orphans
   remove <id>... [--yes]`), text or one JSON document each, its errors and
@@ -69,14 +86,27 @@ and angzarr here.
   does, and ctxloom can, since it names no tasks crate.
 - `root/bin/taskloom`: the binary, over annals-store-sql's SQLite store at
   `~/.ctxloom/projects/<project-id>/state.db` (CLAUDE.md, "Storage").
-  It mounts the `project` group over the project registry.
+  It mounts the `project` group over the project registry, and `mcp`,
+  served once the command line is read, each call's service the CLI's own
+  wiring made fresh.
   Its tests are Go's `crossprocess_test.go` ported, each process separate
   on one database, and they build the binary themselves: 40 concurrent adds
   at a project's first sight (racing the mint and the migration; one
   registry entry), 20 adds among 10 listings of a seeded project (every
   row a whole task of the final listing), the same at first sight, and 40
   concurrent tags of one task. Reads create nothing: `list --project tpyo`
-  leaves no trace, and `tag` where there is no project binds none.
+  leaves no trace, and `tag` where there is no project binds none. `taskloom
+  mcp` is run as a client runs it, in a temporary home: initialize,
+  tools/list against Go's tools, task_add, task_list, resources/list, and
+  the CLI reading the same store; `version --format json` is fed to a port
+  of Go ctxloom's boot-probe parse and its lock reaper's check, and
+  `loadout --format yaml` is compared with Go's byte for byte.
+- The companion text (step 4): the MCP instructions, the tools as Go's
+  tools/list answers them, and the loadout document are fixtures
+  `scripts/go-companion-fixtures.sh` extracts from the Go source (a Go
+  test laid into `cmd/taskloom` with `go test -overlay`); the parity tests
+  hold Rust's copies to them byte for byte, so a change in Go fails a
+  test until the copy is taken up deliberately.
 - The importer (`taskloom import`, Decided 2): each Go record becomes the
   command that did what it did, run at the instant Go recorded it (annals'
   `Sampled.now`), so `created_at`, `status_set_at` and `deferred_since`
@@ -162,6 +192,28 @@ Where the skeleton differs from Go, or from this plan:
   importer reads them as Go writes them. It takes no lock on a Go log, so
   a log Go is mid-way through appending to can end in a torn line, which
   stops that project's import; run it again.
+- `taskloom mcp` (step 4) serves `task_add` and `task_list` only, and no
+  resources: `taskloom://tag-schema` and `taskloom://tag-vocabulary` need
+  the tag schema (steps 3 and 5). Its capabilities are tools alone; Go
+  also advertises logging, and `listChanged` on tools and resources.
+  `task_list` serves `statuses` and `include_completed`; `term`,
+  `tag_query`, `include_summary`, `global`, `sort`, `compact` and `limit`
+  are refused (`tasks-mcp-unserved`) when they ask for anything, never
+  ignored. A result's `path` is the project's store (`state.db`), not Go's
+  jsonl log; `derived_priority` is always null, as Go's is unsorted; there
+  is no `refused` (no `--degraded`) and no project-resolution `warning`
+  but "no project here". `--degraded` is not ported. Go's MCP results
+  happen to have their keys sorted; Rust's do too (serde_json's map),
+  though nothing depends on it.
+- The loadout is Go's document verbatim, its `command: taskloom` included,
+  so it is not yet true of the Rust binary: its prose names Go's
+  `~/.ctxloom/tasks/<project-id>.jsonl` log, Go's install paths, and MCP
+  tools (`task_set_status`, `task_edit`) Rust does not serve yet; the MCP
+  instructions likewise name `task_tag`, `task_set_status`, `task_edit` and
+  the tag resources. Rewording either is the human's call; until then the
+  parity tests keep them Go's.
+- `version` reports the crate's version (`0.1.0`), not Go's versionator
+  stamp; its yaml form is not ported.
 - `list` with no project here says so and lists nothing; Go falls back to
   `--global`. Hidden `tagma:*` tags are shown, the `@open`/`@terminal`
   classes are not taken, and JSON has no `derived_priority` and escapes no
@@ -184,15 +236,14 @@ not filed as a task.
   register it, but nothing stops the write, and there is no command to give
   the clone an id of its own (repoint binds only to an existing id).
   Decided 4 means repoint's refusal to keep them apart; a write needs the
-  same. Settle before MCP serves sessions (step 4).
+  same. Settle before MCP serves sessions: `taskloom mcp` is built (step
+  4) but not yet registered as ctxloom's companion, and this waits on a
+  human decision (how a write, and repoint, keep the two clones apart).
 - **Store reads are not one snapshot.** annals' `read_from` should run as
   one read transaction, and annals should gain a read-only unit, so that
   `covers` and the reads after it see one snapshot. Needed before purge
   and prune (step 5, "Purging a stream in annals"): otherwise a purge in
   the middle of a listing yields a blank task.
-- **`TaskService` takes `&mut self`**, so an MCP server holding one service
-  serializes every call. Revisit with MCP (step 4), before its tools
-  multiply (step 5).
 - **annals exports no catalogs.** Its crates' `.ftl` files are not
   reachable from a dependent, so an annals error (a store failure, a
   kernel error) prints its English `Display`, in text and in the envelope's
@@ -218,12 +269,18 @@ the integrity check (see "Project identity: heal and repoint" and "Open").
    proto dependency, and query parity between `tagma-core` and Go's
    `tagquery.go`.
 4. **MCP and the companion contract**: `taskloom mcp` with `task_list` and
-   `task_add`, plus `loadout` and `version --format json`. Risk retired:
-   ctxloom loading the Rust binary as its companion. After this the Rust
-   taskloom can serve real sessions.
+   `task_add`, `loadout` and `version --format json` are done (see "Where
+   it stands"). What remains is the human's: registering the Rust binary
+   as ctxloom's companion (the cutover), deciding whether the loadout's
+   and instructions' Go-specific prose is reworded, and the clone that
+   shares the original's database (see "Open"). Risk retired once
+   registered: ctxloom loading the Rust binary as its companion.
 5. **The remaining commands and tools**: status, edit, show, summary,
-   tags, statuses, prune and lint, `tag`'s schema handling, and the remaining
-   MCP tools and resources.
+   tags, statuses, prune and lint, `tag`'s schema handling, the remaining
+   MCP tools (`task_set_status`, `task_edit`, `task_tag`), `task_list`'s
+   unserved parameters, and the resources `taskloom://tag-schema` and
+   `taskloom://tag-vocabulary` (Go's texts are authorized to copy
+   verbatim, as the tools' were).
 6. **Priority**: choosing or writing the formula evaluator. It is isolated
    from everything else, so it can move earlier if the evaluator looks
    risky.
@@ -385,16 +442,18 @@ What remains:
   and the JSON writer, the Fluent `Catalog` (each crate exports its
   embedded en-US `.ftl` as `EN_US`; the composition root hands the driven
   adapters' to the CLI's), the diagnostic envelope, and display-width text
-  helpers (`unicode-width`). Domain shapes and views (`TaskJson`, the task
-  table, a written task's line) stay in `tasks-cli`, and the project
-  group's (`ShowJson`, `PlanJson`, the orphans) in `project-cli`, each
-  implementing `Render`; a mounted group gets the binary's catalog through
-  `run_mounted`, so its errors render as the task commands' do. MCP (step 4) needs `TaskJson` too, so it moves then into a tasks-specific
-  presentation crate both use. Output goes to an injected `&mut dyn Write`.
+  helpers (`unicode-width`). Domain shapes and views stay out of it: a
+  task's JSON (`TaskJson`) is `tasks-presentation`'s, which the CLI and the
+  MCP server share; the task table and a written task's line are
+  `tasks-cli`'s, and the project group's (`ShowJson`, `PlanJson`, the
+  orphans) `project-cli`'s, each implementing `Render`; a mounted group
+  gets the binary's catalog through `run_mounted`, so its errors render as
+  the task commands' do. Output goes to an injected `&mut dyn Write`.
   annals' crates export no catalog yet, so their codes render their English
   `Display` until they do.
-- MCP over stdio: the tools `task_list`, `task_add`, `task_set_status`,
-  `task_edit` and `task_tag`, the resources `taskloom://tag-schema` and
+- MCP over stdio (`tasks-mcp`; `task_list` and `task_add` so far): the
+  tools `task_list`, `task_add`, `task_set_status`, `task_edit` and
+  `task_tag`, the resources `taskloom://tag-schema` and
   `taskloom://tag-vocabulary`, and the server instructions, which are
   normative (add only once the user agrees, and so on).
 - Companion: `loadout --format yaml` (hooks, the MCP server, the `taskloom`
@@ -444,6 +503,24 @@ What remains:
    harp**, as Go's prune does; a removed task's stream and harp stay. annals'
    store only appends today, so annals gains a purge (see "Purging a stream
    in annals").
+
+7. **`TaskService` keeps `&mut self`; a server makes a service per call**
+   (decided 2026-10-21, step 4). The MCP server holds a factory, not a
+   service: each tool call gets a `Service` of its own (the registry, a
+   fresh SQLite opener, names, the system), run to its end on a blocking
+   thread (`spawn_blocking`, its future driven there by the runtime's
+   handle), because project resolution is synchronous and may wait on the
+   registry's lock. Nothing is shared between calls in the process, so no
+   call waits on another's mutex while an add retries, and two calls in
+   one process contend exactly as two processes do, in SQLite, which the
+   cross-process tests already cover. Rejected: `&self` with interior
+   mutability, which would put locks around the ports (the store opener
+   hands out `&mut` stores) and restructure the service for no gain the
+   per-call service lacks; one service behind a mutex, which would stall
+   every call during one add's backoff. The cost is a store opened per
+   call. `tasks-mcp`'s tests hold one add inside its retry (its first
+   commit conflicts, its wait is held open) and show a listing answers
+   meanwhile, and that resolution runs off the server's thread.
 
 ## Decisions still open
 
