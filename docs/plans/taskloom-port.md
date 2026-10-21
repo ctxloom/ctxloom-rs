@@ -23,8 +23,9 @@ and angzarr here.
   synchronous and blocks on the registry's lock, so an async server calls it
   through `spawn_blocking`.
 - `core/application/tasks-application`: add, status, edit, tag, list,
-  show, summary, statuses, tags, lint and import, and the tag schema,
-  write-time admission and tag queries (step 3, below). An add mints a
+  show, summary, statuses, tags, lint and import, and the tag schema
+  (which `tag_schema` answers, resolving no project), write-time
+  admission and tag queries (step 3, below). An add mints a
   harp and re-mints on `TaskExists` (100 tries, a fresh command id each); on
   annals' `Recovery::Retry` the same command id runs again in a new unit
   after capped exponential backoff with full jitter (10ms doubling to 1s,
@@ -87,8 +88,9 @@ and angzarr here.
   domain (see "Driving adapters").
 - `adapters/driving/tasks-presentation`: the tasks domain's shapes on the
   driving edge (`TaskJson`, each tag in its canonical spelling, hidden ones
-  kept, and RFC 3339 instants), shared by the CLI and the MCP server, so
-  one jq filter reads both.
+  kept, and RFC 3339 instants; a compact row, a task with its project, a
+  summary and a tag count, each Go's), shared by the CLI and the MCP
+  server, so one jq filter reads both.
 - `adapters/driving/tasks-cli`: `add`, `status`, `edit`, `list`, `show`,
   `summary`, `statuses`, `tag`, `tags`, `lint` and `import`, with
   `--config-set`, text and json in Go's shapes, its errors and notices
@@ -104,12 +106,24 @@ and angzarr here.
 - `adapters/driving/tasks-mcp`: `taskloom mcp`, over rmcp (the official
   Rust MCP SDK, pinned at 3.5.1: the newest release at least two weeks old
   on 2026-10-21; server and stdio transport only, no macros). It serves
-  `task_add` and `task_list` with Go's instructions, descriptions and
-  input and output schemas copied verbatim, and Go's result shapes on
-  `TaskJson`; `task_add`'s tags are parsed and admitted under the
-  configured tag schema as the CLI's are. An error is a tool error whose
-  text is the diagnostic's envelope, an unknown tool a protocol error
-  carrying it. Each call runs on a service of its own, made by the
+  Go's five tools (`task_add`, `task_edit`, `task_list`,
+  `task_set_status`, `task_tag`) and two resources
+  (`taskloom://tag-schema`, `taskloom://tag-vocabulary`), with Go's
+  instructions, capabilities (logging, and `listChanged` on tools and
+  resources; a logging level is accepted and nothing is logged), tool
+  descriptions and input and output schemas and resource descriptions
+  copied verbatim, and Go's result shapes on tasks-presentation's.
+  `task_list` serves every parameter Go's does; outside a work root with
+  no project it reads every project, with Go's `global`, `project_count`
+  and `notice` (the command line's stderr notice, word for word). The
+  resources are read fresh each time, through `tag_schema` and `tags`,
+  and their documents are Go's byte for byte (indented as Go's encoder
+  indents, its float form and HTML escaping included). Writes' tags are
+  parsed and admitted under the configured tag schema as the CLI's are.
+  An error is a tool error whose text is the diagnostic's envelope; an
+  unknown tool is a protocol error carrying it, an unknown resource a
+  resource-not-found one, and a resource that cannot be read an internal
+  one. Each call runs on a service of its own, made by the
   composition root with taskloom's configuration, on a blocking thread
   (see "Decided", 7).
 - `adapters/driving/project-cli`: the `project` group (`show`, `heal
@@ -130,12 +144,16 @@ and angzarr here.
   concurrent tags of one task. Reads create nothing: `list --project tpyo`
   leaves no trace, and `tag` where there is no project binds none. `taskloom
   mcp` is run as a client runs it, in a temporary home: initialize,
-  tools/list against Go's tools, task_add, task_list, resources/list, and
-  the CLI reading the same store; `version --format json` is fed to a port
+  tools/list and resources/list against Go's, every tool called, both
+  resources read (the tag schema against Go's document), the fallback
+  outside a work root with the CLI's notice, and the CLI reading the same
+  store; `version --format json` is fed to a port
   of Go ctxloom's boot-probe parse and its lock reaper's check, and
   `loadout --format yaml` is compared with Go's byte for byte.
-- The companion text (step 4): the MCP instructions, the tools as Go's
-  tools/list answers them, and the loadout document are fixtures
+- The companion text (step 4): the MCP instructions, the capabilities, the
+  tools and resources as Go's tools/list and resources/list answer them,
+  both resources' documents (the tag schema with nothing configured, the
+  vocabulary of a seeded project), and the loadout document are fixtures
   `scripts/go-companion-fixtures.sh` extracts from the Go source (a Go
   test laid into `cmd/taskloom` with `go test -overlay`); the parity tests
   hold Rust's copies to them byte for byte, so a change in Go fails a
@@ -266,29 +284,29 @@ Where the skeleton differs from Go, or from this plan:
   importer reads them as Go writes them. It takes no lock on a Go log, so
   a log Go is mid-way through appending to can end in a torn line, which
   stops that project's import; run it again.
-- `taskloom mcp` (step 4) serves `task_add` and `task_list` only, and no
-  resources: `taskloom://tag-schema` and `taskloom://tag-vocabulary` wait
-  for step 5. Its capabilities are tools alone; Go
-  also advertises logging, and `listChanged` on tools and resources.
-  `task_list` serves `statuses` and `include_completed`; `term`,
-  `tag_query`, `include_summary`, `global`, `sort`, `compact` and `limit`
-  are refused (`tasks-mcp-unserved`) when they ask for anything, never
-  ignored. A result's `path` is the project's store (`state.db`), not Go's
-  jsonl log; `derived_priority` is always null, as Go's is unsorted; there
-  is no `refused` (no `--degraded`) and no project-resolution `warning`
-  but "no project here", which it also answers where the command line
-  would fall back to every project (outside a work root): Go's fallback,
-  with its `global` and `notice`, waits for `task_list`'s `global`.
-  `--degraded` is not ported. Go's MCP results
-  happen to have their keys sorted; Rust's do too (serde_json's map),
-  though nothing depends on it.
+- `taskloom mcp`, against Go's: a result's `path` is the project's store
+  (`state.db`), not Go's jsonl log; `derived_priority` is always null, as
+  Go's is unsorted, and `sort: "priority"` is refused as `--sort
+  priority` is (step 6), so there is no `priority_warning`; there is no
+  `refused` (no `--degraded`) and no project-resolution `warning` but "no
+  project here". An explicit `global` carries no `notice`: Go's always
+  names repo-homed projects as out of its reach, and there are none here
+  (Decided 3), as the CLI's `--global` says nothing either. The
+  vocabulary resource reads as `tags` does, so outside a work root with
+  no project it counts every project and says why in its `warning`;
+  Go's counts nothing there. Neither the tools nor the resources take
+  the launch's `--config-set` (Go's handlers see the launch flags): each
+  call's configuration is the files' and the environment's. A tool
+  result's text is serde_json's, escaping no HTML (see "Open"); the
+  resources' documents escape as Go's do. Go's MCP results happen to
+  have their keys sorted; Rust's do too (serde_json's map), though
+  nothing depends on it.
 - The loadout is Go's document verbatim, its `command: taskloom` included,
   so it is not yet true of the Rust binary: its prose names Go's
-  `~/.ctxloom/tasks/<project-id>.jsonl` log, Go's install paths, and MCP
-  tools (`task_set_status`, `task_edit`) Rust does not serve yet; the MCP
-  instructions likewise name `task_tag`, `task_set_status`, `task_edit` and
-  the tag resources. Rewording either is the human's call; until then the
-  parity tests keep them Go's.
+  `~/.ctxloom/tasks/<project-id>.jsonl` log and Go's install paths.
+  Rewording it is the human's call; until then the parity tests keep it
+  Go's. Every tool and resource it and the MCP instructions name is
+  served.
 - `version` reports the crate's version (`0.1.0`), not Go's versionator
   stamp; its yaml form is not ported.
 - A read with no project falls back to every project only outside a
@@ -374,14 +392,9 @@ and step 3, tags on tagma, are done (see "Where it stands"); step 2 leaves
    and instructions' Go-specific prose is reworded, and the clone that
    shares the original's database (see "Open"). Risk retired once
    registered: ctxloom loading the Rust binary as its companion.
-5. **The remaining commands and tools**: prune (in flight on another
-   branch, waiting on annals' purge, "Purging a stream in annals"), and
-   the remaining MCP tools (`task_set_status`, `task_edit`, `task_tag`),
-   `task_list`'s unserved parameters, and the resources
-   `taskloom://tag-schema` and `taskloom://tag-vocabulary` (Go's texts are
-   authorized to copy verbatim, as the tools' were). status, edit, show,
-   summary, tags, statuses, lint and list's remaining flags are done (see
-   "Where it stands").
+5. **Prune**: in flight on another branch, waiting on annals' purge
+   ("Purging a stream in annals"). Every other command, every MCP tool
+   and both resources are done (see "Where it stands").
 6. **Priority**: choosing or writing the formula evaluator. It is isolated
    from everything else, so it can move earlier if the evaluator looks
    risky.
@@ -517,11 +530,11 @@ it as the `project` group; ctxloom can mount the same. `show`, `heal`,
   annals' crates export their catalogs as ctxloom's do (`annals::EN_US`,
   `annals_store_sql::EN_US`), and the binary's catalog embeds those it
   links, so an annals error renders from its catalog too.
-- MCP over stdio (`tasks-mcp`; `task_list` and `task_add` so far): the
-  tools `task_list`, `task_add`, `task_set_status`, `task_edit` and
-  `task_tag`, the resources `taskloom://tag-schema` and
-  `taskloom://tag-vocabulary`, and the server instructions, which are
-  normative (add only once the user agrees, and so on).
+- MCP over stdio (`tasks-mcp`, done): the tools `task_list`, `task_add`,
+  `task_set_status`, `task_edit` and `task_tag`, the resources
+  `taskloom://tag-schema` and `taskloom://tag-vocabulary`, and the server
+  instructions, which are normative (add only once the user agrees, and
+  so on).
 - Companion: `loadout --format yaml` (hooks, the MCP server, the `taskloom`
   fragment), and `version --format json` with `lock_protocol`, which
   ctxloom's boot probe parses.
