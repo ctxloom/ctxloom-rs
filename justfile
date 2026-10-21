@@ -58,18 +58,77 @@ lint:
     exec just --justfile {{TOP}}/justfile _run lint workspace cargo \
         cargo clippy "${terse[@]}" --manifest-path {{TOP}}/Cargo.toml --workspace --all-targets -- -D warnings
 
+# Format this workspace's crates in place. Each member is named (`-p`), not
+# `--all`: `--all` also formats local path dependencies, which here are other
+# repositories (annals, angzarr-build).
 fmt:
-    cargo fmt --manifest-path {{TOP}}/Cargo.toml --all
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mapfile -t packages < <(just --justfile {{TOP}}/justfile _members)
+    exec cargo fmt --manifest-path {{TOP}}/Cargo.toml "${packages[@]}"
 
-# Lists the files rustfmt would change (`-l`); VERBOSE=1 shows the diffs.
+# Lists the files rustfmt would change (`-l`) in this workspace's crates
+# (as `fmt`, never path dependencies); VERBOSE=1 shows the diffs. For CI and
+# manual runs: the pre-commit hook formats instead (`fmt-staged`).
 [no-exit-message]
 fmt-check:
     #!/usr/bin/env bash
     set -euo pipefail
     terse=(-l)
     [ "${VERBOSE:-}" = 1 ] && terse=()
+    mapfile -t packages < <(just --justfile {{TOP}}/justfile _members)
     exec just --justfile {{TOP}}/justfile _run fmt-check workspace fmt \
-        cargo fmt --manifest-path {{TOP}}/Cargo.toml --all -- --check "${terse[@]}"
+        cargo fmt --manifest-path {{TOP}}/Cargo.toml "${packages[@]}" -- --check "${terse[@]}"
+
+# Format the staged Rust files in place: lefthook's pre-commit step, which
+# re-stages them (`stage_fixed`) and sets unstaged hunks aside meanwhile, so
+# only what is staged is formatted into the commit. Each file goes through
+# rustfmt on stdin, so exactly the files named are formatted: rustfmt given a
+# path also formats every module file it declares, staged or not. The
+# edition is the workspace's (`[workspace.package]` in Cargo.toml). Prints
+# each file it changed.
+[positional-arguments]
+[no-exit-message]
+fmt-staged *files:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "$#" -eq 0 ]; then
+        echo "ok   fmt-staged (nothing to format: no Rust file is staged)"
+        exit 0
+    fi
+    exec just --justfile {{TOP}}/justfile _run fmt-staged "$# Rust files staged" rustfmt \
+        just --justfile {{TOP}}/justfile _fmt-files "$@"
+
+[positional-arguments]
+[no-exit-message]
+_fmt-files +files:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    edition=$(sed -n '/^\[workspace\.package\]/,/^\[/s/^edition *= *"\(.*\)"/\1/p' {{TOP}}/Cargo.toml)
+    if [ -z "$edition" ]; then
+        echo "no edition in Cargo.toml's [workspace.package]" >&2
+        exit 1
+    fi
+    formatted=$(mktemp)
+    trap 'rm -f "$formatted"' EXIT
+    rc=0
+    for file in "$@"; do
+        [ -f "$file" ] || continue
+        if ! rustfmt --edition "$edition" < "$file" > "$formatted"; then
+            echo "$file: rustfmt could not format it"
+            rc=1
+            continue
+        fi
+        if ! cmp -s "$formatted" "$file"; then
+            cat "$formatted" > "$file"
+            echo "$file"
+        fi
+    done
+    exit "$rc"
+
+# This workspace's members, as `-p <name>` pairs for cargo.
+_members:
+    @cargo metadata --format-version 1 --no-deps --offline --manifest-path {{TOP}}/Cargo.toml | jq -r '.packages[].name | "-p", .'
 
 # Dependency policy: licenses, sources, bans and RustSec advisories (deny.toml).
 # Fetches the advisory database, so it needs the network. The inclusion graphs
@@ -426,6 +485,14 @@ _extract-fmt log rc:
     set -euo pipefail
     echo "files rustfmt would change: $(grep -c . "$1" || true); run just fmt"
     sed 's|^{{TOP}}/||' "$1"
+
+# fmt-staged: rustfmt's parse errors, and the files it could not format.
+[positional-arguments]
+_extract-rustfmt log rc:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "rustfmt could not format $(grep -c ': rustfmt could not format it$' "$1" || true) staged files"
+    cat "$1"
 
 # nextest's terse run: the failing tests' output, then its summary.
 [positional-arguments]
