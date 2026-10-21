@@ -41,9 +41,13 @@ and angzarr here.
 - `adapters/driving/tasks-cli`: `add`, `list` and `tag`, text and json.
 - `root/bin/taskloom`: the binary, over annals-store-sql's SQLite store at
   `~/.ctxloom/projects/<project-id>/state.db` (CLAUDE.md, "Storage").
-  Its tests are Go's `crossprocess_test.go` ported: 40 concurrent adds, 20
-  adds among 10 concurrent listings, 40 concurrent tags of one task, each a
-  separate process on one database; they build the binary themselves.
+  Its tests are Go's `crossprocess_test.go` ported, each process separate
+  on one database, and they build the binary themselves: 40 concurrent adds
+  at a project's first sight (racing the mint and the migration; one
+  registry entry), 20 adds among 10 listings of a seeded project (every
+  row a whole task of the final listing), the same at first sight, and 40
+  concurrent tags of one task. Reads create nothing: `list --project tpyo`
+  leaves no trace, and `tag` where there is no project binds none.
 
 Where the skeleton differs from Go, or from this plan:
 
@@ -59,12 +63,55 @@ Where the skeleton differs from Go, or from this plan:
 - A read outside a unit of work (`SqliteStore::read_from`) is three
   statements, not one transaction, so a stream appended to mid-read can come
   back inconsistent. Lists and read-backs go through it; not fixed yet.
+- A read opens its store read-only (annals-store-sql's `open_existing`)
+  and creates nothing; `list` of a project with no store yet is empty, and
+  `tag` resolves its project as a read does. A read-only open of a file a
+  writer has created but not yet migrated or moved into WAL fails, so the
+  opener then opens that existing file to write, which waits on the
+  writer's lock.
+- annals-store-sql's `SqliteStore::open` future cannot be proven `Send`
+  (sqlx's migrator fails the higher-ranked `Acquire` check), so
+  task-store-sqlite drives it with `block_on` on a blocking thread. annals
+  should make it provably `Send`; the workaround then goes.
+- Work roots and registry entries are compared canonical, as Go's
+  `cleanPath` (symlinks resolved, else cleaned lexically), and the
+  canonical path is registered. A status starting with `@` is refused in
+  `list --status` as on writes.
 - harp-core has one word list, Go's "long" group, so project ids are three
   words from it, not from Go's smaller default group.
 - `list` with no project here says so and lists nothing; Go falls back to
   `--global`. Hidden `tagma:*` tags are shown, the `@open`/`@terminal`
   classes are not taken, and JSON has no `derived_priority` and escapes no
   HTML: they come with tags, statuses and priority.
+
+## Open, and the step each waits for
+
+Found in the walking skeleton's review; each is settled at the step named,
+not filed as a task.
+
+- **Linked worktrees resolve to their own project.** A linked worktree's
+  `.git` file marks it a work root, so it gets its own id rather than its
+  primary checkout's, and a `.project-id` committed there and merged back
+  silently repoints the primary checkout. Settle with heal and repoint
+  (step 2), before MCP serves sessions (step 4).
+- **Resolution precedence differs from Go.** Go looks the path up in the
+  registry first and treats the marker as advisory; Rust reads the marker
+  first. Settle with heal and repoint (step 2).
+- **Store reads are not one snapshot.** annals' `read_from` should run as
+  one read transaction, and annals should gain a read-only unit, so that
+  `covers` and the reads after it see one snapshot. Needed before purge
+  and prune (step 5, "Purging a stream in annals"): otherwise a purge in
+  the middle of a listing yields a blank task.
+- **The registry lock** re-checks no inode after locking (Go does, because
+  `ctxloom clean` reaps lock sidecars, so a lock can be taken on a file
+  since unlinked) and has no timeout. Settle with heal and repoint
+  (step 2), which writes the registry most.
+- **`TaskService` takes `&mut self`**, so an MCP server holding one service
+  serializes every call. Revisit with MCP (step 4), before its tools
+  multiply (step 5).
+- **JSON escapes no HTML** where Go's encoder escapes `<`, `>` and `&`:
+  normalize it when comparing the Go and Rust binaries for parity ("Parity
+  and cutover").
 
 ## Order of work
 
