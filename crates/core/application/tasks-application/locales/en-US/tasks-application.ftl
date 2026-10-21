@@ -21,3 +21,4 @@ tasks-application-schema-no-value = tag_schema: { $declaration } has no value
 tasks-application-schema-arity-target = tag_schema: { $declaration } targets { $target }, but an arity's target must be namespace:key
 tasks-application-schema-enum-empty = tag_schema: { $declaration } lists no enum member in { $value }
 tasks-application-schema-range = tag_schema: { $declaration }'s range { $value } is not min,max: two finite numbers, the least first
+tasks-application-tag-query = the tag query { $query } is malformed (as postfix: { $postfix }; as infix: { $infix }): { $grammar }

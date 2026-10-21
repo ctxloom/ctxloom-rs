@@ -20,6 +20,7 @@ fn test_a_wrapper_is_its_causes_diagnostic() {
         AppError::Failed(cause()),
         AppError::Identity(cause()),
         AppError::Configuration(cause()),
+        AppError::TagQuery(cause()),
     ] {
         assert_eq!(wrapper.code(), "tasks-text-required");
         assert_eq!(wrapper.to_string(), "a task needs text");

@@ -94,6 +94,13 @@ enum Command {
         /// Include the tasks hidden by default.
         #[arg(long)]
         all: bool,
+        /// Only the tasks this tag query selects: postfix, tags first and
+        /// the operator after (urgent/release/and, urgent/not), or infix
+        /// (urgent and not release). Operators: and, or, not; atoms
+        /// [ns:]key[op value] with op one of = != > >= < <= ~, and * (any)
+        /// or + (present) for a namespace, key or value.
+        #[arg(long = "tag-query", default_value = "")]
+        tag_query: String,
     },
     /// Add and/or remove tags on a task; adds apply before removes.
     Tag {
@@ -204,11 +211,16 @@ pub async fn run<S: TaskService + ImportService>(
                 Err(e) => Err(CliError::App(e)),
             }
         }
-        Command::List { status, all } => {
+        Command::List {
+            status,
+            all,
+            tag_query,
+        } => {
             let query = ListQuery {
                 project: cli.project,
                 statuses: status,
                 all,
+                tag_query,
                 config_set: cli.config_set,
             };
             match service.list(query).await {

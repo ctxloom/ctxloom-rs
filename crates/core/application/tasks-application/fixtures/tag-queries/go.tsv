@@ -1,0 +1,90 @@
+flat	urgent	ok	urgent-only,urgent-release
+flat	urgent/release/and	ok	urgent-release
+flat	urgent/release/or	ok	release-only,urgent-only,urgent-release
+flat	urgent/not	ok	big,dotted,leveled,mid,quoted,release-only,untagged
+flat	urgent/release	ok	urgent-release
+flat		ok	big,dotted,leveled,mid,quoted,release-only,untagged,urgent-only,urgent-release
+flat	urgent/release/AND	ok	urgent-release
+flat	urgent/Not	ok	big,dotted,leveled,mid,quoted,release-only,untagged
+flat	Urgent	ok	mid
+flat	urgent/release/or/not	ok	big,dotted,leveled,mid,quoted,untagged
+flat	level=3	ok	leveled
+flat	level!=3	ok	big,mid
+flat	level>3	ok	big
+flat	level>=3	ok	big,leveled
+flat	level<3	ok	mid
+flat	level<=3	ok	leveled,mid
+flat	level>-2	ok	big,leveled,mid
+flat	level=*	ok	big,leveled,mid
+flat	level=+	ok	big,leveled,mid
+flat	level	ok	big,leveled,mid
+flat	name~foo-.*	error	tag query "name~foo-.*": tagma: invalid atom "name~foo-.*" in postfix query: tagma: invalid value in atom "name~foo-.*": token: invalid component "foo-.*": a bare token is [A-Za-z0-9_+-] followed by any of [A-Za-z0-9_.+-], and is never just "*" or "+" (those are the quantifiers); any other character (`:` `=` `<` `>` `~` `!` `/` `*` `(` `)` or whitespace) is reserved and must be quoted — write "foo-.*" instead to store the text literally
+flat	name~foo	ok	
+flat	ver>1.9	ok	
+flat	ver<1.10	ok	
+flat	ver=1.10	ok	big
+flat	ver!=1.9	ok	big
+flat	*:cli	ok	leveled,mid
+flat	+:cli	ok	leveled,mid
+flat	area:*	ok	big,leveled,mid
+flat	area:+	ok	big,leveled,mid
+flat	*:*	ok	big,dotted,leveled,mid,quoted,release-only,untagged,urgent-only,urgent-release
+flat	+:*	ok	big,dotted,leveled,mid,quoted,release-only,untagged,urgent-only,urgent-release
+flat	*:+	ok	big,dotted,leveled,mid,quoted,release-only,untagged,urgent-only,urgent-release
+flat	area:cli	ok	leveled,mid
+flat	area:cli=x	ok	mid
+flat	area:cli=*	ok	leveled,mid
+flat	area:cli=+	ok	mid
+flat	area:api>0	ok	big
+flat	*:api=1	ok	big
+flat	area:cli!=x	ok	
+flat	note="hello world"	ok	quoted
+flat	"a:b"=c	ok	quoted
+flat	k=""	ok	quoted
+flat	k=+	ok	quoted
+flat	k=*	ok	quoted
+flat	k	ok	quoted
+flat	team:*	ok	dotted
+flat	team.core:*	ok	dotted
+flat	team:owner	ok	
+flat	*:owner=ann	ok	dotted
+flat	team.core:owner~a.*	error	tag query "team.core:owner~a.*": tagma: invalid atom "team.core:owner~a.*" in postfix query: tagma: invalid value in atom "team.core:owner~a.*": token: invalid component "a.*": a bare token is [A-Za-z0-9_+-] followed by any of [A-Za-z0-9_.+-], and is never just "*" or "+" (those are the quantifiers); any other character (`:` `=` `<` `>` `~` `!` `/` `*` `(` `)` or whitespace) is reserved and must be quoted — write "a.*" instead to store the text literally
+flat	urgent and release	error	tag query "urgent and release": tagma: invalid atom "urgent and release" in postfix query: tagma: invalid key in atom "urgent and release": token: invalid component "urgent and release": a bare token is [A-Za-z0-9_+-] followed by any of [A-Za-z0-9_.+-], and is never just "*" or "+" (those are the quantifiers); any other character (`:` `=` `<` `>` `~` `!` `/` `*` `(` `)` or whitespace) is reserved and must be quoted — write "urgent and release" instead to store the text literally
+flat	urgent or release	error	tag query "urgent or release": tagma: invalid atom "urgent or release" in postfix query: tagma: invalid key in atom "urgent or release": token: invalid component "urgent or release": a bare token is [A-Za-z0-9_+-] followed by any of [A-Za-z0-9_.+-], and is never just "*" or "+" (those are the quantifiers); any other character (`:` `=` `<` `>` `~` `!` `/` `*` `(` `)` or whitespace) is reserved and must be quoted — write "urgent or release" instead to store the text literally
+flat	not urgent	error	tag query "not urgent": tagma: invalid atom "not urgent" in postfix query: tagma: invalid key in atom "not urgent": token: invalid component "not urgent": a bare token is [A-Za-z0-9_+-] followed by any of [A-Za-z0-9_.+-], and is never just "*" or "+" (those are the quantifiers); any other character (`:` `=` `<` `>` `~` `!` `/` `*` `(` `)` or whitespace) is reserved and must be quoted — write "not urgent" instead to store the text literally
+flat	urgent release	error	tag query "urgent release": tagma: invalid atom "urgent release" in postfix query: tagma: invalid key in atom "urgent release": token: invalid component "urgent release": a bare token is [A-Za-z0-9_+-] followed by any of [A-Za-z0-9_.+-], and is never just "*" or "+" (those are the quantifiers); any other character (`:` `=` `<` `>` `~` `!` `/` `*` `(` `)` or whitespace) is reserved and must be quoted — write "urgent release" instead to store the text literally
+flat	(urgent or release) and not level=3	error	tag query "(urgent or release) and not level=3": tagma: invalid atom "(urgent or release) and not level=3" in postfix query: tagma: invalid key in atom "(urgent or release) and not level=3": token: invalid component "(urgent or release) and not level": a bare token is [A-Za-z0-9_+-] followed by any of [A-Za-z0-9_.+-], and is never just "*" or "+" (those are the quantifiers); any other character (`:` `=` `<` `>` `~` `!` `/` `*` `(` `)` or whitespace) is reserved and must be quoted — write "(urgent or release) and not level" instead to store the text literally
+flat	urgent AND NOT release	error	tag query "urgent AND NOT release": tagma: invalid atom "urgent AND NOT release" in postfix query: tagma: invalid key in atom "urgent AND NOT release": token: invalid component "urgent AND NOT release": a bare token is [A-Za-z0-9_+-] followed by any of [A-Za-z0-9_.+-], and is never just "*" or "+" (those are the quantifiers); any other character (`:` `=` `<` `>` `~` `!` `/` `*` `(` `)` or whitespace) is reserved and must be quoted — write "urgent AND NOT release" instead to store the text literally
+flat	not (urgent or release)	error	tag query "not (urgent or release)": tagma: invalid atom "not (urgent or release)" in postfix query: tagma: invalid key in atom "not (urgent or release)": token: invalid component "not (urgent or release)": a bare token is [A-Za-z0-9_+-] followed by any of [A-Za-z0-9_.+-], and is never just "*" or "+" (those are the quantifiers); any other character (`:` `=` `<` `>` `~` `!` `/` `*` `(` `)` or whitespace) is reserved and must be quoted — write "not (urgent or release)" instead to store the text literally
+flat	and	error	tag query "and": tagma: postfix stack underflow at "and"
+flat	urgent/and	error	tag query "urgent/and": tagma: postfix stack underflow at "and"
+flat	a b/c	error	tag query "a b/c": tagma: invalid atom "a b" in postfix query: tagma: invalid key in atom "a b": token: invalid component "a b": a bare token is [A-Za-z0-9_+-] followed by any of [A-Za-z0-9_.+-], and is never just "*" or "+" (those are the quantifiers); any other character (`:` `=` `<` `>` `~` `!` `/` `*` `(` `)` or whitespace) is reserved and must be quoted — write "a b" instead to store the text literally
+flat	(urgent	error	tag query "(urgent": tagma: invalid atom "(urgent" in postfix query: tagma: invalid key in atom "(urgent": token: invalid component "(urgent": a bare token is [A-Za-z0-9_+-] followed by any of [A-Za-z0-9_.+-], and is never just "*" or "+" (those are the quantifiers); any other character (`:` `=` `<` `>` `~` `!` `/` `*` `(` `)` or whitespace) is reserved and must be quoted — write "(urgent" instead to store the text literally
+flat	level=	error	tag query "level=": tagma: invalid atom "level=" in postfix query: tagma: invalid value in atom "level=": token: invalid component "": a bare token is [A-Za-z0-9_+-] followed by any of [A-Za-z0-9_.+-], and is never just "*" or "+" (those are the quantifiers); any other character (`:` `=` `<` `>` `~` `!` `/` `*` `(` `)` or whitespace) is reserved and must be quoted — write "" instead to store the text literally
+flat	*	ok	big,leveled,mid,quoted,release-only,urgent-only,urgent-release
+flat	urgent//release	error	tag query "urgent//release": tagma: invalid atom "" in postfix query: tagma: invalid key in atom "": token: invalid component "": a bare token is [A-Za-z0-9_+-] followed by any of [A-Za-z0-9_.+-], and is never just "*" or "+" (those are the quantifiers); any other character (`:` `=` `<` `>` `~` `!` `/` `*` `(` `)` or whitespace) is reserved and must be quoted — write "" instead to store the text literally
+flat	not	error	tag query "not": tagma: postfix stack underflow at "not"
+flat	urgent or	error	tag query "urgent or": tagma: invalid atom "urgent or" in postfix query: tagma: invalid key in atom "urgent or": token: invalid component "urgent or": a bare token is [A-Za-z0-9_+-] followed by any of [A-Za-z0-9_.+-], and is never just "*" or "+" (those are the quantifiers); any other character (`:` `=` `<` `>` `~` `!` `/` `*` `(` `)` or whitespace) is reserved and must be quoted — write "urgent or" instead to store the text literally
+flat	level>abc	ok	
+flat	name~(	error	tag query "name~(": tagma: invalid atom "name~(" in postfix query: tagma: invalid value in atom "name~(": token: invalid component "(": a bare token is [A-Za-z0-9_+-] followed by any of [A-Za-z0-9_.+-], and is never just "*" or "+" (those are the quantifiers); any other character (`:` `=` `<` `>` `~` `!` `/` `*` `(` `)` or whitespace) is reserved and must be quoted — write "(" instead to store the text literally
+flat	urgent/release/or/level=3/not/and	ok	release-only,urgent-only,urgent-release
+flat	urgent/release/not/and	ok	urgent-only
+semver	triage:blocks-release<=0.7.0	ok	below,exact,prerelease-boundary
+semver	triage:blocks-release>0.7.0	ok	above
+semver	triage:blocks-release=0.7.0	ok	exact
+semver	triage:blocks-release>=0.7.0-pre001	ok	above,exact,prerelease-boundary
+semver	triage:blocks-release<0.7.0	ok	below,prerelease-boundary
+semver	triage:blocks-release=*	ok	above,below,exact,prerelease-boundary
+semver	triage:blocks-release!=0.7.0	ok	above,below,prerelease-boundary
+semver	triage:blocks-release<=0.7.0/not	ok	above,untagged
+semver-undeclared	triage:blocks-release<=0.7.0	ok	
+semver-undeclared	triage:blocks-release>0.7.0	ok	
+semver-undeclared	triage:blocks-release=0.7.0	ok	exact
+semver-undeclared	triage:blocks-release>=0.7.0-pre001	ok	
+semver-undeclared	triage:blocks-release<0.7.0	ok	
+semver-undeclared	triage:blocks-release=*	ok	above,below,exact,prerelease-boundary
+semver-undeclared	triage:blocks-release!=0.7.0	ok	above,below,prerelease-boundary
+semver-undeclared	triage:blocks-release<=0.7.0/not	ok	above,below,exact,prerelease-boundary,untagged
+status-scoped	urgent/not	ok	keep-me
+status-scoped	urgent	ok	
+status-scoped	not urgent	error	tag query "not urgent": tagma: invalid atom "not urgent" in postfix query: tagma: invalid key in atom "not urgent": token: invalid component "not urgent": a bare token is [A-Za-z0-9_+-] followed by any of [A-Za-z0-9_.+-], and is never just "*" or "+" (those are the quantifiers); any other character (`:` `=` `<` `>` `~` `!` `/` `*` `(` `)` or whitespace) is reserved and must be quoted — write "not urgent" instead to store the text literally

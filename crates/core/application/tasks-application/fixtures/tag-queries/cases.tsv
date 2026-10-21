@@ -1,0 +1,122 @@
+# Tag-query parity cases: Go taskloom's filterTasks (tagma's Go port) is
+# the oracle, dumped to go.tsv by scripts/compare-go-tag-queries.sh.
+# Tab-separated: `scenario <name>`, then its `schema <declaration>`,
+# `status <status>` (the candidates' statuses, none meaning every one),
+# `task <harp> <status> <tag>...` and `query <query>` lines.
+scenario	flat
+task	urgent-release	To Do	urgent	release
+task	urgent-only	To Do	urgent
+task	release-only	To Do	release
+task	untagged	To Do
+task	leveled	To Do	level=3	area:cli	triage:level=2	name=foo-bar
+task	big	To Do	level=10	area:api=1	ver=1.10
+task	mid	To Do	level=-1.5	area:cli=x	Urgent	ver=1.9
+task	quoted	To Do	note="hello world"	"a:b"=c	k=""
+task	dotted	To Do	team.core:owner=ann	team:lead
+query	urgent
+query	urgent/release/and
+query	urgent/release/or
+query	urgent/not
+query	urgent/release
+query	
+query	urgent/release/AND
+query	urgent/Not
+query	Urgent
+query	urgent/release/or/not
+query	level=3
+query	level!=3
+query	level>3
+query	level>=3
+query	level<3
+query	level<=3
+query	level>-2
+query	level=*
+query	level=+
+query	level
+query	name~foo-.*
+query	name~foo
+query	ver>1.9
+query	ver<1.10
+query	ver=1.10
+query	ver!=1.9
+query	*:cli
+query	+:cli
+query	area:*
+query	area:+
+query	*:*
+query	+:*
+query	*:+
+query	area:cli
+query	area:cli=x
+query	area:cli=*
+query	area:cli=+
+query	area:api>0
+query	*:api=1
+query	area:cli!=x
+query	note="hello world"
+query	"a:b"=c
+query	k=""
+query	k=+
+query	k=*
+query	k
+query	team:*
+query	team.core:*
+query	team:owner
+query	*:owner=ann
+query	team.core:owner~a.*
+query	urgent and release
+query	urgent or release
+query	not urgent
+query	urgent release
+query	(urgent or release) and not level=3
+query	urgent AND NOT release
+query	not (urgent or release)
+query	and
+query	urgent/and
+query	a b/c
+query	(urgent
+query	level=
+query	*
+query	urgent//release
+query	not
+query	urgent or
+query	level>abc
+query	name~(
+query	urgent/release/or/level=3/not/and
+query	urgent/release/not/and
+scenario	semver
+schema	tagma.type:"triage:blocks-release"=semver
+task	below	To Do	triage:blocks-release=0.6.9
+task	prerelease-boundary	To Do	triage:blocks-release=0.7.0-pre001
+task	exact	To Do	triage:blocks-release=0.7.0
+task	above	To Do	triage:blocks-release=0.8.0
+task	untagged	To Do
+query	triage:blocks-release<=0.7.0
+query	triage:blocks-release>0.7.0
+query	triage:blocks-release=0.7.0
+query	triage:blocks-release>=0.7.0-pre001
+query	triage:blocks-release<0.7.0
+query	triage:blocks-release=*
+query	triage:blocks-release!=0.7.0
+query	triage:blocks-release<=0.7.0/not
+scenario	semver-undeclared
+task	below	To Do	triage:blocks-release=0.6.9
+task	prerelease-boundary	To Do	triage:blocks-release=0.7.0-pre001
+task	exact	To Do	triage:blocks-release=0.7.0
+task	above	To Do	triage:blocks-release=0.8.0
+task	untagged	To Do
+query	triage:blocks-release<=0.7.0
+query	triage:blocks-release>0.7.0
+query	triage:blocks-release=0.7.0
+query	triage:blocks-release>=0.7.0-pre001
+query	triage:blocks-release<0.7.0
+query	triage:blocks-release=*
+query	triage:blocks-release!=0.7.0
+query	triage:blocks-release<=0.7.0/not
+scenario	status-scoped
+status	To Do
+task	keep-me	To Do
+task	done-urgent	Done	urgent
+query	urgent/not
+query	urgent
+query	not urgent

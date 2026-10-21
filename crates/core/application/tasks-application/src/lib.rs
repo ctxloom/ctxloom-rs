@@ -9,6 +9,7 @@
 
 mod error;
 mod import;
+mod query;
 mod retry;
 mod schema;
 mod semver;
@@ -34,6 +35,7 @@ pub use import::{
     NoGoLogs, ProjectImport, Why,
 };
 pub use ports::{GoOp, Project};
+pub use query::{QueryError, QUERY_GRAMMAR};
 pub use retry::Backoff;
 pub use schema::{
     target, Range, SchemaError, TagSchema, DEFAULT_TAG_SCHEMA, FACETS, FACET_NAMESPACE, SEMVER,
@@ -80,12 +82,15 @@ pub struct TagChange {
 
 /// Which tasks to list. By default the open ones: neither terminal nor
 /// Deferred. `all` lists every task; naming statuses lists exactly the
-/// tasks in them.
+/// tasks in them. A tag query keeps those of them it selects.
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct ListQuery {
     pub project: Option<String>,
     pub statuses: Vec<String>,
     pub all: bool,
+    /// A tag query, postfix or infix (see [`QUERY_GRAMMAR`]); empty for
+    /// none.
+    pub tag_query: String,
     /// Configuration overrides, `<path>=<value>` (`--config-set`).
     pub config_set: Vec<String>,
 }
@@ -332,6 +337,9 @@ where
     }
 
     async fn list(&mut self, query: ListQuery) -> Result<Listing, AppError> {
+        // A malformed query is refused whatever there is to run it over.
+        query::check(&query.tag_query).map_err(|e| AppError::TagQuery(Report::of(&e)))?;
+        let schema = self.schema(&query.config_set)?;
         // `@open` and `@terminal` will name classes of statuses; until they
         // do, a status starting with the sigil is refused, as a write
         // refuses it, rather than matching no task.
@@ -367,6 +375,15 @@ where
             .await
             .map_err(|e| AppError::Failed(Report::of(&*e)))?;
         let mut tasks: Vec<Task> = list.entries().into_iter().map(Task::of).collect();
+        let selected = query::select(
+            &query.tag_query,
+            tasks
+                .iter()
+                .map(|t| (t.harp_id.as_str(), t.tags.as_slice())),
+            &schema,
+        )
+        .map_err(|e| AppError::TagQuery(Report::of(&e)))?;
+        tasks.retain(|t| selected.contains(&t.harp_id));
         tasks.sort_by(|a, b| {
             let added = |t: &Task| (t.created_at.seconds, t.created_at.nanos);
             added(a)

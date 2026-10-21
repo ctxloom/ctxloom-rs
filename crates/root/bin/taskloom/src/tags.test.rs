@@ -109,3 +109,33 @@ fn test_a_scalar_tag_displaces_its_old_value() {
         serde_json::json!(["triage:level=1", "x"])
     );
 }
+
+#[test]
+fn test_list_selects_by_a_tag_query_postfix_or_infix() {
+    let env = Env::new("calm-otter-fox");
+    for (text, tag) in [
+        ("one", "urgent"),
+        ("two", "release"),
+        ("three", "area:cli=x"),
+    ] {
+        let ran = env.run(&["add", text, "--tag", tag, "--json"]);
+        assert!(ran.ok, "{}", ran.stderr);
+    }
+    let texts = |query: &str| -> Vec<String> {
+        let ran = env.run(&["list", "--json", "--tag-query", query]);
+        assert!(ran.ok, "{query}: {}", ran.stderr);
+        ran.json()
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["text"].as_str().unwrap().to_string())
+            .collect()
+    };
+    assert_eq!(texts("urgent/release/or"), ["one", "two"]);
+    assert_eq!(texts("urgent or release"), ["one", "two"]);
+    assert_eq!(texts("urgent/not"), ["two", "three"]);
+    assert_eq!(texts("*:cli=+"), ["three"]);
+    let ran = env.run(&["list", "--json", "--tag-query", "urgent/and"]);
+    assert!(!ran.ok);
+    assert_eq!(code(&ran.stderr), "tasks-application-tag-query");
+}

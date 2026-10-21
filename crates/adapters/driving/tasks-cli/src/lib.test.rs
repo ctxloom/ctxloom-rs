@@ -338,6 +338,8 @@ fn test_list_passes_its_filters() {
             "--status",
             "Deferred",
             "--all",
+            "--tag-query",
+            "urgent/not",
         ],
     );
     assert_eq!(
@@ -350,6 +352,7 @@ fn test_list_passes_its_filters() {
                 "Deferred".to_string()
             ],
             all: true,
+            tag_query: "urgent/not".to_string(),
             config_set: Vec::new(),
         }]
     );

@@ -580,6 +580,76 @@ fn test_a_list_of_named_statuses_holds_exactly_their_tasks() {
     assert_eq!(listed(&mut service, named), ["deferred", "done"]);
 }
 
+// ------------------------------------------------------------ tag queries
+
+fn queried(query: &str) -> ListQuery {
+    ListQuery {
+        tag_query: query.to_string(),
+        ..ListQuery::default()
+    }
+}
+
+// Go's TestFilterTasksTagQueryPreservesInputOrder: the tasks a query
+// selects keep the listing's order.
+#[test]
+fn test_a_tag_query_keeps_the_tasks_it_selects_in_the_listings_order() {
+    let mut service = service(&["zebra-a", "mango-b", "apple-c", "kiwi-d"]);
+    for tags in [&["urgent"][..], &["urgent"], &["urgent", "x"], &[]] {
+        add(&mut service, tagged(tags)).unwrap();
+    }
+    assert_eq!(
+        listed(&mut service, queried("urgent")),
+        ["zebra-a", "mango-b", "apple-c"]
+    );
+    assert_eq!(
+        listed(&mut service, queried("urgent and not x")),
+        ["zebra-a", "mango-b"]
+    );
+    assert_eq!(listed(&mut service, queried("urgent/not")), ["kiwi-d"]);
+}
+
+// Go's TestFilterTasksTagQueryNotScopedToStatusCandidates: `not`
+// complements within the tasks the listing admits, never past them.
+#[test]
+fn test_not_complements_within_the_listed_tasks() {
+    let mut service = service(&["keep-me", "done-urgent"]);
+    add(&mut service, new_task("Keep")).unwrap();
+    let done = NewTask {
+        status: "Done".to_string(),
+        ..tagged(&["urgent"])
+    };
+    add(&mut service, done).unwrap();
+    assert_eq!(listed(&mut service, queried("urgent/not")), ["keep-me"]);
+    let all = ListQuery {
+        all: true,
+        ..queried("urgent")
+    };
+    assert_eq!(listed(&mut service, all), ["done-urgent"]);
+}
+
+#[test]
+fn test_a_malformed_tag_query_is_refused_even_with_nothing_to_list() {
+    let mut service = service(&[]);
+    let error = ready(service.list(queried("urgent/and"))).unwrap_err();
+    assert_eq!(error.code(), "tasks-application-tag-query");
+    assert!(matches!(error, AppError::TagQuery(_)));
+    assert!(service.identity.pins.is_empty(), "refused before resolving");
+}
+
+// The default schema declares triage:blocks-release a SemVer version.
+#[test]
+fn test_a_tag_query_orders_a_semver_target_by_precedence() {
+    let mut service = service(&["below-a", "pre-b", "above-c"]);
+    for version in ["0.6.9", "0.7.0-pre001", "0.8.0"] {
+        let tag = format!("triage:blocks-release={version}");
+        add(&mut service, tagged(&[tag.as_str()])).unwrap();
+    }
+    assert_eq!(
+        listed(&mut service, queried("triage:blocks-release<=0.7.0")),
+        ["below-a", "pre-b"]
+    );
+}
+
 #[test]
 fn test_tasks_added_at_one_instant_list_by_harp_id() {
     let mut service = service(&["zebra-b", "alpha-a"]);
