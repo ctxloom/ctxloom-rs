@@ -568,3 +568,167 @@ fn test_a_stream_that_replays_to_no_events_is_never_a_blank_task() {
     ready(list.catch_up_async(&mut store, &project.registry)).unwrap();
     assert!(list.entries().is_empty(), "{:?}", list.entries());
 }
+
+// ------------------------------------------------------------ restarted streams
+
+fn texts(list: &TaskList) -> Vec<&str> {
+    list.entries().iter().map(|t| t.text.as_str()).collect()
+}
+
+/// A prune's removal, its purge and a task minted again on the freed harp,
+/// all by another hand, in the store: what a long-lived list (a watch's)
+/// can miss whole between two catch-ups.
+fn prune_purge_and_mint_again(project: &mut Project, harp: &str, text: &str) {
+    let mut elsewhere = every_task();
+    project.run(&mut elsewhere, harp, pruned());
+    annals::next::Purge::purge(&mut project.store, &cover(harp)).unwrap();
+    project.run(&mut elsewhere, harp, add(harp, text));
+}
+
+#[test]
+fn test_a_stream_pruned_purged_and_minted_again_between_catch_ups_lists_the_new_task() {
+    let mut project = Project::new();
+    let mut list = every_task();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    project.run(&mut list, FIRST, status("Done", ""));
+    list.catch_up(&mut project.store, &project.registry)
+        .unwrap();
+    assert_eq!(list.sequence(), 2, "the add and its status");
+
+    // The new stream is shorter than the old: its first event's sequence
+    // is one the list has already passed.
+    prune_purge_and_mint_again(&mut project, FIRST, "Again");
+    list.catch_up(&mut project.store, &project.registry)
+        .unwrap();
+    assert_eq!(texts(&list), ["Again"], "the new task, not the pruned one");
+    let deltas = list.since(2).unwrap();
+    assert_eq!(deltas.len(), 1, "{deltas:?}");
+    let Change::Upsert(task) = &deltas[0].change else {
+        panic!("the new task: {deltas:?}");
+    };
+    assert_eq!(
+        (task.text.as_str(), task.status.as_str()),
+        ("Again", "To Do"),
+        "not the old Done"
+    );
+    assert_eq!(deltas[0].sequence, 3);
+
+    list.catch_up(&mut project.store, &project.registry)
+        .unwrap();
+    assert_eq!(list.sequence(), 3, "the new stream is now the one seen");
+}
+
+#[test]
+fn test_an_async_catch_up_lists_a_task_minted_again_unseen() {
+    let mut project = Project::new();
+    let mut list = every_task();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    project.run(&mut list, FIRST, status("Done", ""));
+    prune_purge_and_mint_again(&mut project, FIRST, "Again");
+    let mut store = Ready(std::mem::take(&mut project.store));
+    ready(list.catch_up_async(&mut store, &project.registry)).unwrap();
+    assert_eq!(texts(&list), ["Again"]);
+    assert_eq!(list.sequence(), 3);
+}
+
+#[test]
+fn test_a_task_minted_again_outside_the_membership_leaves_the_list() {
+    // The old task was listed and the new one is not: the old one goes.
+    let mut project = Project::new();
+    let mut list = deferred();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    project.run(&mut list, FIRST, status(DEFERRED, "later"));
+    assert_eq!(harps(&list), [FIRST]);
+    prune_purge_and_mint_again(&mut project, FIRST, "Again");
+    list.catch_up(&mut project.store, &project.registry)
+        .unwrap();
+    assert!(list.entries().is_empty(), "{:?}", list.entries());
+    assert_eq!(
+        list.since(1).unwrap(),
+        [Delta {
+            sequence: 2,
+            change: Change::Remove {
+                harp_id: FIRST.to_string()
+            }
+        }]
+    );
+}
+
+#[test]
+fn test_an_append_seen_at_a_catch_up_is_no_restart() {
+    // The stream read back from its start: its first event is the one
+    // already seen, so only the new event is projected.
+    let mut project = Project::new();
+    let mut list = every_task();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    let mut elsewhere = every_task();
+    project.run(&mut elsewhere, FIRST, status("In Progress", ""));
+    list.catch_up(&mut project.store, &project.registry)
+        .unwrap();
+    let deltas = list.since(1).unwrap();
+    assert_eq!(deltas.len(), 1, "only the status: {deltas:?}");
+    let Change::Upsert(task) = &deltas[0].change else {
+        panic!("{deltas:?}");
+    };
+    assert_eq!(task.status, "In Progress");
+    list.catch_up(&mut project.store, &project.registry)
+        .unwrap();
+    assert_eq!(list.sequence(), 2, "nothing new");
+}
+
+#[test]
+fn test_a_cursor_from_before_a_restart_resumes_to_the_new_task() {
+    let mut project = Project::new();
+    let mut list = every_task();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    project.run(&mut list, SECOND, add(SECOND, "Second"));
+    let cursor = list.sequence();
+    prune_purge_and_mint_again(&mut project, FIRST, "Again");
+    project.run(&mut list, SECOND, status("Done", ""));
+    list.catch_up(&mut project.store, &project.registry)
+        .unwrap();
+
+    let resumed = list.since(cursor).expect("a cursor the list issued");
+    let changes: Vec<(&str, &str)> = resumed
+        .iter()
+        .map(|d| match &d.change {
+            Change::Upsert(t) => (t.harp_id.as_str(), t.text.as_str()),
+            Change::Remove { harp_id } => (harp_id.as_str(), "removed"),
+        })
+        .collect();
+    assert_eq!(changes, [(SECOND, "Second"), (FIRST, "Again")]);
+    assert_eq!(
+        resumed.iter().map(|d| d.sequence).collect::<Vec<_>>(),
+        [3, 4]
+    );
+}
+
+#[test]
+fn test_a_pruned_stream_read_again_before_its_purge_changes_nothing() {
+    // A long-lived list that saw the prune's removal reads the stream
+    // again before the purge lands: the same stream, already projected.
+    let mut project = Project::new();
+    let mut list = every_task();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    project.run(&mut list, FIRST, pruned());
+    assert_eq!(list.sequence(), 2);
+    list.catch_up(&mut project.store, &project.registry)
+        .unwrap();
+    assert_eq!(list.sequence(), 2, "nothing projected again");
+    assert_eq!(unpurged(&list), [FIRST], "still pruned, not purged");
+}
+
+#[test]
+fn test_a_redelivered_event_past_the_first_changes_nothing() {
+    // Read back, the stream's middle event's state is not the task's now:
+    // projected again, it would list the task as it was.
+    let mut project = Project::new();
+    let mut list = every_task();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    project.run(&mut list, FIRST, status("In Progress", ""));
+    project.run(&mut list, FIRST, status("Done", ""));
+    list.catch_up(&mut project.store, &project.registry)
+        .unwrap();
+    assert_eq!(list.sequence(), 3);
+    assert_eq!(list.entries()[0].status, "Done");
+}

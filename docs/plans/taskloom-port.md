@@ -17,11 +17,13 @@ and angzarr here.
   remove, with localizable rejections.
 - `core/read-model/task-lists`: the list projector, with a resumable cursor,
   caught up over the sync store port, or over the async one's read-only
-  unit of work, one moment of the store. It forgets a stream's
-  last projected sequence when it projects a prune's removal
-  (`TaskRemoved{PRUNED}`), so a task minted on the freed harp, whose
-  stream restarts at sequence 0, is listed; a stream read back with no
-  events lists nothing. It names each task a prune removed whose stream
+  unit of work, one moment of the store. It keeps, per stream, its last
+  projected sequence and its first event's fingerprint (the cause, a
+  command id, and when it was recorded), so a task minted on a harp a
+  prune freed, whose stream restarts at sequence 0, is seen as a new
+  stream and listed, even when the prune, its purge and the mint all
+  landed between two catch-ups; a stream read back with no events lists
+  nothing. It names each task a prune removed whose stream
   is still held (`unpurged`), for a prune to finish. A catch-up drops
   each task whose stream the store no longer holds, and forgets the
   stream: a prune that landed whole since a long-lived list last read.
@@ -588,23 +590,27 @@ ported on it:
   beside the others.
 
 In ctxloom-rs, prune records `TaskRemoved{PRUNED}` first, so every list drops
-the task, and then purges the stream. The task-list projector forgets a
-pruned stream's last sequence when it projects that event. Without that, a
-new task minted on the freed harp, whose stream starts again at sequence 0
-(appended at expected 0), would be skipped as already seen. A long-lived
-projector that re-reads a pruned stream before its purge lands projects its
-events again (the task back, then removed again): the end state is right,
-the deltas between are not. `watch` (step 7) holds such a projector,
-and reads the streams only when the store's change token moved. A prune
-that lands whole between two polls (the usual case at 100ms) is seen
-from the stream's absence: the catch-up drops each task whose stream the
-store no longer holds, with a removal delta, and forgets the stream. A
-poll between the removal and the purge answers the removal, and the
-purge's poll finds nothing new: one line, as a whole prune's. Only a
-second read between them (the token moved for a commit no task sees, or
-landed between a poll's token and its read) projects the task back and
-removed again, one extra `changed` line, and no list a subscriber reads
-is wrong. The binary's in-process watch tests force each, tick by tick.
+the task, and then purges the stream. A new task minted on the freed harp
+starts the stream again at sequence 0 (appended at expected 0), which a
+projector going by sequence alone would skip as already seen. So the
+task-list projector keeps each stream's first event's fingerprint beside
+its last sequence: the first event's cause (its command id, or a process
+event's correlation id) and its `recorded_at`, both on every recorded
+event and read back as written. A first event that is not the one seen
+first is a new stream, projected from its start: its state replaces the
+old task's (an upsert, or a removal if the list does not hold it). That
+holds however much landed between two catch-ups, the removal, the purge
+and the mint included, and costs one small entry per stream. A pruned
+stream re-read before its purge lands is the stream already projected,
+so it changes nothing. `watch` (step 7) holds such a projector, and reads
+the streams only when the store's change token moved. A prune that lands
+whole between two polls (the usual case at 100ms) is seen from the
+stream's absence: the catch-up drops each task whose stream the store no
+longer holds, with a removal delta, and forgets the stream. A poll
+between the removal and the purge answers the removal, and later reads
+find nothing new: one line, as a whole prune's. A prune and a mint on its
+harp between two polls is one line, the new task's. The binary's
+in-process watch tests force each, tick by tick.
 
 ## Project identity: heal and repoint
 

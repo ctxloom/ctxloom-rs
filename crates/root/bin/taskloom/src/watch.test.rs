@@ -208,7 +208,7 @@ mod ticked {
     use ports::{Project, ProjectIdentity};
     use system::System;
     use task_store_sqlite::SqliteStores;
-    use tasks::{RemovalReason, RemoveTask, TaskCommand, Tasks, TASK_DOMAIN};
+    use tasks::{AddTask, RemovalReason, RemoveTask, TaskCommand, Tasks, TASK_DOMAIN};
     use tasks_application::{ListQuery, NewTask, Service, TaskService};
     use tasks_watch::{Settings, Ticks};
 
@@ -256,6 +256,9 @@ mod ticked {
         Purge(String),
         /// A prune whole: its removal, then its purge.
         Pruned(String),
+        /// A prune whole, then a task minted on the freed harp with this
+        /// text: the harp's stream started again.
+        Reminted(String, String),
         /// A commit outside the task domain: the store's token moves, and
         /// no task changes.
         Elsewhere,
@@ -269,36 +272,52 @@ mod ticked {
         }
     }
 
+    /// Run `command` on `harp`'s stream in `store`, as command `id`.
+    async fn command(store: &mut SqliteStore, harp: &str, command: TaskCommand, id: u8) {
+        let book = CommandBook {
+            cover: Some(task_stream(harp)),
+            page: Some(CommandPage {
+                body: Some(command_page::Body::Command(Command {
+                    payload: Some(command.to_any()),
+                })),
+                ..CommandPage::default()
+            }),
+            handling: None,
+        };
+        let registry = tasks_application::registry();
+        let dead_letters = MemoryDeadLetters::new();
+        let sampled = Sampled {
+            now: Timestamp::default(),
+            command_id: Uuid::from_bytes([id; 16]),
+        };
+        let unit = annals::next::AsyncStore::begin(store).await;
+        Kernel::new(&registry, &dead_letters)
+            .handle_async::<Tasks, _, _>(unit, &Routes::new(), book, &sampled, &mut ())
+            .await
+            .unwrap_or_else(|failure| panic!("{failure:?}"));
+    }
+
     impl Step {
         async fn apply(self, store: &mut SqliteStore, elsewhere: &mut u64) {
             match self {
                 Step::Quiet => {}
                 Step::Prune(harp) => {
-                    let command: TaskCommand = RemoveTask {
+                    let removal = RemoveTask {
                         reason: RemovalReason::Pruned,
-                    }
-                    .into();
-                    let book = CommandBook {
-                        cover: Some(task_stream(&harp)),
-                        page: Some(CommandPage {
-                            body: Some(command_page::Body::Command(Command {
-                                payload: Some(command.to_any()),
-                            })),
-                            ..CommandPage::default()
-                        }),
-                        handling: None,
                     };
-                    let registry = tasks_application::registry();
-                    let dead_letters = MemoryDeadLetters::new();
-                    let sampled = Sampled {
-                        now: Timestamp::default(),
-                        command_id: Uuid::from_bytes([0xee; 16]),
+                    command(store, &harp, removal.into(), 0xee).await;
+                }
+                Step::Reminted(harp, text) => {
+                    Box::pin(Step::Pruned(harp.clone()).apply(store, elsewhere)).await;
+                    let add = AddTask {
+                        harp_id: harp.clone(),
+                        text,
+                        status: String::new(),
+                        trigger: String::new(),
+                        tags: Vec::new(),
+                        origin_session: String::new(),
                     };
-                    let unit = annals::next::AsyncStore::begin(store).await;
-                    Kernel::new(&registry, &dead_letters)
-                        .handle_async::<Tasks, _, _>(unit, &Routes::new(), book, &sampled, &mut ())
-                        .await
-                        .unwrap_or_else(|failure| panic!("{failure:?}"));
+                    command(store, &harp, add.into(), 0xdd).await;
                 }
                 Step::Pruned(harp) => {
                     Box::pin(Step::Prune(harp.clone()).apply(store, elsewhere)).await;
@@ -453,11 +472,10 @@ mod ticked {
     }
 
     #[test]
-    fn test_a_second_read_between_a_prunes_removal_and_its_purge_is_one_extra_line() {
+    fn test_a_second_read_between_a_prunes_removal_and_its_purge_is_no_line() {
         // The store read again after the removal, before the purge (its
-        // token moved for a commit no task sees): the pruned stream is
-        // projected again, the task back and removed again, and that is a
-        // line of its own. Nothing the subscriber reads is wrong.
+        // token moved for a commit no task sees): the pruned stream is the
+        // one already projected, so nothing is new.
         let (lines, tasks) = watched(|harp| {
             vec![
                 Step::Prune(harp.to_string()),
@@ -469,7 +487,7 @@ mod ticked {
                 Step::Quiet,
             ]
         });
-        assert_eq!(lines, 3, "the first, the removal's, and the extra");
+        assert_eq!(lines, 2, "the first, and the removal's");
         assert_eq!(tasks, ["Kept"]);
     }
 
@@ -478,5 +496,21 @@ mod ticked {
         let (lines, tasks) = watched(|_| vec![Step::Elsewhere, Step::Quiet, Step::Elsewhere]);
         assert_eq!(lines, 1, "only the first");
         assert_eq!(tasks, ["Pruned", "Kept"]);
+    }
+
+    #[test]
+    fn test_a_prune_and_a_mint_on_its_harp_between_two_polls_is_the_new_task() {
+        // The harp freed and minted again unseen: the stream restarted,
+        // shorter than the one the watch last read.
+        let (lines, tasks) = watched(|harp| {
+            vec![
+                Step::Reminted(harp.to_string(), "Again".to_string()),
+                Step::Quiet,
+            ]
+        });
+        assert_eq!(lines, 2, "the first, and the new task's");
+        let mut tasks = tasks;
+        tasks.sort();
+        assert_eq!(tasks, ["Again", "Kept"]);
     }
 }
