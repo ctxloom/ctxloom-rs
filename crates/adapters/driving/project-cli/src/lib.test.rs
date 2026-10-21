@@ -197,6 +197,7 @@ fn test_show_as_json_is_one_document_with_every_part() {
             "legacy_marker": null,
             "entries": [{"project_id": "a", "path": "/w", "exists": true}],
             "database": "/h/.ctxloom/projects/m/state.db",
+            "shared_with": [],
             "problems": [
                 {"kind": "two-ids", "root": "/w", "project_ids": ["a", "m"]},
                 {"kind": "gone", "project_id": "t", "path": "/gone"},
@@ -204,6 +205,38 @@ fn test_show_as_json_is_one_document_with_every_part() {
                 {"kind": "orphan", "project_id": "t", "database": "/h/.ctxloom/projects/t"},
             ],
         })
+    );
+}
+
+#[test]
+fn test_show_as_json_lists_the_other_trees_sharing_the_project() {
+    let mut survey = projects().admin().survey.clone();
+    survey.registry = vec![
+        entry("m", "/w", true),
+        entry("m", "/clone", true),
+        entry("m", "/gone", false),
+    ];
+    let admin = Fake {
+        survey,
+        pinned: Vec::new(),
+        applied: Vec::new(),
+    };
+    let mut projects = Projects::new(
+        admin,
+        FakeCheck {
+            found: Checked::Intact,
+        },
+    );
+    let shown = document(&ran(&["project", "show"], true, &mut projects));
+    assert_eq!(shown["shared_with"], json!(["/clone"]));
+    assert_eq!(
+        shown["problems"],
+        json!([
+            {"kind": "gone", "project_id": "m", "path": "/gone"},
+            {"kind": "orphan", "project_id": "stray", "database": "/h/.ctxloom/projects/stray"},
+            {"kind": "orphan", "project_id": "t", "database": "/h/.ctxloom/projects/t"},
+        ]),
+        "sharing is no problem"
     );
 }
 

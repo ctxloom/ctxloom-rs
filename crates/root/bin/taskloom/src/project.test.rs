@@ -93,6 +93,64 @@ fn kinds(problems: &Value) -> Vec<&str> {
 }
 
 #[test]
+fn test_a_second_clone_with_the_committed_marker_shares_the_project_by_design() {
+    // Clones share by default (decided 2026-10-21): the committed
+    // .project-id is the project, wherever it is checked out.
+    let world = World::new();
+    let first = world.tree("first");
+    let second = world.tree("second");
+    let id = world.add(&first, "the first clone's task");
+    fs::copy(first.join(".project-id"), second.join(".project-id")).unwrap();
+
+    // Before any heal, the second clone already reads and writes the store.
+    assert_eq!(world.texts(&second), ["the first clone's task"]);
+    let shown = world.json(&second, &["project", "show"]);
+    assert_eq!(shown["project_id"], id.as_str());
+    assert_eq!(
+        shown["shared_with"],
+        serde_json::json!([format!("{}", first.display())])
+    );
+    assert_eq!(
+        kinds(&shown["problems"]),
+        ["unregistered"],
+        "only unregistered"
+    );
+    let text = world.run(&second, &["project", "show", "--format", "text"]);
+    assert!(
+        text.stdout.contains(&format!(
+            "Shared:   {} (another tree holding the same project id: one project, one database)",
+            first.display()
+        )),
+        "{}",
+        text.stdout
+    );
+
+    // heal registers the second tree beside the first, and that is all.
+    let healed = world.json(&second, &["project", "heal", "--yes"]);
+    assert_eq!(healed["applied"], true);
+    assert_eq!(
+        healed["changes"],
+        serde_json::json!([{"kind": "register", "project_id": id, "path": second.display().to_string()}])
+    );
+    assert_eq!(healed["unresolved"], serde_json::json!([]));
+    let shown = world.json(&second, &["project", "show"]);
+    assert_eq!(kinds(&shown["problems"]), [""; 0], "sharing is no problem");
+    let from_first = world.json(&first, &["project", "show"]);
+    assert_eq!(
+        from_first["shared_with"],
+        serde_json::json!([second.display().to_string()]),
+        "and the first sees the second"
+    );
+
+    // An agent in either writes into the one list.
+    world.add(&second, "the second clone's task");
+    assert_eq!(
+        world.texts(&first),
+        ["the first clone's task", "the second clone's task"]
+    );
+}
+
+#[test]
 fn test_a_tree_that_forked_is_repointed_and_its_own_database_orphaned_then_removed() {
     let world = World::new();
     let original = world.tree("original");

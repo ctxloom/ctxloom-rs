@@ -98,7 +98,11 @@ cutover ("What remains").
 - `core/application/project-application`: `show`, `heal`, `repoint` and the
   orphaned databases, planned from the port's survey; it depends on no
   tasks crate. The marker is authoritative and the registry heals toward
-  it. A change is reported, and made only when asked, under the registry's
+  it. A second live tree holding the same id (a clone with the committed
+  marker) is the same project (Decided 4): `show` lists it under
+  `shared_with`, information and not a problem, and `heal` registers the
+  tree beside it. `repoint` onto an id another live tree holds needs
+  `--share`, unless the tree already resolves to that id. A change is reported, and made only when asked, under the registry's
   lock and only while a fresh survey matches the one it was planned from.
   `heal` first checks the resolved project's database through the
   `StoreCheck` port and reports damage as an unresolved finding (the
@@ -292,7 +296,9 @@ cutover ("What remains").
   to the original's and finds its tasks, its own database then reported
   orphaned and removed by name; a lost marker is shown and healed from the
   registry; a linked worktree made by `git worktree add` shares its
-  primary checkout's tasks and gets no marker. `heal` over a database
+  primary checkout's tasks and gets no marker; a second clone given the
+  first's marker reads and writes the same tasks at once, `show` names the
+  other tree as sharing, and `heal` registers it. `heal` over a database
   whose index was damaged in a copy (annals-store-sql's approach) reports
   the damage, code and args, in text and in the one JSON document, and
   leaves the file as it was; a sound database and a missing one are no
@@ -498,16 +504,6 @@ Where the port differs from Go:
 Each waits on a human decision, or on the step named; none is filed as a
 task.
 
-- **A clone with the committed marker writes to the original's database
-  unasked.** The marker is authoritative, so a second clone on the machine
-  resolves to the same id, and a write goes to the same database with no
-  refusal. `project show` reports it ("shared") and `project heal` will not
-  register it, but nothing stops the write, and there is no command to give
-  the clone an id of its own (repoint binds only to an existing id).
-  Decided 4 means repoint's refusal to keep them apart; a write needs the
-  same. Settle before the cutover registers `taskloom mcp` as ctxloom's
-  companion: a human decision (how a write, and repoint, keep the two
-  clones apart).
 - **`manage` keeps no records.** Writing Go's records needs hew's reversal
   text (a port of hew, or hew in Rust). A human decision: port it, keep a
   record of Rust's own (a new on-disk format), or accept the gap above.
@@ -548,8 +544,7 @@ Then parity and the cutover:
   `--global`, degraded mode, and launch flags reaching MCP handlers.
 - Run both binaries on the same inputs and compare.
 - Run the importer over every existing log, then switch the companion
-  registration to the Rust binary (the human's; the clone item under
-  "Open" settles first). Risk retired: ctxloom loading the Rust binary
+  registration to the Rust binary (the human's). Risk retired: ctxloom loading the Rust binary
   as its companion.
 
 Loose ends outside the steps:
@@ -663,8 +658,16 @@ restarted on a freed harp is under "Where it stands".
    at the project root and shared by taskloom and ctxloom. It replaces Go's
    `.ctxloom/project-id`, and unlike Go's marker (gitignored private state)
    it is committed, so a fresh clone keeps the project's id. Two clones on
-   one machine then claim the same id; `project repoint`'s refusal while the
-   other tree exists is what keeps them from sharing a store unasked. The id is resolved through
+   one machine then hold the same id, and they are the same project: they
+   share its store by design (decided 2026-10-21, "accept sharing as the
+   default"). `project show` names the other tree as sharing, and `project
+   heal` registers each. The accepted cost: an agent working in a scratch
+   clone writes into the shared task list. Revisit if that bites; the
+   remedy then is a way to give a clone an id of its own. `project
+   repoint`'s refusal still guards a tree with another id (or none) moving
+   onto an id a live tree holds, which merges two projects' work, so it
+   asks for `--share`; a tree that already resolves to the id is not
+   refused. The id is resolved through
    `~/.ctxloom/projects/index.yaml`, and the store is
    `~/.ctxloom/projects/<project-id>/state.db`. It is keyed by the id, not by
    a hash of the root path: the marker survives a move or a fresh clone, and
