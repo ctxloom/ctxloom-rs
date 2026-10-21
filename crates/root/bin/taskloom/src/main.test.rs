@@ -263,6 +263,12 @@ fn test_a_task_added_is_listed_in_text_with_its_project() {
         "{}",
         listed.stdout
     );
+    let json = env.list();
+    let created = json[0]["created_at"].as_str().expect("created_at");
+    assert!(
+        created.starts_with("20"),
+        "recorded at the clock's time: {created}"
+    );
     let marker = std::fs::read_to_string(env.project.path().join(".project-id")).unwrap();
     assert_eq!(
         marker.trim().split('-').count(),
