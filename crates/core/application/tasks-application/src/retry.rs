@@ -68,7 +68,7 @@ pub(crate) struct Runner<'a, C, D> {
 }
 
 impl<C: Clock, D: Delay + Jitter> Runner<'_, C, D> {
-    /// Run `book` (which carries `command_id`) on `store`, each attempt in a
+    /// Run `book` under `command_id` on `store`, each attempt in a
     /// fresh unit of work, until it commits, is refused, fails in a way a
     /// retry will not mend, or the attempts run out.
     pub async fn run<S: AsyncStore>(

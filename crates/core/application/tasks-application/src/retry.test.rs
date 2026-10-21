@@ -75,7 +75,7 @@ fn run_as(
         tags: Vec::new(),
         origin_session: String::new(),
     };
-    let book = book("swift-amber", add.into(), &command_id);
+    let book = book("swift-amber", add.into());
     let mut runner = Runner {
         registry: &registry,
         clock: &mut clock,

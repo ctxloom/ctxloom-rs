@@ -12,7 +12,7 @@ mod view;
 
 use std::future::Future;
 
-use annals::next::v1::{command_page, Command, CommandBook, CommandPage, Cover, Uuid};
+use annals::next::v1::{command_page, Command, CommandBook, CommandPage, Cover};
 use annals::next::{ids, AsyncEventStore, Payload, Registry, Rulebook, Stream, Upcaster};
 use annals_diagnostic::Report;
 use ports::{Clock, CommandIds, Delay, Jitter, Names, ProjectIdentity, TaskStores};
@@ -165,7 +165,7 @@ where
                 tags: task.tags.clone(),
                 origin_session: task.origin_session.clone(),
             };
-            let book = book(&harp_id, add.into(), &command_id);
+            let book = book(&harp_id, add.into());
             match runner.run(store, &book, &command_id).await? {
                 retry::Outcome::Handled(_) => {
                     let task = read(store, &self.registry, &harp_id)
@@ -193,7 +193,7 @@ where
             add: change.add,
             remove: change.remove,
         };
-        let book = book(&change.harp_id, retag.into(), &command_id);
+        let book = book(&change.harp_id, retag.into());
         let mut runner = retry::Runner {
             registry: &self.registry,
             clock: &mut self.clock,
@@ -253,15 +253,16 @@ fn cover(harp_id: &str) -> Cover {
     }
 }
 
-/// `command` for the task `harp_id`, under `command_id`.
-fn book(harp_id: &str, command: TaskCommand, command_id: &Uuid) -> CommandBook {
+/// `command` for the task `harp_id`. Its command id is left for the
+/// kernel to take from the [`Sampled`](annals::next::Sampled) the runner
+/// gives it, the same on every attempt.
+fn book(harp_id: &str, command: TaskCommand) -> CommandBook {
     CommandBook {
         cover: Some(cover(harp_id)),
         page: Some(CommandPage {
             body: Some(command_page::Body::Command(Command {
                 payload: Some(command.to_any()),
             })),
-            command_id: Some(command_id.clone()),
             ..CommandPage::default()
         }),
         handling: None,
