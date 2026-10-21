@@ -7,7 +7,10 @@
 //! one pinned (`--project`), `CTXLOOM_PROJECT_ID`, the marker
 //! `<root>/.project-id`, Go's older marker `<root>/.ctxloom/project-id`
 //! (adopted into `.project-id` on a write), and the registry entry for the
-//! root's path. A write with none of these mints an id, under the
+//! root's path. A linked worktree with no marker of its own (neither) is
+//! its primary checkout's project, found through git's common directory:
+//! resolved, bound and marked there, so no marker is written in the
+//! worktree to be committed and merged back over the primary's. A write with none of these mints an id, under the
 //! registry's lock, and binds it in both the registry and the marker; a read
 //! with none finds no project. The store is
 //! `~/.ctxloom/projects/<id>/state.db`.
@@ -19,6 +22,7 @@ mod error;
 mod id;
 mod index;
 mod path;
+mod worktree;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -91,6 +95,18 @@ impl<N: Names> ProjectRegistry<N> {
             .as_deref()
             .filter(|h| !h.as_os_str().is_empty())
             .ok_or(RegistryError::NoHome)
+    }
+
+    /// The directory the work root's identity is kept in: the work root
+    /// itself when it has a marker of its own or is no linked worktree,
+    /// else its primary checkout, so a linked worktree is its primary
+    /// checkout's project and writes no marker of its own.
+    pub fn identity_root(&self) -> Result<PathBuf, RegistryError> {
+        let root = self.work_root()?;
+        if has_marker(&root) {
+            return Ok(root);
+        }
+        Ok(worktree::primary_checkout(&root).unwrap_or(root))
     }
 
     /// The project `id` names, resolved for `root`.
@@ -170,7 +186,7 @@ impl<N: Names> ProjectRegistry<N> {
         pinned: Option<&str>,
         write: bool,
     ) -> Result<Option<Project>, RegistryError> {
-        let root = self.work_root()?;
+        let root = self.identity_root()?;
         let id = match self.pinned(pinned)? {
             Some(id) => Some(id),
             None => match self.bound(&root, write)? {
@@ -205,6 +221,12 @@ fn marker(root: &Path) -> PathBuf {
 /// Go's older, private marker.
 fn legacy_marker(root: &Path) -> PathBuf {
     root.join(".ctxloom").join("project-id")
+}
+
+/// Whether `root` holds a marker, either one, blank or not: a marker is
+/// the tree's own say in its identity.
+fn has_marker(root: &Path) -> bool {
+    marker(root).exists() || legacy_marker(root).exists()
 }
 
 /// The id a marker at `path` holds; none if it is absent or blank.
