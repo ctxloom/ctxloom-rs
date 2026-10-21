@@ -3,8 +3,8 @@
 //! project registry, harp names, the SQLite task store, the system's
 //! clock, ids, timer and randomness, taskloom's configuration, and Go
 //! taskloom's logs to import), mounts the `project` group beside the task
-//! commands, and hands the command line to the CLI. It holds no logic of its
-//! own.
+//! commands (over the registry and the SQLite store's integrity check),
+//! and hands the command line to the CLI. It holds no logic of its own.
 
 use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
@@ -61,7 +61,10 @@ fn main() -> ExitCode {
         project_id: std::env::var("CTXLOOM_PROJECT_ID").ok(),
     };
     let go_logs = GoTaskLogDir::in_home(env.home.as_deref());
-    let mut projects = Projects::new(ProjectRegistry::new(env.clone(), HarpNames));
+    let mut projects = Projects::new(
+        ProjectRegistry::new(env.clone(), HarpNames),
+        SqliteStores::default(),
+    );
     let home = env.home.clone();
     let identity = ProjectRegistry::new(env, HarpNames);
     // The work root's config, where there is a work root: a command that

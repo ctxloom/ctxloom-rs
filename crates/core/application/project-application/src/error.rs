@@ -8,7 +8,8 @@ use annals_diagnostic::{Arg, Diagnostic, Report};
 /// port's own diagnostic: its code, args and English.
 #[derive(Clone, PartialEq, Debug)]
 pub enum ProjectError {
-    /// The registry, a marker or the projects directory failed.
+    /// The registry, a marker or the projects directory failed, or the
+    /// check of a project's database could not run.
     Port(Report),
     /// A repoint to an id neither registered nor with a database.
     UnknownProject { id: String },

@@ -1,17 +1,21 @@
 //! Opening a project's store over a real filesystem, on a tokio runtime as
-//! the binary runs it.
+//! the binary runs it, and checking a database for damage.
 
 use std::future::Future;
 use std::path::{Path, PathBuf};
 
-use annals::next::v1::Cover;
-use annals::next::AsyncEventStore;
+use annals::next::v1::event_meta::Causation;
+use annals::next::v1::{Cover, EventMeta, EventPage, Uuid};
+use annals::next::{Any, AsyncEventStore};
 use annals_diagnostic::Diagnostic;
-use ports::{Project, TaskStores};
+use ports::{Checked, Project, StoreCheck, TaskStores};
 
 use annals_store_sql::sqlite::SqliteStore;
 
 use super::SqliteStores;
+
+#[path = "damage.test.rs"]
+mod damage;
 
 fn block_on<F: Future>(future: F) -> F::Output {
     tokio::runtime::Builder::new_current_thread()
@@ -275,4 +279,150 @@ fn test_a_read_that_fails_fails_with_the_read_only_opens_error() {
         .map(|found| found.is_some())
         .unwrap_err();
     assert_eq!(error.to_string(), read_only.to_string());
+}
+
+// ------------------------------------------------------------ the check
+
+/// The event at `sequence` of a stream, produced by command `command`.
+fn event(sequence: u64, command: u8) -> EventPage {
+    let id = Uuid::from_bytes([command; 16]);
+    EventPage {
+        payload: Some(Any {
+            type_url: "/test.v1.Event".to_string(),
+            value: sequence.to_be_bytes().to_vec(),
+        }),
+        meta: Some(EventMeta {
+            causation: Some(Causation::CommandId(id.clone())),
+            correlation_id: Some(id),
+            rules_version: "v1".to_string(),
+            ..EventMeta::default()
+        }),
+        sequence,
+    }
+}
+
+/// A database at `path` holding one stream of two events, closed, so the
+/// file holds everything (no write-ahead log left beside it). The store's
+/// connection closes on its own thread after the store is dropped, and the
+/// last connection's close checkpoints the log into the file and removes
+/// it: that removal is waited for, up to a deadline, as the sign the file
+/// is whole.
+fn written(path: &Path) {
+    let stream = Cover {
+        domain: "tasks".to_string(),
+        root: Some(Uuid::from_bytes([1; 16])),
+        edition: None,
+    };
+    let mut stores = SqliteStores::default();
+    block_on(async {
+        let store = stores
+            .open(&project("p", path.to_path_buf()))
+            .await
+            .unwrap();
+        store
+            .append(&stream, 0, &[event(0, 1), event(1, 2)])
+            .await
+            .unwrap();
+    });
+    drop(stores);
+    let mut wal = path.as_os_str().to_owned();
+    wal.push("-wal");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while std::path::Path::new(&wal).exists() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the store's connection never closed: its log is still beside the file"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
+/// A copy of the database at `path`, at `copy`, its command index's root
+/// page changed by `tamper`.
+fn damaged_copy(path: &Path, copy: &Path, tamper: impl FnOnce(&mut [u8])) {
+    let file = damage::damaged(&std::fs::read(path).unwrap(), "events_by_command", tamper);
+    std::fs::create_dir_all(copy.parent().unwrap()).unwrap();
+    std::fs::write(copy, file).unwrap();
+}
+
+#[test]
+fn test_a_sound_database_checks_intact() {
+    let home = tempfile::tempdir().unwrap();
+    let path = store_in(home.path(), "p");
+    written(&path);
+    assert_eq!(SqliteStores::default().check(&path), Ok(Checked::Intact));
+}
+
+#[test]
+fn test_the_check_runs_from_inside_a_runtime_as_the_binary_calls_it() {
+    let home = tempfile::tempdir().unwrap();
+    let path = store_in(home.path(), "p");
+    written(&path);
+    let checked = block_on(async { SqliteStores::default().check(&path) });
+    assert_eq!(checked, Ok(Checked::Intact));
+}
+
+#[test]
+fn test_a_damaged_copy_is_reported_as_the_stores_damage_and_left_as_it_was() {
+    let home = tempfile::tempdir().unwrap();
+    let (path, copy) = (store_in(home.path(), "p"), store_in(home.path(), "copy"));
+    written(&path);
+    // The page's last byte is the last entry's last key byte: the page
+    // still reads, and the entry no longer matches its row.
+    damaged_copy(&path, &copy, |page| *page.last_mut().unwrap() ^= 1);
+    let before = std::fs::read(&copy).unwrap();
+    let Ok(Checked::Damaged(damage)) = SqliteStores::default().check(&copy) else {
+        panic!("the damage went unseen");
+    };
+    assert_eq!(damage.code(), "annals-store-sql-damaged");
+    let args = damage.args();
+    let first = args
+        .iter()
+        .find(|(name, _)| *name == "first")
+        .map(|(_, a)| a);
+    assert!(
+        matches!(first, Some(annals_diagnostic::Arg::Str(p)) if p.contains("events_by_command")),
+        "{args:?}"
+    );
+    assert_eq!(std::fs::read(&copy).unwrap(), before, "never repaired");
+    assert_eq!(
+        SqliteStores::default().check(&path),
+        Ok(Checked::Intact),
+        "the original is sound"
+    );
+}
+
+#[test]
+fn test_a_page_beyond_reading_is_damage_not_a_failure_to_check() {
+    let home = tempfile::tempdir().unwrap();
+    let (path, copy) = (store_in(home.path(), "p"), store_in(home.path(), "copy"));
+    written(&path);
+    damaged_copy(&path, &copy, |page| page.fill(0xff));
+    let Ok(Checked::Damaged(damage)) = SqliteStores::default().check(&copy) else {
+        panic!("the damage went unseen");
+    };
+    assert_eq!(damage.code(), "annals-store-sql-damaged");
+}
+
+#[test]
+fn test_no_database_is_absent_not_damage_and_creates_nothing() {
+    let home = tempfile::tempdir().unwrap();
+    let path = store_in(home.path(), "p");
+    assert_eq!(SqliteStores::default().check(&path), Ok(Checked::Absent));
+    assert!(!home.path().join(".ctxloom").exists(), "nothing created");
+}
+
+#[test]
+fn test_a_check_that_cannot_run_fails_with_the_stores_error() {
+    let home = tempfile::tempdir().unwrap();
+    // A directory where the database file goes.
+    let path = home.path().join("state.db");
+    std::fs::create_dir(&path).unwrap();
+    let failed = SqliteStores::default().check(&path).unwrap_err();
+    assert_eq!(failed.code(), "annals-next-store-unavailable");
+    let cause = failed.args().into_iter().find(|(name, _)| *name == "error");
+    assert!(
+        matches!(&cause, Some((_, annals_diagnostic::Arg::Nested(c))) if c.code() == "annals-store-sql-unavailable"),
+        "{cause:?}"
+    );
 }

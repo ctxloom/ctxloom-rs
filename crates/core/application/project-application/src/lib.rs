@@ -1,6 +1,6 @@
 //! The project use cases: what a directory's identity rests on and where
-//! it is inconsistent (`show`), repairing marker and registry skew
-//! (`heal`), binding a directory to an existing project (`repoint`), and
+//! it is inconsistent (`show`), repairing marker and registry skew and
+//! checking the project's database for damage (`heal`), binding a directory to an existing project (`repoint`), and
 //! the databases no live registered path points at (`orphans`, removed
 //! only by name).
 //!
@@ -9,7 +9,9 @@
 //! here from a [`Survey`], shown, and made through [`ProjectAdmin::apply`]
 //! only when asked, which refuses if the survey is stale. A database is
 //! never rewritten: binding a directory elsewhere changes its marker and
-//! the registry, and the database it was bound to stays, orphaned.
+//! the registry, and the database it was bound to stays, orphaned. Nor is
+//! it repaired: damage [`StoreCheck`] finds in it is reported, never
+//! changed.
 //!
 //! Nothing here depends on tasks, so any binary can present these.
 
@@ -17,8 +19,10 @@ mod error;
 
 use std::path::PathBuf;
 
+use annals_diagnostic::Report;
+
 pub use error::{diagnostic_samples, ProjectError, EN_US};
-pub use ports::{Change, IdSource, ProjectAdmin, Registered, Survey};
+pub use ports::{Change, Checked, IdSource, ProjectAdmin, Registered, StoreCheck, Survey};
 
 /// Something about a directory's identity, or the registry, that is not as
 /// it should be.
@@ -44,6 +48,13 @@ pub enum Problem {
     Gone { id: String, path: String },
     /// A database no live registered path points at.
     Orphan { id: String, database: PathBuf },
+    /// The project's database reported damage in its own file: the
+    /// store's diagnostic of it. Nothing here repairs it.
+    Damaged {
+        id: String,
+        database: PathBuf,
+        damage: Report,
+    },
 }
 
 /// What `project show` shows.
@@ -70,19 +81,26 @@ pub struct Plan {
     pub previous: Option<String>,
 }
 
-/// The project use cases, over the port.
-pub struct Projects<A> {
+/// The project use cases, over the ports: the registry and markers, and
+/// the check of a project's database.
+pub struct Projects<A, C> {
     admin: A,
+    checks: C,
 }
 
-impl<A: ProjectAdmin> Projects<A> {
-    pub fn new(admin: A) -> Self {
-        Projects { admin }
+impl<A: ProjectAdmin, C: StoreCheck> Projects<A, C> {
+    pub fn new(admin: A, checks: C) -> Self {
+        Projects { admin, checks }
     }
 
-    /// The port it runs over.
+    /// The registry's port it runs over.
     pub fn admin(&self) -> &A {
         &self.admin
+    }
+
+    /// The database check it runs over.
+    pub fn checks(&self) -> &C {
+        &self.checks
     }
 
     /// What the working directory's identity rests on, and every
@@ -105,8 +123,14 @@ impl<A: ProjectAdmin> Projects<A> {
     /// whose paths are gone, a moved tree's), unregister what else the
     /// root is registered as, write a missing marker from the registry's
     /// one entry, and adopt Go's older marker. Made only when `apply`.
+    ///
+    /// The resolved project's database is checked first, read-only, and
+    /// damage found is left unresolved: reported, never repaired. No
+    /// database is no damage. A check that cannot run fails the heal
+    /// before anything is changed.
     pub fn heal(&mut self, apply: bool) -> Result<Plan, ProjectError> {
         let survey = self.admin.survey(None).map_err(ProjectError::Port)?;
+        let damaged = self.damage(&survey)?;
         let root = survey.root.as_str();
         let at_root = ids_at(&survey, root);
         let mut plan = Plan::default();
@@ -133,7 +157,26 @@ impl<A: ProjectAdmin> Projects<A> {
                 }),
             },
         }
+        plan.unresolved.extend(damaged);
         self.make(&survey, plan, apply)
+    }
+
+    /// The damage the check finds in the resolved project's database; none
+    /// when there is no project or no database.
+    fn damage(&mut self, survey: &Survey) -> Result<Option<Problem>, ProjectError> {
+        let Some((id, _)) = &survey.resolved else {
+            return Ok(None);
+        };
+        let database = survey.store(id);
+        let checked = self.checks.check(&database).map_err(ProjectError::Port)?;
+        Ok(match checked {
+            Checked::Damaged(damage) => Some(Problem::Damaged {
+                id: id.clone(),
+                database,
+                damage,
+            }),
+            Checked::Absent | Checked::Intact => None,
+        })
     }
 
     /// Bind the work root to the existing project `id`: its marker, and

@@ -2,12 +2,14 @@
 //! command asks for, and how its answer is written.
 
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use annals_diagnostic::Report;
 use clap::Parser;
 use presentation::{Catalog, Format};
-use project_application::{Change, IdSource, ProjectAdmin, Projects, Registered, Survey};
+use project_application::{
+    Change, Checked, IdSource, ProjectAdmin, Projects, Registered, StoreCheck, Survey,
+};
 use serde_json::{json, Value};
 
 use super::{run, Group, OrphansAction, ProjectCommand, Settings};
@@ -43,6 +45,17 @@ impl ProjectAdmin for Fake {
     }
 }
 
+/// A database check answering `found`.
+struct FakeCheck {
+    found: Checked,
+}
+
+impl StoreCheck for FakeCheck {
+    fn check(&mut self, _: &Path) -> Result<Checked, Report> {
+        Ok(self.found.clone())
+    }
+}
+
 fn entry(id: &str, path: &str, exists: bool) -> Registered {
     Registered {
         id: id.to_string(),
@@ -53,8 +66,13 @@ fn entry(id: &str, path: &str, exists: bool) -> Registered {
 }
 
 /// /w marked `m` but registered as `a`; a stray database.
-fn projects() -> Projects<Fake> {
-    Projects::new(Fake {
+fn projects() -> Projects<Fake, FakeCheck> {
+    checked(Checked::Intact)
+}
+
+/// [`projects`], its database's check finding `found`.
+fn checked(found: Checked) -> Projects<Fake, FakeCheck> {
+    let admin = Fake {
         survey: Survey {
             work_root: "/w".to_string(),
             root: "/w".to_string(),
@@ -67,11 +85,24 @@ fn projects() -> Projects<Fake> {
         },
         pinned: Vec::new(),
         applied: Vec::new(),
-    })
+    };
+    Projects::new(admin, FakeCheck { found })
 }
 
+/// A store's damage, its catalog message differing from its English.
+const STORE: (&str, &str) = (
+    "fake-store",
+    "fake-store-damaged = from the catalog: { $first } (+{ $more })\n",
+);
+
 fn catalog() -> Catalog {
-    Catalog::en_us(&[project_application::EN_US, super::EN_US]).expect("the catalog loads")
+    Catalog::en_us(&[project_application::EN_US, super::EN_US, STORE]).expect("the catalog loads")
+}
+
+fn damage() -> Report {
+    Report::new("fake-store-damaged", "the English")
+        .arg("first", "row 2 missing from index i")
+        .arg("more", 1u64)
 }
 
 fn format(json: bool) -> Format {
@@ -88,7 +119,7 @@ struct Ran {
     err: String,
 }
 
-fn ran(args: &[&str], json: bool, projects: &mut Projects<Fake>) -> Ran {
+fn ran(args: &[&str], json: bool, projects: &mut Projects<Fake, FakeCheck>) -> Ran {
     let settings = Settings {
         format: format(json),
         project: None,
@@ -221,6 +252,36 @@ fn test_heal_reports_and_changes_only_with_yes() {
 }
 
 #[test]
+fn test_heal_reports_damage_from_the_catalog_in_one_document_or_a_line() {
+    let mut projects = checked(Checked::Damaged(damage()));
+    let found = ran(&["project", "heal"], true, &mut projects);
+    assert_eq!(
+        document(&found)["unresolved"],
+        json!([{
+            "kind": "damaged",
+            "project_id": "m",
+            "database": "/h/.ctxloom/projects/m/state.db",
+            "damage": {
+                "code": "fake-store-damaged",
+                "args": {"first": "row 2 missing from index i", "more": 1},
+                "message": "from the catalog: row 2 missing from index i (+1)",
+            },
+        }])
+    );
+    let found = ran(&["project", "heal"], false, &mut projects);
+    assert_eq!(found.code, 0);
+    assert!(
+        found.out.ends_with(
+            "Not resolved:\n  - /h/.ctxloom/projects/m/state.db, the database of m: \
+             from the catalog: row 2 missing from index i (+1); \
+             heal reports damage and does not repair it\n"
+        ),
+        "{}",
+        found.out
+    );
+}
+
+#[test]
 fn test_repoint_reports_what_it_was() {
     let ran = ran(&["project", "repoint", "t"], true, &mut projects());
     let doc = document(&ran);
@@ -285,7 +346,7 @@ fn test_orphans_are_listed_and_removed_by_name() {
     );
 }
 
-fn projects_applied(projects: &Projects<Fake>) -> Vec<Vec<Change>> {
+fn projects_applied(projects: &Projects<Fake, FakeCheck>) -> Vec<Vec<Change>> {
     projects.admin().applied.clone()
 }
 

@@ -1,7 +1,7 @@
 [package]
 name = "project-application"
 version = "0.1.0"
-description = "The project use cases: show what a directory's identity rests on, heal its skew, repoint it, and list and remove orphaned databases"
+description = "The project use cases: show what a directory's identity rests on, heal its skew and check its database for damage, repoint it, and list and remove orphaned databases"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

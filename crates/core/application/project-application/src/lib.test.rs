@@ -1,12 +1,14 @@
-//! The use cases over a fake port: what each finds in a survey, what it
-//! would change, and that it changes it only when asked.
+//! The use cases over fake ports: what each finds in a survey and in the
+//! check of a database, what it would change, and that it changes it only
+//! when asked.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use annals_diagnostic::Report;
 
 use super::{
-    Change, IdSource, Plan, Problem, ProjectAdmin, ProjectError, Projects, Registered, Survey,
+    Change, Checked, IdSource, Plan, Problem, ProjectAdmin, ProjectError, Projects, Registered,
+    StoreCheck, Survey,
 };
 
 /// A survey answered, and every apply recorded.
@@ -38,6 +40,19 @@ impl ProjectAdmin for Fake {
     }
 }
 
+/// A database check answered, and every database checked recorded.
+struct FakeCheck {
+    found: Result<Checked, Report>,
+    checked: Vec<PathBuf>,
+}
+
+impl StoreCheck for FakeCheck {
+    fn check(&mut self, store: &Path) -> Result<Checked, Report> {
+        self.checked.push(store.to_path_buf());
+        self.found.clone()
+    }
+}
+
 fn entry(id: &str, path: &str, exists: bool) -> Registered {
     Registered {
         id: id.to_string(),
@@ -61,13 +76,33 @@ fn survey() -> Survey {
     }
 }
 
-fn projects(survey: Survey) -> Projects<Fake> {
-    Projects::new(Fake {
-        survey,
-        surveyed: Vec::new(),
-        applied: Vec::new(),
-        refuse: None,
-    })
+fn projects(survey: Survey) -> Projects<Fake, FakeCheck> {
+    checked(survey, Ok(Checked::Absent))
+}
+
+/// The use cases over `survey`, its database's check finding `found`.
+fn checked(survey: Survey, found: Result<Checked, Report>) -> Projects<Fake, FakeCheck> {
+    Projects::new(
+        Fake {
+            survey,
+            surveyed: Vec::new(),
+            applied: Vec::new(),
+            refuse: None,
+        },
+        FakeCheck {
+            found,
+            checked: Vec::new(),
+        },
+    )
+}
+
+fn damage() -> Report {
+    Report::new(
+        "annals-store-sql-damaged",
+        "the database file is damaged: row 2 missing from index i",
+    )
+    .arg("first", "row 2 missing from index i")
+    .arg("more", 0u64)
 }
 
 fn marked(id: &str) -> Survey {
@@ -354,6 +389,64 @@ fn test_heal_of_a_consistent_or_unbound_root_changes_nothing() {
     consistent.registry = vec![entry("m", "/w", true)];
     assert_eq!(projects(consistent).heal(true).unwrap(), Plan::default());
     assert_eq!(projects(survey()).heal(true).unwrap(), Plan::default());
+}
+
+#[test]
+fn test_heal_checks_the_resolved_projects_database_and_reports_damage_unrepaired() {
+    let mut survey = marked("m");
+    survey.registry = vec![entry("a", "/w", true)];
+    let mut projects = checked(survey.clone(), Ok(Checked::Damaged(damage())));
+    let found = Problem::Damaged {
+        id: s("m"),
+        database: PathBuf::from("/h/.ctxloom/projects/m/state.db"),
+        damage: damage(),
+    };
+    let plan = projects.heal(false).unwrap();
+    assert_eq!(plan.unresolved, std::slice::from_ref(&found));
+    assert_eq!(
+        plan.changes,
+        [register("m", "/w"), unregister("a", "/w")],
+        "the skew is healed as ever, the damage left alone"
+    );
+    let applied = projects.heal(true).unwrap();
+    assert!(applied.applied);
+    assert_eq!(applied.unresolved, [found], "reported when applying too");
+    assert_eq!(projects.admin.applied, [(survey, plan.changes)]);
+    assert_eq!(
+        projects.checks().checked,
+        [
+            PathBuf::from("/h/.ctxloom/projects/m/state.db"),
+            PathBuf::from("/h/.ctxloom/projects/m/state.db"),
+        ]
+    );
+}
+
+#[test]
+fn test_heal_finds_nothing_in_an_intact_or_absent_database() {
+    for found in [Checked::Intact, Checked::Absent] {
+        let mut consistent = marked("m");
+        consistent.registry = vec![entry("m", "/w", true)];
+        let mut projects = checked(consistent, Ok(found));
+        assert_eq!(projects.heal(true).unwrap(), Plan::default());
+        assert_eq!(projects.checks().checked.len(), 1);
+    }
+}
+
+#[test]
+fn test_heal_with_no_project_checks_no_database() {
+    let mut projects = checked(survey(), Ok(Checked::Damaged(damage())));
+    assert_eq!(projects.heal(true).unwrap(), Plan::default());
+    assert!(projects.checks().checked.is_empty());
+}
+
+#[test]
+fn test_a_check_that_cannot_run_fails_the_heal_changing_nothing() {
+    let failed = Report::new("annals-store-sql-unavailable", "locked");
+    let mut survey = marked("m");
+    survey.registry = vec![entry("a", "/w", true)];
+    let mut projects = checked(survey, Err(failed.clone()));
+    assert_eq!(projects.heal(true).unwrap_err(), ProjectError::Port(failed));
+    assert!(projects.admin.applied.is_empty());
 }
 
 // ------------------------------------------------------------ repoint

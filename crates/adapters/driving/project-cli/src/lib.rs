@@ -6,8 +6,8 @@
 //!
 //! A binary flattens [`Group`] into its own subcommands, parses its own
 //! global flags (the format, the pinned project), and hands the group,
-//! those and its catalog (with this crate's [`EN_US`] and the use cases')
-//! to [`run`]. Exit 0, or 1 with the error on stderr: its catalog message
+//! those and its catalog (with this crate's [`EN_US`], the use cases' and
+//! the store's, whose damage `heal` reports) to [`run`]. Exit 0, or 1 with the error on stderr: its catalog message
 //! in text, its envelope in JSON.
 
 mod error;
@@ -17,7 +17,7 @@ use std::io::{self, Write};
 
 use clap::Subcommand;
 use presentation::{Catalog, Format};
-use project_application::{ProjectAdmin, Projects};
+use project_application::{ProjectAdmin, Projects, StoreCheck};
 
 pub use error::{diagnostic_samples, CliError, EN_US};
 pub use render::{
@@ -39,8 +39,9 @@ pub enum ProjectCommand {
     /// entries and database, and every inconsistency found.
     Show,
     /// Repair the skew between this directory's .project-id and the
-    /// registry, toward the marker. Reports what it would change; --yes
-    /// changes it.
+    /// registry, toward the marker, and check the project's database for
+    /// damage, which it reports and never repairs. Reports what it would
+    /// change; --yes changes it.
     Heal {
         /// Make the changes.
         #[arg(long)]
@@ -93,16 +94,16 @@ pub struct Settings {
 
 /// Run `group` against `projects`, writing to `out` and `err` with
 /// messages from `catalog`; the exit code.
-pub fn run<A: ProjectAdmin>(
+pub fn run<A: ProjectAdmin, C: StoreCheck>(
     group: Group,
     settings: &Settings,
     catalog: &Catalog,
-    projects: &mut Projects<A>,
+    projects: &mut Projects<A, C>,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> u8 {
     let Group::Project(command) = group;
-    match answer(command, settings, projects, out) {
+    match answer(command, settings, catalog, projects, out) {
         Ok(()) => 0,
         Err(error) => {
             let _ = report(&error, settings, catalog, err);
@@ -125,10 +126,11 @@ fn report(
     }
 }
 
-fn answer<A: ProjectAdmin>(
+fn answer<A: ProjectAdmin, C: StoreCheck>(
     command: ProjectCommand,
     settings: &Settings,
-    projects: &mut Projects<A>,
+    catalog: &Catalog,
+    projects: &mut Projects<A, C>,
     out: &mut dyn Write,
 ) -> Result<(), CliError> {
     let wrote = match command {
@@ -136,11 +138,11 @@ fn answer<A: ProjectAdmin>(
             let shown = projects
                 .show(settings.project.as_deref())
                 .map_err(CliError::Project)?;
-            presentation::render(out, settings.format, &Show(&shown))
+            presentation::render(out, settings.format, &Show(&shown, catalog))
         }
         ProjectCommand::Heal { yes } => {
             let plan = projects.heal(yes).map_err(CliError::Project)?;
-            presentation::render(out, settings.format, &Planned(&plan))
+            presentation::render(out, settings.format, &Planned(&plan, catalog))
         }
         ProjectCommand::Repoint {
             project_id,
@@ -150,7 +152,7 @@ fn answer<A: ProjectAdmin>(
             let plan = projects
                 .repoint(&project_id, share, yes)
                 .map_err(CliError::Project)?;
-            presentation::render(out, settings.format, &Planned(&plan))
+            presentation::render(out, settings.format, &Planned(&plan, catalog))
         }
         ProjectCommand::Orphans { action: None } => {
             let orphans = projects.orphans().map_err(CliError::Project)?;
@@ -162,7 +164,7 @@ fn answer<A: ProjectAdmin>(
             let plan = projects
                 .remove_orphans(&project_ids, yes)
                 .map_err(CliError::Project)?;
-            presentation::render(out, settings.format, &Planned(&plan))
+            presentation::render(out, settings.format, &Planned(&plan, catalog))
         }
     };
     wrote.map_err(output_failed)

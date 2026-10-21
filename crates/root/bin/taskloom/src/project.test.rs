@@ -6,10 +6,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use ports::TaskStores;
 use serde_json::Value;
+use task_store_sqlite::SqliteStores;
 use tempfile::TempDir;
 
 use super::{binary, Ran};
+
+#[path = "../../../../adapters/driven/task-store-sqlite/src/damage.test.rs"]
+mod damage;
 
 /// A temporary home, and trees made in a temporary directory beside it.
 struct World {
@@ -245,4 +250,113 @@ fn test_every_project_command_answers_as_text_too() {
             .exists(),
         "a read binds nothing"
     );
+}
+
+/// Open the database at `path` in this process and close it, waiting for
+/// the close: the last connection's close checkpoints the write-ahead log
+/// a process left behind into the file and removes it, so the file is
+/// whole. Its removal is the sign, waited for up to a deadline.
+fn settled(path: &Path) {
+    let project = ports::Project {
+        id: "settling".to_string(),
+        root: "/".to_string(),
+        store: path.to_path_buf(),
+    };
+    let mut stores = SqliteStores::default();
+    tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+        .unwrap()
+        .block_on(async { stores.open(&project).await.map(drop) })
+        .expect("the database opens to write");
+    drop(stores);
+    let mut wal = path.as_os_str().to_owned();
+    wal.push("-wal");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while Path::new(&wal).exists() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the database's log is still beside it"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
+#[test]
+fn test_heal_reports_a_damaged_database_from_the_catalog_and_leaves_it_damaged() {
+    let world = World::new();
+    let tree = world.tree("tree");
+    let id = world.add(&tree, "a task");
+    let database = world.database(&id).join("state.db");
+    settled(&database);
+    // Damaged in a copy, then put in the database's place.
+    let copy = world.trees.path().join("copy.db");
+    fs::write(
+        &copy,
+        damage::damaged(&fs::read(&database).unwrap(), "events_by_command", |page| {
+            *page.last_mut().unwrap() ^= 1;
+        }),
+    )
+    .unwrap();
+    fs::rename(&copy, &database).unwrap();
+    let before = fs::read(&database).unwrap();
+
+    let found = world.json(&tree, &["project", "heal", "--yes"]);
+    assert_eq!(found["changes"], Value::Array(vec![]), "nothing to repair");
+    assert_eq!(kinds(&found["unresolved"]), ["damaged"]);
+    let damaged = &found["unresolved"][0];
+    assert_eq!(damaged["project_id"], id.as_str());
+    assert_eq!(damaged["database"], database.display().to_string());
+    let damage = &damaged["damage"];
+    assert_eq!(damage["code"], "annals-store-sql-damaged");
+    let first = damage["args"]["first"].as_str().expect("the first problem");
+    assert!(first.contains("events_by_command"), "{damage}");
+    assert!(damage["args"]["more"].is_u64(), "{damage}");
+    assert!(
+        damage["message"]
+            .as_str()
+            .unwrap()
+            .starts_with(&format!("the database file is damaged: {first}")),
+        "{damage}"
+    );
+
+    let text = world.run(&tree, &["project", "heal", "--format", "text"]);
+    assert!(text.ok, "{}", text.stderr);
+    assert!(
+        text.stdout.contains(&format!(
+            "Not resolved:\n  - {}, the database of {id}: the database file is damaged: {first}",
+            database.display()
+        )),
+        "{}",
+        text.stdout
+    );
+    assert!(
+        text.stdout
+            .contains("heal reports damage and does not repair it"),
+        "{}",
+        text.stdout
+    );
+    assert_eq!(fs::read(&database).unwrap(), before, "never repaired");
+}
+
+#[test]
+fn test_heal_finds_no_damage_in_a_sound_database() {
+    let world = World::new();
+    let tree = world.tree("tree");
+    world.add(&tree, "a task");
+    let healed = world.json(&tree, &["project", "heal"]);
+    assert_eq!(healed["unresolved"], Value::Array(vec![]));
+    let text = world.run(&tree, &["project", "heal", "--format", "text"]);
+    assert_eq!(text.stdout, "Nothing to change.\n");
+}
+
+#[test]
+fn test_heal_of_a_project_with_no_database_is_no_damage_and_creates_none() {
+    let world = World::new();
+    let tree = world.tree("tree");
+    let id = world.add(&tree, "a task");
+    fs::remove_dir_all(world.database(&id)).unwrap();
+    let healed = world.json(&tree, &["project", "heal", "--yes"]);
+    assert_eq!(healed["unresolved"], Value::Array(vec![]));
+    assert!(!world.database(&id).exists(), "the check created nothing");
 }
