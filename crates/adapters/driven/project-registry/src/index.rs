@@ -207,15 +207,19 @@ pub(crate) fn take_once(
 pub(crate) fn until(lock_path: &Path, wait: Duration) -> impl FnMut() -> Result<(), RegistryError> {
     let deadline = Instant::now() + wait;
     let path = lock_path.display().to_string();
-    move || match deadline.checked_duration_since(Instant::now()) {
-        Some(left) if !left.is_zero() => {
-            std::thread::sleep(left.min(LOCK_POLL));
-            Ok(())
+    move || {
+        let now = Instant::now();
+        // None exactly while the deadline is still ahead.
+        match now.checked_duration_since(deadline) {
+            None => {
+                std::thread::sleep((deadline - now).min(LOCK_POLL));
+                Ok(())
+            }
+            Some(_) => Err(RegistryError::LockTimeout {
+                path: path.clone(),
+                waited_ms: u64::try_from(wait.as_millis()).unwrap_or(u64::MAX),
+            }),
         }
-        _ => Err(RegistryError::LockTimeout {
-            path: path.clone(),
-            waited_ms: u64::try_from(wait.as_millis()).unwrap_or(u64::MAX),
-        }),
     }
 }
 
