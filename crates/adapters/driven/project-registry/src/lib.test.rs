@@ -432,6 +432,28 @@ fn test_binding_under_the_lock_takes_the_id_another_process_bound_first() {
 }
 
 #[test]
+fn test_a_custom_lock_wait_is_the_one_a_write_waits_for() {
+    // The lock is held here, through the registry's own lock file, so the
+    // write must wait: it gives up after its short wait, long before the
+    // default would have.
+    let world = World::new();
+    let held = index::lock_within(&index::path(world.home.path()), index::LOCK_WAIT).unwrap();
+    let wait = std::time::Duration::from_millis(50);
+    let mut registry = world.registry(&["never-minted"]).with_lock_wait(wait);
+    let started = std::time::Instant::now();
+    let error = registry.for_write(None).unwrap_err();
+    let waited = started.elapsed();
+    assert_eq!(error.code(), "project-registry-lock-timeout");
+    assert!(waited >= wait, "it waited its wait: {waited:?}");
+    assert!(
+        waited < index::LOCK_WAIT / 2,
+        "it gave up long before the default wait: {waited:?}"
+    );
+    assert_eq!(registry.names.minted, 0);
+    drop(held);
+}
+
+#[test]
 fn test_without_a_home_there_is_no_store_and_no_registry() {
     let world = World::new();
     for home in [None, Some(PathBuf::new())] {
