@@ -164,10 +164,8 @@ message TextEdited {
 message Retagged {
   option (io.angzarr.v1.event) = {component: "ctxloom.tasks.v1.TaskState"};
 
-  reserved 1, 2;
-  reserved "added", "removed";
   // The task's tags after the retag, normalized.
-  repeated string tags = 3;
+  repeated string tags = 1;
 }
 
 message TaskRemoved {
