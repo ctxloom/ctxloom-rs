@@ -1,0 +1,18 @@
+[package]
+name = "registration-application"
+version = "0.1.0"
+description = "The registration use cases: write an MCP server into agents' configurations, take it out, and report where it is registered"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+annals-diagnostic.workspace = true
+ports.workspace = true
+
+[dev-dependencies]
+fluent-syntax.workspace = true
+
+[lints]
+workspace = true

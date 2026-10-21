@@ -1,0 +1,22 @@
+[package]
+name = "agent-configs"
+version = "0.1.0"
+description = "Agents' MCP configurations (Claude Code's ~/.claude.json and .mcp.json) behind the AgentConfigs port: one server written in or taken out, every other byte kept, as Go taskloom's manage writes them"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+annals-diagnostic.workspace = true
+ports.workspace = true
+serde.workspace = true
+serde_norway.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+fluent-syntax.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

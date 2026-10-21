@@ -9,6 +9,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
+name = "agent-configs"
+version = "0.1.0"
+dependencies = [
+ "annals-diagnostic 0.1.0",
+ "fluent-syntax",
+ "ports",
+ "serde",
+ "serde_norway",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1656,6 +1669,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
+name = "registration-application"
+version = "0.1.0"
+dependencies = [
+ "annals-diagnostic 0.1.0",
+ "fluent-syntax",
+ "ports",
+]
+
+[[package]]
+name = "registration-cli"
+version = "0.1.0"
+dependencies = [
+ "annals-diagnostic 0.1.0",
+ "clap",
+ "fluent-syntax",
+ "mutants",
+ "ports",
+ "presentation",
+ "registration-application",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rmcp"
 version = "3.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2293,6 +2330,7 @@ dependencies = [
 name = "taskloom"
 version = "0.1.0"
 dependencies = [
+ "agent-configs",
  "annals",
  "annals-diagnostic 0.1.0",
  "clap",
@@ -2303,6 +2341,8 @@ dependencies = [
  "project-application",
  "project-cli",
  "project-registry",
+ "registration-application",
+ "registration-cli",
  "serde",
  "serde_json",
  "system",

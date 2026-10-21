@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "taskloom": { "args": ["mcp"], "command": "taskloom" }
+  }
+}

@@ -1,12 +1,12 @@
 //! Acceptance: `taskloom watch`, the real binary in a temporary home: its
 //! first line at once, a line for a task another process adds, one JSON
-//! document a line, and a clean exit at SIGINT or SIGTERM with no process
-//! left behind. The test waits on the stream's lines (each wait bounded,
+//! document a line, and a clean exit at SIGINT or SIGTERM, or when its
+//! stdin closes, so no process is left behind even by a test that dies. The test waits on the stream's lines (each wait bounded,
 //! so a stream that never answers fails rather than hangs), never on a
 //! sleep.
 
 use std::io::{BufRead, BufReader};
-use std::process::{Child, Command, ExitStatus, Stdio};
+use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::time::Duration;
 
@@ -20,6 +20,8 @@ const PATIENCE: Duration = Duration::from_secs(30);
 /// A running `taskloom watch`, killed if a test ends with it still running.
 pub(super) struct Watching {
     child: Option<Child>,
+    /// Held open: the watch ends when it closes.
+    stdin: Option<ChildStdin>,
     lines: Receiver<String>,
 }
 
@@ -32,7 +34,7 @@ impl Watching {
             .env_clear()
             .env("HOME", env.home.path())
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
-            .stdin(Stdio::null())
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
@@ -48,6 +50,7 @@ impl Watching {
             }
         });
         Watching {
+            stdin: child.stdin.take(),
             child: Some(child),
             lines,
         }
@@ -70,6 +73,19 @@ impl Watching {
             .expect("kill runs");
         assert!(sent.success(), "kill -{signal}");
         let status = child.wait().expect("watch ends");
+        self.finish(status)
+    }
+
+    /// Close stdin and wait for the process to end.
+    pub(super) fn close(mut self) -> ExitStatus {
+        let mut child = self.child.take().unwrap();
+        drop(self.stdin.take());
+        let status = child.wait().expect("watch ends");
+        self.finish(status)
+    }
+
+    /// `status`, once nothing more was written.
+    fn finish(&self, status: ExitStatus) -> ExitStatus {
         match self.lines.recv_timeout(PATIENCE) {
             Err(RecvTimeoutError::Disconnected) => {}
             other => panic!("watch wrote more, or its stdout stayed open: {other:?}"),
@@ -150,4 +166,14 @@ fn test_watch_where_there_is_no_project_says_so_and_binds_none() {
     assert!(!ran.ok);
     assert_eq!(ran.stdout, "", "an error leaves stdout empty");
     assert_eq!(one_document(&ran.stderr)["code"], "tasks-watch-no-project");
+}
+
+#[test]
+fn test_watch_ends_cleanly_when_its_stdin_closes() {
+    let env = Env::new("watch-stdin-harp");
+    env.seed("Seed");
+    let watching = Watching::start(&env, &[]);
+    assert_eq!(one_document(&watching.line())["event"], "changed");
+    let status = watching.close();
+    assert!(status.success(), "a closed stdin is a clean end: {status}");
 }

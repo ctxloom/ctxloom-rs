@@ -5,9 +5,11 @@
 //! taskloom's logs to import), mounts the `project` group and `mcp` beside
 //! the task commands, and hands the command line to the CLI. `mcp` serves
 //! the task tools over stdio, each call on a service of its own; `watch`
-//! streams the project's changes until SIGINT or SIGTERM; `run` hands a
-//! task to the `ctxloom` on PATH. It holds no logic of its own.
+//! streams the project's changes until SIGINT, SIGTERM or stdin closes; `run` hands a
+//! task to the `ctxloom` on PATH; `manage` registers `taskloom mcp` in
+//! the agents' configurations under HOME. It holds no logic of its own.
 
+use std::future::Future;
 use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -29,6 +31,9 @@ fn catalog() -> Result<presentation::Catalog, presentation::CatalogError> {
     tasks_cli::catalog(&[
         project_cli::EN_US,
         project_application::EN_US,
+        registration_cli::EN_US,
+        registration_application::EN_US,
+        agent_configs::EN_US,
         project_registry::EN_US,
         task_store_sqlite::EN_US,
         go_task_log::EN_US,
@@ -50,6 +55,8 @@ enum Mounted {
     Watch(tasks_watch::Group),
     #[command(flatten)]
     Run(tasks_run::Group),
+    #[command(flatten)]
+    Manage(registration_cli::Group),
 }
 
 /// What runs once the command line has been read, on the runtime.
@@ -153,6 +160,19 @@ fn watch<W: tasks_application::WatchService>(
                 return 1;
             }
         };
+        // Stdin closing stops it too: a subscriber that dies takes its
+        // watch with it.
+        let mut signalled = std::pin::pin!(stop);
+        let mut closed = std::pin::pin!(tasks_watch::closed(io::stdin()));
+        let stop = std::future::poll_fn(move |cx| {
+            let signalled = signalled.as_mut().poll(cx).is_ready();
+            let closed = closed.as_mut().poll(cx).is_ready();
+            if signalled || closed {
+                std::task::Poll::Ready(())
+            } else {
+                std::task::Poll::Pending
+            }
+        });
         let mut ticks = tasks_watch::Interval::every(tasks_watch::DEBOUNCE);
         tasks_watch::run(
             service,
@@ -166,6 +186,29 @@ fn watch<W: tasks_application::WatchService>(
         .await
     });
     ExitCode::from(code)
+}
+
+/// `taskloom manage`: `taskloom mcp` registered in the agents'
+/// configurations under `home`.
+fn manage(
+    words: Vec<String>,
+    format: presentation::Format,
+    home: Option<PathBuf>,
+    catalog: &presentation::Catalog,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> u8 {
+    let settings = registration_cli::Settings {
+        format,
+        stdout_is_terminal: io::stdout().is_terminal(),
+        prog: tasks_cli::PROG,
+    };
+    let configs = agent_configs::AgentConfigFiles {
+        home,
+        path: std::env::var_os("PATH"),
+    };
+    let mut registrations = registration_application::Registrations::taskloom(configs);
+    registration_cli::run(words, &settings, &mut registrations, catalog, out, err)
 }
 
 /// `taskloom run`: the task handed to the `ctxloom` on PATH.
@@ -238,6 +281,9 @@ fn main() -> ExitCode {
                 prog: tasks_cli::PROG,
             };
             project_cli::run(group, &settings, catalog, &mut projects, out, err)
+        }
+        Mounted::Manage(registration_cli::Group::Manage { words }) => {
+            manage(words, flags.format, env.home.clone(), catalog, out, err)
         }
         Mounted::Mcp(tasks_mcp::Group::Mcp) => {
             after = Some(After::Mcp(flags.project));

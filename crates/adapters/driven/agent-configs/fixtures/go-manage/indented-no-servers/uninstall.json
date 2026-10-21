@@ -1,0 +1,8 @@
+{
+  "numStartups": 5,
+  "theme": "dark",
+  "projects": {
+    "/x": {"a": 1}
+  },
+  "mcpServers": {}
+}

@@ -10,7 +10,9 @@
 //! A burst of commits is one line, written once a tick finds nothing new,
 //! or after [`CEILING_TICKS`] ticks of a burst that does not stop, as Go's
 //! debounce and its ceiling do. The stream runs until its stop future
-//! resolves (the binary's SIGINT or SIGTERM), or a line cannot be written.
+//! resolves (the binary's: SIGINT or SIGTERM, as Go's, or its stdin
+//! closing, so a watch whose subscriber dies does not outlive it), or a
+//! line cannot be written.
 //!
 //! Both formats are the stream: text and JSON alike write JSON Lines, as
 //! Go's watch does. An error is reported as every command's is.
@@ -18,9 +20,10 @@
 mod error;
 
 use std::future::{poll_fn, Future};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::pin::pin;
-use std::task::Poll;
+use std::sync::{Arc, Mutex};
+use std::task::{Poll, Waker};
 use std::time::Duration;
 
 use clap::Subcommand;
@@ -88,6 +91,34 @@ impl Ticks for Interval {
     async fn tick(&mut self) {
         self.0.tick().await;
     }
+}
+
+/// Resolves once `input` ends (or fails): read to its end, and
+/// discarded, on a thread of its own, so the future can be awaited
+/// beside the stream on any runtime.
+pub fn closed(mut input: impl Read + Send + 'static) -> impl Future<Output = ()> + Send {
+    let shared: Arc<Mutex<(bool, Option<Waker>)>> = Arc::default();
+    let reader = Arc::clone(&shared);
+    std::thread::spawn(move || {
+        let _ = io::copy(&mut input, &mut io::sink());
+        let mut state = reader
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.0 = true;
+        if let Some(waker) = state.1.take() {
+            waker.wake();
+        }
+    });
+    poll_fn(move |cx| {
+        let mut state = shared
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.0 {
+            return Poll::Ready(());
+        }
+        state.1 = Some(cx.waker().clone());
+        Poll::Pending
+    })
 }
 
 /// When a burst of changes, seen tick by tick, gets its line.

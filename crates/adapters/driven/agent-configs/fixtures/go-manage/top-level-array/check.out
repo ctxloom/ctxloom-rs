@@ -1,0 +1,3 @@
+0
+binary: taskloom NOT on PATH
+claude-code  user     unreadable: parse config: json: cannot unmarshal array into Go value of type map[string]interface {} ($HOME/.claude.json)

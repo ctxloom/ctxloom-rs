@@ -1,0 +1,9 @@
+registration-cli-unresolvable = warning: "{ $command }" does not resolve on this process's PATH: exec: "{ $command }": executable file not found in $PATH
+registration-cli-unresolvable-hint = the registered MCP entry runs "{ $command }", which the agent resolves against ITS OWN PATH at startup; install { $command } somewhere on that PATH or the server will not start
+registration-cli-registered = registered MCP server for { $engine }
+registration-cli-removed = removed MCP server from { $engine }
+registration-cli-not-registered = not registered with { $engine }, nothing to remove
+registration-cli-nothing-to-remove = nothing to remove (no agent backends detected; name one with --engine)
+registration-cli-config = config: { $path }
+registration-cli-usage = { $detail }
+registration-cli-output = cannot write the answer: { $detail }

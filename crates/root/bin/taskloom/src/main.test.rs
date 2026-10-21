@@ -404,6 +404,9 @@ fn test_every_diagnostic_of_every_crate_renders_from_the_binarys_catalog() {
         presentation::diagnostic_samples(),
         tasks_mcp::diagnostic_samples(),
         tasks_run::diagnostic_samples(),
+        registration_application::diagnostic_samples(),
+        registration_cli::diagnostic_samples(),
+        agent_configs::diagnostic_samples(),
         tasks_watch::diagnostic_samples(),
     ]
     .into_iter()
@@ -549,6 +552,9 @@ mod companion;
 
 #[path = "import.test.rs"]
 mod import;
+
+#[path = "manage.test.rs"]
+mod manage;
 
 #[path = "mcp.test.rs"]
 mod mcp;

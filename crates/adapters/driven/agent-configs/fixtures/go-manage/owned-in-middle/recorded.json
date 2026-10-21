@@ -1,0 +1,6 @@
+{
+  "mcpServers": {
+    "a": {"command": "a"},
+    "z": {"command": "z"}
+  }
+}

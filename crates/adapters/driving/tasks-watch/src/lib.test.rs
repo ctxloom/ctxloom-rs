@@ -16,7 +16,9 @@ use presentation::{Catalog, Format};
 use serde_json::Value;
 use tasks_application::{AppError, Changed, Project, Watch, WatchRequest, WatchService};
 
-use super::{run, ChangeLine, Debounce, Interval, Settings, Ticks, CEILING_TICKS, DEBOUNCE};
+use super::{
+    closed, run, ChangeLine, Debounce, Interval, Settings, Ticks, CEILING_TICKS, DEBOUNCE,
+};
 
 /// Run a future whose every await is ready at once.
 fn ready<F: Future>(future: F) -> F::Output {
@@ -337,4 +339,39 @@ fn test_an_interval_ticks_no_sooner_than_its_period() {
         interval.tick().await;
     });
     assert!(started.elapsed() >= 2 * period, "{:?}", started.elapsed());
+}
+
+/// A reader that blocks until its sender is dropped, then ends.
+struct Held(std::sync::mpsc::Receiver<u8>);
+
+impl std::io::Read for Held {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self.0.recv() {
+            Ok(b) => {
+                buf[0] = b;
+                Ok(1)
+            }
+            Err(_) => Ok(0),
+        }
+    }
+}
+
+#[test]
+fn test_a_closed_input_resolves_only_once_it_has_ended() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+        .unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let ended = runtime.block_on(async {
+        let mut input = pin!(closed(Held(rx)));
+        tx.send(b'x').unwrap();
+        // Still open: the stop is not asked for.
+        let early = tokio::time::timeout(Duration::from_millis(50), input.as_mut()).await;
+        assert!(early.is_err(), "resolved while the input was open");
+        drop(tx);
+        tokio::time::timeout(Duration::from_secs(30), input).await
+    });
+    assert!(ended.is_ok(), "an ended input stops the stream");
+    runtime.block_on(closed(std::io::Cursor::new(b"anything".to_vec())));
 }

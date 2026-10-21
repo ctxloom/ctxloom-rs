@@ -1,8 +1,9 @@
 //! The ports the tasks application needs from outside, beyond annals' own
 //! store port: which project a call is about, where its store is, how ids
 //! are minted, what time it is, how to wait, what is configured, Go
-//! taskloom's logs to import, and what a directory's identity rests on, to
-//! show and repair it. Each is a trait a driven adapter (or the composition
+//! taskloom's logs to import, what a directory's identity rests on, to
+//! show and repair it, and agents' MCP configurations, to register a
+//! server in. Each is a trait a driven adapter (or the composition
 //! root) implements; nothing here does I/O.
 //!
 //! Every future a port returns is `Send`, as annals requires of its async
@@ -17,8 +18,10 @@ use annals::next::v1::Uuid;
 use annals::next::{AsyncStore, StoreError, Timestamp};
 use annals_diagnostic::Report;
 
+mod agents;
 mod project;
 
+pub use agents::{AgentConfigs, McpServer, Rewritten, Scope};
 pub use project::{Change, IdSource, ProjectAdmin, Registered, Survey};
 
 /// A resolved project: its id, the work root it was resolved from, and

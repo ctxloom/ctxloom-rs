@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "a": {"command": "a"},
+    "taskloom": {
+      "command": "taskloom",
+      "args": ["mcp"]
+    },
+    "z": {"command": "z"}
+  }
+}

@@ -1,0 +1,3 @@
+0
+taskloom: removed MCP server from claude-code
+  config: .mcp.json
