@@ -2062,11 +2062,14 @@ dependencies = [
 name = "taskloom"
 version = "0.1.0"
 dependencies = [
+ "annals-diagnostic 0.1.0",
  "harp-names",
+ "presentation",
  "project-registry",
  "serde_json",
  "system",
  "task-store-sqlite",
+ "tasks",
  "tasks-application",
  "tasks-cli",
  "tempfile",
@@ -2106,6 +2109,7 @@ dependencies = [
  "annals-diagnostic 0.1.0",
  "clap",
  "fluent-syntax",
+ "presentation",
  "serde",
  "serde_json",
  "tasks-application",

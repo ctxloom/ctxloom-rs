@@ -7,9 +7,12 @@ use std::path::PathBuf;
 use std::pin::pin;
 use std::task::{Context as TaskContext, Poll, Waker};
 
+use annals_diagnostic::Report;
 use tasks_application::{
     AppError, ListQuery, Listing, NewTask, Project, TagChange, Task, TaskService, Written,
 };
+
+use presentation::Catalog;
 
 use super::{run, Context};
 
@@ -37,6 +40,10 @@ fn ready<F: Future>(future: F) -> F::Output {
         Poll::Ready(out) => out,
         Poll::Pending => panic!("the fake is ready at once"),
     }
+}
+
+fn catalog() -> Catalog {
+    super::catalog(&[]).expect("the catalog loads")
 }
 
 fn project() -> Project {
@@ -97,7 +104,7 @@ fn run_on(fake: &mut Fake, terminal: bool, args: &[&str]) -> Ran {
         .map(OsString::from)
         .collect();
     let (mut out, mut err) = (Vec::new(), Vec::new());
-    let code = ready(run(args, &context, fake, &mut out, &mut err));
+    let code = ready(run(args, &context, &catalog(), fake, &mut out, &mut err));
     Ran {
         code,
         out: String::from_utf8(out).unwrap(),
@@ -433,12 +440,11 @@ impl std::io::Write for Broken {
 
 #[test]
 fn test_output_that_cannot_be_written_fails_with_why() {
-    let context = Context::default();
-    for args in [
-        &["taskloom", "add", "x"][..],
-        &["taskloom", "list"][..],
-        &["taskloom", "--json", "list"][..],
-    ] {
+    let context = Context {
+        stdout_is_terminal: true,
+        ..Context::default()
+    };
+    for args in [&["taskloom", "add", "x"][..], &["taskloom", "list"][..]] {
         let mut fake = Fake {
             written: written(shapes::task("swift-amber", "To Do")),
             listing: listing(Vec::new()),
@@ -446,12 +452,121 @@ fn test_output_that_cannot_be_written_fails_with_why() {
         };
         let mut err = Vec::new();
         let argv = args.iter().map(OsString::from);
-        let code = ready(run(argv, &context, &mut fake, &mut Broken, &mut err));
+        let code = ready(run(
+            argv,
+            &context,
+            &catalog(),
+            &mut fake,
+            &mut Broken,
+            &mut err,
+        ));
         assert_eq!(code, 1);
         assert_eq!(
             String::from_utf8(err).unwrap().lines().last(),
             Some("taskloom: cannot write the output: closed"),
             "{args:?}"
         );
+    }
+    let mut fake = Fake {
+        listing: listing(Vec::new()),
+        ..Fake::default()
+    };
+    let mut err = Vec::new();
+    let argv = ["taskloom", "--json", "list"].map(OsString::from);
+    let code = ready(run(
+        argv,
+        &context,
+        &catalog(),
+        &mut fake,
+        &mut Broken,
+        &mut err,
+    ));
+    assert_eq!(code, 1);
+    let envelope: serde_json::Value = serde_json::from_slice(&err).unwrap();
+    assert_eq!(envelope["code"], "tasks-cli-output");
+    assert_eq!(envelope["message"], "cannot write the output: closed");
+}
+
+// ------------------------------------------------------------ errors
+
+#[test]
+fn test_a_text_error_is_its_catalog_message_not_its_english() {
+    let mut fake = Fake {
+        written: Some(Err(AppError::Rejected(Report::new(
+            "tasks-text-required",
+            "the English fallback",
+        )))),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["add", "x"]);
+    assert_eq!(ran.code, 1);
+    assert_eq!(ran.err, "taskloom: a task needs text\n");
+}
+
+#[test]
+fn test_a_json_error_is_an_envelope_on_stderr_with_its_cause_nested() {
+    let mut fake = Fake {
+        written: Some(Err(AppError::GaveUp {
+            attempts: 10,
+            error: Report::new(
+                "annals-store-sql-unavailable",
+                "the database failed: locked",
+            )
+            .arg("detail", "locked"),
+        })),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, false, &["add", "x"]);
+    assert_eq!(ran.code, 1);
+    assert_eq!(ran.out, "", "stdout holds answers only");
+    let envelope: serde_json::Value = serde_json::from_str(&ran.err).unwrap();
+    assert_eq!(
+        envelope,
+        serde_json::json!({
+            "code": "tasks-application-gave-up",
+            "args": {
+                "attempts": 10,
+                "error": {
+                    "code": "annals-store-sql-unavailable",
+                    "args": {"detail": "locked"},
+                    "message": "the database failed: locked",
+                },
+            },
+            "message": "gave up after 10 attempts: the database failed: locked",
+        })
+    );
+}
+
+#[test]
+fn test_a_usage_error_in_json_is_an_envelope() {
+    for (terminal, args) in [
+        (false, &["frobnicate"][..]),
+        (true, &["--json", "frobnicate"][..]),
+        (true, &["--format", "json", "frobnicate"][..]),
+        (true, &["--format=json", "frobnicate"][..]),
+        (true, &["--format", "json", "--format", "yaml", "list"][..]),
+    ] {
+        let ran = run_on(&mut Fake::default(), terminal, args);
+        assert_eq!(ran.code, 1, "{args:?}");
+        assert_eq!(ran.out, "", "{args:?}");
+        let envelope: serde_json::Value =
+            serde_json::from_str(&ran.err).unwrap_or_else(|e| panic!("{args:?}: {e}: {}", ran.err));
+        assert_eq!(envelope["code"], "tasks-cli-usage", "{args:?}");
+        assert_eq!(envelope["message"], envelope["args"]["detail"], "{args:?}");
+    }
+}
+
+#[test]
+fn test_a_usage_error_in_text_is_clap_s_own_words() {
+    for args in [
+        &["frobnicate"][..],
+        &["--format", "text", "--json-ish"][..],
+        &["--format=text", "frobnicate"][..],
+        &["frobnicate", "--", "--json"][..],
+        &["frobnicate", "--format"][..],
+    ] {
+        let ran = run_on(&mut Fake::default(), true, args);
+        assert_eq!(ran.code, 1, "{args:?}");
+        assert!(ran.err.starts_with("error: "), "{args:?}: {}", ran.err);
     }
 }

@@ -15,6 +15,12 @@ use task_store_sqlite::SqliteStores;
 use tasks_application::Service;
 use tasks_cli::Context;
 
+/// Every crate's en-US catalog the binary's diagnostics come from. annals'
+/// own crates export none yet, so their errors print their English.
+fn catalog() -> Result<presentation::Catalog, presentation::CatalogError> {
+    tasks_cli::catalog(&[project_registry::EN_US, task_store_sqlite::EN_US])
+}
+
 fn main() -> ExitCode {
     let runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_time()
@@ -23,6 +29,13 @@ fn main() -> ExitCode {
         Ok(runtime) => runtime,
         Err(e) => {
             eprintln!("{}: cannot start: {e}", tasks_cli::PROG);
+            return ExitCode::FAILURE;
+        }
+    };
+    let catalog = match catalog() {
+        Ok(catalog) => catalog,
+        Err(e) => {
+            eprintln!("{}: {e}", tasks_cli::PROG);
             return ExitCode::FAILURE;
         }
     };
@@ -41,6 +54,7 @@ fn main() -> ExitCode {
     let code = runtime.block_on(tasks_cli::run(
         std::env::args_os(),
         &context,
+        &catalog,
         &mut service,
         &mut io::stdout().lock(),
         &mut io::stderr().lock(),

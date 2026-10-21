@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 harp-names.workspace = true
+presentation.workspace = true
 project-registry.workspace = true
 system.workspace = true
 task-store-sqlite.workspace = true
@@ -17,6 +18,8 @@ tasks-cli.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+annals-diagnostic.workspace = true
+tasks.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 

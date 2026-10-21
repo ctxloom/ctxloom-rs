@@ -381,3 +381,76 @@ fn test_a_tag_where_there_is_no_project_fails_and_binds_none() {
     assert!(!env.home.path().join(".ctxloom").exists());
     assert!(!env.project.path().join(".project-id").exists());
 }
+
+#[test]
+fn test_every_diagnostic_of_every_crate_renders_from_the_binarys_catalog() {
+    let catalog = super::catalog().expect("every catalog loads, no message twice");
+    let samples: Vec<Box<dyn annals_diagnostic::Diagnostic>> = [
+        tasks::diagnostic_samples(),
+        tasks_application::diagnostic_samples(),
+        project_registry::diagnostic_samples(),
+        task_store_sqlite::diagnostic_samples(),
+        tasks_cli::diagnostic_samples(),
+        presentation::diagnostic_samples(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    for sample in &samples {
+        assert!(
+            catalog.render(&**sample).is_ok(),
+            "{}: {:?}",
+            sample.code(),
+            catalog.render(&**sample)
+        );
+    }
+}
+
+/// stdout as exactly one JSON document, as jq reads it.
+fn one_document(text: &str) -> Value {
+    let mut documents = serde_json::Deserializer::from_str(text).into_iter::<Value>();
+    let first = documents
+        .next()
+        .unwrap_or_else(|| panic!("no JSON: {text:?}"))
+        .unwrap_or_else(|e| panic!("not JSON ({e}): {text:?}"));
+    assert!(
+        documents.next().is_none(),
+        "more than one document: {text:?}"
+    );
+    first
+}
+
+#[test]
+fn test_in_json_each_command_writes_one_document_and_errors_an_envelope() {
+    let env = Env::new("jq-harp");
+    let added = env.run(&["add", "Ship", "it", "--json"]);
+    assert!(added.ok, "{}", added.stderr);
+    let task = one_document(&added.stdout);
+    let harp = task["harp_id"].as_str().expect("harp_id").to_string();
+    assert!(
+        added.stderr.starts_with("taskloom: project "),
+        "notices on stderr: {}",
+        added.stderr
+    );
+    let tagged = env.run(&["tag", &harp, "--add", "x", "--json"]);
+    assert!(tagged.ok, "{}", tagged.stderr);
+    assert_eq!(
+        one_document(&tagged.stdout)["tags"],
+        serde_json::json!(["x"])
+    );
+    let listed = env.run(&["list", "--json"]);
+    assert!(listed.ok, "{}", listed.stderr);
+    assert_eq!(one_document(&listed.stdout)[0]["harp_id"], harp.as_str());
+
+    let failed = env.run(&["tag", "no-such-task", "--add", "x", "--json"]);
+    assert!(!failed.ok);
+    assert_eq!(failed.stdout, "", "an error leaves stdout empty");
+    let envelope = one_document(&failed.stderr);
+    assert!(envelope["code"].is_string(), "{envelope}");
+    assert!(envelope["args"].is_object(), "{envelope}");
+    assert!(envelope["message"].is_string(), "{envelope}");
+
+    let usage = env.run(&["frobnicate", "--json"]);
+    assert!(!usage.ok);
+    assert_eq!(one_document(&usage.stderr)["code"], "tasks-cli-usage");
+}

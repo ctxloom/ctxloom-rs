@@ -38,7 +38,10 @@ and angzarr here.
   opener.
 - `adapters/driven/system`: the clock, UUIDv7 command ids, tokio's timer and
   jitter.
-- `adapters/driving/tasks-cli`: `add`, `list` and `tag`, text and json.
+- `adapters/driving/presentation`: the driving edge's presentation for any
+  domain (see "Driving adapters").
+- `adapters/driving/tasks-cli`: `add`, `list` and `tag`, text and json, its
+  errors and notices rendered from the catalogs.
 - `root/bin/taskloom`: the binary, over annals-store-sql's SQLite store at
   `~/.ctxloom/projects/<project-id>/state.db` (CLAUDE.md, "Storage").
   Its tests are Go's `crossprocess_test.go` ported, each process separate
@@ -109,6 +112,11 @@ not filed as a task.
 - **`TaskService` takes `&mut self`**, so an MCP server holding one service
   serializes every call. Revisit with MCP (step 4), before its tools
   multiply (step 5).
+- **annals exports no catalogs.** Its crates' `.ftl` files are not
+  reachable from a dependent, so an annals error (a store failure, a
+  kernel error) prints its English `Display`, in text and in the envelope's
+  `message`. annals should export each crate's en-US catalog (as ctxloom's
+  crates export `EN_US`); the binary then embeds them.
 - **JSON escapes no HTML** where Go's encoder escapes `<`, `>` and `&`:
   normalize it when comparing the Go and Rust binaries for parity ("Parity
   and cutover").
@@ -285,10 +293,34 @@ present it as a `project` command group:
 
 ## Driving adapters
 
-- CLI: the Go command set and flags (inventory below). Formats text, json,
-  yaml, toml and markdown; json when stdout is not a terminal. Warnings and
-  errors carry a fix line, and structured formats get envelopes. Exit codes 0
-  and 1.
+- CLI: the Go command set and flags (inventory below). Exit codes 0 and 1.
+  Warnings and errors carry a fix line.
+- **Two formats, decided**: JSON, for jq and other programs, and UTF-8
+  text, for people; JSON when stdout is not a terminal. Go's yaml, toml and
+  markdown (and any ASCII fallback) are dropped until something needs them;
+  one more `Format` variant and its render arm would add one. JSON exists
+  for jq: stdout carries exactly one document per invocation and nothing
+  else (notices such as the project a write went to are on stderr); a
+  stream (`watch`) is JSON Lines; field names are stable, in a fixed order,
+  with absent values explicit (`[]`, `""`, `null`). An error in JSON is a
+  `{code, args, message}` envelope on stderr, a nested cause an envelope in
+  its turn, and the exit code is 1; in text it is the catalog message.
+- **Presentation's shape, decided.** Formats are not core ports: the core
+  returns typed values and `TaskService` is the driving seam (`watch`
+  returns a stream of typed changes, not a push into a presenter).
+  `adapters/driving/presentation` is domain-free, so ctxloom's binary and
+  later domains reuse it (a test keeps every workspace crate but
+  annals-diagnostic out of its dependencies). It owns format selection
+  (`Format::choose`, from the flags and the terminal), the `Render` trait
+  and the JSON writer, the Fluent `Catalog` (each crate exports its
+  embedded en-US `.ftl` as `EN_US`; the composition root hands the driven
+  adapters' to the CLI's), the diagnostic envelope, and display-width text
+  helpers (`unicode-width`). Domain shapes and views (`TaskJson`, the task
+  table, a written task's line) stay in `tasks-cli`, implementing `Render`;
+  MCP (step 4) needs `TaskJson` too, so it moves then into a tasks-specific
+  presentation crate both use. Output goes to an injected `&mut dyn Write`.
+  annals' crates export no catalog yet, so their codes render their English
+  `Display` until they do.
 - MCP over stdio: the tools `task_list`, `task_add`, `task_set_status`,
   `task_edit` and `task_tag`, the resources `taskloom://tag-schema` and
   `taskloom://tag-vocabulary`, and the server instructions, which are

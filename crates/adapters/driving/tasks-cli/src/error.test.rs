@@ -31,7 +31,7 @@ fn test_an_output_failure_says_what_failed() {
 fn test_every_error_has_a_catalog_message_with_exactly_its_args() {
     use fluent_syntax::ast::{Entry, Expression, InlineExpression, PatternElement};
 
-    let ftl = include_str!("../locales/en-US/tasks-cli.ftl");
+    let ftl = crate::EN_US.1;
     let resource = fluent_syntax::parser::parse(ftl).expect("the catalog parses");
     let samples = diagnostic_samples();
     let mut catalog: Vec<&str> = resource
@@ -71,4 +71,33 @@ fn test_every_error_has_a_catalog_message_with_exactly_its_args() {
         args.sort_unstable();
         assert_eq!(used, args, "{}", sample.code());
     }
+}
+
+#[test]
+fn test_each_diagnostics_english_is_its_catalog_message() {
+    let catalog = crate::catalog(&[]).expect("the catalog loads");
+    for sample in diagnostic_samples() {
+        assert_eq!(catalog.render(&*sample), Ok(sample.to_string()));
+    }
+}
+
+#[test]
+fn test_a_usage_error_is_clap_s_words() {
+    let error = CliError::Usage {
+        detail: "error: no\n".to_string(),
+    };
+    assert_eq!(error.code(), "tasks-cli-usage");
+    assert_eq!(error.to_string(), "error: no\n");
+    assert!(matches!(&error.args()[..], [("detail", Arg::Str(d))] if d == "error: no\n"));
+}
+
+#[test]
+fn test_a_project_notice_names_its_root_and_id() {
+    let notice = crate::Notice::Project {
+        root: "/w".to_string(),
+        id: "a-b-c".to_string(),
+    };
+    assert_eq!(notice.to_string(), "project /w (a-b-c)");
+    assert_eq!(arg_names(&notice), ["root", "id"]);
+    assert_eq!(crate::Notice::NoProject.code(), "tasks-cli-no-project");
 }
