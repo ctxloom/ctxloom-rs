@@ -6,12 +6,11 @@
 //! the task commands, and hands the command line to the CLI. The `project`
 //! group runs over the registry and the SQLite store's integrity check;
 //! `mcp` serves the task tools over stdio, each call on a service of its
-//! own; `watch` streams the project's changes until SIGINT, SIGTERM or
-//! stdin closes; `run` hands a task to the `ctxloom` on PATH; `manage`
+//! own; `watch` streams the project's changes until SIGINT or SIGTERM
+//! (never at a closed stdin); `run` hands a task to the `ctxloom` on PATH; `manage`
 //! registers `taskloom mcp` in the agents' configurations under HOME. It
 //! holds no logic of its own.
 
-use std::future::Future;
 use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -165,19 +164,8 @@ fn watch<W: tasks_application::WatchService>(
                 return 1;
             }
         };
-        // Stdin closing stops it too: a subscriber that dies takes its
-        // watch with it.
-        let mut signalled = std::pin::pin!(stop);
-        let mut closed = std::pin::pin!(tasks_watch::closed(io::stdin()));
-        let stop = std::future::poll_fn(move |cx| {
-            let signalled = signalled.as_mut().poll(cx).is_ready();
-            let closed = closed.as_mut().poll(cx).is_ready();
-            if signalled || closed {
-                std::task::Poll::Ready(())
-            } else {
-                std::task::Poll::Pending
-            }
-        });
+        // Stdin is not watched: the VS Code extension starts the watch
+        // with stdin from /dev/null, and Go's watch ignores it too.
         let mut ticks = tasks_watch::Interval::every(tasks_watch::DEBOUNCE);
         tasks_watch::run(
             service,

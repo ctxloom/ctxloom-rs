@@ -201,9 +201,11 @@ cutover ("What remains").
   of commits: the use case is polled each tick (100ms, Go's
   `watchDebounce`) and a burst gets its line at its first quiet tick, or
   ten ticks in when it does not stop, as Go's debounce and ceiling. It
-  ends at SIGINT or SIGTERM (tokio's `signal` feature), or when its stdin
-  closes, and with why when a line cannot be written. Its tests drive
-  every tick and script every poll.
+  ends at SIGINT or SIGTERM (tokio's `signal` feature), as Go's, never
+  at a closed stdin (the VS Code extension starts it with stdin from
+  /dev/null), and with why when a line cannot be written. Its tests drive
+  every tick and script every poll; the binary's run it with stdin from
+  /dev/null and see a second line from a live process.
 - `adapters/driving/tasks-run`: `taskloom run [harp] [--no-start]`: the
   task named (any status), or Go's line-buffered picker on a terminal,
   handed to `ctxloom run [--session <origin>] --seed-task <harp>
@@ -451,9 +453,7 @@ Where the port differs from Go:
   re-reads every task stream (the projector skips what it has seen). A
   token that moves with nothing new answers nothing, so no line. A
   burst's line comes 100-200ms after its last commit (Go's: 100ms after
-  its last file event). `watch` also ends when its stdin closes, which
-  Go's does not; a subscriber that starts it with stdin closed (`<
-  /dev/null`) gets one line and an exit.
+  its last file event).
 - `run` hands the task to Go ctxloom's `run --seed-task`, which marks the
   task In Progress in Go's jsonl log, not the Rust store (Decided 1
   accepts the loss). A child that fails is exit 1 with an error naming
