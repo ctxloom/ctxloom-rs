@@ -1261,6 +1261,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "project-application"
+version = "0.1.0"
+dependencies = [
+ "annals-diagnostic 0.1.0",
+ "fluent-syntax",
+ "ports",
+]
+
+[[package]]
 name = "project-registry"
 version = "0.1.0"
 dependencies = [

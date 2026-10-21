@@ -1,8 +1,9 @@
 //! The ports the tasks application needs from outside, beyond annals' own
 //! store port: which project a call is about, where its store is, how ids
-//! are minted, what time it is, how to wait, and Go taskloom's logs to
-//! import. Each is a trait a driven
-//! adapter (or the composition root) implements; nothing here does I/O.
+//! are minted, what time it is, how to wait, Go taskloom's logs to
+//! import, and what a directory's identity rests on, to show and repair
+//! it. Each is a trait a driven adapter (or the composition root)
+//! implements; nothing here does I/O.
 //!
 //! Every future a port returns is `Send`, as annals requires of its async
 //! store port, so a server on a multi-threaded runtime can spawn a use case
@@ -15,6 +16,10 @@ use std::time::Duration;
 use annals::next::v1::Uuid;
 use annals::next::{AsyncStore, StoreError, Timestamp};
 use annals_diagnostic::Report;
+
+mod project;
+
+pub use project::{Change, IdSource, ProjectAdmin, Registered, Survey};
 
 /// A resolved project: its id, the work root it was resolved from, and
 /// where its store is kept.
