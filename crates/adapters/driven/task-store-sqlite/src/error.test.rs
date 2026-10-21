@@ -15,28 +15,20 @@ fn test_each_error_renders_its_english_fallback() {
         english,
         [
             "cannot create the store's directory /home/u/.ctxloom/projects/jolly-mute-magma: permission denied",
-            "opening the store /home/u/.ctxloom/projects/jolly-mute-magma did not finish: task panicked",
         ]
     );
 }
 
 #[test]
 fn test_each_error_gives_its_args_values() {
-    for error in [
-        StoreOpenError::CreateDir {
-            path: "p".to_string(),
-            detail: "d".to_string(),
-        },
-        StoreOpenError::Interrupted {
-            path: "p".to_string(),
-            detail: "d".to_string(),
-        },
-    ] {
-        assert!(
-            matches!(&error.args()[..], [("path", Arg::Str(p)), ("detail", Arg::Str(d))] if p == "p" && d == "d"),
-            "{error:?}"
-        );
-    }
+    let error = StoreOpenError::CreateDir {
+        path: "p".to_string(),
+        detail: "d".to_string(),
+    };
+    assert!(
+        matches!(&error.args()[..], [("path", Arg::Str(p)), ("detail", Arg::Str(d))] if p == "p" && d == "d"),
+        "{error:?}"
+    );
 }
 
 #[test]

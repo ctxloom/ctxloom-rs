@@ -9,8 +9,6 @@ use annals_diagnostic::{Arg, Diagnostic};
 pub enum StoreOpenError {
     /// The directory the database goes in could not be made.
     CreateDir { path: String, detail: String },
-    /// The open, run on a blocking thread, panicked or was cancelled.
-    Interrupted { path: String, detail: String },
 }
 
 impl fmt::Display for StoreOpenError {
@@ -18,9 +16,6 @@ impl fmt::Display for StoreOpenError {
         match self {
             StoreOpenError::CreateDir { path, detail } => {
                 write!(f, "cannot create the store's directory {path}: {detail}")
-            }
-            StoreOpenError::Interrupted { path, detail } => {
-                write!(f, "opening the store {path} did not finish: {detail}")
             }
         }
     }
@@ -30,14 +25,12 @@ impl Diagnostic for StoreOpenError {
     fn code(&self) -> &'static str {
         match self {
             StoreOpenError::CreateDir { .. } => "task-store-sqlite-create-dir",
-            StoreOpenError::Interrupted { .. } => "task-store-sqlite-open-interrupted",
         }
     }
 
     fn args(&self) -> Vec<(&'static str, Arg)> {
         match self {
-            StoreOpenError::CreateDir { path, detail }
-            | StoreOpenError::Interrupted { path, detail } => vec![
+            StoreOpenError::CreateDir { path, detail } => vec![
                 ("path", path.as_str().into()),
                 ("detail", detail.as_str().into()),
             ],
@@ -55,16 +48,10 @@ pub const EN_US: (&str, &str) = (
 /// One value of every error, for the catalog test.
 pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
     let path = || "/home/u/.ctxloom/projects/jolly-mute-magma".to_string();
-    vec![
-        Box::new(StoreOpenError::CreateDir {
-            path: path(),
-            detail: "permission denied".to_string(),
-        }),
-        Box::new(StoreOpenError::Interrupted {
-            path: path(),
-            detail: "task panicked".to_string(),
-        }),
-    ]
+    vec![Box::new(StoreOpenError::CreateDir {
+        path: path(),
+        detail: "permission denied".to_string(),
+    })]
 }
 
 #[cfg(test)]

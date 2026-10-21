@@ -12,11 +12,11 @@ annals.workspace = true
 annals-diagnostic.workspace = true
 annals-store-sql.workspace = true
 ports.workspace = true
-tokio.workspace = true
 
 [dev-dependencies]
 fluent-syntax.workspace = true
 tempfile.workspace = true
+tokio.workspace = true
 
 [lints]
 workspace = true

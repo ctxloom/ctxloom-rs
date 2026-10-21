@@ -124,6 +124,17 @@ fn test_a_database_that_does_not_open_fails_with_the_stores_error() {
     assert_eq!(report.code(), "annals-store-sql-unavailable");
 }
 
+#[test]
+fn test_the_openers_futures_are_send_so_a_server_can_spawn_them() {
+    fn is_send<T: Send>(_: &T) {}
+    let path = PathBuf::from("/nowhere/state.db");
+    let project = project("jolly-mute-magma", path.clone());
+    let mut stores = SqliteStores::default();
+    is_send(&stores.open(&project));
+    is_send(&stores.open_existing(&project));
+    is_send(&SqliteStore::open(&path));
+}
+
 // ------------------------------------------------------------ reads
 
 #[test]
@@ -206,24 +217,32 @@ fn test_reading_another_project_does_not_serve_the_held_one() {
     });
 }
 
+/// A database older than this build: one table (`older`) committed, and
+/// none of annals-store-sql's migrations applied. Made with Python's
+/// sqlite3: `PRAGMA page_size=512; CREATE TABLE older (x)`.
+const OLDER: &[u8] = include_bytes!("../testdata/older.db");
+
 #[test]
-fn test_reading_a_database_not_yet_migrated_migrates_it_as_a_write_would() {
-    // A writer creates the file, then migrates it under its write lock; a
-    // reader between the two finds it unmigrated (here, empty), and waits on
-    // that lock for the migration rather than failing.
+fn test_reading_a_database_not_yet_migrated_is_refused_and_leaves_it_unmigrated() {
+    // A read never migrates: only a write does. A file holding something
+    // committed is no file a writer is making, so it is refused at once.
     let home = tempfile::tempdir().unwrap();
     let path = home.path().join("state.db");
-    std::fs::write(&path, "").unwrap();
+    std::fs::write(&path, OLDER).unwrap();
     let mut stores = SqliteStores::default();
-    block_on(async {
-        let store = stores
-            .open_existing(&project("jolly-mute-magma", path))
-            .await
-            .unwrap()
-            .expect("found");
-        assert!(store.read_from(&some_stream(), 0).await.is_ok());
-    });
-    assert!(stores.held.as_ref().unwrap().writable);
+    let error = block_on(stores.open_existing(&project("jolly-mute-magma", path.clone())))
+        .map(|found| found.is_some())
+        .unwrap_err();
+    let annals::next::StoreError::Unavailable(report) = &error else {
+        panic!("unavailable: {error:?}");
+    };
+    assert_eq!(report.code(), "annals-store-sql-unmigrated");
+    assert!(stores.held.is_none());
+    assert_eq!(std::fs::read(&path).unwrap(), OLDER, "the file as it was");
+    assert!(
+        !home.path().join("state.db-wal").exists(),
+        "not moved into WAL"
+    );
 }
 
 #[test]
@@ -242,10 +261,9 @@ fn test_a_database_that_cannot_be_read_fails_a_read() {
 }
 
 #[test]
-fn test_a_read_failing_for_another_reason_fails_with_the_read_only_opens_error() {
+fn test_a_read_that_fails_fails_with_the_read_only_opens_error() {
     // A directory where the database goes: the read-only open fails, and
-    // so would a write open, but differently; the read's error is passed
-    // through, and no write is tried.
+    // its error is passed through as it is.
     let home = tempfile::tempdir().unwrap();
     let path = home.path().join("state.db");
     std::fs::create_dir(&path).unwrap();
