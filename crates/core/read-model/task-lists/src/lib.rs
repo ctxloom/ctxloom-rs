@@ -9,7 +9,11 @@
 
 use std::collections::BTreeMap;
 
-use annals::next::{projection, Committed, EventStore, KernelError, Projection, Registry, Stream};
+use annals::next::v1::Cover;
+use annals::next::{
+    projection, AsyncEventStore, Committed, EventStore, KernelError, Projection, Registry, Slice,
+    Stream,
+};
 use tasks::{TaskState, Tasks, TASK_DOMAIN};
 
 /// Which live tasks a list holds.
@@ -77,14 +81,38 @@ impl TaskList {
         store: &mut S,
         registry: &Registry,
     ) -> Result<(), Box<KernelError>> {
-        let store_error = |e| Box::new(KernelError::Store(e));
         for cover in store.covers(TASK_DOMAIN).map_err(store_error)? {
-            let Some(slice) = store.read(&cover).map_err(store_error)? else {
-                continue;
-            };
-            let stream = Stream::<Tasks>::replay(cover, &slice.pages, registry)?;
-            stream.dispatch(0, registry, &mut [&mut projection(self)])?;
+            let slice = store.read(&cover).map_err(store_error)?;
+            self.project_slice(cover, slice, registry)?;
         }
+        Ok(())
+    }
+
+    /// [`TaskList::catch_up`], over the async store port: a database's.
+    pub async fn catch_up_async<S: AsyncEventStore>(
+        &mut self,
+        store: &mut S,
+        registry: &Registry,
+    ) -> Result<(), Box<KernelError>> {
+        for cover in store.covers(TASK_DOMAIN).await.map_err(store_error)? {
+            let slice = store.read_from(&cover, 0).await.map_err(store_error)?;
+            self.project_slice(cover, slice, registry)?;
+        }
+        Ok(())
+    }
+
+    /// Project one task stream as read, if the store held it.
+    fn project_slice(
+        &mut self,
+        cover: Cover,
+        slice: Option<Slice>,
+        registry: &Registry,
+    ) -> Result<(), Box<KernelError>> {
+        let Some(slice) = slice else {
+            return Ok(());
+        };
+        let stream = Stream::<Tasks>::replay(cover, &slice.pages, registry)?;
+        stream.dispatch(0, registry, &mut [&mut projection(self)])?;
         Ok(())
     }
 
@@ -129,6 +157,10 @@ impl Projection<Tasks> for TaskList {
             });
         }
     }
+}
+
+fn store_error(error: annals::next::StoreError) -> Box<KernelError> {
+    Box::new(KernelError::Store(error))
 }
 
 #[cfg(test)]

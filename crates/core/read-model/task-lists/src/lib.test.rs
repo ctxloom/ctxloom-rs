@@ -8,8 +8,8 @@ use std::marker::PhantomData;
 use crate::{Change, Delta, TaskList};
 use annals::next::v1::{command_page, CommandBook, CommandPage, Cover, Uuid};
 use annals::next::{
-    ids, InMemoryStore, Kernel, MemoryDeadLetters, Payload, ProjectionRoute, Registry, Routes,
-    Rulebook, Sampled, Timestamp, Upcaster,
+    ids, InMemoryStore, Kernel, MemoryDeadLetters, Payload, ProjectionRoute, Ready, Registry,
+    Routes, Rulebook, Sampled, Timestamp, Upcaster,
 };
 use tasks::{
     AddTask, RemovalReason, RemoveTask, SetStatus, TaskCommand, TaskState, Tasks, DEFERRED,
@@ -263,4 +263,44 @@ fn test_a_redelivered_event_changes_nothing() {
         1,
         "the store's events were already projected"
     );
+}
+
+/// Run a future whose every await is ready at once (a [`Ready`] store's),
+/// as the async port's tests need no runtime.
+fn ready<F: std::future::Future>(future: F) -> F::Output {
+    let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+    match std::pin::pin!(future).poll(&mut cx) {
+        std::task::Poll::Ready(out) => out,
+        std::task::Poll::Pending => panic!("a ready store's futures finish at once"),
+    }
+}
+
+#[test]
+fn test_a_list_caught_up_over_the_async_port_holds_what_the_live_list_holds() {
+    let mut project = Project::new();
+    let mut live = not_done();
+    project.run(&mut live, FIRST, add(FIRST, "First"));
+    project.run(&mut live, SECOND, add(SECOND, "Second"));
+    project.run(&mut live, FIRST, status("Done", ""));
+
+    let mut rebuilt = not_done();
+    let mut store = Ready(std::mem::take(&mut project.store));
+    ready(rebuilt.catch_up_async(&mut store, &project.registry)).unwrap();
+    assert_eq!(rebuilt.entries(), live.entries());
+    assert_eq!(harps(&rebuilt), [SECOND]);
+    assert_eq!(
+        rebuilt.sequence(),
+        3,
+        "each event the list saw: two adds, one leaving"
+    );
+}
+
+#[test]
+fn test_an_async_catch_up_projects_only_what_is_new() {
+    let mut project = Project::new();
+    let mut list = every_task();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    let mut store = Ready(std::mem::take(&mut project.store));
+    ready(list.catch_up_async(&mut store, &project.registry)).unwrap();
+    assert_eq!(list.sequence(), 1, "already projected");
 }
