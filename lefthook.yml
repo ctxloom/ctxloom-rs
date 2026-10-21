@@ -3,6 +3,14 @@
 #
 # Every `run:` is one simple command, so it means the same under whatever
 # /bin/sh the committing machine has; anything longer is a just recipe.
+
+# Show a command's output only when it fails, then the per-command summary.
+# Each gate prints one line on a pass and the extract that matters on a
+# failure, with its full log in target/logs/ (the justfile's `_run`).
+output:
+  - failure
+  - summary
+
 pre-commit:
   # One at a time in priority order, stopping at the first failure.
   piped: true

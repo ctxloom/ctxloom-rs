@@ -73,6 +73,11 @@ RUN curl -fsSL https://github.com/evilmartians/lefthook/releases/download/v${LEF
     && curl -fsSL https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz \
         | tar -xz -C /usr/local/bin gitleaks
 
+# cargo-nextest: `just test` and `just test-staged` run the tests with it, and
+# fail without it. Its prebuilt release, as compiling it takes minutes.
+ARG NEXTEST_VERSION=0.9.146
+RUN curl -fsSL https://get.nexte.st/${NEXTEST_VERSION}/linux | tar -xz -C ${CARGO_HOME}/bin
+
 # serena (the serena bundle's MCP server), via uv, on a Python its
 # dependencies build wheels for (tiktoken's PyO3 refuses newer ones).
 ARG SERENA_VERSION=1.7.0

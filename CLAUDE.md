@@ -93,8 +93,15 @@ crate's catalog test checks messages and samples both ways.
 
 ## Use `just`
 
-`just test`, `just lint` (clippy, warnings denied) and `just lint-deps`
-(cargo-deny) are the checks; lefthook's pre-commit runs fmt, gitleaks,
+`just test` (cargo-nextest, required: a missing nextest fails the gate),
+`just lint` (clippy, warnings denied) and `just lint-deps` (cargo-deny) are
+the checks. Every gate is terse: a pass prints one `ok   <gate> (<scope>)
+<duration>` line; a failure prints `FAIL <gate>: <summary> (full log:
+target/logs/<gate>.log)` and only the relevant extract (failing tests'
+output, short clippy messages, the files rustfmt would change, deny's
+errors, the mutation verdict and survivors). Read the log for the rest;
+`VERBOSE=1 just <gate>` shows the full output. lefthook shows a gate's
+output only when it fails. Lefthook's pre-commit runs fmt, gitleaks,
 clippy and cargo-deny, then judges the staged change alone: `just
 test-staged` tests the changed crates and their dependents, and `just
 mutants-staged` mutation-tests the staged diff (`cargo mutants --in-diff`),
@@ -103,4 +110,5 @@ ports, application and adapters) 90% or more; the composition root is
 listed but not held (the justfile's `mutation_thresholds` has every tier). A
 mutant judged equivalent or untestable gets `#[mutants::skip]` on its
 function, with a one-line comment above it saying why; never an exclude in
-`.cargo/mutants.toml` or a lowered threshold.
+`.cargo/mutants.toml` or a lowered threshold. The last run's mutants.out
+(each mutant's log, outcomes.json) is kept in target/logs/mutants-staged/.
