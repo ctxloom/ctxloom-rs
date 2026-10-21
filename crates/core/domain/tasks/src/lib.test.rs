@@ -560,7 +560,7 @@ fn test_every_command_to_a_removed_task_is_refused() {
 #[test]
 fn test_a_removal_without_a_reason_is_an_invalid_payload() {
     let mut task = Task::added("Ship it");
-    let unspecified = annals::next::pack(&taskloom_proto::v1::RemoveTask { reason: 0 });
+    let unspecified = annals::next::pack(&tasks_proto::v1::RemoveTask { reason: 0 });
     let Err(failure) = task.try_run(book(unspecified)) else {
         panic!("refused");
     };

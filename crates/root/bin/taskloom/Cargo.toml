@@ -1,0 +1,15 @@
+[package]
+name = "taskloom"
+version = "0.1.0"
+description = "The taskloom binary: the composition root that wires the tasks core to its adapters"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "taskloom"
+path = "src/main.rs"
+
+[lints]
+workspace = true

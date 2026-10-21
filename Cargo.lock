@@ -396,14 +396,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "taskloom-proto"
+name = "taskloom"
 version = "0.1.0"
-dependencies = [
- "angzarr-build",
- "angzarr-proto",
- "prost",
- "prost-types",
-]
 
 [[package]]
 name = "tasks"
@@ -414,7 +408,17 @@ dependencies = [
  "annals-diagnostic 0.1.0",
  "fluent-syntax",
  "prost",
- "taskloom-proto",
+ "tasks-proto",
+]
+
+[[package]]
+name = "tasks-proto"
+version = "0.1.0"
+dependencies = [
+ "angzarr-build",
+ "angzarr-proto",
+ "prost",
+ "prost-types",
 ]
 
 [[package]]

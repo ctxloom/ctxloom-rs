@@ -34,6 +34,10 @@ the architecture; there is no other table of crates.
 - `adapters/driving`: CLI, MCP, gRPC: translation only.
 - `root/bin`: binaries, the composition root.
 
+ctxloom-rs produces several binaries, taskloom first, each a crate under
+`root/bin` that composes the same core, application and adapters. Below
+`root/bin`, a crate is named for its domain or role, never for a binary.
+
 `crates/core/clippy.toml` holds the core's purity rules (no I/O, clock, env,
 threads or hash-ordered collections) and reaches every core crate, because
 clippy reads the nearest `clippy.toml`. A crate's own `clippy.toml` would

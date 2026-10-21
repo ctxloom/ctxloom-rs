@@ -1,5 +1,5 @@
 [package]
-name = "taskloom-proto"
+name = "tasks-proto"
 version = "0.1.0"
 description = "Wire types of the tasks domain, generated from proto/ctxloom/tasks"
 edition.workspace = true

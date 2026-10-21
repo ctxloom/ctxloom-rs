@@ -12,7 +12,7 @@ annals.workspace = true
 annals-diagnostic.workspace = true
 # The generated domain layer names prost::Name and the wire types.
 prost.workspace = true
-taskloom-proto.workspace = true
+tasks-proto.workspace = true
 
 [build-dependencies]
 angzarr-build.workspace = true

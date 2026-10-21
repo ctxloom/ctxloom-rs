@@ -11,12 +11,16 @@ and angzarr here.
   events. Events carry the values the task holds after them, never a change
   to recompute: apply only assigns (angzarr's convention, its
   `operations/error-recovery.mdx` and `FundsDeposited.new_balance`).
+- `core/wire/tasks-proto`: the tasks domain's wire types (`ctxloom.tasks.v1`),
+  generated from that proto.
 - `core/domain/tasks`: decide and apply for add, set-status, edit, retag and
   remove, with localizable rejections.
 - `core/read-model/task-lists`: the list projector, with a resumable cursor.
 - Storage: annals-store-sql's SQLite store, one database per project
   (CLAUDE.md, "Storage").
-- Not started: ports, application, adapters, any binary.
+- `root/bin/taskloom`: the binary, empty: the composition root that later
+  slices plug into.
+- Not started: ports, application, adapters.
 
 ## Shape: taskloom is one binary of ctxloom-rs
 
@@ -31,8 +35,9 @@ complete unit that retires a risk, and each reviewed by an architect before
 the next. A slice cuts through every layer it needs; the sections after this
 one are the reference for what each layer finally holds, not an order.
 
-1. **Restructure** (cheap, unblocks the rest): the steps under
-   "Restructure for many binaries".
+1. **Restructure for many binaries**: done. The wire crate is named for
+   its domain (`tasks-proto`), `root/bin/taskloom` exists, and CLAUDE.md
+   says no crate below `root/bin` is named for a binary.
 2. **Walking skeleton: `taskloom add` and `taskloom list`, end to end.**
    Project resolution from `.project-id` and the registry, the SQLite
    store at `~/.ctxloom/projects/<project-id>/state.db`, an add handler that
@@ -63,15 +68,6 @@ one are the reference for what each layer finally holds, not an order.
    from everything else, so it can move earlier if the evaluator looks
    risky.
 9. **`manage`, `watch` and `run`**, then cutover.
-
-## Restructure for many binaries
-
-1. Rename `core/wire/taskloom-proto` to `core/wire/tasks-proto`: it holds the
-   tasks domain's wire types (`ctxloom.tasks.v1`), not taskloom's.
-2. Add `root/bin/taskloom`, empty but building, so the composition root
-   exists before anything plugs into it.
-3. CLAUDE.md: say that ctxloom-rs produces several binaries, and that a crate
-   is never named for one.
 
 ## Tags on tagma
 

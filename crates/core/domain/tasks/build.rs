@@ -6,6 +6,6 @@ fn main() -> Result<(), angzarr_build::BuildError> {
     angzarr_build::domain(
         &["ctxloom/tasks/v1/tasks.proto"],
         &["../../../../proto"],
-        &[("ctxloom.tasks.v1", "::taskloom_proto::v1")],
+        &[("ctxloom.tasks.v1", "::tasks_proto::v1")],
     )
 }
