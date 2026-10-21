@@ -35,15 +35,9 @@ pub enum Problem {
     MissingMarker { root: String, id: String },
     /// Only Go's older marker names the root's id.
     LegacyMarkerOnly { root: String, id: String },
-    /// The marker's id is not registered for the root.
+    /// The marker's id is not registered for the root (whether or not
+    /// another tree holding it is: clones share by default).
     Unregistered { root: String, id: String },
-    /// The marker's id is registered for another tree, which still exists,
-    /// and not for this one: the two would share one database unasked.
-    Shared {
-        root: String,
-        id: String,
-        other: String,
-    },
     /// A registered path no longer exists.
     Gone { id: String, path: String },
     /// A database no live registered path points at.
@@ -65,6 +59,11 @@ pub struct Shown {
     pub entries: Vec<Registered>,
     /// The resolved project's database, if there is a project.
     pub store: Option<PathBuf>,
+    /// The other live trees registered for the resolved project, as the
+    /// registry holds their paths: a second clone with the same committed
+    /// `.project-id` is the same project and shares its database, by
+    /// design. Information, not a problem.
+    pub shared_with: Vec<String>,
     pub problems: Vec<Problem>,
 }
 
@@ -109,18 +108,28 @@ impl<A: ProjectAdmin, C: StoreCheck> Projects<A, C> {
         let survey = self.admin.survey(pinned).map_err(ProjectError::Port)?;
         let entries = survey.entries_at(&survey.root).cloned().collect();
         let store = survey.resolved.as_ref().map(|(id, _)| survey.store(id));
+        let shared_with = match &survey.resolved {
+            Some((id, _)) => survey
+                .entries_of(id)
+                .filter(|e| e.exists && e.canonical != survey.root)
+                .map(|e| e.path.clone())
+                .collect(),
+            None => Vec::new(),
+        };
         let problems = problems(&survey);
         Ok(Shown {
             survey,
             entries,
             store,
+            shared_with,
             problems,
         })
     }
 
     /// Repair the skew between the root's marker and the registry, toward
     /// the marker: register what the marker names (dropping its entries
-    /// whose paths are gone, a moved tree's), unregister what else the
+    /// whose paths are gone, a moved tree's; another live tree's entry for
+    /// it stays, since clones share by default), unregister what else the
     /// root is registered as, write a missing marker from the registry's
     /// one entry, and adopt Go's older marker. Made only when `apply`.
     ///
@@ -139,14 +148,7 @@ impl<A: ProjectAdmin, C: StoreCheck> Projects<A, C> {
                 if survey.marker.is_none() {
                     plan.changes.push(write_marker(root, id));
                 }
-                match shared_with(&survey, root, id) {
-                    Some(other) => plan.unresolved.push(Problem::Shared {
-                        root: root.to_string(),
-                        id: id.clone(),
-                        other,
-                    }),
-                    None => plan.changes.extend(bind(&survey, root, id)),
-                }
+                plan.changes.extend(bind(&survey, root, id));
             }
             None => match at_root.as_slice() {
                 [id] => plan.changes.push(write_marker(root, id)),
@@ -180,8 +182,12 @@ impl<A: ProjectAdmin, C: StoreCheck> Projects<A, C> {
     }
 
     /// Bind the work root to the existing project `id`: its marker, and
-    /// the registry. Refused while `id` is registered for another tree that
-    /// still exists, unless `share`. The id it had before keeps its
+    /// the registry. A move onto an id another live tree holds is refused
+    /// unless `share`: clones with one committed marker share by default,
+    /// but a tree that is some other project (or none) taking over a live
+    /// tree's id is merging two projects' work, which `share` says is
+    /// meant. A tree whose marker or registry already gives it `id` moves
+    /// nowhere, and is not refused. The id it had before keeps its
     /// database. Made only when `apply`.
     pub fn repoint(&mut self, id: &str, share: bool, apply: bool) -> Result<Plan, ProjectError> {
         let survey = self.admin.survey(None).map_err(ProjectError::Port)?;
@@ -189,7 +195,10 @@ impl<A: ProjectAdmin, C: StoreCheck> Projects<A, C> {
             return Err(ProjectError::UnknownProject { id: id.to_string() });
         }
         let root = survey.work_root.as_str();
-        if let (Some(path), false) = (shared_with(&survey, root, id), share) {
+        let already = survey.resolved.as_ref().is_some_and(|(resolved, source)| {
+            resolved == id && !matches!(source, IdSource::Flag | IdSource::Environment)
+        });
+        if let (Some(path), false) = (held_elsewhere(&survey, root, id), share || already) {
             return Err(ProjectError::InUse {
                 id: id.to_string(),
                 path,
@@ -302,7 +311,7 @@ fn ids_at(survey: &Survey, root: &str) -> Vec<String> {
 
 /// Another tree that `id` is registered for and that still exists, when
 /// `id` is not registered for `root` itself.
-fn shared_with(survey: &Survey, root: &str, id: &str) -> Option<String> {
+fn held_elsewhere(survey: &Survey, root: &str, id: &str) -> Option<String> {
     if survey.entries_at(root).any(|e| e.id == id) {
         return None;
     }
@@ -328,16 +337,9 @@ fn problems(survey: &Survey) -> Vec<Problem> {
             ids: ids.clone(),
         });
     } else if let Some(id) = marked.filter(|id| !ids.contains(id)) {
-        problems.push(match shared_with(survey, root, id) {
-            Some(other) => Problem::Shared {
-                root: root.to_string(),
-                id: id.clone(),
-                other,
-            },
-            None => Problem::Unregistered {
-                root: root.to_string(),
-                id: id.clone(),
-            },
+        problems.push(Problem::Unregistered {
+            root: root.to_string(),
+            id: id.clone(),
         });
     }
     match (&survey.marker, &survey.legacy_marker, ids.as_slice()) {

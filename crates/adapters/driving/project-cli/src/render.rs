@@ -34,11 +34,6 @@ pub enum ProblemJson<'a> {
         root: &'a str,
         project_id: &'a str,
     },
-    Shared {
-        root: &'a str,
-        project_id: &'a str,
-        other: &'a str,
-    },
     Gone {
         project_id: &'a str,
         path: &'a str,
@@ -74,11 +69,6 @@ impl<'a> ProblemJson<'a> {
             Problem::Unregistered { root, id } => ProblemJson::Unregistered {
                 root,
                 project_id: id,
-            },
-            Problem::Shared { root, id, other } => ProblemJson::Shared {
-                root,
-                project_id: id,
-                other,
             },
             Problem::Gone { id, path } => ProblemJson::Gone {
                 project_id: id,
@@ -116,9 +106,6 @@ pub fn problem_line(problem: &Problem, catalog: &Catalog) -> String {
         ),
         Problem::Unregistered { root, id } => format!(
             "{root}/.project-id names {id}, which the registry does not hold for it; run `project heal`"
-        ),
-        Problem::Shared { root, id, other } => format!(
-            "{root}/.project-id names {id}, the project of {other}, which still exists; run `project repoint {id} --share` if the two are meant to share it"
         ),
         Problem::Gone { id, path } => {
             format!("{id} is registered for {path}, which no longer exists")
@@ -170,6 +157,9 @@ pub struct ShowJson<'a> {
     legacy_marker: Option<&'a str>,
     entries: Vec<EntryJson<'a>>,
     database: Option<String>,
+    /// The other live trees holding the project's id: one project, one
+    /// database (a second clone with the same committed `.project-id`).
+    shared_with: &'a [String],
     problems: Vec<ProblemJson<'a>>,
 }
 
@@ -185,6 +175,7 @@ impl<'a> ShowJson<'a> {
             legacy_marker: survey.legacy_marker.as_deref(),
             entries: shown_.entries.iter().map(EntryJson::of).collect(),
             database: shown_.store.as_deref().map(shown),
+            shared_with: &shown_.shared_with,
             problems: shown_
                 .problems
                 .iter()
@@ -226,6 +217,12 @@ pub fn show_text(out: &mut dyn Write, shown_: &Shown, catalog: &Catalog) -> io::
     match &shown_.store {
         Some(store) => writeln!(out, "Database: {}", shown(store))?,
         None => writeln!(out, "Database: none")?,
+    }
+    for other in &shown_.shared_with {
+        writeln!(
+            out,
+            "Shared:   {other} (another tree holding the same project id: one project, one database)"
+        )?;
     }
     problems_text(
         out,

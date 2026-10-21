@@ -9,8 +9,8 @@
 
 use std::path::Path;
 
+pub use file_lock::path::flat_name;
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 
 /// The record directory's name under `~/.ctxloom/records`: taskloom's own,
 /// apart from ctxloom's (Go's `recordsSubdir`).
@@ -18,43 +18,6 @@ pub const TASKLOOM_RECORDS: &str = "taskloom";
 
 /// A record file's suffix.
 const SUFFIX: &str = ".hew-record.yaml";
-
-/// The readable tail a flat name keeps, in bytes.
-const TAIL_MAX: usize = 96;
-
-/// The hex digits of the path's SHA-256 a flat name keeps.
-const HASH_LEN: usize = 16;
-
-/// Go's `paths.FlatName`: `path` as one bounded file name, the last
-/// [`TAIL_MAX`] bytes of it with `/` as `__` and NTFS's reserved
-/// characters escaped, then `__` and the first [`HASH_LEN`] hex digits of
-/// the whole path's SHA-256.
-pub fn flat_name(path: &str) -> String {
-    // Go's `filepath.ToSlash`: only a platform separator that is not `/`
-    // becomes one.
-    let slashed = path.replace(std::path::MAIN_SEPARATOR, "/");
-    let digest = Sha256::digest(slashed.as_bytes());
-    let hash: String = digest
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect::<String>()[..HASH_LEN]
-        .to_string();
-    let mut flat = String::with_capacity(slashed.len());
-    for c in slashed.replace('/', "__").chars() {
-        if u32::from(c) < 0x20 || "<>:\"|?*".contains(c) {
-            flat.push_str(&format!("%{:02X}", u32::from(c)));
-        } else {
-            flat.push(c);
-        }
-    }
-    // The cut is 0 for a name within the bound; past it, a cut inside a
-    // character steps forward to the next one.
-    let mut cut = flat.len().saturating_sub(TAIL_MAX);
-    while !flat.is_char_boundary(cut) {
-        cut += 1;
-    }
-    format!("{}__{hash}", &flat[cut..])
-}
 
 #[derive(Deserialize, Default)]
 struct Record {

@@ -1,15 +1,17 @@
 //! Acceptance: `taskloom watch`, the real binary in a temporary home: its
 //! first line at once, a line for a task another process adds, one JSON
-//! document a line, and a clean exit at SIGINT or SIGTERM, or when its
-//! stdin closes, so a test that dies leaves no process behind while the
-//! watch's stop works (one whose stop a mutant broke is killed by the
-//! mutation gate, which kills whatever its run leaves). The test waits on
+//! document a line, and a clean exit at SIGINT or SIGTERM. Each watch runs
+//! with stdin from /dev/null, as the VS Code extension starts it, and a
+//! closed stdin never stops it; a test that ends with it still running
+//! kills it (its own child, by pid), and one whose stop a mutant broke is
+//! killed by the mutation gate, which kills whatever its run leaves. The
+//! test waits on
 //! the stream's lines (each wait bounded, so a stream that never answers
 //! fails rather than hangs), never on a sleep. Then the stream in
 //! process, its ticks injected, over a prune's halves.
 
 use std::io::{BufRead, BufReader};
-use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::time::Duration;
 
@@ -23,8 +25,6 @@ const PATIENCE: Duration = Duration::from_secs(30);
 /// A running `taskloom watch`, killed if a test ends with it still running.
 pub(super) struct Watching {
     child: Option<Child>,
-    /// Held open: the watch ends when it closes.
-    stdin: Option<ChildStdin>,
     lines: Receiver<String>,
 }
 
@@ -37,7 +37,9 @@ impl Watching {
             .env_clear()
             .env("HOME", env.home.path())
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
-            .stdin(Stdio::piped())
+            // As the VS Code extension spawns it: stdin is /dev/null, closed
+            // from the start.
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
@@ -53,7 +55,6 @@ impl Watching {
             }
         });
         Watching {
-            stdin: child.stdin.take(),
             child: Some(child),
             lines,
         }
@@ -79,12 +80,10 @@ impl Watching {
         self.finish(status)
     }
 
-    /// Close stdin and wait for the process to end.
-    pub(super) fn close(mut self) -> ExitStatus {
-        let mut child = self.child.take().unwrap();
-        drop(self.stdin.take());
-        let status = child.wait().expect("watch ends");
-        self.finish(status)
+    /// Whether the process is still running.
+    fn alive(&mut self) -> bool {
+        let child = self.child.as_mut().unwrap();
+        child.try_wait().expect("the watch's status").is_none()
     }
 
     /// `status`, once nothing more was written.
@@ -172,13 +171,22 @@ fn test_watch_where_there_is_no_project_says_so_and_binds_none() {
 }
 
 #[test]
-fn test_watch_ends_cleanly_when_its_stdin_closes() {
-    let env = Env::new("watch-stdin-harp");
+fn test_watch_with_stdin_from_dev_null_stays_up_and_answers_each_change() {
+    // The VS Code extension spawns `taskloom watch` with stdin ignored: a
+    // watch that ended at a closed stdin wrote one line and exited, and
+    // its tasks never updated live.
+    let env = Env::new("watch-devnull-harp");
     env.seed("Seed");
-    let watching = Watching::start(&env, &[]);
+    let mut watching = Watching::start(&env, &[]);
     assert_eq!(one_document(&watching.line())["event"], "changed");
-    let status = watching.close();
-    assert!(status.success(), "a closed stdin is a clean end: {status}");
+
+    let added = env.run(&["add", "Another"]);
+    assert!(added.ok, "{}", added.stderr);
+    assert_eq!(one_document(&watching.line())["event"], "changed");
+    assert!(watching.alive(), "a closed stdin does not end the watch");
+
+    let status = watching.stop("TERM");
+    assert!(status.success(), "SIGTERM is a clean end: {status}");
 }
 
 // ------------------------------------------------- in process, tick by tick

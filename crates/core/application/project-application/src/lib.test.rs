@@ -223,23 +223,49 @@ fn test_show_finds_a_marker_the_registry_does_not_hold() {
 }
 
 #[test]
-fn test_show_finds_a_marker_registered_only_for_another_live_tree() {
+fn test_show_reports_another_live_tree_holding_the_id_as_sharing_not_a_problem() {
+    // A second clone with the same committed marker is the same project,
+    // by design: only that the root is not registered yet is for heal.
     let mut survey = marked("m");
     survey.registry = vec![entry("m", "/gone", false), entry("m", "/clone", true)];
-    let problems = projects(survey).show(None).unwrap().problems;
+    let shown = projects(survey).show(None).unwrap();
+    assert_eq!(shown.shared_with, [s("/clone/")]);
     assert_eq!(
-        problems,
+        shown.problems,
         [
-            Problem::Shared {
+            Problem::Unregistered {
                 root: s("/w"),
                 id: s("m"),
-                other: s("/clone/"),
             },
             Problem::Gone {
                 id: s("m"),
                 path: s("/gone/"),
             },
         ]
+    );
+}
+
+#[test]
+fn test_show_shares_with_no_tree_but_the_live_others_of_the_resolved_id() {
+    let mut alone = marked("m");
+    alone.registry = vec![
+        entry("m", "/w", true),
+        entry("m", "/gone", false),
+        entry("other", "/x", true),
+    ];
+    assert_eq!(projects(alone).show(None).unwrap().shared_with, [""; 0]);
+    let mut pinned = survey();
+    pinned.resolved = Some((s("p"), IdSource::Flag));
+    pinned.registry = vec![entry("p", "/x", true)];
+    assert_eq!(
+        projects(pinned).show(Some("p")).unwrap().shared_with,
+        [s("/x/")],
+        "the project shown, wherever its id came from"
+    );
+    assert_eq!(
+        projects(survey()).show(None).unwrap().shared_with,
+        [""; 0],
+        "no project, no sharing"
     );
 }
 
@@ -368,19 +394,15 @@ fn test_heal_leaves_two_ids_and_no_marker_to_a_repoint() {
 }
 
 #[test]
-fn test_heal_will_not_share_a_live_trees_id_unasked() {
+fn test_heal_registers_a_second_live_tree_holding_the_same_id() {
+    // Clones share by default: heal registers this tree beside the other,
+    // which it leaves registered.
     let mut survey = marked("m");
     survey.registry = vec![entry("m", "/clone", true)];
     let plan = projects(survey).heal(true).unwrap();
-    assert_eq!(plan.changes, []);
-    assert_eq!(
-        plan.unresolved,
-        [Problem::Shared {
-            root: s("/w"),
-            id: s("m"),
-            other: s("/clone/"),
-        }]
-    );
+    assert_eq!(plan.changes, [register("m", "/w")]);
+    assert_eq!(plan.unresolved, []);
+    assert!(plan.applied);
 }
 
 #[test]
@@ -518,6 +540,35 @@ fn test_repoint_refuses_while_the_ids_tree_exists_unless_shared() {
 }
 
 #[test]
+fn test_repoint_to_the_id_the_marker_already_names_is_not_refused_for_sharing_it() {
+    // A clone already shares its marker's project: a repoint to that id
+    // moves it nowhere, so there is no one else's id to guard.
+    let mut survey = marked("t");
+    survey.registry = vec![entry("t", "/original", true)];
+    let plan = projects(survey).repoint("t", false, true).unwrap();
+    assert_eq!(plan.changes, [register("t", "/w")]);
+    assert!(plan.applied);
+}
+
+#[test]
+fn test_repoint_from_another_id_onto_one_a_live_tree_holds_is_still_refused() {
+    // A tree with an id of its own, moved onto someone else's: not what a
+    // shared marker gives, so --share says it is meant.
+    let mut survey = marked("own");
+    survey.registry = vec![entry("own", "/w", true), entry("t", "/original", true)];
+    assert_eq!(
+        projects(survey.clone()).repoint("t", false, false),
+        Err(ProjectError::InUse {
+            id: s("t"),
+            path: s("/original/"),
+        })
+    );
+    // Pinned to it, the tree is still not it.
+    survey.resolved = Some((s("t"), IdSource::Flag));
+    assert!(projects(survey).repoint("t", false, false).is_err());
+}
+
+#[test]
 fn test_repoint_to_what_the_root_already_is_changes_nothing() {
     let mut survey = marked("t");
     survey.registry = vec![entry("t", "/w", true)];
@@ -614,7 +665,8 @@ fn test_heal_leaves_a_tree_already_sharing_its_id_alone() {
     assert_eq!(
         shown.problems,
         [],
-        "shared on purpose, by a repoint --share"
+        "shared, as clones with one marker share"
     );
+    assert_eq!(shown.shared_with, [s("/clone/")]);
     assert_eq!(projects(survey).heal(true).unwrap(), Plan::default());
 }

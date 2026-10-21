@@ -98,7 +98,11 @@ cutover ("What remains").
 - `core/application/project-application`: `show`, `heal`, `repoint` and the
   orphaned databases, planned from the port's survey; it depends on no
   tasks crate. The marker is authoritative and the registry heals toward
-  it. A change is reported, and made only when asked, under the registry's
+  it. A second live tree holding the same id (a clone with the committed
+  marker) is the same project (Decided 4): `show` lists it under
+  `shared_with`, information and not a problem, and `heal` registers the
+  tree beside it. `repoint` onto an id another live tree holds needs
+  `--share`, unless the tree already resolves to that id. A change is reported, and made only when asked, under the registry's
   lock and only while a fresh survey matches the one it was planned from.
   `heal` first checks the resolved project's database through the
   `StoreCheck` port and reports damage as an unresolved finding (the
@@ -115,12 +119,24 @@ cutover ("What remains").
   no marker of its own is its primary checkout's project, found through
   git's common directory (the `.git` file's `gitdir`, then its
   `commondir`), and is bound and marked there, never in the worktree; one
-  whose git directory is gone is an error, as in Go. The lock is taken
-  again when what it was granted is no longer the file at its path (Go's
-  `takeCurrent`, 16 tries), and waited for at most 10s, then refused
-  naming the lock. It also implements `ProjectAdmin`: the survey, and the
+  whose git directory is gone is an error, as in Go. The lock is
+  file-lock's (below). It also implements `ProjectAdmin`: the survey, and the
   changes (markers, registry entries, and removing
   `~/.ctxloom/projects/<id>/`, never through a link).
+- `adapters/driven/file-lock`: ctxloom's advisory locks, taken as Go's
+  `safefs` takes them, for any adapter to use (it is no port's: the
+  registry and agent-configs each take it inside their own operations).
+  `flock(2)` on a lock file, shared or exclusive, refused when it is not a
+  regular file; taken again when what it was granted is no longer the file
+  at its path (Go's `takeCurrent`, 16 tries: lock protocol 2); waited for
+  at most 10s, then refused naming the lock. And Go's
+  `sessions.WithFileLock` for a file ctxloom does not own: the sidecar
+  `paths.HomePathFor` names (`~/.ctxloom/locks/<FlatName(abs path)>.lock`,
+  or a session's own `<harp>/locks/` for a file inside a session's
+  directory), recording the path it guards when it creates it, taken with
+  the reap interlock (`~/.ctxloom/locks/reap.interlock`) held shared when
+  it is in the home lock directory, a reap that holds it past 30s refusing
+  the lock. Its paths are held to Go's own `HomePathFor`'s output.
 - `adapters/driven/harp-names`: harp-core behind the names port.
 - `adapters/driven/go-task-log`: Go's `~/.ctxloom/tasks/<project-id>.jsonl`
   behind the `GoTaskLogs` port, read only (not even its lock file). A line
@@ -146,7 +162,9 @@ cutover ("What remains").
   stays; an entry already there is taken out first only when it runs
   taskloom (Go's `exectoken`), and one running anything else is refused.
   A file that is not JSON is copied to `<path>.corrupt-<unix>` and left
-  alone. `scripts/go-manage-fixtures.sh` runs Go's binary over 29 files in
+  alone. The whole read-modify-write, a dry run's included, runs under
+  file-lock's `lock_file` on the file, the lock Go's confpatch takes, so
+  Rust and Go writers of one file take turns. `scripts/go-manage-fixtures.sh` runs Go's binary over 29 files in
   temporary homes (`fixtures/go-manage`); the parity tests hold the adapter
   to Go's bytes, refusals and copies, for install, recordless uninstall,
   uninstall after Go's install, and check.
@@ -168,11 +186,12 @@ cutover ("What remains").
   the global flags (the format and `--project`; not `--config-set`) and
   the catalog. Text hides the tags the schema hides; JSON keeps them, as
   Go does. Also the companion contract: `version` (`--format json` is
-  Go's `{name, version, lock_protocol}`, the lock protocol
-  project-registry's `LOCK_PROTOCOL`, 2, since its taker re-checks as
-  Go's `takeCurrent` does) and `loadout`, Go's `cmd/taskloom/loadout.yaml`
-  with the reviewed factual changes (Decided 11), printed in yaml alone
-  (`--format yaml` is accepted by `loadout` only).
+  Go's `{name, version, lock_protocol}`, the lock protocol file-lock's
+  `LOCK_PROTOCOL`, 2, true of every lock file taskloom takes: the
+  registry's and `manage`'s, each re-checked as Go's `takeCurrent` does) and
+  `loadout`, Go's `cmd/taskloom/loadout.yaml` with the reviewed factual
+  changes (Decided 11), printed in yaml alone (`--format yaml` is accepted by
+  `loadout` only).
 - `adapters/driving/tasks-mcp`: `taskloom mcp`, over rmcp (the official
   Rust MCP SDK, pinned at 3.5.1: the newest release at least two weeks old
   on 2026-10-21; server and stdio transport only, no macros). It serves
@@ -203,9 +222,11 @@ cutover ("What remains").
   of commits: the use case is polled each tick (100ms, Go's
   `watchDebounce`) and a burst gets its line at its first quiet tick, or
   ten ticks in when it does not stop, as Go's debounce and ceiling. It
-  ends at SIGINT or SIGTERM (tokio's `signal` feature), or when its stdin
-  closes, and with why when a line cannot be written. Its tests drive
-  every tick and script every poll.
+  ends at SIGINT or SIGTERM (tokio's `signal` feature), as Go's, never
+  at a closed stdin (the VS Code extension starts it with stdin from
+  /dev/null), and with why when a line cannot be written. Its tests drive
+  every tick and script every poll; the binary's run it with stdin from
+  /dev/null and see a second line from a live process.
 - `adapters/driving/tasks-run`: `taskloom run [harp] [--no-start]`: the
   task named (any status), or Go's line-buffered picker on a terminal,
   handed to `ctxloom run [--session <origin>] --seed-task <harp>
@@ -280,7 +301,9 @@ cutover ("What remains").
   to the original's and finds its tasks, its own database then reported
   orphaned and removed by name; a lost marker is shown and healed from the
   registry; a linked worktree made by `git worktree add` shares its
-  primary checkout's tasks and gets no marker. `heal` over a database
+  primary checkout's tasks and gets no marker; a second clone given the
+  first's marker reads and writes the same tasks at once, `show` names the
+  other tree as sharing, and `heal` registers it. `heal` over a database
   whose index was damaged in a copy (annals-store-sql's approach) reports
   the damage, code and args, in text and in the one JSON document, and
   leaves the file as it was; a sound database and a missing one are no
@@ -341,7 +364,7 @@ Where the port differs from Go:
 - A linked worktree opts out of its primary checkout's project with a
   marker of its own (`.project-id`, or Go's `.ctxloom/project-id`); in Go,
   with a `.ctxloom` directory of its own.
-- The registry's lock is waited for at most 10s; Go waits without end.
+- Every lock (the registry's, `manage`'s) is waited for at most 10s; Go waits without end.
 - Concurrent writers are serialized by SQLite itself: `BEGIN IMMEDIATE` per
   unit of work and sqlx's default 5s busy timeout. With retries switched off
   the acceptance tests still pass, so the backoff is a guard, not what makes
@@ -455,9 +478,7 @@ Where the port differs from Go:
   re-reads every task stream (the projector skips what it has seen). A
   token that moves with nothing new answers nothing, so no line. A
   burst's line comes 100-200ms after its last commit (Go's: 100ms after
-  its last file event). `watch` also ends when its stdin closes, which
-  Go's does not; a subscriber that starts it with stdin closed (`<
-  /dev/null`) gets one line and an exit.
+  its last file event).
 - `run` hands the task to Go ctxloom's `run --seed-task`, which marks the
   task In Progress in Go's jsonl log, not the Rust store (Decided 1
   accepts the loss). A child that fails is exit 1 with an error naming
@@ -470,10 +491,8 @@ Where the port differs from Go:
   Go's next install refuses the file as drifted (shown against Go's
   binary). With no Go record, an install and an uninstall leave
   `"mcpServers": {}` where the file had none, as Go's does without its
-  record. It takes no lock on the file: Go takes ctxloom's sidecar lock
-  under `~/.ctxloom/locks` with its reap interlock (lock protocol 2), so a
-  write racing a Go or ctxloom write to the same file can lose one; the
-  write itself is atomic. An entry under the name that runs another
+  record. It takes Go's lock on the file (file-lock's `lock_file`), waited
+  for at most 10s where Go waits without end. An entry under the name that runs another
   program is refused (Go replaces it in place, then usually refuses on a
   byte mismatch). A parse error's detail is this parser's words, not
   Go's `encoding/json`'s, and names the file's own name where Go's says
@@ -490,22 +509,6 @@ Where the port differs from Go:
 Each waits on a human decision, or on the step named; none is filed as a
 task.
 
-- **A clone with the committed marker writes to the original's database
-  unasked.** The marker is authoritative, so a second clone on the machine
-  resolves to the same id, and a write goes to the same database with no
-  refusal. `project show` reports it ("shared") and `project heal` will not
-  register it, but nothing stops the write, and there is no command to give
-  the clone an id of its own (repoint binds only to an existing id).
-  Decided 4 means repoint's refusal to keep them apart; a write needs the
-  same. Settle before the cutover registers `taskloom mcp` as ctxloom's
-  companion: a human decision (how a write, and repoint, keep the two
-  clones apart).
-- **`manage` keeps no records and takes no lock.** Writing Go's records
-  needs hew's reversal text (a port of hew, or hew in Rust); taking Go's
-  sidecar lock needs ctxloom's lock protocol (the reap interlock) ported,
-  which `version`'s `lock_protocol` then has to vouch for. A human
-  decision: port them, keep a record of Rust's own (a new on-disk format),
-  or accept the gaps above.
 - **Priority's evaluator** (step 6): choose a crate or write a small one
   ("What remains").
 - **JSON escapes no HTML** where Go's encoder escapes `<`, `>` and `&`:
@@ -541,8 +544,7 @@ Then parity and the cutover:
   `--global`, degraded mode, and launch flags reaching MCP handlers.
 - Run both binaries on the same inputs and compare.
 - Run the importer over every existing log, then switch the companion
-  registration to the Rust binary (the human's; the clone item under
-  "Open" settles first). Risk retired: ctxloom loading the Rust binary
+  registration to the Rust binary (the human's). Risk retired: ctxloom loading the Rust binary
   as its companion.
 - Fill the install placeholders; un-ignore the placeholder test
   (`test_no_served_text_carries_a_placeholder`, Decided 11).
@@ -658,8 +660,16 @@ restarted on a freed harp is under "Where it stands".
    at the project root and shared by taskloom and ctxloom. It replaces Go's
    `.ctxloom/project-id`, and unlike Go's marker (gitignored private state)
    it is committed, so a fresh clone keeps the project's id. Two clones on
-   one machine then claim the same id; `project repoint`'s refusal while the
-   other tree exists is what keeps them from sharing a store unasked. The id is resolved through
+   one machine then hold the same id, and they are the same project: they
+   share its store by design (decided 2026-10-21, "accept sharing as the
+   default"). `project show` names the other tree as sharing, and `project
+   heal` registers each. The accepted cost: an agent working in a scratch
+   clone writes into the shared task list. Revisit if that bites; the
+   remedy then is a way to give a clone an id of its own. `project
+   repoint`'s refusal still guards a tree with another id (or none) moving
+   onto an id a live tree holds, which merges two projects' work, so it
+   asks for `--share`; a tree that already resolves to the id is not
+   refused. The id is resolved through
    `~/.ctxloom/projects/index.yaml`, and the store is
    `~/.ctxloom/projects/<project-id>/state.db`. It is keyed by the id, not by
    a hash of the root path: the marker survives a move or a fresh clone, and
@@ -724,6 +734,22 @@ restarted on a freed harp is under "Where it stands".
     exactly once: a Go rewording of a changed sentence fails the pair, and
     any other Go change fails the byte comparison. Other wording is not
     changed: prompt text is the human's voice.
+12. **`manage` keeps no hew records; no hew port for now** (decided
+    2026-10-21). `manage` edits with its own byte-preserving JSON patcher
+    and reads Go's newest record for one fact (whether Go created
+    `mcpServers`). Accepted cost: after a Rust-only install then uninstall,
+    an empty `"mcpServers": {}` stays behind, as Go leaves it when its
+    record is lost. Revive when Rust ctxloom's own config writers need
+    reversible edits (the sized port plan is in the session's plan
+    directory, `hew-rust-port.plan.md`).
+13. **`@open` means every non-terminal status, custom ones included**
+    (decided 2026-10-21). Go's expands to its three default open statuses
+    only; the parity comparison must normalize it.
+14. **annals keeps WAL** (decided 2026-10-21). Snapshot reads (annals'
+    read-only unit) need it: in rollback mode an open read blocks every
+    writer. Accepted cost: a WAL store needs a writable directory even to
+    read (SQLite code 1544), so an isolation mount must give taskloom a
+    writable projects directory; that is the tooling's job.
 
 ## Decisions still open
 

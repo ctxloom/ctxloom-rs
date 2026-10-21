@@ -6,12 +6,11 @@
 //! the task commands, and hands the command line to the CLI. The `project`
 //! group runs over the registry and the SQLite store's integrity check;
 //! `mcp` serves the task tools over stdio, each call on a service of its
-//! own; `watch` streams the project's changes until SIGINT, SIGTERM or
-//! stdin closes; `run` hands a task to the `ctxloom` on PATH; `manage`
+//! own; `watch` streams the project's changes until SIGINT or SIGTERM
+//! (never at a closed stdin); `run` hands a task to the `ctxloom` on PATH; `manage`
 //! registers `taskloom mcp` in the agents' configurations under HOME. It
 //! holds no logic of its own.
 
-use std::future::Future;
 use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -39,6 +38,7 @@ fn catalog() -> Result<presentation::Catalog, presentation::CatalogError> {
         registration_cli::EN_US,
         registration_application::EN_US,
         agent_configs::EN_US,
+        file_lock::EN_US,
         project_registry::EN_US,
         task_store_sqlite::EN_US,
         go_task_log::EN_US,
@@ -165,19 +165,8 @@ fn watch<W: tasks_application::WatchService>(
                 return 1;
             }
         };
-        // Stdin closing stops it too: a subscriber that dies takes its
-        // watch with it.
-        let mut signalled = std::pin::pin!(stop);
-        let mut closed = std::pin::pin!(tasks_watch::closed(io::stdin()));
-        let stop = std::future::poll_fn(move |cx| {
-            let signalled = signalled.as_mut().poll(cx).is_ready();
-            let closed = closed.as_mut().poll(cx).is_ready();
-            if signalled || closed {
-                std::task::Poll::Ready(())
-            } else {
-                std::task::Poll::Pending
-            }
-        });
+        // Stdin is not watched: the VS Code extension starts the watch
+        // with stdin from /dev/null, and Go's watch ignores it too.
         let mut ticks = tasks_watch::Interval::every(tasks_watch::DEBOUNCE);
         tasks_watch::run(
             service,
@@ -211,6 +200,7 @@ fn manage(
     let configs = agent_configs::AgentConfigFiles {
         home,
         path: std::env::var_os("PATH"),
+        waits: file_lock::Waits::DEFAULT,
     };
     let mut registrations = registration_application::Registrations::taskloom(configs);
     registration_cli::run(words, &settings, &mut registrations, catalog, out, err)
@@ -272,7 +262,12 @@ fn main() -> ExitCode {
         session: std::env::var("CTXLOOM_SESSION_HARP").unwrap_or_default(),
         stdout_is_terminal: io::stdout().is_terminal(),
         version: env!("CARGO_PKG_VERSION").to_string(),
-        lock_protocol: project_registry::LOCK_PROTOCOL,
+        // True of every lock file taskloom takes, each through file-lock:
+        // the project registry's `index.yaml.lock`, and `manage`'s home
+        // sidecar for the agent configuration it rewrites, with the reap
+        // interlock held shared. It takes none on a Go task log (the
+        // importer reads without one); its store is SQLite's to lock.
+        lock_protocol: file_lock::LOCK_PROTOCOL,
     };
     // `mcp`, `watch` and `run` run once the command line has been read, on the
     // same runtime: the CLI's mounted commands are synchronous.

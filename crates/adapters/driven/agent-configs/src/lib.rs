@@ -10,7 +10,11 @@
 //! program, and refused when it runs another. A file that is not JSON is
 //! copied beside itself (`<path>.corrupt-<unix seconds>`) and left alone.
 //! A write replaces the file whole, atomically, keeping its permissions
-//! (a new file is private, 0600).
+//! (a new file is private, 0600). The whole read-modify-write, a dry run's
+//! included, runs under the file's lock, the one Go's
+//! `sessions.WithFileLock` takes (file-lock's [`file_lock::lock_file`]:
+//! `~/.ctxloom/locks/<FlatName(path)>.lock` under the reap interlock), so
+//! it takes turns with Go ctxloom's and taskloom's writes of the file.
 //!
 //! Go remembers what it wrote in application records; Rust keeps none,
 //! and reads Go's for one fact: whether Go made the `mcpServers` object
@@ -41,12 +45,16 @@ pub const CLAUDE_CODE: &str = "claude-code";
 /// The object a configuration's servers are in.
 pub const SERVERS: &str = "mcpServers";
 
-/// The agents' configuration files under a home, and the PATH a server's
-/// command is looked for on.
+/// The agents' configuration files under a home, the PATH a server's
+/// command is looked for on, and how long a write waits for the file's
+/// lock.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AgentConfigFiles {
     pub home: Option<PathBuf>,
     pub path: Option<OsString>,
+    /// The waits for the file's lock ([`file_lock::Waits::DEFAULT`] in
+    /// use).
+    pub waits: file_lock::Waits,
 }
 
 impl AgentConfigs for AgentConfigFiles {
@@ -101,7 +109,6 @@ impl AgentConfigs for AgentConfigFiles {
             }));
         }
         self.rewrite(path, name, owner, server, dry_run)
-            .map_err(|e| Report::of(&e))
     }
 
     fn installed(&mut self, _: &str, path: &Path, name: &str) -> Result<Option<bool>, Report> {
@@ -141,7 +148,28 @@ impl AgentConfigFiles {
         )
     }
 
+    /// The whole read-modify-write of `path`, under the file's lock: Go's
+    /// `sessions.WithFileLock`, so a Go or Rust ctxloom-family binary
+    /// rewriting it meanwhile takes its turn. A dry run takes it too, as
+    /// Go's does.
     fn rewrite(
+        &self,
+        path: &Path,
+        name: &str,
+        owner: &str,
+        server: Option<&McpServer>,
+        dry_run: bool,
+    ) -> Result<Rewritten, Report> {
+        let home = self
+            .home
+            .as_ref()
+            .ok_or_else(|| Report::of(&ConfigError::NoHome))?;
+        let _locked = file_lock::lock_file(home, path, self.waits).map_err(|e| Report::of(&e))?;
+        self.rewrite_locked(path, name, owner, server, dry_run)
+            .map_err(|e| Report::of(&e))
+    }
+
+    fn rewrite_locked(
         &self,
         path: &Path,
         name: &str,

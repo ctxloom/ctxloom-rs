@@ -36,25 +36,30 @@ pub enum Group {
 #[derive(Subcommand, Debug, PartialEq, Eq)]
 pub enum ProjectCommand {
     /// Show this directory's project: its id, root, marker, registry
-    /// entries and database, and every inconsistency found.
+    /// entries and database, the other trees sharing it (a second clone
+    /// with the same committed .project-id is the same project, by
+    /// design), and every inconsistency found.
     Show,
     /// Repair the skew between this directory's .project-id and the
-    /// registry, toward the marker, and check the project's database for
-    /// damage, which it reports and never repairs. Reports what it would
-    /// change; --yes changes it.
+    /// registry, toward the marker (registering this tree beside any other
+    /// sharing its id), and check the project's database for damage, which
+    /// it reports and never repairs. Reports what it would change; --yes
+    /// changes it.
     Heal {
         /// Make the changes.
         #[arg(long)]
         yes: bool,
     },
     /// Bind this directory to an existing project and its database. The id
-    /// it had before keeps its database. Reports what it would change;
+    /// it had before keeps its database. Moving onto a project another
+    /// existing tree holds needs --share. Reports what it would change;
     /// --yes changes it.
     Repoint {
         /// The project to bind to.
         project_id: String,
-        /// Bind it even though the project's registered tree still exists:
-        /// the two trees are meant to share it.
+        /// Bind it even though another existing tree holds the project:
+        /// the two trees are meant to share it, as clones with one
+        /// .project-id do.
         #[arg(long)]
         share: bool,
         /// Make the changes.
