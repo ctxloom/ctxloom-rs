@@ -12,6 +12,7 @@ annals.workspace = true
 annals-diagnostic.workspace = true
 ports.workspace = true
 sha2.workspace = true
+tagma-core.workspace = true
 task-lists.workspace = true
 tasks.workspace = true
 

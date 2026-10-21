@@ -5,14 +5,15 @@ use std::io::{self, Write};
 
 use presentation::{text, Render};
 use serde::Serialize;
-use tasks_application::{Project, Task, Timestamp};
+use tasks_application::{Project, Tag, Task, Timestamp};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
 /// How many characters of a task's first line a listing shows.
 pub const HEADLINE_WIDTH: usize = 80;
 
-/// A task as JSON: Go's `tasks.Task`, its fields in its order.
+/// A task as JSON: Go's `tasks.Task`, its fields in its order, each tag in
+/// its canonical spelling.
 #[derive(Serialize)]
 pub struct TaskJson<'a> {
     harp_id: &'a str,
@@ -22,7 +23,7 @@ pub struct TaskJson<'a> {
     text_hash: &'a str,
     trigger: &'a str,
     origin_session: &'a str,
-    tags: &'a [String],
+    tags: Vec<String>,
     created_at: String,
 }
 
@@ -36,10 +37,15 @@ impl<'a> TaskJson<'a> {
             text_hash: &task.text_hash,
             trigger: &task.trigger,
             origin_session: &task.origin_session,
-            tags: &task.tags,
+            tags: spelled(&task.tags),
             created_at: rfc3339(task.created_at),
         }
     }
+}
+
+/// Each tag in its canonical spelling (tagma's `Display`).
+pub fn spelled(tags: &[Tag]) -> Vec<String> {
+    tags.iter().map(ToString::to_string).collect()
 }
 
 /// `at` in RFC 3339, UTC, with as many fractional digits as it needs (Go's
@@ -88,7 +94,7 @@ pub fn table(out: &mut dyn Write, tasks: &[Task]) -> io::Result<()> {
             line = format!("{line}  (trigger: {})", task.trigger);
         }
         if !task.tags.is_empty() {
-            line = format!("{line}  [{}]", task.tags.join(", "));
+            line = format!("{line}  [{}]", spelled(&task.tags).join(", "));
         }
         writeln!(
             out,
@@ -135,7 +141,7 @@ impl Render for Tagged<'_> {
             "{}\t{}\t{}",
             task.harp_id,
             task.status,
-            task.tags.join(",")
+            spelled(&task.tags).join(",")
         )
     }
 }

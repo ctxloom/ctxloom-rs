@@ -124,7 +124,7 @@ fn run_on(fake: &mut Fake, terminal: bool, args: &[&str]) -> Ran {
 
 fn tagged_task() -> Task {
     let mut task = shapes::task("swift-amber", "To Do");
-    task.tags = vec!["a".to_string(), "b".to_string()];
+    task.tags = vec![tag("a"), tag("b")];
     task
 }
 
@@ -698,4 +698,12 @@ fn test_import_that_cannot_start_fails_with_why() {
         "{}",
         ran.err
     );
+}
+
+fn tag(key: &str) -> tasks_application::Tag {
+    tasks_application::Tag {
+        namespace: None,
+        key: key.to_string(),
+        value: None,
+    }
 }

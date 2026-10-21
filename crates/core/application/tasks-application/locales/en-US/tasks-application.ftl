@@ -6,3 +6,4 @@ tasks-application-no-go-log = Go taskloom has no task log for project { $project
 tasks-application-import-displaced = another task holds this harp in Go's log: run Go's `taskloom repair`, then import again
 tasks-application-import-harp-taken = a task not imported from this record already holds this harp
 tasks-application-import-task-not-imported = its task was not imported
+tasks-application-tag-unparseable = the tag { $tag } is not a tag in tagma's grammar: { $detail }

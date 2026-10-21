@@ -23,6 +23,7 @@ annals.workspace = true
 annals-diagnostic.workspace = true
 ports.workspace = true
 serde_json.workspace = true
+tagma-core.workspace = true
 tasks.workspace = true
 tempfile.workspace = true
 time.workspace = true

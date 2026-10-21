@@ -10,6 +10,7 @@
 mod error;
 mod import;
 mod retry;
+mod tags;
 mod view;
 
 use std::future::Future;
@@ -32,6 +33,7 @@ pub use import::{
 };
 pub use ports::{GoOp, Project};
 pub use retry::Backoff;
+pub use tags::{Tag, TagRefusal};
 pub use view::{is_terminal, text_hash, Task, ARCHIVED, DONE};
 
 /// How many task ids an add mints before giving up, each refused because a
@@ -54,7 +56,8 @@ pub struct NewTask {
 }
 
 /// Tags to add to and remove from a task: the adds first, then the
-/// removes, so a tag named in both ends up removed.
+/// removes, so a tag named in both ends up removed. Each is a tag in
+/// tagma's grammar; one that does not parse refuses the change.
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct TagChange {
     pub project: Option<String>,
@@ -173,6 +176,7 @@ where
     L: Send,
 {
     async fn add(&mut self, task: NewTask) -> Result<Written, AppError> {
+        let tags = tags::parse_all(&task.tags).map_err(|r| refused(&r))?;
         let project = self
             .identity
             .for_write(task.project.as_deref())
@@ -192,7 +196,7 @@ where
                 text: task.text.clone(),
                 status: task.status.clone(),
                 trigger: task.trigger.clone(),
-                tags: task.tags.clone(),
+                tags: tags.clone(),
                 origin_session: task.origin_session.clone(),
             };
             let book = book(&harp_id, add.into());
@@ -213,6 +217,8 @@ where
     }
 
     async fn tag(&mut self, change: TagChange) -> Result<Written, AppError> {
+        let add = tags::parse_all(&change.add).map_err(|r| refused(&r))?;
+        let remove = tags::parse_all(&change.remove).map_err(|r| refused(&r))?;
         // A change to an existing task resolves its project as a read does:
         // where there is none, or no store yet, there is no task to change,
         // and nothing is minted or created to say so.
@@ -232,10 +238,7 @@ where
         }
         let store = self.stores.open(&project).await.map_err(failed)?;
         let command_id = self.clock.command_id();
-        let retag = Retag {
-            add: change.add,
-            remove: change.remove,
-        };
+        let retag = Retag { add, remove };
         let book = book(&change.harp_id, retag.into());
         let mut runner = retry::Runner {
             registry: &self.registry,
@@ -347,6 +350,10 @@ async fn read<S: AsyncEventStore>(
 
 fn failed(error: annals::next::StoreError) -> AppError {
     AppError::Failed(Report::of(&error))
+}
+
+fn refused(refusal: &TagRefusal) -> AppError {
+    AppError::TagRefused(Report::of(refusal))
 }
 
 fn rejected(rejection: &TaskRejection) -> AppError {

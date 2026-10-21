@@ -5,12 +5,16 @@ use std::fmt;
 use annals_diagnostic::{Arg, Diagnostic, Report};
 
 /// Why a use case did not complete. A wrapper of another error
-/// ([`AppError::Rejected`], [`AppError::Failed`], [`AppError::Identity`]) is
-/// that error's diagnostic: its code, args and English.
+/// ([`AppError::Rejected`], [`AppError::TagRefused`], [`AppError::Failed`],
+/// [`AppError::Identity`]) is that error's diagnostic: its code, args and
+/// English.
 #[derive(Clone, PartialEq, Debug)]
 pub enum AppError {
     /// The domain refused the command: tell the person.
     Rejected(Report),
+    /// A tag given to a write was refused before any command was sent
+    /// ([`crate::TagRefusal`]): tell the person.
+    TagRefused(Report),
     /// The store or the kernel failed in a way a retry will not mend.
     Failed(Report),
     /// The project could not be resolved.
@@ -31,9 +35,10 @@ pub enum AppError {
 impl fmt::Display for AppError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AppError::Rejected(cause) | AppError::Failed(cause) | AppError::Identity(cause) => {
-                cause.fmt(f)
-            }
+            AppError::Rejected(cause)
+            | AppError::TagRefused(cause)
+            | AppError::Failed(cause)
+            | AppError::Identity(cause) => cause.fmt(f),
             AppError::GaveUp { attempts, error } => {
                 write!(f, "gave up after {attempts} attempts: {error}")
             }
@@ -56,9 +61,10 @@ impl fmt::Display for AppError {
 impl Diagnostic for AppError {
     fn code(&self) -> &'static str {
         match self {
-            AppError::Rejected(cause) | AppError::Failed(cause) | AppError::Identity(cause) => {
-                cause.code()
-            }
+            AppError::Rejected(cause)
+            | AppError::TagRefused(cause)
+            | AppError::Failed(cause)
+            | AppError::Identity(cause) => cause.code(),
             AppError::GaveUp { .. } => "tasks-application-gave-up",
             AppError::HarpsExhausted { .. } => "tasks-application-harps-exhausted",
             AppError::Vanished { .. } => "tasks-application-vanished",
@@ -69,9 +75,10 @@ impl Diagnostic for AppError {
 
     fn args(&self) -> Vec<(&'static str, Arg)> {
         match self {
-            AppError::Rejected(cause) | AppError::Failed(cause) | AppError::Identity(cause) => {
-                cause.args()
-            }
+            AppError::Rejected(cause)
+            | AppError::TagRefused(cause)
+            | AppError::Failed(cause)
+            | AppError::Identity(cause) => cause.args(),
             AppError::GaveUp { attempts, error } => vec![
                 ("attempts", (*attempts).into()),
                 ("error", Arg::nested(error)),
@@ -95,8 +102,8 @@ pub const EN_US: (&str, &str) = (
 /// adapters': the domain's rejections and this crate's errors.
 pub const CATALOGS: [(&str, &str); 2] = [tasks::EN_US, EN_US];
 
-/// One value of every error this crate defines, and of every reason an
-/// import gives for leaving a record behind (not the wrappers, whose codes
+/// One value of every error this crate defines, of every reason a tag is
+/// refused, and of every reason an import gives for leaving a record behind (not the wrappers, whose codes
 /// are their causes'), for the catalog test.
 pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
     vec![
@@ -111,6 +118,10 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(AppError::NoProject),
         Box::new(AppError::NoGoLog {
             project: "jolly-mute-magma".to_string(),
+        }),
+        Box::new(crate::TagRefusal::Unparseable {
+            tag: "a b".to_string(),
+            detail: "x".to_string(),
         }),
         Box::new(crate::Why::Displaced),
         Box::new(crate::Why::HarpTaken),

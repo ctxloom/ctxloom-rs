@@ -1,0 +1,4 @@
+{"op":"add","task":"brisk-heron","text":"Legacy tags","status":"To Do","session":"calm-otter","tags":["ok","has space","area/cli"],"ts":"2026-03-02T10:00:00Z"}
+{"op":"tag","task":"brisk-heron","tags":["k=\"v\"","x=1=2"],"session":"calm-otter","ts":"2026-03-02T10:01:00Z"}
+{"op":"untag","task":"brisk-heron","tags":["has space"],"session":"calm-otter","ts":"2026-03-02T10:02:00Z"}
+{"op":"tag","task":"brisk-heron","tags":["*"],"session":"calm-otter","ts":"2026-03-02T10:03:00Z"}

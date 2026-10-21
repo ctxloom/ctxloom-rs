@@ -33,7 +33,7 @@ fn test_a_task_carries_its_state_and_the_values_derived_from_it() {
         status: "Done".to_string(),
         trigger: "the release".to_string(),
         origin_session: "calm-otter-fox".to_string(),
-        tags: vec!["a".to_string(), "b".to_string()],
+        tags: vec![tag("a"), tag("b")],
         created_at: at,
         ..TaskState::default()
     };
@@ -47,7 +47,7 @@ fn test_a_task_carries_its_state_and_the_values_derived_from_it() {
             text_hash: "2cf24dba5fb0".to_string(),
             trigger: "the release".to_string(),
             origin_session: "calm-otter-fox".to_string(),
-            tags: vec!["a".to_string(), "b".to_string()],
+            tags: vec![tag("a"), tag("b")],
             created_at: at,
         }
     );
@@ -60,4 +60,12 @@ fn test_an_open_task_is_not_checked() {
         ..TaskState::default()
     };
     assert!(!Task::of(&state).checked);
+}
+
+fn tag(key: &str) -> tasks::Tag {
+    tasks::Tag {
+        namespace: None,
+        key: key.to_string(),
+        value: None,
+    }
 }

@@ -110,7 +110,7 @@ fn test_an_add_mints_a_harp_and_answers_with_the_task_and_its_project() {
     assert_eq!(written.task.harp_id, "swift-amber");
     assert_eq!(written.task.text, "Ship it");
     assert_eq!(written.task.status, "In Progress");
-    assert_eq!(written.task.tags, ["a", "b"]);
+    assert_eq!(spelled(&written.task.tags), ["a", "b"]);
     assert_eq!(written.task.origin_session, "calm-otter-fox");
     assert_eq!(
         written.task.created_at.seconds, 1_700_000_001,
@@ -199,6 +199,49 @@ fn change(harp: &str, add: &[&str], remove: &[&str]) -> TagChange {
     }
 }
 
+// A tag outside tagma's grammar could never be queried: it is refused
+// before anything is resolved or written.
+#[test]
+fn test_an_add_with_a_tag_outside_the_grammar_is_refused_and_writes_nothing() {
+    let mut service = service(&["swift-amber"]);
+    let task = NewTask {
+        tags: vec!["ok".to_string(), "not ok".to_string()],
+        ..new_task("Ship it")
+    };
+    let error = add(&mut service, task).unwrap_err();
+    assert_eq!(error.code(), "tasks-application-tag-unparseable");
+    assert!(error.to_string().contains("not ok"), "{error}");
+    assert!(service.identity.pins.is_empty(), "no project resolved");
+    assert!(service.stores.opened.is_empty());
+}
+
+#[test]
+fn test_a_tag_naming_a_tag_outside_the_grammar_is_refused_either_way() {
+    let mut service = service(&["swift-amber"]);
+    add(&mut service, new_task("Ship it")).unwrap();
+    for change in [
+        change("swift-amber", &["a/b"], &[]),
+        change("swift-amber", &[], &["a/b"]),
+    ] {
+        let error = ready(service.tag(change)).unwrap_err();
+        assert_eq!(error.code(), "tasks-application-tag-unparseable");
+    }
+    assert_eq!(command_ids(&mut service, "swift-amber").len(), 1, "the add");
+}
+
+// A tag's spelling is not its identity: `k="v"` is `k=v`.
+#[test]
+fn test_a_tag_spelled_another_way_is_the_same_tag() {
+    let mut service = service(&["swift-amber"]);
+    let task = NewTask {
+        tags: vec!["k=v".to_string()],
+        ..new_task("Ship it")
+    };
+    add(&mut service, task).unwrap();
+    let written = ready(service.tag(change("swift-amber", &[], &["k=\"v\""]))).unwrap();
+    assert!(written.task.tags.is_empty());
+}
+
 #[test]
 fn test_a_tag_adds_then_removes_and_answers_with_the_task() {
     let mut service = service(&["swift-amber"]);
@@ -209,7 +252,7 @@ fn test_a_tag_adds_then_removes_and_answers_with_the_task() {
     add(&mut service, task).unwrap();
     let written =
         ready(service.tag(change("swift-amber", &["new", "both"], &["old", "both"]))).unwrap();
-    assert_eq!(written.task.tags, ["new"]);
+    assert_eq!(spelled(&written.task.tags), ["new"]);
     assert_eq!(written.project, project());
     assert_eq!(
         service.identity.pins.last(),
@@ -226,7 +269,7 @@ fn test_a_tag_changing_nothing_answers_with_the_task_as_it_is() {
     };
     add(&mut service, task).unwrap();
     let written = ready(service.tag(change("swift-amber", &["kept"], &[]))).unwrap();
-    assert_eq!(written.task.tags, ["kept"]);
+    assert_eq!(spelled(&written.task.tags), ["kept"]);
 }
 
 #[test]
@@ -269,7 +312,7 @@ fn test_a_tag_retries_through_store_failures() {
     add(&mut service, new_task("Ship it")).unwrap();
     service.stores.store.faults = [Fault::Conflict, Fault::LandsThenFails].into();
     let written = ready(service.tag(change("swift-amber", &["x"], &[]))).unwrap();
-    assert_eq!(written.task.tags, ["x"]);
+    assert_eq!(spelled(&written.task.tags), ["x"]);
     assert_eq!(service.delay.slept.len(), 2);
     assert_eq!(
         command_ids(&mut service, "swift-amber").len(),
@@ -479,4 +522,9 @@ fn test_the_default_query_admits_open_statuses_only() {
     assert!(!query.admits(&task("Done")));
     assert!(!query.admits(&task("Archived")));
     assert!(!query.admits(&task("Deferred")));
+}
+
+/// Each tag in its canonical spelling.
+fn spelled(tags: &[tasks::Tag]) -> Vec<String> {
+    tags.iter().map(ToString::to_string).collect()
 }

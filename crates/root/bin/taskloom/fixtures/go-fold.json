@@ -316,5 +316,28 @@
     "error": "unknown-op.jsonl:2: unrecognized op \"archive\" — this log was likely written by a newer taskloom; upgrade this binary",
     "tasks": [],
     "anomalies": []
+  },
+  "unparseable-tags": {
+    "tasks": [
+      {
+        "harp_id": "brisk-heron",
+        "removed": false,
+        "text": "Legacy tags",
+        "status": "To Do",
+        "trigger": "",
+        "origin_session": "calm-otter",
+        "tags": [
+          "*",
+          "area/cli",
+          "k=\"v\"",
+          "ok",
+          "x=1=2"
+        ],
+        "created_at": "2026-03-02T10:00:00Z",
+        "status_set_at": "2026-03-02T10:00:00Z",
+        "deferred_since": null
+      }
+    ],
+    "anomalies": []
   }
 }

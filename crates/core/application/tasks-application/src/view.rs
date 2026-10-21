@@ -3,7 +3,7 @@
 
 use annals::next::Timestamp;
 use sha2::{Digest, Sha256};
-use tasks::TaskState;
+use tasks::{Tag, TaskState};
 
 /// The status of a finished task.
 pub const DONE: &str = "Done";
@@ -28,8 +28,9 @@ pub struct Task {
     pub text_hash: String,
     pub trigger: String,
     pub origin_session: String,
-    /// Normalized: unique and sorted.
-    pub tags: Vec<String>,
+    /// Normalized: unique, sorted by their canonical spelling (their
+    /// `Display`).
+    pub tags: Vec<Tag>,
     pub created_at: Timestamp,
 }
 

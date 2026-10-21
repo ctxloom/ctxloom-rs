@@ -2052,6 +2052,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tagma-core"
+version = "0.1.0"
+
+[[package]]
+name = "tagma-proto"
+version = "0.1.0"
+dependencies = [
+ "prost",
+ "prost-build",
+ "tagma-core",
+]
+
+[[package]]
 name = "task-lists"
 version = "0.1.0"
 dependencies = [
@@ -2085,6 +2098,7 @@ dependencies = [
  "project-registry",
  "serde_json",
  "system",
+ "tagma-core",
  "task-store-sqlite",
  "tasks",
  "tasks-application",
@@ -2104,6 +2118,8 @@ dependencies = [
  "fluent-syntax",
  "mutants",
  "prost",
+ "tagma-core",
+ "tagma-proto",
  "tasks-proto",
 ]
 
@@ -2116,6 +2132,7 @@ dependencies = [
  "fluent-syntax",
  "ports",
  "sha2",
+ "tagma-core",
  "task-lists",
  "tasks",
 ]
@@ -2142,6 +2159,7 @@ dependencies = [
  "angzarr-proto",
  "prost",
  "prost-types",
+ "tagma-proto",
 ]
 
 [[package]]

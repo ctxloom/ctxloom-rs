@@ -11,8 +11,9 @@ mod generated {
 }
 mod rejection;
 
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::convert::Infallible;
+use std::fmt;
 
 use annals::next::{ids, Domain, IngestCtx, Tx};
 
@@ -78,16 +79,17 @@ impl Domain for Tasks {
                 Ok(())
             }
             TaskCommand::Retag(retag) => {
-                let held: BTreeSet<String> = live(tx.state())?.tags.iter().cloned().collect();
-                let add = normalized(&retag.add);
-                let remove = normalized(&retag.remove);
-                if add.is_empty() && remove.is_empty() {
+                let held = normalized(&live(tx.state())?.tags);
+                if retag.add.is_empty() && retag.remove.is_empty() {
                     return Err(TaskRejection::TagRequired);
                 }
-                let after: BTreeSet<String> = held.union(&add).cloned().collect();
-                let after: BTreeSet<String> = after.difference(&remove).cloned().collect();
+                let mut after = held.clone();
+                after.extend(normalized(&retag.add));
+                for spelled in normalized(&retag.remove).keys() {
+                    after.remove(spelled);
+                }
                 if after != held {
-                    let tags = after.into_iter().collect();
+                    let tags = after.into_values().collect();
                     tx.emit(Retagged { tags }.into());
                 }
                 Ok(())
@@ -169,7 +171,7 @@ fn decide_add(add: &AddTask, tx: &mut Tx<'_, Tasks>) -> Result<(), TaskRejection
             text,
             status,
             trigger,
-            tags: normalized(&add.tags).into_iter().collect(),
+            tags: normalized(&add.tags).into_values().collect(),
             origin_session: add.origin_session.clone(),
             at,
             deferred_since,
@@ -211,13 +213,47 @@ fn valid_status(status: &str) -> Result<Option<String>, TaskRejection> {
     }
 }
 
-/// Tags trimmed, empties dropped, deduplicated and sorted.
-fn normalized(tags: &[String]) -> BTreeSet<String> {
-    tags.iter()
-        .map(|t| t.trim())
-        .filter(|t| !t.is_empty())
-        .map(str::to_string)
-        .collect()
+/// Tags deduplicated, by their canonical spelling (a tag's spelling is
+/// unique to it), in the order of that spelling.
+fn normalized(tags: &[Tag]) -> BTreeMap<String, Tag> {
+    tags.iter().map(|t| (t.to_string(), t.clone())).collect()
+}
+
+/// A tag is tagma's: the generated domain type carries the same three
+/// components as [`tagma_core::Tag`], and converts to it and back whole.
+impl From<tagma_core::Tag> for Tag {
+    fn from(tag: tagma_core::Tag) -> Self {
+        Tag {
+            namespace: tag.namespace,
+            key: tag.key,
+            value: tag.value,
+        }
+    }
+}
+
+impl From<Tag> for tagma_core::Tag {
+    fn from(tag: Tag) -> Self {
+        tagma_core::Tag {
+            namespace: tag.namespace,
+            key: tag.key,
+            value: tag.value,
+        }
+    }
+}
+
+impl Tag {
+    /// `tag`'s components as a [`tagma_core::Tag`].
+    pub fn to_core(&self) -> tagma_core::Tag {
+        self.clone().into()
+    }
+}
+
+/// The canonical spelling (tagma's `Display`): each component bare where it
+/// can be, quoted where it must.
+impl fmt::Display for Tag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.to_core().fmt(f)
+    }
 }
 
 #[cfg(test)]

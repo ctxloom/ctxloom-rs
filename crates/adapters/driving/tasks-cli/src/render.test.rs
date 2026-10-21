@@ -45,7 +45,7 @@ fn test_an_instant_is_rfc3339_in_utc_with_only_the_digits_it_needs() {
 #[test]
 fn test_a_task_as_json_is_gos_shape_in_gos_order() {
     let mut task = task("swift-amber", "To Do");
-    task.tags = vec!["a".to_string()];
+    task.tags = vec![tag("a")];
     task.origin_session = "calm-otter-fox".to_string();
     task.trigger = "later".to_string();
     let text = rendered(|out| write_json(out, &TaskJson::of(&task)));
@@ -96,7 +96,7 @@ fn test_an_empty_table_says_so() {
 fn test_a_table_aligns_ids_and_statuses_and_separates_tasks() {
     let mut deferred = task("calm-otter", "Deferred");
     deferred.trigger = "the release".to_string();
-    deferred.tags = vec!["a".to_string(), "b".to_string()];
+    deferred.tags = vec![tag("a"), tag("b")];
     let tasks = [task("swift-amber-x", "Done"), deferred];
     assert_eq!(
         rendered(|out| table(out, &tasks)),
@@ -131,7 +131,7 @@ fn project() -> Project {
 #[test]
 fn test_a_written_task_is_one_line_of_text_or_the_task_in_json() {
     let mut tagged = task("swift-amber", "To Do");
-    tagged.tags = vec!["a".to_string(), "b".to_string()];
+    tagged.tags = vec![tag("a"), tag("b")];
     assert_eq!(
         rendered(|out| render(out, Format::Text, &Added(&tagged))),
         "swift-amber\tTo Do\tShip it\n"
@@ -173,4 +173,12 @@ fn test_a_listing_names_its_project_in_text_and_is_an_array_in_json() {
         "(no tasks)\n"
     );
     assert_eq!(rendered(|out| render(out, Format::Json, &nowhere)), "[]\n");
+}
+
+fn tag(key: &str) -> tasks_application::Tag {
+    tasks_application::Tag {
+        namespace: None,
+        key: key.to_string(),
+        value: None,
+    }
 }
