@@ -1,0 +1,711 @@
+[
+  {
+    "description": "Add a new task to the project's task log. Returns the assigned harp ID; reference the task by that ID in subsequent calls. Tags (optional, via `tags`) are shaped (namespace:)key(=value), not flat labels -- read the taskloom://tag-schema and taskloom://tag-vocabulary resources for this project's declared vocabulary and tags already in use before choosing one. If a tag's target is declared scalar (at most one value), setting a DIFFERENT value for it later via task_tag SILENTLY RETRACTS the value set here rather than adding a second one -- it is not a no-op. A tag value violating a declared enum or numeric range is rejected at write, as are the reserved words and/or/not and the tagma.* namespace.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "description": "Initial status (default: \"To Do\"). Free-form; standard values are \"In Progress\", \"To Do\", \"Deferred\", \"Done\", \"Archived\".",
+          "type": "string"
+        },
+        "tags": {
+          "description": "Optional tags to set on the task at creation, each shaped (namespace:)key(=value) -- e.g. \"triage:kind=defect\", \"triage:effort=3\", or a bare flat tag like \"urgent\" with no namespace. Read the taskloom://tag-schema and taskloom://tag-vocabulary MCP resources first for this project's actual declared/used vocabulary -- do not assume tags are flat labels. Add more later with task_tag.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "text": {
+          "description": "Task text. Required, trimmed. Make the first line the subject: what the task IS, in ~80 characters or fewer — list views show only that line, truncated at 80 runes. Put provenance (dates, session names, \"found while doing X\") on a later line, not first, or it eats the whole summary before the subject appears. Fuller detail belongs in the body; \"taskloom show\" displays it. Record ONLY WHAT IS STILL TO DO — a task is a work item, not a history of one. When part lands, edit the task down to what remains; never append \"ITEM 1 DONE, items 2-13 remain\", because a task carrying its own finished half is indistinguishable from work never started and forces every reader to re-derive what is left. Completed work belongs in the commit message. Locate the work by SIGNATURE, not position: name the function, method, type, or exact string to grep for (\"cloneMCPServer in internal/core/config\"), never a line number (\"accessors.go:95\") — line numbers drift on any edit above them and are usually wrong by the time anyone reads the task.",
+          "type": "string"
+        },
+        "trigger": {
+          "description": "The revive condition for a Deferred task: a concrete description of what should bring it back (e.g. \"the v2 API ships\"). REQUIRED when status is \"Deferred\"; ignored otherwise.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "type": "object"
+    },
+    "name": "task_add",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "project_dir": {
+          "type": "string"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "refused": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "task": {
+          "additionalProperties": false,
+          "properties": {
+            "checked": {
+              "type": "boolean"
+            },
+            "created_at": {
+              "type": "string"
+            },
+            "derived_priority": {
+              "type": [
+                "null",
+                "number"
+              ]
+            },
+            "harp_id": {
+              "type": "string"
+            },
+            "origin_session": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "tags": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "text": {
+              "type": "string"
+            },
+            "text_hash": {
+              "type": "string"
+            },
+            "trigger": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "harp_id",
+            "text",
+            "status",
+            "checked",
+            "text_hash",
+            "trigger",
+            "origin_session",
+            "tags",
+            "created_at",
+            "derived_priority"
+          ],
+          "type": "object"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "task"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Replace a task's text in place, keyed by its harp ID. Pass the full new text (the whole text is replaced, not patched); status and any Deferred trigger are left unchanged.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "harp_id": {
+          "description": "The task's harp ID (e.g. \"swift-amber-falcon\") as returned by task_list or task_add.",
+          "type": "string"
+        },
+        "text": {
+          "description": "The full replacement text for the task. The entire text is replaced (not patched); status and trigger are left unchanged. Keep the subject on the first line (~80 characters or fewer, since list views truncate there) and move provenance to a later line rather than overwriting the subject with it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "harp_id",
+        "text"
+      ],
+      "type": "object"
+    },
+    "name": "task_edit",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "project_dir": {
+          "type": "string"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "task": {
+          "additionalProperties": false,
+          "properties": {
+            "checked": {
+              "type": "boolean"
+            },
+            "created_at": {
+              "type": "string"
+            },
+            "derived_priority": {
+              "type": [
+                "null",
+                "number"
+              ]
+            },
+            "harp_id": {
+              "type": "string"
+            },
+            "origin_session": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "tags": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "text": {
+              "type": "string"
+            },
+            "text_hash": {
+              "type": "string"
+            },
+            "trigger": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "harp_id",
+            "text",
+            "status",
+            "checked",
+            "text_hash",
+            "trigger",
+            "origin_session",
+            "tags",
+            "created_at",
+            "derived_priority"
+          ],
+          "type": "object"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "task"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "List tasks, optionally filtered by status, text term, or tag query (tag_query). By default this is scoped to the CURRENT project (resolved from the working directory); pass global=true to aggregate every PRIVATELY-homed project instead (a repo-homed project -- homing: repo -- is registered nowhere global and is never included, even if it is the current project; the result's notice field always says so when global is true). When no project can be resolved at all (not in a git repo, no CTXLOOM_ROOT, no prior task history there), the listing automatically falls back to global too, with the same notice field explaining why. Completed (Done/Archived) and Deferred tasks are hidden unless include_completed is set; when a filter matches hidden tasks the result reports hidden_completed/hidden_deferred counts. Pass include_summary=true to also get per-status counts and the in-progress tasks, each with its project (summed across projects when global). To enumerate MANY tasks, pass compact=true (harp_id, status, checked, tags, and a truncated headline in compact_tasks -- no full text/trigger/detail) and/or limit (caps row count; omitted rows are reported in omitted_by_limit, and status/summary counts stay uncapped) -- an unfiltered listing otherwise returns every task's full body and can overflow the caller; prefer statuses/tag_query filters too. Echo a task's harp_id back when you reference that task in a later call (e.g. task_set_status).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "compact": {
+          "description": "When true, return compact rows instead of full task bodies: harp_id, status, checked, tags, and a headline (first line, truncated to 80 runes) in a compact_tasks field, rather than the full tasks field (which includes each task's complete text, trigger, and other detail). Use this (optionally with limit) to enumerate many tasks without an unfiltered listing returning every task's full multi-KB body -- prefer statuses/tag_query filters too. Default false preserves today's full-record tasks field exactly.",
+          "type": "boolean"
+        },
+        "global": {
+          "description": "When true, aggregate tasks across every PRIVATELY-homed project instead of just the current one. Off by default: task_list scopes to the project resolved from the working directory. Automatically turned on (with notice set) when no project can be resolved at all. A repo-homed project (homing: repo, its log checked into \u003crepo\u003e/.taskloom/tasks.jsonl) is registered nowhere global and is NEVER included, even if it is the current project -- every global listing's notice field says so.",
+          "type": "boolean"
+        },
+        "include_completed": {
+          "description": "When true, include the tasks hidden by default: completed (Done/Archived) and Deferred ones. When a filter matches hidden tasks, the result's hidden_completed/hidden_deferred counts say how many were suppressed.",
+          "type": "boolean"
+        },
+        "include_summary": {
+          "description": "When true, include per-status counts and the in-progress tasks alongside the task list, each in-progress task as {harp_id, project}. Counts always cover every task in the listing's scope, including completed and Deferred ones, regardless of statuses/term/tag_query/limit. When the listing is global the counts are summed across every project it scanned.",
+          "type": "boolean"
+        },
+        "limit": {
+          "description": "Optional cap on the number of rows returned, applied AFTER every filter (statuses/term/tag_query) and the default active-only view. 0 (default) means no cap. Rows cut by the cap are reported in omitted_by_limit; status/summary counts (include_summary) are never affected by it -- they always cover every matching task.",
+          "type": "integer"
+        },
+        "sort": {
+          "description": "Optional sort order. \"priority\" sorts by derived, rank-normalized priority (descending) — a 0-5 score combining a project's priority_fn/decay_fn formulas over each task's tags, percentile-ranked against the project's non-terminal tasks; see each returned task's derived_priority field. Empty (default) leaves today's order unchanged.",
+          "type": "string"
+        },
+        "statuses": {
+          "description": "Optional list of statuses to filter by (e.g. [\"In Progress\", \"To Do\"]). Also accepts the classes \"@open\" (every non-terminal status) and \"@terminal\" (every completed one), expanded from the live status taxonomy and freely mixable with literal status names -- prefer @open over spelling the non-terminal statuses out, which drifts as the taxonomy changes. Empty = active tasks only (completed Done/Archived and Deferred tasks are hidden unless include_completed is set or such a status is named here).",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "tag_query": {
+          "description": "Optional postfix (RPN) boolean tag filter over query atoms shaped (namespace:)key(op value), e.g. \"urgent/release/and\" (tagged both urgent AND release), \"urgent/release/or\", or \"urgent/not\" (not tagged urgent). A bare slash-separated list with no operator is an implicit AND: \"urgent/release\" behaves like \"urgent/release/and\". An atom with NO namespace (e.g. \"urgent\") matches ONLY tags that also have no namespace -- it never matches a namespaced tag with the same key, so \"urgent\" does NOT match \"triage:kind=urgent\"; query a namespaced key as \"ns:key\" or \"ns:key=value\" (e.g. \"triage:kind=defect\"). A bare key with no operator tests presence (valued or not); value comparisons use = != \u003e \u003e= \u003c \u003c= (numeric) or ~ (pattern match on the value, where . matches any single character, anchored to the whole value). * and + are wildcards: \"*:key\" matches key in any namespace including none, \"+:key\" matches key in any NAMED namespace, \"ns:*\" matches any key under namespace ns. Empty = no tag filter.",
+          "type": "string"
+        },
+        "term": {
+          "description": "Optional case-insensitive substring filter against task text.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "task_list",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "compact_tasks": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "checked": {
+                "type": "boolean"
+              },
+              "harp_id": {
+                "type": "string"
+              },
+              "headline": {
+                "type": "string"
+              },
+              "project_dir": {
+                "type": "string"
+              },
+              "project_id": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "tags": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              }
+            },
+            "required": [
+              "harp_id",
+              "status",
+              "checked",
+              "tags",
+              "headline",
+              "project_id",
+              "project_dir"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "global": {
+          "type": "boolean"
+        },
+        "hidden_completed": {
+          "type": "integer"
+        },
+        "hidden_deferred": {
+          "type": "integer"
+        },
+        "notice": {
+          "type": "string"
+        },
+        "omitted_by_limit": {
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        },
+        "priority_warning": {
+          "type": "string"
+        },
+        "project_count": {
+          "type": "integer"
+        },
+        "project_dir": {
+          "type": "string"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "summary": {
+          "additionalProperties": false,
+          "properties": {
+            "counts": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "in_progress": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "harp_id": {
+                    "type": "string"
+                  },
+                  "project": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "harp_id",
+                  "project"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            }
+          },
+          "required": [
+            "counts",
+            "in_progress"
+          ],
+          "type": [
+            "null",
+            "object"
+          ]
+        },
+        "tasks": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "checked": {
+                "type": "boolean"
+              },
+              "created_at": {
+                "type": "string"
+              },
+              "derived_priority": {
+                "type": [
+                  "null",
+                  "number"
+                ]
+              },
+              "harp_id": {
+                "type": "string"
+              },
+              "origin_session": {
+                "type": "string"
+              },
+              "project_dir": {
+                "type": "string"
+              },
+              "project_id": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "tags": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "text": {
+                "type": "string"
+              },
+              "text_hash": {
+                "type": "string"
+              },
+              "trigger": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "harp_id",
+              "text",
+              "status",
+              "checked",
+              "text_hash",
+              "trigger",
+              "origin_session",
+              "tags",
+              "created_at",
+              "derived_priority",
+              "project_id",
+              "project_dir"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "tasks"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Move a task to a different status. Use \"Done\" to complete a task or \"Archived\" to drop it from the active list without losing history. Use \"Deferred\" with a `trigger` to park a task on a named revive condition (it then hides from the active list until the condition fires).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "harp_id": {
+          "description": "The task's harp ID (e.g. \"swift-amber-falcon\") as returned by task_list or task_add.",
+          "type": "string"
+        },
+        "status": {
+          "description": "Target status. Standard values: \"In Progress\", \"To Do\", \"Deferred\", \"Done\", \"Archived\".",
+          "type": "string"
+        },
+        "trigger": {
+          "description": "The revive condition when moving to \"Deferred\": what should bring the task back. REQUIRED for \"Deferred\" unless the task already carries a trigger (then it is preserved). Ignored for other statuses.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "harp_id",
+        "status"
+      ],
+      "type": "object"
+    },
+    "name": "task_set_status",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "project_dir": {
+          "type": "string"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "task": {
+          "additionalProperties": false,
+          "properties": {
+            "checked": {
+              "type": "boolean"
+            },
+            "created_at": {
+              "type": "string"
+            },
+            "derived_priority": {
+              "type": [
+                "null",
+                "number"
+              ]
+            },
+            "harp_id": {
+              "type": "string"
+            },
+            "origin_session": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "tags": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "text": {
+              "type": "string"
+            },
+            "text_hash": {
+              "type": "string"
+            },
+            "trigger": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "harp_id",
+            "text",
+            "status",
+            "checked",
+            "text_hash",
+            "trigger",
+            "origin_session",
+            "tags",
+            "created_at",
+            "derived_priority"
+          ],
+          "type": "object"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "task"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Add and/or remove tags on a task, keyed by its harp ID. Tags are shaped (namespace:)key(=value), not flat labels -- read the taskloom://tag-schema and taskloom://tag-vocabulary resources for this project's declared vocabulary and tags already in use before choosing one. Pass `add`, `remove`, or both in one call (add is applied before remove, so a tag in both lists ends up removed). WARNING: for a tag whose target is declared scalar (at most one value), adding a DIFFERENT value does NOT no-op like an already-present flat tag would -- it SILENTLY RETRACTS whatever value was there before. Adding the identical value again is still a no-op. A tag value violating a declared enum or numeric range is rejected at write, as are the reserved words and/or/not and the tagma.* namespace. Filter task_list with tag_query using the resulting tags.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "add": {
+          "description": "Tags to add (union onto the task's current tag set), each shaped (namespace:)key(=value). A tag with an UNDECLARED-scalar or bare target is a plain union: a duplicate or already-present value is a no-op. But if the target IS declared scalar (at most one value -- see taskloom://tag-schema), adding a DIFFERENT value RETRACTS the previous one instead of accumulating a second -- this is a silent overwrite, not a no-op. Adding the exact same value again is still a no-op. A value violating a declared enum or numeric range is rejected, as are and/or/not and the tagma.* namespace.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "harp_id": {
+          "description": "The task's harp ID (e.g. \"swift-amber-falcon\") as returned by task_list or task_add.",
+          "type": "string"
+        },
+        "remove": {
+          "description": "Tags to remove (subtracted from the task's current tag set). Removing an absent tag is a no-op. At least one of add/remove is required; a tag named in both ends up removed.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "harp_id"
+      ],
+      "type": "object"
+    },
+    "name": "task_tag",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "project_dir": {
+          "type": "string"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "refused": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "task": {
+          "additionalProperties": false,
+          "properties": {
+            "checked": {
+              "type": "boolean"
+            },
+            "created_at": {
+              "type": "string"
+            },
+            "derived_priority": {
+              "type": [
+                "null",
+                "number"
+              ]
+            },
+            "harp_id": {
+              "type": "string"
+            },
+            "origin_session": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "tags": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "text": {
+              "type": "string"
+            },
+            "text_hash": {
+              "type": "string"
+            },
+            "trigger": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "harp_id",
+            "text",
+            "status",
+            "checked",
+            "text_hash",
+            "trigger",
+            "origin_session",
+            "tags",
+            "created_at",
+            "derived_priority"
+          ],
+          "type": "object"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "task"
+      ],
+      "type": "object"
+    }
+  }
+]

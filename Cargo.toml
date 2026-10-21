@@ -35,6 +35,7 @@ system = { path = "crates/adapters/driven/system" }
 tasks-cli = { path = "crates/adapters/driving/tasks-cli" }
 presentation = { path = "crates/adapters/driving/presentation" }
 tasks-presentation = { path = "crates/adapters/driving/tasks-presentation" }
+tasks-mcp = { path = "crates/adapters/driving/tasks-mcp" }
 project-cli = { path = "crates/adapters/driving/project-cli" }
 
 # Task and project ids: harp's word lists, as Go's harp ports them.
@@ -59,6 +60,12 @@ tempfile = "3"
 time = { version = "0.3", features = ["formatting", "parsing"] }
 tokio = { version = "1", features = ["rt", "time"] }
 unic-langid = "0.9"
+# The MCP server's protocol and stdio transport: the official Rust MCP SDK.
+# Pinned exactly, at 3.5.1 (2026-10-05): the newest release at least two
+# weeks old when it was chosen (2026-10-21). Only the server and its
+# stdio transport; no macros, so no schema is derived from Rust types (the
+# tools' schemas are Go's, copied verbatim).
+rmcp = { version = "=3.5.1", default-features = false, features = ["server", "transport-io"] }
 # Display-width columns in text output.
 unicode-width = "0.2"
 uuid = { version = "1", features = ["v7"] }
