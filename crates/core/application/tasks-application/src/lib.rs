@@ -1,4 +1,5 @@
-//! The tasks use cases: add a task, retag one, and list a project's tasks.
+//! The tasks use cases: add a task, retag one, list a project's tasks, and
+//! import Go taskloom's logs.
 //!
 //! Each resolves its project through [`ProjectIdentity`], opens the
 //! project's store through [`TaskStores`], and runs its command through
@@ -7,6 +8,7 @@
 //! clock and starts no runtime.
 
 mod error;
+mod import;
 mod retry;
 mod view;
 
@@ -24,6 +26,10 @@ use tasks::{
 
 pub use annals::next::Timestamp;
 pub use error::{diagnostic_samples, AppError};
+pub use import::{
+    anomaly_key, record_command_id, rfc3339_nano, ImportReport, ImportRequest, ImportService, Lost,
+    NoGoLogs, ProjectImport, Why,
+};
 pub use ports::Project;
 pub use retry::Backoff;
 pub use view::{is_terminal, text_hash, Task, ARCHIVED, DONE};
@@ -113,13 +119,15 @@ pub fn registry() -> Registry {
 }
 
 /// The use cases over their ports: `clock` stamps commands and mints their
-/// ids; `delay` waits, with jitter, between retries.
-pub struct Service<I, S, N, C, D> {
+/// ids; `delay` waits, with jitter, between retries; `go_logs` are the Go
+/// logs an import reads, none until [`Service::with_go_logs`] gives some.
+pub struct Service<I, S, N, C, D, L = NoGoLogs> {
     pub identity: I,
     pub stores: S,
     pub names: N,
     pub clock: C,
     pub delay: D,
+    pub go_logs: L,
     pub backoff: Backoff,
     registry: Registry,
 }
@@ -132,19 +140,37 @@ impl<I, S, N, C, D> Service<I, S, N, C, D> {
             names,
             clock,
             delay,
+            go_logs: NoGoLogs,
             backoff: Backoff::DEFAULT,
             registry: registry(),
         }
     }
 }
 
-impl<I, S, N, C, D> TaskService for Service<I, S, N, C, D>
+impl<I, S, N, C, D, L> Service<I, S, N, C, D, L> {
+    /// The same service, importing from `go_logs`.
+    pub fn with_go_logs<M>(self, go_logs: M) -> Service<I, S, N, C, D, M> {
+        Service {
+            identity: self.identity,
+            stores: self.stores,
+            names: self.names,
+            clock: self.clock,
+            delay: self.delay,
+            go_logs,
+            backoff: self.backoff,
+            registry: self.registry,
+        }
+    }
+}
+
+impl<I, S, N, C, D, L> TaskService for Service<I, S, N, C, D, L>
 where
     I: ProjectIdentity + Send,
     S: TaskStores + Send,
     N: Names + Send,
     C: Clock + CommandIds + Send,
     D: Delay + Jitter + Send,
+    L: Send,
 {
     async fn add(&mut self, task: NewTask) -> Result<Written, AppError> {
         let project = self

@@ -24,6 +24,8 @@ pub enum AppError {
     Vanished { harp_id: String },
     /// A change to an existing task where the work root has no project.
     NoProject,
+    /// An import of a project Go keeps no task log for.
+    NoGoLog { project: String },
 }
 
 impl fmt::Display for AppError {
@@ -44,6 +46,9 @@ impl fmt::Display for AppError {
             AppError::NoProject => {
                 f.write_str("there is no project here yet, so no task to change")
             }
+            AppError::NoGoLog { project } => {
+                write!(f, "Go taskloom has no task log for project {project}")
+            }
         }
     }
 }
@@ -58,6 +63,7 @@ impl Diagnostic for AppError {
             AppError::HarpsExhausted { .. } => "tasks-application-harps-exhausted",
             AppError::Vanished { .. } => "tasks-application-vanished",
             AppError::NoProject => "tasks-application-no-project",
+            AppError::NoGoLog { .. } => "tasks-application-no-go-log",
         }
     }
 
@@ -73,6 +79,7 @@ impl Diagnostic for AppError {
             AppError::HarpsExhausted { attempts } => vec![("attempts", (*attempts).into())],
             AppError::Vanished { harp_id } => vec![("harp_id", harp_id.as_str().into())],
             AppError::NoProject => Vec::new(),
+            AppError::NoGoLog { project } => vec![("project", project.as_str().into())],
         }
     }
 }
@@ -90,6 +97,9 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
             harp_id: "swift-amber".to_string(),
         }),
         Box::new(AppError::NoProject),
+        Box::new(AppError::NoGoLog {
+            project: "jolly-mute-magma".to_string(),
+        }),
     ]
 }
 
