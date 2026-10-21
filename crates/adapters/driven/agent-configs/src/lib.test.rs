@@ -79,6 +79,7 @@ impl Home {
         let mut configs = AgentConfigFiles {
             home: Some(home.path().to_path_buf()),
             path: Some(bin.path().as_os_str().to_owned()),
+            waits: file_lock::Waits::DEFAULT,
         };
         let scope = if case.project() {
             Scope::Project(dir.path().to_path_buf())
@@ -288,6 +289,7 @@ fn files() -> (TempDir, AgentConfigFiles) {
     let configs = AgentConfigFiles {
         home: Some(home.path().to_path_buf()),
         path: None,
+        waits: file_lock::Waits::DEFAULT,
     };
     (home, configs)
 }
@@ -317,6 +319,7 @@ fn test_claude_code_is_the_one_agent_and_its_files_are_gos() {
     let homeless = AgentConfigFiles {
         home: None,
         path: None,
+        waits: file_lock::Waits::DEFAULT,
     }
     .config_path(CLAUDE_CODE, &Scope::User)
     .unwrap_err();
@@ -338,6 +341,7 @@ fn test_an_agent_is_present_where_its_file_or_its_directory_is() {
     let homeless = AgentConfigFiles {
         home: None,
         path: None,
+        waits: file_lock::Waits::DEFAULT,
     };
     assert!(!homeless.clone().present(CLAUDE_CODE, &Scope::User));
     let other = tempfile::tempdir().unwrap();
@@ -345,6 +349,7 @@ fn test_an_agent_is_present_where_its_file_or_its_directory_is() {
     let mut configs = AgentConfigFiles {
         home: Some(other.path().to_path_buf()),
         path: None,
+        waits: file_lock::Waits::DEFAULT,
     };
     assert!(configs.present(CLAUDE_CODE, &Scope::User));
 }
@@ -403,8 +408,16 @@ fn test_a_rewrite_that_changes_nothing_writes_nothing() {
         std::fs::metadata(&path).unwrap().modified().unwrap(),
         written
     );
-    let entries: Vec<_> = std::fs::read_dir(home.path()).unwrap().collect();
-    assert_eq!(entries.len(), 2, "no file staged and left behind");
+    let entries: Vec<_> = std::fs::read_dir(home.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .filter(|name| name != ".ctxloom")
+        .collect();
+    assert_eq!(
+        entries.len(),
+        2,
+        "no file staged and left behind: {entries:?}"
+    );
 }
 
 #[cfg(unix)]
@@ -512,6 +525,7 @@ fn test_a_command_resolves_where_an_executable_of_its_name_is_on_the_path() {
     let mut configs = AgentConfigFiles {
         home: None,
         path: Some(std::env::join_paths([other.path(), bin.path()]).unwrap()),
+        waits: file_lock::Waits::DEFAULT,
     };
     assert!(!configs.resolvable("taskloom"));
     let program = bin.path().join("taskloom");
@@ -528,6 +542,7 @@ fn test_a_command_resolves_where_an_executable_of_its_name_is_on_the_path() {
     let mut pathless = AgentConfigFiles {
         home: None,
         path: None,
+        waits: file_lock::Waits::DEFAULT,
     };
     assert!(!pathless.resolvable("taskloom"));
 }
@@ -596,4 +611,159 @@ fn test_staging_gives_up_after_a_thousand_names_taken() {
     let refused = super::fresh(dir.path(), "f").unwrap_err();
     assert_eq!(refused.kind(), std::io::ErrorKind::AlreadyExists);
     assert!(!name(1001).exists(), "no retry past the thousandth");
+}
+
+// ------------------------------------------------------------ the lock
+
+/// Whether some holder keeps `path` from being locked exclusively now.
+fn held(path: &Path) -> bool {
+    match std::fs::File::open(path) {
+        Ok(file) => fs4::FileExt::try_lock(&file).is_err(),
+        Err(_) => false,
+    }
+}
+
+/// A home, a project directory, and the adapter over them waiting `wait`
+/// for a held lock; the project's `.mcp.json`, and the sidecar Go's
+/// `sessions.WithFileLock` takes for it, held here as another process
+/// holding it would.
+struct Locking {
+    home: TempDir,
+    _dir: TempDir,
+    configs: AgentConfigFiles,
+    path: PathBuf,
+    sidecar: file_lock::path::Sidecar,
+    holder: Option<std::fs::File>,
+}
+
+impl Locking {
+    fn new(wait: std::time::Duration) -> Locking {
+        let (home, dir) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let configs = AgentConfigFiles {
+            home: Some(home.path().to_path_buf()),
+            path: None,
+            waits: file_lock::Waits {
+                lock: wait,
+                reap_interlock: wait,
+            },
+        };
+        let path = dir.path().join(".mcp.json");
+        let sidecar = file_lock::path::sidecar_for(home.path(), &path);
+        assert_eq!(
+            sidecar.lock.parent().unwrap(),
+            home.path().join(".ctxloom/locks"),
+            "Go's home lock directory"
+        );
+        std::fs::create_dir_all(sidecar.lock.parent().unwrap()).unwrap();
+        let holder = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&sidecar.lock)
+            .unwrap();
+        fs4::FileExt::lock(&holder).unwrap();
+        Locking {
+            home,
+            _dir: dir,
+            configs,
+            path,
+            sidecar,
+            holder: Some(holder),
+        }
+    }
+}
+
+#[test]
+fn test_a_registration_waits_while_another_process_holds_the_files_lock_then_writes() {
+    let mut at = Locking::new(std::time::Duration::from_secs(60));
+    let interlock = at.sidecar.interlock.clone().unwrap();
+    let (path, mut configs) = (at.path.clone(), at.configs.clone());
+    let registering = std::thread::spawn(move || {
+        configs.register(
+            CLAUDE_CODE,
+            &path,
+            "taskloom",
+            "taskloom",
+            Some(&server()),
+            false,
+        )
+    });
+    // The registration has begun its lock once it holds the reap interlock
+    // (shared); from then until the sidecar is let go it can write nothing.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while !held(&interlock) {
+        assert!(std::time::Instant::now() < deadline, "never began its lock");
+        assert!(!registering.is_finished(), "{:?}", registering.join());
+        std::thread::yield_now();
+    }
+    assert!(!at.path.exists(), "nothing written while the lock is held");
+    at.holder = None;
+    let rewritten = registering.join().unwrap().expect("written once let go");
+    assert!(rewritten.changed);
+    assert!(std::fs::read_to_string(&at.path)
+        .unwrap()
+        .contains("\"taskloom\""));
+    assert!(!held(&at.sidecar.lock), "released after the write");
+    assert!(!held(&interlock));
+}
+
+#[test]
+fn test_a_registration_whose_file_stays_locked_past_the_wait_is_refused_and_writes_nothing() {
+    let mut at = Locking::new(std::time::Duration::from_millis(30));
+    std::fs::write(&at.path, "{}").unwrap();
+    for server in [Some(server()), None] {
+        let path = at.path.clone();
+        let refused = at
+            .configs
+            .register(
+                CLAUDE_CODE,
+                &path,
+                "taskloom",
+                "taskloom",
+                server.as_ref(),
+                false,
+            )
+            .unwrap_err();
+        assert_eq!(refused.code(), "file-lock-timeout");
+        assert_eq!(std::fs::read_to_string(&at.path).unwrap(), "{}");
+    }
+    drop(at.holder.take());
+    let path = at.path.clone();
+    at.configs
+        .register(
+            CLAUDE_CODE,
+            &path,
+            "taskloom",
+            "taskloom",
+            Some(&server()),
+            false,
+        )
+        .expect("written once let go");
+    assert!(std::fs::read_to_string(&at.path)
+        .unwrap()
+        .contains("\"taskloom\""));
+    drop(at.home);
+}
+
+#[test]
+fn test_a_registration_with_no_home_has_no_lock_to_take_and_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut homeless = AgentConfigFiles {
+        home: None,
+        path: None,
+        waits: file_lock::Waits::DEFAULT,
+    };
+    let path = dir.path().join(".mcp.json");
+    let refused = homeless
+        .register(
+            CLAUDE_CODE,
+            &path,
+            "taskloom",
+            "taskloom",
+            Some(&server()),
+            true,
+        )
+        .unwrap_err();
+    assert_eq!(refused.code(), "agent-configs-no-home");
+    assert!(!path.exists());
 }

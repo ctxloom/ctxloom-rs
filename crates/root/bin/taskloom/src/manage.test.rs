@@ -150,3 +150,70 @@ fn test_a_corrupt_file_is_copied_aside_and_left_alone() {
         .collect();
     assert_eq!(copies, [broken]);
 }
+
+/// Whether some holder keeps `path` from being locked exclusively now.
+fn held(path: &Path) -> bool {
+    match std::fs::File::open(path) {
+        Ok(file) => fs4::FileExt::try_lock(&file).is_err(),
+        Err(_) => false,
+    }
+}
+
+#[test]
+fn test_manage_takes_gos_lock_on_the_file_and_waits_its_turn() {
+    let env = Env::new("manage-lock-harp");
+    let empty = tempfile::tempdir().unwrap();
+    let config = env.home.path().join(".claude.json");
+    // The sidecar Go's `sessions.WithFileLock` takes for the file, named
+    // here as Go names it: ~/.ctxloom/locks/<FlatName(path)>.lock.
+    let locks = env.home.path().join(".ctxloom/locks");
+    let sidecar = locks.join(format!(
+        "{}.lock",
+        file_lock::path::flat_name(&config.display().to_string())
+    ));
+    let interlock = locks.join("reap.interlock");
+    // Claude Code is in use here.
+    std::fs::create_dir(env.home.path().join(".claude")).unwrap();
+
+    // Uncontended, it makes the sidecar, recording the file it guards.
+    let ran = manage(&env, &empty, &["install", "--json"]);
+    assert!(ran.ok, "{}", ran.stderr);
+    assert_eq!(
+        std::fs::read_to_string(&sidecar).unwrap(),
+        format!("{}\n", config.display())
+    );
+    std::fs::remove_file(&config).unwrap();
+
+    // Held here, as a Go ctxloom mid-write holds it.
+    let holder = std::fs::File::open(&sidecar).unwrap();
+    fs4::FileExt::lock(&holder).unwrap();
+    let mut child = std::process::Command::new(super::binary())
+        .args(["manage", "install", "--json"])
+        .current_dir(env.project.path())
+        .env_clear()
+        .env("HOME", env.home.path())
+        .env("PATH", empty.path())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    // It has begun its lock once it holds the reap interlock (shared); it
+    // can write nothing until the sidecar is let go.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while !held(&interlock) {
+        assert!(std::time::Instant::now() < deadline, "never began its lock");
+        assert!(
+            child.try_wait().unwrap().is_none(),
+            "ended without the lock"
+        );
+        std::thread::yield_now();
+    }
+    assert!(!config.exists(), "nothing written while Go's lock is held");
+    assert!(child.try_wait().unwrap().is_none(), "still waiting");
+    drop(holder);
+    assert!(child.wait().unwrap().success());
+    assert!(std::fs::read_to_string(&config)
+        .unwrap()
+        .contains("\"taskloom\""));
+    assert!(!held(&sidecar), "let go once written");
+}

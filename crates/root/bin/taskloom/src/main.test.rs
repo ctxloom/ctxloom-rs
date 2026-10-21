@@ -469,6 +469,7 @@ fn test_every_diagnostic_of_every_crate_renders_from_the_binarys_catalog() {
         registration_application::diagnostic_samples(),
         registration_cli::diagnostic_samples(),
         agent_configs::diagnostic_samples(),
+        file_lock::diagnostic_samples(),
         tasks_watch::diagnostic_samples(),
     ]
     .into_iter()

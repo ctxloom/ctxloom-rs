@@ -38,6 +38,7 @@ fn catalog() -> Result<presentation::Catalog, presentation::CatalogError> {
         registration_cli::EN_US,
         registration_application::EN_US,
         agent_configs::EN_US,
+        file_lock::EN_US,
         project_registry::EN_US,
         task_store_sqlite::EN_US,
         go_task_log::EN_US,
@@ -199,6 +200,7 @@ fn manage(
     let configs = agent_configs::AgentConfigFiles {
         home,
         path: std::env::var_os("PATH"),
+        waits: file_lock::Waits::DEFAULT,
     };
     let mut registrations = registration_application::Registrations::taskloom(configs);
     registration_cli::run(words, &settings, &mut registrations, catalog, out, err)
@@ -260,7 +262,12 @@ fn main() -> ExitCode {
         session: std::env::var("CTXLOOM_SESSION_HARP").unwrap_or_default(),
         stdout_is_terminal: io::stdout().is_terminal(),
         version: env!("CARGO_PKG_VERSION").to_string(),
-        lock_protocol: project_registry::LOCK_PROTOCOL,
+        // True of every lock file taskloom takes, each through file-lock:
+        // the project registry's `index.yaml.lock`, and `manage`'s home
+        // sidecar for the agent configuration it rewrites, with the reap
+        // interlock held shared. It takes none on a Go task log (the
+        // importer reads without one); its store is SQLite's to lock.
+        lock_protocol: file_lock::LOCK_PROTOCOL,
     };
     // `mcp`, `watch` and `run` run once the command line has been read, on the
     // same runtime: the CLI's mounted commands are synchronous.

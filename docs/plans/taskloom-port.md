@@ -115,12 +115,24 @@ cutover ("What remains").
   no marker of its own is its primary checkout's project, found through
   git's common directory (the `.git` file's `gitdir`, then its
   `commondir`), and is bound and marked there, never in the worktree; one
-  whose git directory is gone is an error, as in Go. The lock is taken
-  again when what it was granted is no longer the file at its path (Go's
-  `takeCurrent`, 16 tries), and waited for at most 10s, then refused
-  naming the lock. It also implements `ProjectAdmin`: the survey, and the
+  whose git directory is gone is an error, as in Go. The lock is
+  file-lock's (below). It also implements `ProjectAdmin`: the survey, and the
   changes (markers, registry entries, and removing
   `~/.ctxloom/projects/<id>/`, never through a link).
+- `adapters/driven/file-lock`: ctxloom's advisory locks, taken as Go's
+  `safefs` takes them, for any adapter to use (it is no port's: the
+  registry and agent-configs each take it inside their own operations).
+  `flock(2)` on a lock file, shared or exclusive, refused when it is not a
+  regular file; taken again when what it was granted is no longer the file
+  at its path (Go's `takeCurrent`, 16 tries: lock protocol 2); waited for
+  at most 10s, then refused naming the lock. And Go's
+  `sessions.WithFileLock` for a file ctxloom does not own: the sidecar
+  `paths.HomePathFor` names (`~/.ctxloom/locks/<FlatName(abs path)>.lock`,
+  or a session's own `<harp>/locks/` for a file inside a session's
+  directory), recording the path it guards when it creates it, taken with
+  the reap interlock (`~/.ctxloom/locks/reap.interlock`) held shared when
+  it is in the home lock directory, a reap that holds it past 30s refusing
+  the lock. Its paths are held to Go's own `HomePathFor`'s output.
 - `adapters/driven/harp-names`: harp-core behind the names port.
 - `adapters/driven/go-task-log`: Go's `~/.ctxloom/tasks/<project-id>.jsonl`
   behind the `GoTaskLogs` port, read only (not even its lock file). A line
@@ -146,7 +158,9 @@ cutover ("What remains").
   stays; an entry already there is taken out first only when it runs
   taskloom (Go's `exectoken`), and one running anything else is refused.
   A file that is not JSON is copied to `<path>.corrupt-<unix>` and left
-  alone. `scripts/go-manage-fixtures.sh` runs Go's binary over 29 files in
+  alone. The whole read-modify-write, a dry run's included, runs under
+  file-lock's `lock_file` on the file, the lock Go's confpatch takes, so
+  Rust and Go writers of one file take turns. `scripts/go-manage-fixtures.sh` runs Go's binary over 29 files in
   temporary homes (`fixtures/go-manage`); the parity tests hold the adapter
   to Go's bytes, refusals and copies, for install, recordless uninstall,
   uninstall after Go's install, and check.
@@ -168,9 +182,9 @@ cutover ("What remains").
   the global flags (the format and `--project`; not `--config-set`) and
   the catalog. Text hides the tags the schema hides; JSON keeps them, as
   Go does. Also the companion contract: `version` (`--format json` is
-  Go's `{name, version, lock_protocol}`, the lock protocol
-  project-registry's `LOCK_PROTOCOL`, 2, since its taker re-checks as
-  Go's `takeCurrent` does) and `loadout`, Go's `cmd/taskloom/loadout.yaml`
+  Go's `{name, version, lock_protocol}`, the lock protocol file-lock's
+  `LOCK_PROTOCOL`, 2, true of every lock file taskloom takes: the
+  registry's and `manage`'s, each re-checked as Go's `takeCurrent` does) and `loadout`, Go's `cmd/taskloom/loadout.yaml`
   printed verbatim, in yaml alone (`--format yaml` is accepted by
   `loadout` only).
 - `adapters/driving/tasks-mcp`: `taskloom mcp`, over rmcp (the official
@@ -339,7 +353,7 @@ Where the port differs from Go:
 - A linked worktree opts out of its primary checkout's project with a
   marker of its own (`.project-id`, or Go's `.ctxloom/project-id`); in Go,
   with a `.ctxloom` directory of its own.
-- The registry's lock is waited for at most 10s; Go waits without end.
+- Every lock (the registry's, `manage`'s) is waited for at most 10s; Go waits without end.
 - Concurrent writers are serialized by SQLite itself: `BEGIN IMMEDIATE` per
   unit of work and sqlx's default 5s busy timeout. With retries switched off
   the acceptance tests still pass, so the backoff is a guard, not what makes
@@ -466,10 +480,8 @@ Where the port differs from Go:
   Go's next install refuses the file as drifted (shown against Go's
   binary). With no Go record, an install and an uninstall leave
   `"mcpServers": {}` where the file had none, as Go's does without its
-  record. It takes no lock on the file: Go takes ctxloom's sidecar lock
-  under `~/.ctxloom/locks` with its reap interlock (lock protocol 2), so a
-  write racing a Go or ctxloom write to the same file can lose one; the
-  write itself is atomic. An entry under the name that runs another
+  record. It takes Go's lock on the file (file-lock's `lock_file`), waited
+  for at most 10s where Go waits without end. An entry under the name that runs another
   program is refused (Go replaces it in place, then usually refuses on a
   byte mismatch). A parse error's detail is this parser's words, not
   Go's `encoding/json`'s, and names the file's own name where Go's says
@@ -496,12 +508,10 @@ task.
   same. Settle before the cutover registers `taskloom mcp` as ctxloom's
   companion: a human decision (how a write, and repoint, keep the two
   clones apart).
-- **`manage` keeps no records and takes no lock.** Writing Go's records
-  needs hew's reversal text (a port of hew, or hew in Rust); taking Go's
-  sidecar lock needs ctxloom's lock protocol (the reap interlock) ported,
-  which `version`'s `lock_protocol` then has to vouch for. A human
-  decision: port them, keep a record of Rust's own (a new on-disk format),
-  or accept the gaps above.
+- **`manage` keeps no records.** Writing Go's records needs hew's reversal
+  text (a port of hew, or hew in Rust). A human decision: port it, keep a
+  record of Rust's own (a new on-disk format), or accept the gap above.
+  (Its lock was decided 2026-10-21: Go's, through file-lock.)
 - **The loadout's and the MCP instructions' prose is Go's**, naming Go's
   jsonl log and install paths. Rewording it is the human's call; until
   then the parity tests keep it Go's.

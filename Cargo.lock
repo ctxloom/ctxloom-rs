@@ -13,11 +13,12 @@ name = "agent-configs"
 version = "0.1.0"
 dependencies = [
  "annals-diagnostic 0.1.0",
+ "file-lock",
  "fluent-syntax",
+ "fs4",
  "ports",
  "serde",
  "serde_norway",
- "sha2",
  "tempfile",
 ]
 
@@ -510,6 +511,18 @@ name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
+
+[[package]]
+name = "file-lock"
+version = "0.1.0"
+dependencies = [
+ "annals-diagnostic 0.1.0",
+ "fluent-syntax",
+ "fs4",
+ "mutants",
+ "sha2",
+ "tempfile",
+]
 
 [[package]]
 name = "find-msvc-tools"
@@ -1450,6 +1463,7 @@ name = "project-registry"
 version = "0.1.0"
 dependencies = [
  "annals-diagnostic 0.1.0",
+ "file-lock",
  "fluent-syntax",
  "fs4",
  "mutants",
@@ -2335,6 +2349,8 @@ dependencies = [
  "annals-diagnostic 0.1.0",
  "annals-store-sql",
  "clap",
+ "file-lock",
+ "fs4",
  "go-task-log",
  "harp-names",
  "ports",

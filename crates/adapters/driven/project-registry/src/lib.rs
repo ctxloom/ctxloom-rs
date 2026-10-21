@@ -19,8 +19,8 @@
 //! a directory's identity rests on, and changes to markers, the registry
 //! and the projects directory, made under the registry's lock only while
 //! a fresh survey matches the one they were planned from. The lock is
-//! taken again when what it was granted is no longer the file at its path
-//! (`ctxloom clean` reaps lock files), and waited for at most
+//! file-lock's: taken again when what it was granted is no longer the file
+//! at its path (`ctxloom clean` reaps lock files), and waited for at most
 //! [`LOCK_WAIT`].
 
 mod admin;
@@ -38,7 +38,7 @@ use annals_diagnostic::Report;
 use ports::{IdSource, Names, Project, ProjectIdentity};
 
 pub use error::{diagnostic_samples, RegistryError, EN_US};
-pub use index::{LOCK_PROTOCOL, LOCK_WAIT};
+pub use index::LOCK_WAIT;
 
 /// How many project ids a mint draws before giving up, each already
 /// registered: Go's `harp.UniqueFrom`.

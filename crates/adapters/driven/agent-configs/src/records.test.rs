@@ -6,50 +6,6 @@ use std::path::Path;
 
 use super::{added, flat_name};
 
-const SCRATCH: &str =
-    "/tmp/claude-1000/-home-babbitt-workspace-ctxloom-ctxloom-rs/74fb18c8-0651-4a53-83c8-19f8a2e256cc/scratchpad";
-
-#[test]
-fn test_a_flat_name_is_gos() {
-    assert_eq!(
-        flat_name(&format!("{SCRATCH}/tmp.L0iKUu4t5Y/home/.claude.json")),
-        "ctxloom-rs__74fb18c8-0651-4a53-83c8-19f8a2e256cc__scratchpad__tmp.L0iKUu4t5Y__home__.claude.json__d07667d34aae78ed"
-    );
-    assert_eq!(
-        flat_name(&format!("{SCRATCH}/tmp.qBAVn0XNgO/home/.claude.json")),
-        "ctxloom-rs__74fb18c8-0651-4a53-83c8-19f8a2e256cc__scratchpad__tmp.qBAVn0XNgO__home__.claude.json__1865b30e2a6a57b4"
-    );
-}
-
-#[test]
-fn test_a_flat_name_escapes_what_ntfs_refuses_and_cuts_on_a_character() {
-    let name = flat_name("C:/a|b\u{1}");
-    assert!(name.starts_with("C%3A__a%7Cb%01__"), "{name}");
-    assert_eq!(name.len(), "C%3A__a%7Cb%01__".len() + 16);
-    let deep = format!("/{}", "\u{e9}".repeat(60));
-    let name = flat_name(&deep);
-    let tail = &name[..name.len() - 18];
-    assert!(tail.len() <= 96, "{}", tail.len());
-    assert!(tail.chars().all(|c| c == '\u{e9}'), "{tail}");
-}
-
-/// Go's `FlatName` gave each of these (its body run on them verbatim).
-#[test]
-fn test_a_flat_name_cut_inside_a_character_steps_forward_as_gos() {
-    assert_eq!(
-        flat_name(&format!("/{}x", "\u{e9}".repeat(60))),
-        format!("{}x__e3ac857167b96b7b", "\u{e9}".repeat(47))
-    );
-    assert_eq!(
-        flat_name(&"a".repeat(96)),
-        format!("{}__ee4caa5518a866f3", "a".repeat(96))
-    );
-    assert_eq!(
-        flat_name(&"a".repeat(97)),
-        format!("{}__2a2c60fe96afac91", "a".repeat(96))
-    );
-}
-
 /// Go's record `fixture`, for the file at `target`, in `dir` under the
 /// name Go gives it.
 fn lay(dir: &Path, fixture: &str, target: &str, stamp: &str) {

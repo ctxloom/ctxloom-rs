@@ -9,7 +9,7 @@ publish.workspace = true
 
 [dependencies]
 annals-diagnostic.workspace = true
-fs4.workspace = true
+file-lock.workspace = true
 ports.workspace = true
 serde.workspace = true
 serde_norway.workspace = true
@@ -17,6 +17,7 @@ tempfile.workspace = true
 time.workspace = true
 
 [dev-dependencies]
+fs4.workspace = true
 fluent-syntax.workspace = true
 mutants.workspace = true
 
