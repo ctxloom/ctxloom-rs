@@ -130,8 +130,9 @@ enum Command<X: Subcommand> {
     /// drops it, and its stream purged, freeing its harp to be minted
     /// again; without it nothing changes. A surviving task naming a pruned
     /// one (a relates:<harp> tag, or the harp in its text or trigger) is
-    /// reported, and left as written. To keep a finished task, archive it
-    /// and leave Archived out of --status.
+    /// reported, and left as written. A task an earlier prune removed but
+    /// could not purge is taken too, whatever the flags select. To keep a
+    /// finished task, archive it and leave Archived out of --status.
     Prune(commands::PruneArgs),
     /// Import Go taskloom's task logs (~/.ctxloom/tasks/<project-id>.jsonl)
     /// into each project's store: every project's, or --project's alone.

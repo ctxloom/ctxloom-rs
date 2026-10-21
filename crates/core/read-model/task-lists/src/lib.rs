@@ -45,6 +45,9 @@ pub struct TaskList {
     /// The last stream sequence projected, per task stream (by root), so a
     /// redelivered event changes nothing. A pruned stream's is forgotten.
     projected: BTreeMap<Vec<u8>, u64>,
+    /// The tasks whose stream's last projected event is a prune's removal,
+    /// by harp id: removed, and not yet seen purged.
+    unpurged: BTreeMap<String, TaskState>,
 }
 
 impl TaskList {
@@ -55,12 +58,22 @@ impl TaskList {
             entries: BTreeMap::new(),
             deltas: Vec::new(),
             projected: BTreeMap::new(),
+            unpurged: BTreeMap::new(),
         }
     }
 
     /// The listed tasks, by harp id.
     pub fn entries(&self) -> Vec<&TaskState> {
         self.entries.values().collect()
+    }
+
+    /// The tasks a prune removed whose streams were still held when last
+    /// read, by harp id: a prune left half done, its purge failed after its
+    /// removal landed, for a prune to finish. A purge records no event, so
+    /// a list kept across one still names the task: whoever purges checks
+    /// the stream first.
+    pub fn unpurged(&self) -> Vec<&TaskState> {
+        self.unpurged.values().collect()
     }
 
     /// The list's sequence: the number of its newest change, 0 before any.
@@ -146,13 +159,15 @@ impl Projection<Tasks> for TaskList {
         // task minted on the freed harp starts it again from its first
         // sequence: forget where it was, so that task is not skipped as
         // already seen.
+        let task = committed.state;
         if is_pruned(committed.event()) {
             self.projected.remove(&root);
+            self.unpurged.insert(task.harp_id.clone(), task.clone());
         } else {
             self.projected.insert(root, sequence);
+            self.unpurged.remove(&task.harp_id);
         }
 
-        let task = committed.state;
         let listed = !task.removed && (self.membership)(task);
         if listed {
             if self.entries.get(&task.harp_id) != Some(task) {

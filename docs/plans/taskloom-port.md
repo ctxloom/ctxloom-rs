@@ -20,7 +20,8 @@ and angzarr here.
   last projected sequence when it projects a prune's removal
   (`TaskRemoved{PRUNED}`), so a task minted on the freed harp, whose
   stream restarts at sequence 0, is listed; a stream read back with no
-  events lists nothing.
+  events lists nothing. It names each task a prune removed whose stream
+  is still held (`unpurged`), for a prune to finish.
 - `core/ports/ports`: project identity and its survey (`ProjectAdmin`), the
   store opener, `PurgingStore` (a store whose store and units of work
   implement annals' opt-in `AsyncPurge`, as SQLite's do), names, the
@@ -322,8 +323,10 @@ Where the skeleton differs from Go, or from this plan:
   under its write lock; here each task is removed and purged in units of
   its own, and one that no longer qualifies when its unit reads it is
   left. A purge that fails for good leaves its task removed, not purged:
-  no list shows it, but its stream and harp stay until purged by hand
-  (no command does). Go has no `remove` command (its `Store.Remove` is
+  no list shows it, but its stream and harp stay until the next prune,
+  which reports it and with `--yes` purges it, whatever that prune
+  selects by (the projector names each stream whose last event is a
+  prune's removal). Go has no `remove` command (its `Store.Remove` is
   called by none), so none is ported; the domain's removal by name is
   there for one.
 - `version` reports the crate's version (`0.1.0`), not Go's versionator

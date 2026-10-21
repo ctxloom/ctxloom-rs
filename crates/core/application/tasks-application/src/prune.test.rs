@@ -697,6 +697,89 @@ fn test_a_purge_that_no_retry_mends_fails_the_prune() {
     );
 }
 
+/// A project left half pruned: `done-one` removed by a prune whose purge
+/// then failed for good, so its stream, and its harp, are still held.
+fn half_pruned() -> Fake {
+    let mut service = seeded();
+    later(&mut service);
+    service.stores.store.faults = [Fault::Sound, Fault::Discontinuous].into();
+    prune(&mut service, request(true)).unwrap_err();
+    assert!(
+        ready(service.stores.store.read_from(&cover("done-one"), 0))
+            .unwrap()
+            .is_some(),
+        "removed, not purged"
+    );
+    service
+}
+
+#[test]
+fn test_a_report_names_a_task_a_prune_left_removed_but_not_purged() {
+    let mut service = half_pruned();
+    let begun = service.stores.store.begun;
+    let pruning = prune(&mut service, request(false)).unwrap();
+    assert_eq!(harps(&pruning), ["done-one", "done-two"]);
+    assert_eq!(
+        pruning.events_removed,
+        2 + 2,
+        "done-one's add and the removal it holds; done-two's add and the removal to come"
+    );
+    assert_eq!(pruning.tasks_remaining, 2);
+    assert_eq!(service.stores.store.begun, begun, "a report writes nothing");
+    assert!(ready(service.stores.store.read_from(&cover("done-one"), 0))
+        .unwrap()
+        .is_some());
+}
+
+#[test]
+fn test_an_applied_prune_finishes_a_task_left_removed_but_not_purged() {
+    let mut service = half_pruned();
+    let pruning = prune(&mut service, request(true)).unwrap();
+    assert_eq!(harps(&pruning), ["done-one", "done-two"]);
+    assert_eq!(pruning.events_removed, 4, "as the store reports");
+    assert_eq!(
+        ready(service.stores.store.read_from(&cover("done-one"), 0)).unwrap(),
+        None,
+        "its purge finished"
+    );
+    service.names = FakeNames::of(&["done-one"]);
+    assert_eq!(
+        add(&mut service, "A new task", "", "", &[]),
+        "done-one",
+        "its harp is free again"
+    );
+}
+
+#[test]
+fn test_a_half_done_prune_is_finished_whatever_this_prune_selects_by() {
+    // The prune that removed it selected it; this one only finishes it.
+    let mut service = half_pruned();
+    let mut archived = request(true);
+    archived.statuses = vec!["Archived".to_string()];
+    archived.tag_query = "release".to_string();
+    let pruning = prune(&mut service, archived).unwrap();
+    assert_eq!(harps(&pruning), ["done-one"]);
+    assert_eq!(pruning.events_removed, 2);
+    assert_eq!(
+        ready(service.stores.store.read_from(&cover("done-one"), 0)).unwrap(),
+        None
+    );
+}
+
+#[test]
+fn test_a_half_done_prune_finished_by_another_meanwhile_is_skipped() {
+    let mut service = half_pruned();
+    service.stores.store.meanwhile = Some(Box::new(|store| {
+        annals::next::Purge::purge(store, &cover("done-one")).unwrap();
+    }));
+    let mut archived = request(true);
+    archived.statuses = vec!["Archived".to_string()];
+    archived.tag_query = "release".to_string();
+    let pruning = prune(&mut service, archived).unwrap();
+    assert!(pruning.pruned.is_empty());
+    assert_eq!(pruning.events_removed, 0);
+}
+
 #[test]
 fn test_a_prune_whose_future_is_send() {
     fn is_send<T: Send>(_: &T) {}

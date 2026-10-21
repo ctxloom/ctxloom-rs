@@ -376,6 +376,50 @@ fn test_a_list_caught_up_after_a_prune_holds_the_task_minted_since() {
     assert_eq!(texts, ["Again"]);
 }
 
+fn unpurged(list: &TaskList) -> Vec<&str> {
+    list.unpurged().iter().map(|t| t.harp_id.as_str()).collect()
+}
+
+#[test]
+fn test_a_task_pruned_but_not_yet_purged_is_held_as_unpurged() {
+    // A prune whose purge failed after its removal landed leaves the
+    // stream behind, its harp taken: the list names it, for a prune to
+    // finish.
+    let mut project = Project::new();
+    let mut list = every_task();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    project.run(&mut list, FIRST, status("Done", ""));
+    project.run(&mut list, SECOND, add(SECOND, "Second"));
+    assert!(unpurged(&list).is_empty(), "nothing pruned yet");
+    project.run(&mut list, FIRST, pruned());
+    project.run(&mut list, SECOND, removed());
+    assert_eq!(unpurged(&list), [FIRST], "a removal by name is no prune's");
+    assert!(list.entries().is_empty());
+    assert_eq!(list.unpurged()[0].status, "Done", "as it was pruned");
+
+    let mut fresh = every_task();
+    fresh
+        .catch_up(&mut project.store, &project.registry)
+        .unwrap();
+    assert_eq!(unpurged(&fresh), [FIRST], "read back from the store");
+    fresh
+        .catch_up(&mut project.store, &project.registry)
+        .unwrap();
+    assert_eq!(unpurged(&fresh), [FIRST], "read again, still once");
+}
+
+#[test]
+fn test_a_harp_minted_again_after_its_purge_is_no_longer_unpurged() {
+    let mut project = Project::new();
+    let mut list = every_task();
+    project.run(&mut list, FIRST, add(FIRST, "First"));
+    project.run(&mut list, FIRST, pruned());
+    annals::next::Purge::purge(&mut project.store, &cover(FIRST)).unwrap();
+    project.run(&mut list, FIRST, add(FIRST, "Again"));
+    assert!(unpurged(&list).is_empty(), "the stream holds a new task");
+    assert_eq!(harps(&list), [FIRST]);
+}
+
 /// A store whose every stream reads back empty: what a stream purged
 /// between a listing's `covers` and its read can look like.
 struct Hollow(InMemoryStore);

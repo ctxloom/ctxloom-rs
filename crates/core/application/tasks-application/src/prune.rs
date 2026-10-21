@@ -16,6 +16,11 @@
 //! since the selection), and each purge in a unit that first checks the
 //! stream still holds the removed task, so a task minted on the freed harp
 //! meanwhile is never purged.
+//!
+//! A purge that failed for good after its removal landed leaves a prune
+//! half done: the task removed, its stream and harp still held. Every
+//! prune finishes one, whatever it selects by: it is reported, and purged
+//! when applied.
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -255,7 +260,7 @@ where
                 .ok_or(AppError::NoProject)?
         };
 
-        let tasks = live_tasks(store, &self.registry).await?;
+        let (tasks, unpurged) = live_tasks(store, &self.registry).await?;
         let selection = Selection {
             statuses: &pruning.statuses,
             before,
@@ -270,10 +275,14 @@ where
             &schema,
         )
         .map_err(|e| AppError::TagQuery(Report::of(&e)))?;
-        let selected: Vec<&TaskState> = tasks
+        // A task a prune removed but left unpurged was selected by that
+        // prune: this one finishes it, whatever it selects by.
+        let mut selected: Vec<&TaskState> = tasks
             .iter()
             .filter(|t| matched.contains(&t.harp_id) && selection.dated(t))
+            .chain(&unpurged)
             .collect();
+        selected.sort_by(|a, b| added(a).cmp(&added(b)));
 
         let mut runner = Runner {
             registry: &self.registry,
@@ -308,29 +317,39 @@ where
     }
 }
 
-/// Every live task in `store`, in the order added.
+/// Every live task in `store`, and every task a prune removed but left
+/// unpurged, each in the order added.
 async fn live_tasks<S: AsyncEventStore>(
     store: &mut S,
     registry: &annals::next::Registry,
-) -> Result<Vec<TaskState>, AppError> {
+) -> Result<(Vec<TaskState>, Vec<TaskState>), AppError> {
     let mut list = TaskList::new(Box::new(|_| true));
     list.catch_up_async(store, registry)
         .await
         .map_err(|e| AppError::Failed(Report::of(&*e)))?;
-    let mut tasks: Vec<TaskState> = list.entries().into_iter().cloned().collect();
-    tasks.sort_by(|a, b| {
-        let added = |t: &TaskState| (t.created_at.seconds, t.created_at.nanos);
-        added(a)
-            .cmp(&added(b))
-            .then_with(|| a.harp_id.cmp(&b.harp_id))
-    });
-    Ok(tasks)
+    let in_order = |tasks: Vec<&TaskState>| {
+        let mut tasks: Vec<TaskState> = tasks.into_iter().cloned().collect();
+        tasks.sort_by(|a, b| added(a).cmp(&added(b)));
+        tasks
+    };
+    Ok((in_order(list.entries()), in_order(list.unpurged())))
+}
+
+/// Where `task` falls in the order added: when it was, then its harp.
+fn added(task: &TaskState) -> (i64, i32, &str) {
+    (
+        task.created_at.seconds,
+        task.created_at.nanos,
+        task.harp_id.as_str(),
+    )
 }
 
 /// Take `task`, as selected: remove it and purge its stream when
-/// `apply`, else only count what that would delete. The events deleted,
-/// or `None` when the task was not taken after all: it no longer
-/// qualifies, or another removed or purged it since it was selected.
+/// `apply`, else only count what that would delete. A task already
+/// removed is one a prune removed and left unpurged: it is only purged.
+/// The events deleted, or `None` when the task was not taken after all:
+/// it no longer qualifies, or another removed or purged it since it was
+/// selected.
 async fn take<S: PurgingStore, C: Clock + CommandIds, D: Delay + Jitter>(
     runner: &mut Runner<'_, C, D>,
     store: &mut S,
@@ -341,8 +360,16 @@ async fn take<S: PurgingStore, C: Clock + CommandIds, D: Delay + Jitter>(
     let stream = cover(&task.harp_id);
     if !apply {
         let held = store.read_from(&stream, 0).await.map_err(failed)?;
-        // Its events, and the removal a prune records before it purges.
-        return Ok(Some(held.map_or(0, |slice| slice.pages.len() as u64) + 1));
+        // Its events, and the removal a prune records before it purges,
+        // unless it holds that already.
+        let removal = u64::from(!task.removed);
+        return Ok(Some(
+            held.map_or(0, |slice| slice.pages.len() as u64) + removal,
+        ));
+    }
+    if task.removed {
+        let deleted = runner.purge(store, &stream).await?;
+        return Ok((deleted > 0).then_some(deleted));
     }
     let command_id = runner.clock.command_id();
     let removal = RemoveTask {
