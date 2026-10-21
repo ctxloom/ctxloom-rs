@@ -11,7 +11,7 @@ use annals_diagnostic::Report;
 use tasks_application::{
     AppError, Details, Hidden, ImportReport, ImportRequest, ImportService, ListQuery, Listing,
     NewTask, Project, ProjectImport, Reach, Row, Scope, ShowQuery, StatusChange, StatusInfo,
-    Statuses, Summary, TagChange, Task, TaskService, TextEdit, Written,
+    Statuses, Summary, TagChange, TagCount, Task, TaskService, TextEdit, Vocabulary, Written,
 };
 
 use presentation::{Catalog, Format};
@@ -66,6 +66,8 @@ struct Fake {
     shows: Vec<ShowQuery>,
     summed: Vec<Scope>,
     taxonomies: Vec<Scope>,
+    counts: Vec<ListQuery>,
+    vocabulary: Option<Result<Vocabulary, AppError>>,
     statuses: Option<Result<Statuses, AppError>>,
     summary: Option<Result<Summary, AppError>>,
     details: Option<Result<Details, AppError>>,
@@ -115,6 +117,11 @@ impl TaskService for Fake {
     async fn statuses(&mut self, scope: Scope) -> Result<Statuses, AppError> {
         self.taxonomies.push(scope);
         self.statuses.clone().expect("a statuses answer scripted")
+    }
+
+    async fn tags(&mut self, query: ListQuery) -> Result<Vocabulary, AppError> {
+        self.counts.push(query);
+        self.vocabulary.clone().expect("a tags answer scripted")
     }
 }
 
@@ -725,6 +732,104 @@ fn test_statuses_read_across_projects_for_want_of_one_say_so() {
     fake.statuses = statuses(Reach::Project(project()), &["To Do"]);
     let ran = run_on(&mut fake, true, &["statuses"]);
     assert_eq!(ran.err, "");
+}
+
+// ------------------------------------------------------------ tags
+
+fn vocabulary(
+    reach: Reach,
+    counts: &[(&str, usize, usize)],
+) -> Option<Result<Vocabulary, AppError>> {
+    Some(Ok(Vocabulary {
+        reach,
+        tags: counts
+            .iter()
+            .map(|&(t, active, total)| TagCount {
+                tag: tasks_application::parse_tag(t).unwrap().unwrap(),
+                active,
+                total,
+            })
+            .collect(),
+    }))
+}
+
+#[test]
+fn test_tags_passes_its_filters_and_aligns_its_counts() {
+    let mut fake = Fake {
+        vocabulary: vocabulary(
+            Reach::Project(project()),
+            &[("docs", 1, 2), ("triage:kind=chore", 10, 120)],
+        ),
+        ..Fake::default()
+    };
+    let ran = run_on(
+        &mut fake,
+        true,
+        &[
+            "--project",
+            "p",
+            "tags",
+            "--status",
+            "@open,Done",
+            "--term",
+            "ship",
+            "--tag-query",
+            "x",
+            "--global",
+        ],
+    );
+    assert_eq!(ran.code, 0, "{}", ran.err);
+    assert_eq!(
+        fake.counts,
+        [ListQuery {
+            project: Some("p".to_string()),
+            statuses: vec!["@open".to_string(), "Done".to_string()],
+            tag_query: "x".to_string(),
+            term: "ship".to_string(),
+            global: true,
+            ..ListQuery::default()
+        }]
+    );
+    assert_eq!(
+        ran.out,
+        "Project: /work/tree (jolly-mute-magma)\n\n\
+         docs                 1 active    2 total\n\
+         triage:kind=chore   10 active  120 total\n"
+    );
+    let ran = run_on(&mut fake, false, &["tags"]);
+    let json: Vec<serde_json::Value> = serde_json::from_str(&ran.out).unwrap();
+    assert_eq!(
+        json[1],
+        serde_json::json!({"tag": "triage:kind=chore", "active": 10, "total": 120})
+    );
+}
+
+#[test]
+fn test_tags_with_none_in_use_says_how_to_apply_one() {
+    let mut fake = Fake {
+        vocabulary: vocabulary(Reach::NoProject, &[]),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["tags"]);
+    assert_eq!(
+        ran.out,
+        "(no tags in use \u{2014} apply one with `taskloom tag <harp-id> --add <tag>`)\n"
+    );
+    assert_eq!(ran.err, "taskloom: no project here yet: nothing to list\n");
+    assert_eq!(run_on(&mut fake, false, &["tags"]).out, "[]\n");
+    fake.vocabulary = vocabulary(
+        Reach::Every {
+            projects: 3,
+            fallback: None,
+        },
+        &[],
+    );
+    let ran = run_on(&mut fake, true, &["tags", "--global"]);
+    assert!(
+        ran.out.starts_with("Projects: 3 (--global)\n\n(no tags"),
+        "{}",
+        ran.out
+    );
 }
 
 // ------------------------------------------------------------ list

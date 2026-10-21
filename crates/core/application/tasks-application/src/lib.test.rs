@@ -81,6 +81,7 @@ where
     is_send(&service.show(crate::ShowQuery::default()));
     is_send(&service.summary(crate::Scope::default()));
     is_send(&service.statuses(crate::Scope::default()));
+    is_send(&service.tags(ListQuery::default()));
     is_send(&stores.open(&project()));
     is_send(&stores.open_existing(&project()));
     is_send(&delay.sleep(std::time::Duration::ZERO));

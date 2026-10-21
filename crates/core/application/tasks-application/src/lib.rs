@@ -33,7 +33,7 @@ pub use import::{
 };
 pub use ports::{GoOp, Project};
 pub use query::{QueryError, QUERY_GRAMMAR};
-pub use read::{Details, Hidden, Listing, Reach, Statuses, Summary};
+pub use read::{Details, Hidden, Listing, Reach, Statuses, Summary, TagCount, Vocabulary};
 pub use retry::Backoff;
 pub use schema::{
     target, Range, SchemaError, TagSchema, DEFAULT_TAG_SCHEMA, FACETS, FACET_NAMESPACE, SEMVER,
@@ -178,6 +178,10 @@ pub trait TaskService {
     fn summary(&mut self, scope: Scope) -> impl Future<Output = Result<Summary, AppError>> + Send;
     fn statuses(&mut self, scope: Scope)
         -> impl Future<Output = Result<Statuses, AppError>> + Send;
+    fn tags(
+        &mut self,
+        query: ListQuery,
+    ) -> impl Future<Output = Result<Vocabulary, AppError>> + Send;
 }
 
 /// The registry the tasks domain runs under.
@@ -453,6 +457,10 @@ where
 
     async fn statuses(&mut self, scope: Scope) -> Result<Statuses, AppError> {
         self.taxonomy(scope).await
+    }
+
+    async fn tags(&mut self, query: ListQuery) -> Result<Vocabulary, AppError> {
+        self.vocabulary(query).await
     }
 }
 

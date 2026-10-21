@@ -513,3 +513,121 @@ fn test_the_statuses_in_use_follow_the_defaults_by_name_each_once() {
     );
     assert_eq!(statuses.len(), 7);
 }
+
+// ------------------------------------------------------------ tags
+
+fn tagged(service: &mut Fake, text: &str, status: &str, tags: &[&str]) {
+    let trigger = if status == "Deferred" { "later" } else { "" };
+    let task = NewTask {
+        text: text.to_string(),
+        status: status.to_string(),
+        trigger: trigger.to_string(),
+        tags: tags.iter().map(|t| t.to_string()).collect(),
+        ..NewTask::default()
+    };
+    ready(service.add(task)).unwrap();
+}
+
+fn counted(service: &mut Fake, query: ListQuery) -> Vec<(String, usize, usize)> {
+    ready(service.tags(query))
+        .unwrap()
+        .tags
+        .into_iter()
+        .map(|c| (c.tag.to_string(), c.active, c.total))
+        .collect()
+}
+
+fn count(tag: &str, active: usize, total: usize) -> (String, usize, usize) {
+    (tag.to_string(), active, total)
+}
+
+#[test]
+fn test_the_tags_in_use_are_counted_active_and_in_all_by_spelling() {
+    let mut service = service(&["first", "second", "third", "fourth"]);
+    tagged(&mut service, "a", "To Do", &["release", "b:x=1"]);
+    tagged(&mut service, "b", "Done", &["release"]);
+    tagged(&mut service, "c", "Deferred", &["release", "docs"]);
+    tagged(&mut service, "d", "Blocked", &["docs"]);
+    assert_eq!(
+        counted(&mut service, ListQuery::default()),
+        [
+            count("b:x=1", 1, 1),
+            count("docs", 1, 2),
+            count("release", 1, 3)
+        ]
+    );
+}
+
+#[test]
+fn test_the_tags_counted_are_those_of_the_tasks_selected() {
+    let mut service = service(&["first", "second", "third"]);
+    tagged(&mut service, "ship docs", "To Do", &["release"]);
+    tagged(&mut service, "other", "Done", &["release", "x"]);
+    tagged(&mut service, "ship code", "Done", &["y"]);
+    let by_term = ListQuery {
+        term: "SHIP".to_string(),
+        ..ListQuery::default()
+    };
+    assert_eq!(
+        counted(&mut service, by_term),
+        [count("release", 1, 1), count("y", 0, 1)]
+    );
+    let by_status = ListQuery {
+        statuses: vec!["@terminal".to_string()],
+        ..ListQuery::default()
+    };
+    assert_eq!(
+        counted(&mut service, by_status),
+        [count("release", 0, 1), count("x", 0, 1), count("y", 0, 1)]
+    );
+    let by_query = ListQuery {
+        tag_query: "x".to_string(),
+        ..ListQuery::default()
+    };
+    assert_eq!(
+        counted(&mut service, by_query),
+        [count("release", 0, 1), count("x", 0, 1)]
+    );
+}
+
+#[test]
+fn test_a_tag_the_schema_hides_is_not_counted() {
+    let mut service = service(&["first"]);
+    tagged(&mut service, "a", "To Do", &["triage:kind=chore", "x"]);
+    let query = ListQuery {
+        config_set: vec!["unused".to_string()],
+        ..ListQuery::default()
+    };
+    let mut hiding = service.with_configuration(Hides);
+    let tags: Vec<String> = ready(hiding.tags(query))
+        .unwrap()
+        .tags
+        .iter()
+        .map(|c| c.tag.to_string())
+        .collect();
+    assert_eq!(tags, ["x"]);
+}
+
+/// A configuration hiding the triage namespace.
+struct Hides;
+
+impl ports::Configuration for Hides {
+    fn tag_schema(&mut self, _: &[String]) -> Result<Vec<String>, annals_diagnostic::Report> {
+        Ok(vec![r#"tagma.hide:"triage:*"=true"#.to_string()])
+    }
+}
+
+#[test]
+fn test_a_tags_read_refuses_a_malformed_query_or_class_before_reading() {
+    let mut service = service(&[]);
+    for query in [
+        ListQuery {
+            tag_query: "x/and".to_string(),
+            ..ListQuery::default()
+        },
+        statuses(&["@nope"]),
+    ] {
+        assert!(ready(service.tags(query)).is_err());
+    }
+    assert!(service.identity.pins.is_empty());
+}

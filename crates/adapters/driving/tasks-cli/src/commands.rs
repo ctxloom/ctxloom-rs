@@ -10,7 +10,7 @@ use tasks_application::{
     TextEdit,
 };
 
-use crate::render::{Added, Detailed, Listed, Summed, Tagged, Taxonomy};
+use crate::render::{Added, Counted, Detailed, Listed, Summed, Tagged, Taxonomy};
 use crate::{notify, output_failed, wrote, CliError, Notice};
 
 /// What every task command is handed besides its own arguments: the
@@ -316,6 +316,46 @@ pub(crate) async fn statuses(
     };
     noticed
         .and_then(|()| presentation::render(out, format, &Taxonomy(&statuses)))
+        .map_err(output_failed)
+}
+
+#[derive(Args, Debug)]
+pub(crate) struct TagsArgs {
+    /// Count only the tasks in this status (repeatable, or
+    /// comma-separated); @open and @terminal as list takes them.
+    #[arg(long, value_delimiter = ',')]
+    status: Vec<String>,
+    /// Count only the tasks whose text holds this, in any case (it narrows
+    /// the tasks, never the tags' names).
+    #[arg(long, default_value = "")]
+    term: String,
+    /// Count only the tasks this tag query selects (see `list --help`).
+    #[arg(long = "tag-query", default_value = "")]
+    tag_query: String,
+    /// Every project's tags, not just this project's.
+    #[arg(long)]
+    global: bool,
+}
+
+pub(crate) async fn tags(
+    args: TagsArgs,
+    ctx: Ctx<'_>,
+    service: &mut impl TaskService,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<(), CliError> {
+    let query = ListQuery {
+        project: ctx.project,
+        statuses: args.status,
+        tag_query: args.tag_query,
+        config_set: ctx.config_set,
+        term: args.term,
+        global: args.global,
+        ..ListQuery::default()
+    };
+    let vocabulary = service.tags(query).await.map_err(CliError::App)?;
+    reached(&vocabulary.reach, ctx.catalog, err)
+        .and_then(|()| presentation::render(out, ctx.format, &Counted(&vocabulary)))
         .map_err(output_failed)
 }
 

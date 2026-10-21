@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use tasks_application::{
     Details, Listing, Project, Reach, Row, Shown, StatusInfo, Statuses, Summary, Tag, Task,
-    Timestamp,
+    Timestamp, Vocabulary,
 };
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
@@ -423,6 +423,58 @@ impl Render for Taxonomy<'_> {
                 write!(out, "\trequires-trigger")?;
             }
             writeln!(out)?;
+        }
+        Ok(())
+    }
+}
+
+/// The tags in use: JSON Go's `TagCount` array; text the project, then a
+/// line per tag, its counts aligned.
+pub struct Counted<'a>(pub &'a Vocabulary);
+
+#[derive(Serialize)]
+struct TagCountJson {
+    tag: String,
+    active: usize,
+    total: usize,
+}
+
+impl Render for Counted<'_> {
+    fn json(&self) -> impl Serialize + '_ {
+        self.0
+            .tags
+            .iter()
+            .map(|c| TagCountJson {
+                tag: c.tag.to_string(),
+                active: c.active,
+                total: c.total,
+            })
+            .collect::<Vec<_>>()
+    }
+
+    fn text(&self, out: &mut dyn Write) -> io::Result<()> {
+        let vocabulary = self.0;
+        match &vocabulary.reach {
+            Reach::Project(project) => writeln!(out, "Project: {}\n", project_label(project))?,
+            Reach::Every { projects, .. } => projects_heading(out, *projects)?,
+            Reach::NoProject => {}
+        }
+        if vocabulary.tags.is_empty() {
+            return writeln!(
+                out,
+                "(no tags in use \u{2014} apply one with `taskloom tag <harp-id> --add <tag>`)"
+            );
+        }
+        let spelled: Vec<String> = vocabulary.tags.iter().map(|c| c.tag.to_string()).collect();
+        let width = spelled.iter().map(|t| text::width(t)).max().unwrap_or(0);
+        for (tag, count) in spelled.iter().zip(&vocabulary.tags) {
+            writeln!(
+                out,
+                "{}  {:>3} active  {:>3} total",
+                text::pad(tag, width),
+                count.active,
+                count.total
+            )?;
         }
         Ok(())
     }

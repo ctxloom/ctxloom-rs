@@ -1,5 +1,5 @@
 //! The tasks command line: `add`, `status`, `edit`, `list`, `show`,
-//! `summary`, `statuses`, `tag` and `import`, translated
+//! `summary`, `statuses`, `tag`, `tags` and `import`, translated
 //! into the application's use cases and their answers rendered through
 //! presentation, with room for another crate's commands mounted beside
 //! them ([`run_mounted`]). Text on a terminal, JSON otherwise, unless
@@ -100,6 +100,11 @@ enum Command<X: Subcommand> {
     Statuses(commands::GlobalArgs),
     /// Add and/or remove tags on a task; adds apply before removes.
     Tag(commands::TagArgs),
+    /// List the tags in use, with how many tasks hold each: "active" those
+    /// a default list shows, "total" every one, finished or Deferred too.
+    /// The tag schema's hidden tags are left out. The filters narrow the
+    /// tasks counted.
+    Tags(commands::TagsArgs),
     /// Import Go taskloom's task logs (~/.ctxloom/tasks/<project-id>.jsonl)
     /// into each project's store: every project's, or --project's alone.
     /// Running it again imports only what is new.
@@ -223,6 +228,7 @@ pub async fn run_mounted<S: TaskService + ImportService, X: Subcommand>(
         Command::Summary(args) => commands::summary(args, ctx, service, out, err).await,
         Command::Statuses(args) => commands::statuses(args, ctx, service, out, err).await,
         Command::Tag(args) => commands::tag(args, ctx, service, out, err).await,
+        Command::Tags(args) => commands::tags(args, ctx, service, out, err).await,
         Command::List(args) => commands::list(args, ctx, service, out, err).await,
         Command::Import => {
             let request = ImportRequest {

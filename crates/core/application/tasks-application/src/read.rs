@@ -17,7 +17,7 @@ use crate::view::{
     is_active, is_terminal, Row, StatusInfo, Task, DEFAULT_STATUSES, IN_PROGRESS, OPEN,
     STATUS_CLASSES, TERMINAL,
 };
-use crate::{failed, query, AppError, Project, Service, Shown};
+use crate::{failed, query, AppError, Project, Service, Shown, Tag};
 
 /// What a read reached.
 #[derive(Clone, PartialEq, Debug)]
@@ -126,6 +126,23 @@ pub struct Summary {
 pub struct Statuses {
     pub reach: Reach,
     pub statuses: Vec<StatusInfo>,
+}
+
+/// One tag in use: how many tasks hold it in all, and how many of those
+/// are active (neither terminal nor Deferred).
+#[derive(Clone, PartialEq, Debug)]
+pub struct TagCount {
+    pub tag: Tag,
+    pub active: usize,
+    pub total: usize,
+}
+
+/// The tags in use among the tasks a read selected, by their canonical
+/// spelling, those the tag schema hides left out.
+#[derive(Clone, PartialEq, Debug)]
+pub struct Vocabulary {
+    pub reach: Reach,
+    pub tags: Vec<TagCount>,
 }
 
 /// A status filter: statuses by name, and the classes `@open` (every
@@ -342,6 +359,37 @@ where
         Ok(Statuses {
             reach: scan.reach,
             statuses,
+        })
+    }
+
+    /// The tags of the tasks `query` selects, every status included (its
+    /// `all`, `limit` and `sort` mean nothing here), counted.
+    pub(crate) async fn vocabulary(
+        &mut self,
+        query: crate::ListQuery,
+    ) -> Result<Vocabulary, AppError> {
+        query::check(&query.tag_query).map_err(|e| AppError::TagQuery(Report::of(&e)))?;
+        let filter = StatusFilter::parse(&query.statuses)?;
+        let schema = self.schema(&query.config_set)?;
+        let scan = self.scan(query.project.as_deref(), query.global).await?;
+        let rows = matching(scan.rows, &filter, &query.term, &query.tag_query, &schema)?;
+        let shown = Shown::of(&schema);
+        let mut counts: BTreeMap<String, TagCount> = BTreeMap::new();
+        for row in &rows {
+            let active = is_active(&row.task.status);
+            for tag in row.task.tags.iter().filter(|t| shown.shows(t)) {
+                let count = counts.entry(tag.to_string()).or_insert_with(|| TagCount {
+                    tag: tag.clone(),
+                    active: 0,
+                    total: 0,
+                });
+                count.total += 1;
+                count.active += usize::from(active);
+            }
+        }
+        Ok(Vocabulary {
+            reach: scan.reach,
+            tags: counts.into_values().collect(),
         })
     }
 

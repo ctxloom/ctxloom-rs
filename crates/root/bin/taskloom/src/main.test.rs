@@ -558,24 +558,71 @@ fn test_in_json_each_command_writes_one_document_and_errors_an_envelope() {
     );
 }
 
-/// Each command after `add`, its answer one JSON document; each refusal
-/// an envelope on stderr, with stdout empty.
-#[test]
-fn test_in_json_each_later_command_writes_one_document_and_errors_an_envelope() {
-    let env = Env::new("jq-later-harp");
-    let added = env.run(&["add", "Ship", "it", "--json"]);
-    assert!(added.ok, "{}", added.stderr);
-    let harp = one_document(&added.stdout)["harp_id"]
-        .as_str()
-        .expect("harp_id")
-        .to_string();
-    let refused = |args: &[&str], code: &str| {
-        let ran = env.run(args);
+/// A project with one task added, for a command's JSON to be checked.
+struct Jq {
+    env: Env,
+    harp: String,
+}
+
+impl Jq {
+    fn new(session: &'static str) -> Jq {
+        let env = Env::new(session);
+        let harp = env.seed("Ship it")["harp_id"]
+            .as_str()
+            .expect("harp_id")
+            .to_string();
+        Jq { env, harp }
+    }
+
+    /// `args`' answer: it succeeded, and wrote one JSON document.
+    fn ok(&self, args: &[&str]) -> Value {
+        let ran = self.env.run(args);
+        assert!(ran.ok, "{args:?}: {}", ran.stderr);
+        one_document(&ran.stdout)
+    }
+
+    /// `args` failed with `code`: an envelope on stderr, stdout empty.
+    fn refused(&self, args: &[&str], code: &str) {
+        let ran = self.env.run(args);
         assert!(!ran.ok, "{args:?}");
         assert_eq!(ran.stdout, "", "{args:?}: an error leaves stdout empty");
         assert_eq!(one_document(&ran.stderr)["code"], code, "{args:?}");
-    };
-    let narrowed = env.run(&[
+    }
+}
+
+#[test]
+fn test_in_json_each_change_writes_one_document_and_errors_an_envelope() {
+    let jq = Jq::new("jq-change-harp");
+    let harp = jq.harp.as_str();
+    let task = jq.ok(&["status", harp, "Deferred", "--trigger", "later", "--json"]);
+    assert_eq!(
+        (&task["status"], &task["trigger"]),
+        (&"Deferred".into(), &"later".into())
+    );
+    let back = jq.ok(&["status", harp, "To Do", "--json"]);
+    assert_eq!(back["trigger"], "later", "kept");
+    jq.refused(
+        &["status", harp, "@open", "--json"],
+        "tasks-status-reserved",
+    );
+    jq.refused(
+        &["status", "no-such-task", "Done", "--json"],
+        "tasks-no-task",
+    );
+    let task = jq.ok(&["edit", harp, "Ship", "it", "today", "--json"]);
+    assert_eq!(
+        (&task["text"], &task["status"]),
+        (&"Ship it today".into(), &"To Do".into())
+    );
+    jq.refused(&["edit", harp, " ", "--json"], "tasks-text-required");
+}
+
+#[test]
+fn test_in_json_each_read_writes_one_document_and_errors_an_envelope() {
+    let jq = Jq::new("jq-read-harp");
+    let harp = jq.harp.as_str();
+    jq.ok(&["tag", harp, "--add", "release", "--json"]);
+    let narrowed = jq.ok(&[
         "list",
         "--status",
         "@open",
@@ -586,58 +633,22 @@ fn test_in_json_each_later_command_writes_one_document_and_errors_an_envelope() 
         "1",
         "--json",
     ]);
-    assert!(narrowed.ok, "{}", narrowed.stderr);
-    assert_eq!(one_document(&narrowed.stdout)[0]["headline"], "Ship it");
-    let every = env.run(&["list", "--global", "--json"]);
-    assert!(every.ok, "{}", every.stderr);
-    assert_eq!(one_document(&every.stdout)[0]["harp_id"], harp.as_str());
-    refused(
+    assert_eq!(narrowed[0]["headline"], "Ship it");
+    assert_eq!(jq.ok(&["list", "--global", "--json"])[0]["harp_id"], harp);
+    jq.refused(
         &["list", "--sort", "priority", "--json"],
         "tasks-application-priority-unavailable",
     );
-    refused(
+    jq.refused(
         &["list", "--status", "@done", "--json"],
         "tasks-application-unknown-status-class",
     );
 
-    let moved = env.run(&["status", &harp, "Deferred", "--trigger", "later", "--json"]);
-    assert!(moved.ok, "{}", moved.stderr);
-    let task = one_document(&moved.stdout);
-    assert_eq!(
-        (&task["status"], &task["trigger"]),
-        (&"Deferred".into(), &"later".into())
-    );
-    let back = env.run(&["status", &harp, "To Do", "--json"]);
-    assert_eq!(one_document(&back.stdout)["trigger"], "later", "kept");
-    refused(
-        &["status", &harp, "@open", "--json"],
-        "tasks-status-reserved",
-    );
-    refused(
-        &["status", "no-such-task", "Done", "--json"],
-        "tasks-no-task",
-    );
-
-    let edited = env.run(&["edit", &harp, "Ship", "it", "today", "--json"]);
-    assert!(edited.ok, "{}", edited.stderr);
-    let task = one_document(&edited.stdout);
-    assert_eq!(
-        (&task["text"], &task["status"]),
-        (&"Ship it today".into(), &"To Do".into())
-    );
-    refused(&["edit", &harp, " ", "--json"], "tasks-text-required");
-
-    let shown = env.run(&["show", &harp, "--json"]);
-    assert!(shown.ok, "{}", shown.stderr);
-    assert_eq!(one_document(&shown.stdout)["text"], "Ship it today");
-    let twice = env.run(&["show", &harp, &harp, "--global", "--json"]);
-    assert!(twice.ok, "{}", twice.stderr);
-    assert_eq!(
-        one_document(&twice.stdout).as_array().map(Vec::len),
-        Some(2)
-    );
-    refused(
-        &["show", &harp, "no-such-task", "--json"],
+    assert_eq!(jq.ok(&["show", harp, "--json"])["text"], "Ship it");
+    let twice = jq.ok(&["show", harp, harp, "--global", "--json"]);
+    assert_eq!(twice.as_array().map(Vec::len), Some(2));
+    jq.refused(
+        &["show", harp, "no-such-task", "--json"],
         "tasks-application-not-found",
     );
 
@@ -645,24 +656,36 @@ fn test_in_json_each_later_command_writes_one_document_and_errors_an_envelope() 
         &["summary", "--json"][..],
         &["summary", "--global", "--json"],
     ] {
-        let summed = env.run(args);
-        assert!(summed.ok, "{}", summed.stderr);
-        let summary = one_document(&summed.stdout);
+        let summary = jq.ok(args);
         assert_eq!(summary["counts"]["To Do"], 1, "{args:?}");
         assert_eq!(summary["in_progress"], serde_json::json!([]), "{args:?}");
     }
 
-    let statuses = env.run(&["statuses", "--json"]);
-    assert!(statuses.ok, "{}", statuses.stderr);
-    let names: Vec<Value> = one_document(&statuses.stdout)
+    let statuses = jq.ok(&["statuses", "--json"]);
+    let names: Vec<&Value> = statuses
         .as_array()
         .expect("an array")
         .iter()
-        .map(|s| s["name"].clone())
+        .map(|s| &s["name"])
         .collect();
     assert_eq!(
         names,
-        ["In Progress", "To Do", "Deferred", "Done", "Archived"].map(Value::from)
+        ["In Progress", "To Do", "Deferred", "Done", "Archived"]
+    );
+
+    for args in [
+        &["tags", "--json"][..],
+        &["tags", "--global", "--status", "@open", "--json"],
+    ] {
+        assert_eq!(
+            jq.ok(args),
+            serde_json::json!([{"tag": "release", "active": 1, "total": 1}]),
+            "{args:?}"
+        );
+    }
+    jq.refused(
+        &["tags", "--tag-query", "x/and", "--json"],
+        "tasks-application-tag-query",
     );
 }
 
