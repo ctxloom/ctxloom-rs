@@ -24,6 +24,7 @@ tasks-proto = { path = "crates/core/wire/tasks-proto" }
 annals-store-sql = { path = "../../annals/crates/annals-store-sql", features = ["sqlite"] }
 tasks = { path = "crates/core/domain/tasks" }
 task-lists = { path = "crates/core/read-model/task-lists" }
+task-priority = { path = "crates/core/read-model/task-priority" }
 ports = { path = "crates/core/ports/ports" }
 tasks-application = { path = "crates/core/application/tasks-application" }
 project-application = { path = "crates/core/application/project-application" }
@@ -78,6 +79,11 @@ unic-langid = "0.9"
 # stdio transport; no macros, so no schema is derived from Rust types (the
 # tools' schemas are Go's, copied verbatim).
 rmcp = { version = "=3.5.1", default-features = false, features = ["server", "transport-io"] }
+# Priority's formula evaluator: expr-lang's Rust port, so the formulas Go's
+# expr-lang evaluates mean the same here. Pinned exactly, at 2.1.0
+# (2026-08-21). No default features: the formulas are arithmetic, and the
+# rest (time zones, JSON, regex) would link crates they never use.
+expr-lang = { version = "=2.1.0", default-features = false }
 # Display-width columns in text output.
 unicode-width = "0.2"
 uuid = { version = "1", features = ["v7"] }
