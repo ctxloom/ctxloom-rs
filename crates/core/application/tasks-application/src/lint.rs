@@ -21,6 +21,7 @@ use annals_diagnostic::{Arg, Diagnostic};
 
 use crate::schema::{self, TagSchema};
 use crate::view::Row;
+use task_priority::placeholders;
 
 /// The subject of a violation in the schema rather than in a task (Go's
 /// `SchemaViolationHarpID`), sorting before every harp id.
@@ -221,7 +222,7 @@ fn by_target(tags: &[crate::Tag]) -> BTreeMap<String, Vec<String>> {
     let mut values: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for tag in tags {
         let Some(value) = &tag.value else { continue };
-        let held = values.entry(schema::target(tag)).or_default();
+        let held = values.entry(tag.target()).or_default();
         if !held.contains(value) {
             held.push(value.clone());
         }
@@ -314,25 +315,6 @@ fn formula_findings(schema: &TagSchema, enums: &BTreeMap<&str, &[String]>) -> Ve
         }
     }
     found
-}
-
-/// The names of `formula`'s placeholders, `{{ name }}`, trimmed, in order,
-/// repeats kept: what Go's `\{\{\s*([^{}]+?)\s*}}` finds.
-pub(crate) fn placeholders(formula: &str) -> Vec<&str> {
-    let mut names = Vec::new();
-    let mut rest = formula;
-    while let Some(start) = rest.find("{{") {
-        let body = &rest[start + 2..];
-        let end = body.find(['{', '}']).unwrap_or(body.len());
-        let name = body[..end].trim();
-        if body[end..].starts_with("}}") && !name.is_empty() {
-            names.push(name);
-            rest = &body[end + 2..];
-        } else {
-            rest = &rest[start + 1..];
-        }
-    }
-    names
 }
 
 /// One of every finding, for the catalog test.

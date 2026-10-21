@@ -10,10 +10,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use annals_diagnostic::Report;
-use ports::{Configuration, ProjectIdentity, TaskStores};
+use ports::{Clock, Configuration, ProjectIdentity, TaskStores};
 use task_lists::TaskList;
 
 use crate::lint::{self, LintReport};
+use crate::priority::{self, PriorityNote};
 use crate::view::{
     is_active, is_terminal, Row, StatusInfo, Task, DEFAULT_STATUSES, IN_PROGRESS, OPEN,
     STATUS_CLASSES, TERMINAL,
@@ -87,6 +88,11 @@ pub struct Listing {
     pub searched: bool,
     /// How many tasks `limit` cut off the end.
     pub omitted: usize,
+    /// Each row's derived priority, in the rows' order, when the listing
+    /// is sorted by it.
+    pub priorities: Option<Vec<f64>>,
+    /// Why the ranking means little, when sorted by priority.
+    pub priority_notes: Vec<PriorityNote>,
 }
 
 impl Listing {
@@ -98,6 +104,15 @@ impl Listing {
     /// The tasks, in order.
     pub fn tasks(&self) -> impl Iterator<Item = &Task> {
         self.rows.iter().map(|row| &row.task)
+    }
+
+    /// The rows, in order, each with its derived priority when the listing
+    /// is sorted by it.
+    pub fn ranked(&self) -> impl Iterator<Item = (&Row, Option<f64>)> {
+        let priorities = self.priorities.iter().flatten().copied().map(Some);
+        self.rows
+            .iter()
+            .zip(priorities.chain(std::iter::repeat(None)))
     }
 }
 
@@ -240,6 +255,7 @@ impl<I, S, N, C, D, L, G> Service<I, S, N, C, D, L, G>
 where
     I: ProjectIdentity,
     S: TaskStores,
+    C: Clock,
     G: Configuration,
 {
     /// Every live task the read reaches: `pinned`'s project, the work
@@ -439,18 +455,33 @@ where
     pub(crate) async fn listing(&mut self, query: crate::ListQuery) -> Result<Listing, AppError> {
         // A malformed query is refused whatever there is to run it over.
         query::check(&query.tag_query).map_err(|e| AppError::TagQuery(Report::of(&e)))?;
-        match query.sort.trim() {
-            "" => {}
-            crate::PRIORITY => return Err(AppError::PriorityUnavailable),
+        let by_priority = match query.sort.trim() {
+            "" => false,
+            crate::PRIORITY => true,
             sort => {
                 return Err(AppError::UnknownSort {
                     sort: sort.to_string(),
                 })
             }
-        }
+        };
         let filter = StatusFilter::parse(&query.statuses)?;
         let schema = self.schema(&query.config_set)?;
         let scan = self.scan(query.project.as_deref(), query.global).await?;
+        // Each project's whole population is ranked, not the page the
+        // filters leave.
+        let ranked = match by_priority {
+            true => {
+                let formulas = priority::formulas(&schema)?;
+                let now = self.clock.now();
+                Some(priority::rank_rows(
+                    &scan.rows,
+                    &formulas,
+                    now,
+                    scan.reach.is_every(),
+                )?)
+            }
+            false => None,
+        };
         let matched = matching(scan.rows, &filter, &query.term, &query.tag_query, &schema)?;
         let mut hidden = Hidden::default();
         let mut rows: Vec<Row> = if query.all || filter.is_explicit() {
@@ -472,6 +503,16 @@ where
                 })
                 .collect()
         };
+        if let Some(ranked) = &ranked {
+            // Stable: ties keep the listing's order. The limit is applied
+            // after, so it keeps the highest priorities.
+            rows.sort_by(|a, b| {
+                a.project
+                    .id
+                    .cmp(&b.project.id)
+                    .then_with(|| ranked.priority(b).total_cmp(&ranked.priority(a)))
+            });
+        }
         let omitted = match query.limit {
             0 => 0,
             limit => {
@@ -482,13 +523,20 @@ where
         };
         Ok(Listing {
             reach: scan.reach,
-            rows,
             shown: Shown::of(&schema),
             hidden,
             searched: !query.term.trim().is_empty() || !query.tag_query.trim().is_empty(),
             omitted,
+            priorities: ranked.as_ref().map(|ranked| rows_priorities(&rows, ranked)),
+            priority_notes: ranked.map(|ranked| ranked.notes).unwrap_or_default(),
+            rows,
         })
     }
+}
+
+/// Each of `rows`' priority in `ranked`, in order.
+fn rows_priorities(rows: &[Row], ranked: &priority::Ranked) -> Vec<f64> {
+    rows.iter().map(|row| ranked.priority(row)).collect()
 }
 
 #[cfg(test)]

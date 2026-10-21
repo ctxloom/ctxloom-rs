@@ -1,0 +1,22 @@
+[package]
+name = "task-priority"
+version = "0.1.0"
+description = "Task priority: derived when read from the priority_fn and decay_fn formulas, never stored"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+annals.workspace = true
+annals-diagnostic.workspace = true
+expr-lang.workspace = true
+tasks.workspace = true
+
+[dev-dependencies]
+fluent-syntax = "0.11"
+mutants.workspace = true
+tagma-core.workspace = true
+
+[lints]
+workspace = true

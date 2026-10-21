@@ -12,7 +12,8 @@ use time::OffsetDateTime;
 
 /// A task as JSON: Go's `tasks.Task`, its fields in its order, each tag in
 /// its canonical spelling. Every tag, hidden ones too: hiding is for what a
-/// person reads, and a program reads this.
+/// person reads, and a program reads this. `derived_priority` is null but
+/// in a listing sorted by priority.
 #[derive(Serialize)]
 pub struct TaskJson<'a> {
     harp_id: &'a str,
@@ -24,6 +25,8 @@ pub struct TaskJson<'a> {
     origin_session: &'a str,
     tags: Vec<String>,
     created_at: String,
+    #[serde(serialize_with = "go_number")]
+    derived_priority: Option<f64>,
 }
 
 impl<'a> TaskJson<'a> {
@@ -38,7 +41,27 @@ impl<'a> TaskJson<'a> {
             origin_session: &task.origin_session,
             tags: spelled(&task.tags),
             created_at: rfc3339(task.created_at),
+            derived_priority: None,
         }
+    }
+
+    /// The task with its derived priority.
+    pub fn with_priority(self, derived_priority: Option<f64>) -> TaskJson<'a> {
+        TaskJson {
+            derived_priority,
+            ..self
+        }
+    }
+}
+
+/// A derived priority, in `[0, 5]`, as Go's encoding/json writes a float64
+/// there: a whole number without a fraction (`5`, where serde_json writes
+/// `5.0`).
+fn go_number<S: serde::Serializer>(value: &Option<f64>, serializer: S) -> Result<S::Ok, S::Error> {
+    match *value {
+        Some(n) if n.fract() == 0.0 => serializer.serialize_i64(n as i64),
+        Some(n) => serializer.serialize_f64(n),
+        None => serializer.serialize_none(),
     }
 }
 

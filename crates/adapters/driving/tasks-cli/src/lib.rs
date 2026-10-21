@@ -355,12 +355,12 @@ fn report(
 }
 
 /// `notice` on stderr, after the program's name.
-pub(crate) fn notify(notice: &Notice, catalog: &Catalog, err: &mut dyn Write) -> io::Result<()> {
-    writeln!(
-        err,
-        "{PROG}: {}",
-        catalog.message(notice as &dyn Diagnostic)
-    )
+pub(crate) fn notify(
+    notice: &dyn Diagnostic,
+    catalog: &Catalog,
+    err: &mut dyn Write,
+) -> io::Result<()> {
+    writeln!(err, "{PROG}: {}", catalog.message(notice))
 }
 
 /// Name the project on stderr, then render the task.

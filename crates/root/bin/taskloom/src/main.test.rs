@@ -456,6 +456,7 @@ fn test_every_diagnostic_of_every_crate_renders_from_the_binarys_catalog() {
         annals_store_sql::diagnostic_samples(),
         tasks::diagnostic_samples(),
         tasks_application::diagnostic_samples(),
+        task_priority::diagnostic_samples(),
         project_registry::diagnostic_samples(),
         task_store_sqlite::diagnostic_samples(),
         tasks_cli::diagnostic_samples(),
@@ -672,10 +673,6 @@ fn test_in_json_each_read_writes_one_document_and_errors_an_envelope() {
     assert_eq!(narrowed[0]["headline"], "Ship it");
     assert_eq!(jq.ok(&["list", "--global", "--json"])[0]["harp_id"], harp);
     jq.refused(
-        &["list", "--sort", "priority", "--json"],
-        "tasks-application-priority-unavailable",
-    );
-    jq.refused(
         &["list", "--status", "@done", "--json"],
         "tasks-application-unknown-status-class",
     );
@@ -744,6 +741,31 @@ fn test_in_json_each_read_writes_one_document_and_errors_an_envelope() {
     assert_eq!(
         one_document(&ran.stderr)["code"],
         "tasks-cli-lint-violations"
+    );
+}
+
+#[test]
+fn test_a_list_sorted_by_priority_ranks_the_projects_tasks_through_its_store() {
+    let jq = Jq::new("jq-priority-harp");
+    let critical = jq.ok(&["add", "Fix it", "--tag", "triage:level=1", "--json"]);
+    let ranked = jq.ok(&["list", "--sort", "priority", "--json"]);
+    let order: Vec<(&Value, &Value)> = ranked
+        .as_array()
+        .expect("an array")
+        .iter()
+        .map(|t| (&t["harp_id"], &t["derived_priority"]))
+        .collect();
+    assert_eq!(
+        order,
+        [
+            (&critical["harp_id"], &serde_json::json!(5)),
+            (&serde_json::json!(jq.harp), &serde_json::json!(2.5)),
+        ],
+        "level 1 first; the untriaged task floors below it"
+    );
+    assert_eq!(
+        jq.ok(&["list", "--json"])[0]["derived_priority"],
+        Value::Null
     );
 }
 

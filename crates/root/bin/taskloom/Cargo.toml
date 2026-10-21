@@ -40,6 +40,7 @@ ports.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tagma-core.workspace = true
+task-priority.workspace = true
 tasks.workspace = true
 tempfile.workspace = true
 time.workspace = true

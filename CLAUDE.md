@@ -53,7 +53,10 @@ Dependencies point inward; a review refuses a change that breaks these:
   annals, annals-diagnostic, prost, its wire crate (generated over
   angzarr-proto), and tagma's tagma-core (the tag grammar and query engine)
   and tagma-proto (its `Tag` message): no I/O, async runtime or clock in
-  decide, apply or a projection.
+  decide, apply or a projection. One read model links more:
+  `task-priority` evaluates the tag schema's priority formulas with
+  expr-lang (the Rust port of the language Go's taskloom evaluates them
+  in), which is computation and nothing else.
 - A driven adapter sees only ports (and wire types), never a use case. A
   driving adapter sees only the application layer, never a domain's
   internals. Adapters never depend on each other, with one exception:

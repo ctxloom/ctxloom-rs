@@ -94,6 +94,8 @@ impl TaskService for Fake {
             hidden: Hidden::default(),
             searched: false,
             omitted: 0,
+            priorities: None,
+            priority_notes: Vec::new(),
         })
     }
 

@@ -5,7 +5,11 @@ tasks-application-no-project = there is no project here yet, so no task to chang
 tasks-application-no-go-log = Go taskloom has no task log for project { $project }
 tasks-application-unknown-status-class = { $status } is no status class (the classes are { $classes }): '@' is reserved for them, so no status starts with it
 tasks-application-unknown-sort = { $sort } is no sort: the only one is priority
-tasks-application-priority-unavailable = sorting by priority is not available yet: this taskloom does not compute priority
+tasks-application-priority-no-priority-fn = --sort priority is meaningless here: this project's tag_schema declares no priority_fn, so every task's raw score is 0 and the ranking reflects nothing
+tasks-application-priority-all-tied = --sort priority is meaningless here: every active task ties at the same raw priority score (only { $scored } of { $live } active tasks carry a tag any priority_fn/decay_fn formula actually reads) — the ranking reflects nothing
+tasks-application-priority-inert = priority_fn/decay_fn reads { $target }, which none of the { $live } active tasks carries — that term is inert and moves no task's rank
+tasks-application-priority-thin = { $uncovered } of { $live } active tasks carry no { $target } — they rank as if it were absent, on a formula that reads it
+tasks-application-priority-in-project = project { $project }: { $warning }
 tasks-application-not-found = no task holds { $count ->
     [one] this harp id
    *[other] these harp ids

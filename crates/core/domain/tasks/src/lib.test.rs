@@ -739,3 +739,14 @@ fn test_every_rejection_has_a_catalog_message_with_exactly_its_args() {
         assert_eq!(used, args, "{}", sample.code());
     }
 }
+
+#[test]
+fn test_a_tags_target_is_its_namespace_and_key() {
+    let tag = |ns: Option<&str>, key: &str| Tag {
+        namespace: ns.map(str::to_string),
+        key: key.to_string(),
+        value: Some("v".to_string()),
+    };
+    assert_eq!(tag(Some("triage"), "kind").target(), "triage:kind");
+    assert_eq!(tag(None, "urgent").target(), "urgent");
+}

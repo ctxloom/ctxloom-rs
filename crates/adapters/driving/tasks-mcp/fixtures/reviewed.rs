@@ -48,15 +48,6 @@ pub const TOOLS: &[(&str, &str)] = &[
         r#" A repo-homed project (homing: repo, its log checked into \u003crepo\u003e/.taskloom/tasks.jsonl) is registered nowhere global and is NEVER included, even if it is the current project -- every global listing's notice field says so.""#,
         r#"""#,
     ),
-    // 4. task_list's sort parameter: priority is refused until it is ported.
-    (
-        concat!(
-            r#"\"priority\" sorts by derived, rank-normalized priority (descending) "#,
-            "\u{2014}",
-            r#" a 0-5 score combining a project's priority_fn/decay_fn formulas over each task's tags, percentile-ranked against the project's non-terminal tasks; see each returned task's derived_priority field."#
-        ),
-        r#"\"priority\" is refused with an error: this taskloom does not compute priority yet, and each returned task's derived_priority field is null."#,
-    ),
 ];
 
 /// `go` with each pair applied, each `old` found exactly once.

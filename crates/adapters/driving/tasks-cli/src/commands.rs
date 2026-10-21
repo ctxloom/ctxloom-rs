@@ -185,9 +185,9 @@ pub(crate) struct ListArgs {
     /// Every project's tasks, not just this project's.
     #[arg(long)]
     global: bool,
-    /// The order: priority, Go's one sort, waits on priority, which is
-    /// not computed yet; the default is the order added (across projects,
-    /// by project and then id).
+    /// The order: priority, highest first, each project's tasks ranked
+    /// against all of its own; the default is the order added (across
+    /// projects, by project and then id).
     #[arg(long, default_value = "", hide_default_value = true)]
     sort: String,
     /// In JSON, each task as its id, status, checked, tags and headline;
@@ -468,10 +468,14 @@ pub(crate) fn reached(reach: &Reach, catalog: &Catalog, err: &mut dyn Write) -> 
     }
 }
 
-/// Where the listing was read, if not here; what the default view hid of
-/// a search's matches; and what the limit left out.
+/// Where the listing was read, if not here; why its ranking by priority
+/// means little; what the default view hid of a search's matches; and
+/// what the limit left out.
 fn listing_notices(listing: &Listing, catalog: &Catalog, err: &mut dyn Write) -> io::Result<()> {
     reached(&listing.reach, catalog, err)?;
+    for note in &listing.priority_notes {
+        notify(note, catalog, err)?;
+    }
     let hidden = listing.hidden;
     if listing.searched && hidden.total() > 0 {
         let notice = Notice::Hidden {

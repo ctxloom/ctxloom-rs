@@ -7,8 +7,8 @@ use annals_diagnostic::{Arg, Diagnostic, Report};
 /// Why a use case did not complete. A wrapper of another error
 /// ([`AppError::Rejected`], [`AppError::TagRefused`], [`AppError::Failed`],
 /// [`AppError::Identity`], [`AppError::Configuration`],
-/// [`AppError::TagQuery`], [`AppError::Prune`]) is that error's diagnostic: its code, args and
-/// English.
+/// [`AppError::TagQuery`], [`AppError::Prune`], [`AppError::Priority`]) is
+/// that error's diagnostic: its code, args and English.
 #[derive(Clone, PartialEq, Debug)]
 pub enum AppError {
     /// The domain refused the command: tell the person.
@@ -41,8 +41,9 @@ pub enum AppError {
     UnknownStatusClass { status: String },
     /// A sort taskloom does not know.
     UnknownSort { sort: String },
-    /// The sort by priority, which is not computed yet.
-    PriorityUnavailable,
+    /// Priority could not be derived (`task_priority::PriorityError`): a
+    /// formula that does not compile, or a task it cannot score.
+    Priority(Report),
     /// Ids asked for that no task holds: every one of them.
     NotFound { harp_ids: Vec<String> },
     /// Ids held in more than one project, read across projects: each with
@@ -75,7 +76,8 @@ impl fmt::Display for AppError {
             | AppError::Identity(cause)
             | AppError::Configuration(cause)
             | AppError::TagQuery(cause)
-            | AppError::Prune(cause) => cause.fmt(f),
+            | AppError::Prune(cause)
+            | AppError::Priority(cause) => cause.fmt(f),
             AppError::GaveUp { attempts, error } => {
                 write!(f, "gave up after {attempts} attempts: {error}")
             }
@@ -99,9 +101,6 @@ impl fmt::Display for AppError {
             AppError::UnknownSort { sort } => {
                 write!(f, "{sort} is no sort: the only one is priority")
             }
-            AppError::PriorityUnavailable => f.write_str(
-                "sorting by priority is not available yet: this taskloom does not compute priority",
-            ),
             AppError::NotFound { harp_ids } => write!(
                 f,
                 "no task holds these harp ids: {} (see `taskloom list`)",
@@ -125,7 +124,8 @@ impl Diagnostic for AppError {
             | AppError::Identity(cause)
             | AppError::Configuration(cause)
             | AppError::TagQuery(cause)
-            | AppError::Prune(cause) => cause.code(),
+            | AppError::Prune(cause)
+            | AppError::Priority(cause) => cause.code(),
             AppError::GaveUp { .. } => "tasks-application-gave-up",
             AppError::HarpsExhausted { .. } => "tasks-application-harps-exhausted",
             AppError::Vanished { .. } => "tasks-application-vanished",
@@ -133,7 +133,6 @@ impl Diagnostic for AppError {
             AppError::NoGoLog { .. } => "tasks-application-no-go-log",
             AppError::UnknownStatusClass { .. } => "tasks-application-unknown-status-class",
             AppError::UnknownSort { .. } => "tasks-application-unknown-sort",
-            AppError::PriorityUnavailable => "tasks-application-priority-unavailable",
             AppError::NotFound { .. } => "tasks-application-not-found",
             AppError::Ambiguous { .. } => "tasks-application-ambiguous",
         }
@@ -147,14 +146,15 @@ impl Diagnostic for AppError {
             | AppError::Identity(cause)
             | AppError::Configuration(cause)
             | AppError::TagQuery(cause)
-            | AppError::Prune(cause) => cause.args(),
+            | AppError::Prune(cause)
+            | AppError::Priority(cause) => cause.args(),
             AppError::GaveUp { attempts, error } => vec![
                 ("attempts", (*attempts).into()),
                 ("error", Arg::nested(error)),
             ],
             AppError::HarpsExhausted { attempts } => vec![("attempts", (*attempts).into())],
             AppError::Vanished { harp_id } => vec![("harp_id", harp_id.as_str().into())],
-            AppError::NoProject | AppError::PriorityUnavailable => Vec::new(),
+            AppError::NoProject => Vec::new(),
             AppError::NoGoLog { project } => vec![("project", project.as_str().into())],
             AppError::UnknownStatusClass { status } => vec![
                 ("status", status.as_str().into()),
@@ -181,7 +181,7 @@ pub const EN_US: (&str, &str) = (
 
 /// The en-US catalogs of every diagnostic a use case returns but its
 /// adapters': the domain's rejections and this crate's errors.
-pub const CATALOGS: [(&str, &str); 2] = [tasks::EN_US, EN_US];
+pub const CATALOGS: [(&str, &str); 3] = [tasks::EN_US, task_priority::EN_US, EN_US];
 
 /// One value of every error this crate defines, of every reason a tag is
 /// refused, and of every reason an import gives for leaving a record behind (not the wrappers, whose codes
@@ -208,7 +208,6 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(AppError::UnknownSort {
             sort: "age".to_string(),
         }),
-        Box::new(AppError::PriorityUnavailable),
         Box::new(AppError::NotFound {
             harp_ids: vec!["swift-amber".to_string(), "calm-otter".to_string()],
         }),
@@ -233,6 +232,11 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         crate::prune::samples()
             .into_iter()
             .map(|p| Box::new(p) as Box<dyn Diagnostic>),
+    );
+    samples.extend(
+        crate::priority::samples()
+            .into_iter()
+            .map(|n| Box::new(n) as Box<dyn Diagnostic>),
     );
     samples.push(Box::new(crate::QueryError {
         query: "and".to_string(),

@@ -116,7 +116,57 @@ fn listing(reach: Reach, tasks: &[Task], shown: Shown) -> Listing {
         hidden: Hidden::default(),
         searched: false,
         omitted: 0,
+        priorities: None,
+        priority_notes: Vec::new(),
     }
+}
+
+#[test]
+fn test_a_listing_sorted_by_priority_gives_each_task_its_priority_in_json() {
+    let tasks = [task("swift-amber", "To Do"), task("calm-otter", "To Do")];
+    let mut sorted = listing(Reach::Project(project()), &tasks, Shown::default());
+    let unsorted = rendered(|out| {
+        render(
+            out,
+            Format::Json,
+            &Listed {
+                listing: &sorted,
+                compact: false,
+            },
+        )
+    });
+    assert_eq!(
+        unsorted.matches(r#""derived_priority": null"#).count(),
+        2,
+        "{unsorted}"
+    );
+    sorted.priorities = Some(vec![5.0, 2.5]);
+    let json = rendered(|out| {
+        render(
+            out,
+            Format::Json,
+            &Listed {
+                listing: &sorted,
+                compact: false,
+            },
+        )
+    });
+    assert!(json.contains(r#""derived_priority": 5"#), "{json}");
+    assert!(json.contains(r#""derived_priority": 2.5"#), "{json}");
+    let compact = rendered(|out| {
+        render(
+            out,
+            Format::Json,
+            &Listed {
+                listing: &sorted,
+                compact: true,
+            },
+        )
+    });
+    assert!(
+        !compact.contains("derived_priority"),
+        "Go's compact rows have none"
+    );
 }
 
 #[test]
