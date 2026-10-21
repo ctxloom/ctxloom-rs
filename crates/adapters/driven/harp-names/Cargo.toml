@@ -1,0 +1,15 @@
+[package]
+name = "harp-names"
+version = "0.1.0"
+description = "Task and project names from harp-core's word lists, behind the Names port"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+harp-core.workspace = true
+ports.workspace = true
+
+[lints]
+workspace = true
