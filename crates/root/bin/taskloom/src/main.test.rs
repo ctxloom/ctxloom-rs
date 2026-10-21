@@ -97,9 +97,14 @@ impl Env {
 
     /// [`Env::run`], with `vars` in its environment too.
     fn run_with(&self, args: &[&str], vars: &[(&str, &str)]) -> Ran {
+        self.run_in(self.project.path(), args, vars)
+    }
+
+    /// [`Env::run_with`], in `dir`.
+    fn run_in(&self, dir: &Path, args: &[&str], vars: &[(&str, &str)]) -> Ran {
         let output = Command::new(binary())
             .args(args)
-            .current_dir(self.project.path())
+            .current_dir(dir)
             .env_clear()
             .env("HOME", self.home.path())
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
@@ -389,6 +394,61 @@ fn test_a_tag_where_there_is_no_project_fails_and_binds_none() {
 }
 
 #[test]
+fn test_a_read_spans_every_project_when_asked_or_outside_any_work_root() {
+    let env = Env::new("global-harp");
+    env.seed("in the first");
+    let (repo, stray, empty_repo) = (
+        tempfile::tempdir().unwrap(),
+        tempfile::tempdir().unwrap(),
+        tempfile::tempdir().unwrap(),
+    );
+    for dir in [&repo, &empty_repo] {
+        std::fs::create_dir(dir.path().join(".git")).unwrap();
+    }
+    let added = env.run_in(repo.path(), &["add", "in the repo", "--json"], &[]);
+    assert!(added.ok, "{}", added.stderr);
+
+    let here = env.run(&["list", "--json"]);
+    assert_eq!(
+        texts(&here.json().as_array().unwrap().clone(), "text"),
+        ["in the first"]
+    );
+    let every = env.run(&["list", "--global", "--json"]);
+    assert!(every.ok, "{}", every.stderr);
+    assert_eq!(every.stderr, "", "asked for: nothing to explain");
+    let rows = every.json().as_array().unwrap().clone();
+    let mut seen = texts(&rows, "text");
+    seen.sort();
+    assert_eq!(seen, ["in the first", "in the repo"]);
+    assert!(rows.iter().all(|r| r["project_id"].is_string()), "{rows:?}");
+
+    let fallback = env.run_in(stray.path(), &["list", "--json"], &[]);
+    assert!(fallback.ok, "{}", fallback.stderr);
+    assert_eq!(fallback.json().as_array().unwrap().len(), 2);
+    assert!(
+        fallback.stderr.contains("so this reads every project"),
+        "{}",
+        fallback.stderr
+    );
+    let text = env.run_in(stray.path(), &["list", "--format", "text"], &[]);
+    assert!(
+        text.stdout.starts_with("Projects: 2 (--global)\n"),
+        "{}",
+        text.stdout
+    );
+
+    let in_repo = env.run_in(empty_repo.path(), &["list", "--json"], &[]);
+    assert_eq!(in_repo.json(), serde_json::json!([]));
+    assert!(
+        in_repo.stderr.contains("no project here yet"),
+        "{}",
+        in_repo.stderr
+    );
+    assert!(!stray.path().join(".project-id").exists());
+    assert!(!empty_repo.path().join(".project-id").exists());
+}
+
+#[test]
 fn test_every_diagnostic_of_every_crate_renders_from_the_binarys_catalog() {
     let catalog = super::catalog().expect("every catalog loads, no message twice");
     let samples: Vec<Box<dyn annals_diagnostic::Diagnostic>> = [
@@ -495,6 +555,49 @@ fn test_in_json_each_command_writes_one_document_and_errors_an_envelope() {
     assert_eq!(
         one_document(&incomplete.stderr)["code"],
         "tasks-cli-import-incomplete"
+    );
+}
+
+/// Each command after `add`, its answer one JSON document; each refusal
+/// an envelope on stderr, with stdout empty.
+#[test]
+fn test_in_json_each_later_command_writes_one_document_and_errors_an_envelope() {
+    let env = Env::new("jq-later-harp");
+    let added = env.run(&["add", "Ship", "it", "--json"]);
+    assert!(added.ok, "{}", added.stderr);
+    let harp = one_document(&added.stdout)["harp_id"]
+        .as_str()
+        .expect("harp_id")
+        .to_string();
+    let refused = |args: &[&str], code: &str| {
+        let ran = env.run(args);
+        assert!(!ran.ok, "{args:?}");
+        assert_eq!(ran.stdout, "", "{args:?}: an error leaves stdout empty");
+        assert_eq!(one_document(&ran.stderr)["code"], code, "{args:?}");
+    };
+    let narrowed = env.run(&[
+        "list",
+        "--status",
+        "@open",
+        "--term",
+        "SHIP",
+        "--compact",
+        "--limit",
+        "1",
+        "--json",
+    ]);
+    assert!(narrowed.ok, "{}", narrowed.stderr);
+    assert_eq!(one_document(&narrowed.stdout)[0]["headline"], "Ship it");
+    let every = env.run(&["list", "--global", "--json"]);
+    assert!(every.ok, "{}", every.stderr);
+    assert_eq!(one_document(&every.stdout)[0]["harp_id"], harp.as_str());
+    refused(
+        &["list", "--sort", "priority", "--json"],
+        "tasks-application-priority-unavailable",
+    );
+    refused(
+        &["list", "--status", "@done", "--json"],
+        "tasks-application-unknown-status-class",
     );
 }
 

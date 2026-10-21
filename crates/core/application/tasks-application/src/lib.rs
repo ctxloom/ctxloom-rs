@@ -10,6 +10,7 @@
 mod error;
 mod import;
 mod query;
+mod read;
 mod retry;
 mod schema;
 mod semver;
@@ -22,11 +23,7 @@ use annals::next::v1::{command_page, Command, CommandBook, CommandPage, Cover};
 use annals::next::{ids, AsyncEventStore, Payload, Registry, Rulebook, Stream, Upcaster};
 use annals_diagnostic::Report;
 use ports::{Clock, CommandIds, Configuration, Delay, Jitter, Names, ProjectIdentity, TaskStores};
-use task_lists::TaskList;
-use tasks::{
-    AddTask, Retag, TaskCommand, TaskRejection, TaskState, Tasks, DEFERRED, STATUS_CLASS_SIGIL,
-    TASK_DOMAIN,
-};
+use tasks::{AddTask, Retag, TaskCommand, TaskRejection, Tasks, TASK_DOMAIN};
 
 pub use annals::next::Timestamp;
 pub use error::{diagnostic_samples, AppError, CATALOGS, EN_US};
@@ -36,13 +33,17 @@ pub use import::{
 };
 pub use ports::{GoOp, Project};
 pub use query::{QueryError, QUERY_GRAMMAR};
+pub use read::{Hidden, Listing, Reach};
 pub use retry::Backoff;
 pub use schema::{
     target, Range, SchemaError, TagSchema, DEFAULT_TAG_SCHEMA, FACETS, FACET_NAMESPACE, SEMVER,
 };
 pub use semver::{Semver, Version};
 pub use tags::{admit, collapse, parse as parse_tag, Tag, TagRefusal, OPERATOR_WORDS};
-pub use view::{is_terminal, text_hash, Shown, Task, ARCHIVED, DONE};
+pub use view::{
+    is_active, is_terminal, text_hash, Row, Shown, StatusInfo, Task, ARCHIVED, DEFAULT_STATUSES,
+    DONE, IN_PROGRESS, OPEN, STATUS_CLASSES, TERMINAL,
+};
 
 /// How many task ids an add mints before giving up, each refused because a
 /// task already holds it: Go's `harp.UniqueFrom`.
@@ -80,9 +81,11 @@ pub struct TagChange {
     pub config_set: Vec<String>,
 }
 
-/// Which tasks to list. By default the open ones: neither terminal nor
-/// Deferred. `all` lists every task; naming statuses lists exactly the
-/// tasks in them. A tag query keeps those of them it selects.
+/// Which tasks to list. By default the active ones: neither terminal nor
+/// Deferred. `all` lists every task; naming statuses (or the classes
+/// `@open` and `@terminal`) lists exactly the tasks in them. A term keeps
+/// those whose text mentions it, case-insensitively, and a tag query those
+/// it selects. `global` reads every project.
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct ListQuery {
     pub project: Option<String>,
@@ -93,20 +96,20 @@ pub struct ListQuery {
     pub tag_query: String,
     /// Configuration overrides, `<path>=<value>` (`--config-set`).
     pub config_set: Vec<String>,
+    /// A substring of the text, any case; empty for none.
+    pub term: String,
+    /// Every project's tasks, not the work root's project's.
+    pub global: bool,
+    /// At most this many tasks, the rest counted as omitted; 0 for no
+    /// limit.
+    pub limit: usize,
+    /// The order: empty for the listing's own. Go's one sort, [`PRIORITY`],
+    /// waits on priority, which is not computed yet.
+    pub sort: String,
 }
 
-impl ListQuery {
-    /// Whether the listing holds `task`.
-    pub fn admits(&self, task: &TaskState) -> bool {
-        if self.all {
-            return true;
-        }
-        if !self.statuses.is_empty() {
-            return self.statuses.contains(&task.status);
-        }
-        !is_terminal(&task.status) && task.status != DEFERRED
-    }
-}
+/// The sort by derived priority, Go's `--sort priority`.
+pub const PRIORITY: &str = "priority";
 
 /// A task written, the project it was written in, and which of its tags a
 /// person is shown.
@@ -114,16 +117,6 @@ impl ListQuery {
 pub struct Written {
     pub project: Project,
     pub task: Task,
-    pub shown: Shown,
-}
-
-/// A project's tasks, in the order they were added; no project when the
-/// work root has none yet.
-#[derive(Clone, PartialEq, Debug)]
-pub struct Listing {
-    pub project: Option<Project>,
-    pub tasks: Vec<Task>,
-    /// Which of their tags a person is shown.
     pub shown: Shown,
 }
 
@@ -350,66 +343,7 @@ where
     }
 
     async fn list(&mut self, query: ListQuery) -> Result<Listing, AppError> {
-        // A malformed query is refused whatever there is to run it over.
-        query::check(&query.tag_query).map_err(|e| AppError::TagQuery(Report::of(&e)))?;
-        let schema = self.schema(&query.config_set)?;
-        // `@open` and `@terminal` will name classes of statuses; until they
-        // do, a status starting with the sigil is refused, as a write
-        // refuses it, rather than matching no task.
-        if let Some(class) = query
-            .statuses
-            .iter()
-            .map(|s| s.trim())
-            .find(|s| s.starts_with(STATUS_CLASS_SIGIL))
-        {
-            return Err(rejected(&TaskRejection::StatusReserved {
-                status: class.to_string(),
-            }));
-        }
-        let Some(project) = self
-            .identity
-            .for_read(query.project.as_deref())
-            .map_err(AppError::Identity)?
-        else {
-            return Ok(Listing {
-                project: None,
-                tasks: Vec::new(),
-                shown: Shown::of(&schema),
-            });
-        };
-        let Some(store) = self.stores.open_existing(&project).await.map_err(failed)? else {
-            return Ok(Listing {
-                project: Some(project),
-                tasks: Vec::new(),
-                shown: Shown::of(&schema),
-            });
-        };
-        let admitted = query.clone();
-        let mut list = TaskList::new(Box::new(move |task| admitted.admits(task)));
-        list.catch_up_async(store, &self.registry)
-            .await
-            .map_err(|e| AppError::Failed(Report::of(&*e)))?;
-        let mut tasks: Vec<Task> = list.entries().into_iter().map(Task::of).collect();
-        let selected = query::select(
-            &query.tag_query,
-            tasks
-                .iter()
-                .map(|t| (t.harp_id.as_str(), t.tags.as_slice())),
-            &schema,
-        )
-        .map_err(|e| AppError::TagQuery(Report::of(&e)))?;
-        tasks.retain(|t| selected.contains(&t.harp_id));
-        tasks.sort_by(|a, b| {
-            let added = |t: &Task| (t.created_at.seconds, t.created_at.nanos);
-            added(a)
-                .cmp(&added(b))
-                .then_with(|| a.harp_id.cmp(&b.harp_id))
-        });
-        Ok(Listing {
-            project: Some(project),
-            tasks,
-            shown: Shown::of(&schema),
-        })
+        self.listing(query).await
     }
 }
 

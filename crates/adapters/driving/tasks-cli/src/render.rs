@@ -5,7 +5,7 @@ use std::io::{self, Write};
 
 use presentation::{text, Render};
 use serde::Serialize;
-use tasks_application::{Project, Shown, Tag, Task, Timestamp};
+use tasks_application::{Listing, Project, Reach, Row, Shown, Tag, Task, Timestamp};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
@@ -58,9 +58,61 @@ pub fn rfc3339(at: Timestamp) -> String {
         .unwrap_or_default()
 }
 
-/// `dir (id)`: the project a command ran in.
+/// A task as one row of a compact listing: Go's `CompactTask`, its
+/// fields in its order, the text cut to its headline.
+#[derive(Serialize)]
+pub struct CompactJson<'a> {
+    harp_id: &'a str,
+    status: &'a str,
+    checked: bool,
+    tags: Vec<String>,
+    headline: String,
+}
+
+impl<'a> CompactJson<'a> {
+    pub fn of(task: &'a Task) -> CompactJson<'a> {
+        CompactJson {
+            harp_id: &task.harp_id,
+            status: &task.status,
+            checked: task.checked,
+            tags: spelled(&task.tags),
+            headline: headline(&task.text),
+        }
+    }
+}
+
+/// A row of a listing that spans projects (Go's `taskRow`): the task, then
+/// the project it came from.
+#[derive(Serialize)]
+pub struct RowJson<'a, T: Serialize> {
+    #[serde(flatten)]
+    task: T,
+    project_id: &'a str,
+    project_dir: &'a str,
+}
+
+impl<'a, T: Serialize> RowJson<'a, T> {
+    pub fn of(task: T, project: &'a Project) -> RowJson<'a, T> {
+        RowJson {
+            task,
+            project_id: &project.id,
+            project_dir: &project.root,
+        }
+    }
+}
+
+/// `dir (id)`: the project a command ran in; its id alone where its
+/// directory is not known (Go's `formatProjectLabel`).
 pub fn project_label(project: &Project) -> String {
+    if project.root.is_empty() {
+        return project.id.clone();
+    }
     format!("{} ({})", project.root, project.id)
+}
+
+/// The heading of an answer read across every project.
+pub fn projects_heading(out: &mut dyn Write, projects: usize) -> io::Result<()> {
+    writeln!(out, "Projects: {projects} (--global)\n")
 }
 
 /// The first line of `text` as a listing shows it: [`HEADLINE_WIDTH`]
@@ -84,7 +136,7 @@ fn shown(tags: &[Tag], shown: &Shown) -> Vec<String> {
 /// The list view: one line per task, blank lines between, the id column as
 /// wide as the widest id, columns measured in display width, the tags
 /// `shown` shows; `(no tasks)` for none.
-pub fn table(out: &mut dyn Write, tasks: &[Task], shown: &Shown) -> io::Result<()> {
+pub fn table(out: &mut dyn Write, tasks: &[&Task], shown: &Shown) -> io::Result<()> {
     if tasks.is_empty() {
         return writeln!(out, "(no tasks)");
     }
@@ -123,12 +175,55 @@ pub struct Added<'a>(pub &'a Task);
 /// the tags a person is shown.
 pub struct Tagged<'a>(pub &'a Task, pub &'a Shown);
 
-/// A listing: JSON an array of tasks, every tag; text the project, then
-/// the table, the tags a person is shown.
+/// A listing: JSON an array of tasks, every tag, each a compact row if
+/// `compact`, and each with its project where the listing spans projects;
+/// text the project, then the table, the tags a person is shown, or across
+/// projects a table for each.
 pub struct Listed<'a> {
-    pub project: Option<&'a Project>,
-    pub tasks: &'a [Task],
-    pub shown: &'a Shown,
+    pub listing: &'a Listing,
+    pub compact: bool,
+}
+
+/// One row of a listing as JSON: the task whole or compact, alone or with
+/// its project.
+#[derive(Serialize)]
+#[serde(untagged)]
+pub enum RowView<'a> {
+    Whole(TaskJson<'a>),
+    Compact(CompactJson<'a>),
+    WholeIn(RowJson<'a, TaskJson<'a>>),
+    CompactIn(RowJson<'a, CompactJson<'a>>),
+}
+
+/// `rows` as JSON: each task whole, or compact if `compact`, with its
+/// project if `attributed`.
+pub fn rows_json(rows: &[Row], compact: bool, attributed: bool) -> Vec<RowView<'_>> {
+    rows.iter()
+        .map(|row| row_view(row, compact, attributed))
+        .collect()
+}
+
+fn row_view(row: &Row, compact: bool, attributed: bool) -> RowView<'_> {
+    match (compact, attributed) {
+        (false, false) => RowView::Whole(TaskJson::of(&row.task)),
+        (true, false) => RowView::Compact(CompactJson::of(&row.task)),
+        (false, true) => RowView::WholeIn(RowJson::of(TaskJson::of(&row.task), &row.project)),
+        (true, true) => RowView::CompactIn(RowJson::of(CompactJson::of(&row.task), &row.project)),
+    }
+}
+
+/// `rows` as tables, one for each project in turn, each headed by it.
+pub fn tables(out: &mut dyn Write, rows: &[Row], shown: &Shown) -> io::Result<()> {
+    if rows.is_empty() {
+        return writeln!(out, "(no tasks)");
+    }
+    for group in rows.chunk_by(|a, b| a.project.id == b.project.id) {
+        writeln!(out, "Project: {}", project_label(&group[0].project))?;
+        let tasks: Vec<&Task> = group.iter().map(|row| &row.task).collect();
+        table(out, &tasks, shown)?;
+        writeln!(out)?;
+    }
+    Ok(())
 }
 
 impl Render for Added<'_> {
@@ -161,14 +256,22 @@ impl Render for Tagged<'_> {
 
 impl Render for Listed<'_> {
     fn json(&self) -> impl Serialize + '_ {
-        self.tasks.iter().map(TaskJson::of).collect::<Vec<_>>()
+        let listing = self.listing;
+        rows_json(&listing.rows, self.compact, listing.reach.is_every())
     }
 
     fn text(&self, out: &mut dyn Write) -> io::Result<()> {
-        if let Some(project) = self.project {
-            writeln!(out, "Project: {}\n", project_label(project))?;
+        let listing = self.listing;
+        match &listing.reach {
+            Reach::Project(project) => writeln!(out, "Project: {}\n", project_label(project))?,
+            Reach::NoProject => {}
+            Reach::Every { projects, .. } => {
+                projects_heading(out, *projects)?;
+                return tables(out, &listing.rows, &listing.shown);
+            }
         }
-        table(out, self.tasks, self.shown)
+        let tasks: Vec<&Task> = listing.tasks().collect();
+        table(out, &tasks, &listing.shown)
     }
 }
 

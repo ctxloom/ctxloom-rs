@@ -81,6 +81,15 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
             id: "jolly-mute-magma".to_string(),
         }),
         Box::new(Notice::NoProject),
+        Box::new(Notice::EveryProject {
+            directory: "/tmp/somewhere".to_string(),
+        }),
+        Box::new(Notice::Hidden {
+            hidden: 3,
+            completed: 2,
+            deferred: 1,
+        }),
+        Box::new(Notice::Omitted { omitted: 4 }),
     ]
 }
 

@@ -7,6 +7,7 @@
 //! stderr. Exit 0, or 1 with the error on stderr: its catalog message in
 //! text, its envelope in JSON.
 
+mod commands;
 mod error;
 mod import;
 mod notice;
@@ -18,14 +19,14 @@ use std::io::{self, Write};
 use annals_diagnostic::Diagnostic;
 use clap::{Parser, Subcommand};
 use presentation::{Catalog, CatalogError, Format, Render, Source};
-use tasks_application::{
-    ImportRequest, ImportService, ListQuery, NewTask, TagChange, TaskService, Written,
-};
+use tasks_application::{ImportRequest, ImportService, TaskService, Written};
 
 pub use error::{diagnostic_samples, CliError, EN_US};
 pub use import::{ImportJson, Imported};
 pub use notice::Notice;
-pub use render::{headline, rfc3339, table, Added, Listed, Tagged, TaskJson, HEADLINE_WIDTH};
+pub use render::{
+    headline, rfc3339, table, Added, CompactJson, Listed, RowJson, Tagged, TaskJson, HEADLINE_WIDTH,
+};
 
 /// The program's name: every diagnostic's prefix.
 pub const PROG: &str = "taskloom";
@@ -73,46 +74,14 @@ struct Cli<X: Subcommand> {
 #[derive(Subcommand, Debug)]
 enum Command<X: Subcommand> {
     /// Add a new task.
-    Add {
-        /// The task's text; several words are joined with spaces.
-        #[arg(required = true, num_args = 1..)]
-        text: Vec<String>,
-        /// Initial status (default: "To Do").
-        #[arg(long, default_value = "")]
-        status: String,
-        /// Revive condition for a Deferred task (required when --status Deferred).
-        #[arg(long, default_value = "")]
-        trigger: String,
-        /// Tag to set at creation (repeatable).
-        #[arg(long = "tag")]
-        tags: Vec<String>,
-    },
-    /// List tasks: by default the open ones (not Done, Archived or Deferred).
-    List {
-        /// Only tasks in this status (repeatable, or comma-separated).
-        #[arg(long, value_delimiter = ',')]
-        status: Vec<String>,
-        /// Include the tasks hidden by default.
-        #[arg(long)]
-        all: bool,
-        /// Only the tasks this tag query selects: postfix, tags first and
-        /// the operator after (urgent/release/and, urgent/not), or infix
-        /// (urgent and not release). Operators: and, or, not; atoms
-        /// [ns:]key[op value] with op one of = != > >= < <= ~, and * (any)
-        /// or + (present) for a namespace, key or value.
-        #[arg(long = "tag-query", default_value = "")]
-        tag_query: String,
-    },
+    Add(commands::AddArgs),
+    /// List tasks: by default the active ones (not Done, Archived or
+    /// Deferred), of this project, or of every project with --global (and
+    /// where the working directory is in no project, no git repository and
+    /// no CTXLOOM_ROOT, saying so on stderr).
+    List(commands::ListArgs),
     /// Add and/or remove tags on a task; adds apply before removes.
-    Tag {
-        harp_id: String,
-        /// Tag to add (repeatable).
-        #[arg(long)]
-        add: Vec<String>,
-        /// Tag to remove (repeatable).
-        #[arg(long)]
-        remove: Vec<String>,
-    },
+    Tag(commands::TagArgs),
     /// Import Go taskloom's task logs (~/.ctxloom/tasks/<project-id>.jsonl)
     /// into each project's store: every project's, or --project's alone.
     /// Running it again imports only what is new.
@@ -221,83 +190,32 @@ pub async fn run_mounted<S: TaskService + ImportService, X: Subcommand>(
         Err(code) => return code,
     };
     let format = cli.format(context);
+    let ctx = commands::Ctx {
+        project: cli.project,
+        config_set: cli.config_set,
+        format,
+        catalog,
+        session: &context.session,
+    };
     let result = match cli.command {
-        Command::Add {
-            text,
-            status,
-            trigger,
-            tags,
-        } => {
-            let task = NewTask {
-                project: cli.project,
-                text: text.join(" "),
-                status,
-                trigger,
-                tags,
-                origin_session: context.session.clone(),
-                config_set: cli.config_set,
+        Command::Add(args) => commands::add(args, ctx, service, out, err).await,
+        Command::Tag(args) => commands::tag(args, ctx, service, out, err).await,
+        Command::List(args) => commands::list(args, ctx, service, out, err).await,
+        Command::Import => {
+            let request = ImportRequest {
+                project: ctx.project,
             };
-            match service.add(task).await {
-                Ok(written) => wrote(&written, &Added(&written.task), format, catalog, out, err),
-                Err(e) => Err(CliError::App(e)),
-            }
-        }
-        Command::Tag {
-            harp_id,
-            add,
-            remove,
-        } => {
-            let change = TagChange {
-                project: cli.project,
-                harp_id,
-                add,
-                remove,
-                config_set: cli.config_set,
-            };
-            match service.tag(change).await {
-                Ok(written) => wrote(
-                    &written,
-                    &Tagged(&written.task, &written.shown),
-                    format,
-                    catalog,
-                    out,
-                    err,
-                ),
-                Err(e) => Err(CliError::App(e)),
-            }
-        }
-        Command::List {
-            status,
-            all,
-            tag_query,
-        } => {
-            let query = ListQuery {
-                project: cli.project,
-                statuses: status,
-                all,
-                tag_query,
-                config_set: cli.config_set,
-            };
-            match service.list(query).await {
-                Ok(listing) => listed(&listing, format, catalog, out, err),
+            match service.import(request).await {
+                Ok(report) => imported(&report, format, catalog, out),
                 Err(e) => Err(CliError::App(e)),
             }
         }
         Command::Mounted(command) => {
             let flags = Mounted {
                 format,
-                project: cli.project,
+                project: ctx.project,
             };
             return mounted(command, flags, catalog, out, err);
-        }
-        Command::Import => {
-            let request = ImportRequest {
-                project: cli.project,
-            };
-            match service.import(request).await {
-                Ok(report) => imported(&report, format, catalog, out),
-                Err(e) => Err(CliError::App(e)),
-            }
         }
     };
     match result {
@@ -325,7 +243,7 @@ fn report(
 }
 
 /// `notice` on stderr, after the program's name.
-fn notify(notice: &Notice, catalog: &Catalog, err: &mut dyn Write) -> io::Result<()> {
+pub(crate) fn notify(notice: &Notice, catalog: &Catalog, err: &mut dyn Write) -> io::Result<()> {
     writeln!(
         err,
         "{PROG}: {}",
@@ -334,7 +252,7 @@ fn notify(notice: &Notice, catalog: &Catalog, err: &mut dyn Write) -> io::Result
 }
 
 /// Name the project on stderr, then render the task.
-fn wrote(
+pub(crate) fn wrote(
     written: &Written,
     view: &impl Render,
     format: Format,
@@ -344,28 +262,6 @@ fn wrote(
 ) -> Result<(), CliError> {
     notify(&Notice::project(&written.project), catalog, err)
         .and_then(|()| presentation::render(out, format, view))
-        .map_err(output_failed)
-}
-
-/// Say on stderr when there is no project here, then render the listing.
-fn listed(
-    listing: &tasks_application::Listing,
-    format: Format,
-    catalog: &Catalog,
-    out: &mut dyn Write,
-    err: &mut dyn Write,
-) -> Result<(), CliError> {
-    let view = Listed {
-        project: listing.project.as_ref(),
-        tasks: &listing.tasks,
-        shown: &listing.shown,
-    };
-    let noticed = match listing.project {
-        None => notify(&Notice::NoProject, catalog, err),
-        Some(_) => Ok(()),
-    };
-    noticed
-        .and_then(|()| presentation::render(out, format, &view))
         .map_err(output_failed)
 }
 
@@ -390,7 +286,7 @@ fn imported(
     Err(CliError::Incomplete { stopped, lost })
 }
 
-fn output_failed(error: io::Error) -> CliError {
+pub(crate) fn output_failed(error: io::Error) -> CliError {
     CliError::Output {
         detail: error.to_string(),
     }

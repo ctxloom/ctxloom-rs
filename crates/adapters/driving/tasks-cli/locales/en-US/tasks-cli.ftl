@@ -3,3 +3,6 @@ tasks-cli-import-incomplete = not everything was imported: { $stopped } projects
 tasks-cli-usage = { $detail }
 tasks-cli-project = project { $root } ({ $id })
 tasks-cli-no-project = no project here yet: nothing to list
+tasks-cli-every-project = no project here: { $directory } is in no git repository, has no CTXLOOM_ROOT and no project of its own, so this reads every project; pass --project <id>, or work in a project, to read one
+tasks-cli-hidden = { $hidden } more matching tasks hidden by the default view ({ $completed } completed, { $deferred } deferred): add --all to include them
+tasks-cli-omitted = { $omitted } more tasks omitted by --limit: raise or drop it to see them (summary's counts are unaffected)

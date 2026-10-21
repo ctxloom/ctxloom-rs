@@ -4,7 +4,6 @@
 use annals::next::v1::event_meta::Causation;
 use annals::next::AsyncEventStore;
 use annals_diagnostic::{Diagnostic, Report};
-use tasks::TaskState;
 
 use crate::fakes::{
     project, ready, FakeClock, FakeDelay, FakeIdentity, FakeNames, FakeStores, Fault, Flaky,
@@ -39,9 +38,8 @@ fn add(service: &mut Fake, task: NewTask) -> Result<Written, AppError> {
 fn listed(service: &mut Fake, query: ListQuery) -> Vec<String> {
     ready(service.list(query))
         .unwrap()
-        .tasks
-        .into_iter()
-        .map(|t| t.harp_id)
+        .tasks()
+        .map(|t| t.harp_id.clone())
         .collect()
 }
 
@@ -667,16 +665,16 @@ fn test_a_list_answers_with_each_tasks_values_and_its_project() {
     let mut service = service(&["swift-amber"]);
     let added = add(&mut service, new_task("Ship it")).unwrap();
     let listing = ready(service.list(ListQuery::default())).unwrap();
-    assert_eq!(listing.project, Some(project()));
-    assert_eq!(listing.tasks, [added.task]);
+    assert_eq!(listing.project(), Some(&project()));
+    assert_eq!(listing.tasks().collect::<Vec<_>>(), [&added.task]);
 }
 
 #[test]
-fn test_a_list_where_there_is_no_project_is_empty_and_opens_no_store() {
+fn test_a_list_where_there_is_no_project_in_a_work_root_is_empty_and_opens_no_store() {
     let mut service = service(&[]);
     let listing = ready(service.list(ListQuery::default())).unwrap();
-    assert_eq!(listing.project, None);
-    assert!(listing.tasks.is_empty());
+    assert_eq!(listing.reach, crate::Reach::NoProject);
+    assert!(listing.rows.is_empty());
     assert!(service.stores.opened.is_empty() && service.stores.looked.is_empty());
     assert_eq!(
         service.identity.bound, None,
@@ -693,8 +691,8 @@ fn test_a_list_of_a_project_with_no_store_yet_is_empty_and_creates_none() {
         ..ListQuery::default()
     };
     let listing = ready(service.list(query)).unwrap();
-    assert_eq!(listing.project, Some(project()));
-    assert!(listing.tasks.is_empty());
+    assert_eq!(listing.project(), Some(&project()));
+    assert!(listing.rows.is_empty());
     assert_eq!(service.stores.looked, ["jolly-mute-magma"]);
     assert!(service.stores.opened.is_empty(), "no store opened to write");
     assert_eq!(service.identity.pins, [Some("pinned-id".to_string())]);
@@ -727,23 +725,6 @@ fn test_a_list_whose_store_does_not_open_fails() {
 }
 
 #[test]
-fn test_a_list_of_a_status_class_is_refused_until_classes_exist() {
-    let mut service = service(&[]);
-    service.identity.bound = Some(project());
-    let query = ListQuery {
-        statuses: vec!["To Do".to_string(), " @open".to_string()],
-        ..ListQuery::default()
-    };
-    let error = ready(service.list(query)).unwrap_err();
-    let AppError::Rejected(rejection) = &error else {
-        panic!("rejected: {error:?}");
-    };
-    assert_eq!(rejection.code(), "tasks-status-reserved");
-    assert!(rejection.to_string().contains("@open"), "{rejection}");
-    assert!(service.stores.looked.is_empty(), "refused before any read");
-}
-
-#[test]
 fn test_an_add_in_a_status_class_is_refused() {
     let mut service = service(&["swift-amber"]);
     let task = NewTask {
@@ -752,20 +733,6 @@ fn test_an_add_in_a_status_class_is_refused() {
     };
     let error = add(&mut service, task).unwrap_err();
     assert_eq!(error.code(), "tasks-status-reserved");
-}
-
-#[test]
-fn test_the_default_query_admits_open_statuses_only() {
-    let query = ListQuery::default();
-    let task = |status: &str| TaskState {
-        status: status.to_string(),
-        ..TaskState::default()
-    };
-    assert!(query.admits(&task("To Do")));
-    assert!(query.admits(&task("Blocked")));
-    assert!(!query.admits(&task("Done")));
-    assert!(!query.admits(&task("Archived")));
-    assert!(!query.admits(&task("Deferred")));
 }
 
 /// Each tag in its canonical spelling.
