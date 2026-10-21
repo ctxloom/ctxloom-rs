@@ -2,6 +2,10 @@
 //! store port: which project a call is about, where its store is, how ids
 //! are minted, what time it is, and how to wait. Each is a trait a driven
 //! adapter (or the composition root) implements; nothing here does I/O.
+//!
+//! Every future a port returns is `Send`, as annals requires of its async
+//! store port, so a server on a multi-threaded runtime can spawn a use case
+//! generic over them (`tokio::spawn`, an MCP server's handlers).
 
 use std::future::Future;
 use std::path::PathBuf;
@@ -24,6 +28,11 @@ pub struct Project {
 }
 
 /// Which project a call is about.
+///
+/// Synchronous, and it blocks: resolving reads the filesystem, and a write
+/// that binds a new project waits on the registry's file lock (`flock`). An
+/// async server calls it through `spawn_blocking` (or its runtime's
+/// equivalent), never directly on a runtime thread.
 pub trait ProjectIdentity {
     /// The project a write goes to: `pinned` (an explicit id) if given,
     /// else the one already bound to the work root, else a new one, minted
@@ -37,14 +46,14 @@ pub trait ProjectIdentity {
 
 /// Where a project's tasks are kept.
 pub trait TaskStores {
-    type Store: AsyncStore;
+    type Store: AsyncStore + Send;
 
     /// The project's store, opened (and created) on first use and held
     /// after.
     fn open(
         &mut self,
         project: &Project,
-    ) -> impl Future<Output = Result<&mut Self::Store, StoreError>>;
+    ) -> impl Future<Output = Result<&mut Self::Store, StoreError>> + Send;
 }
 
 /// Fresh, random names. Uniqueness is not promised: a caller checks.
@@ -69,7 +78,7 @@ pub trait CommandIds {
 
 /// Waiting, between retries.
 pub trait Delay {
-    fn sleep(&mut self, duration: Duration) -> impl Future<Output = ()>;
+    fn sleep(&mut self, duration: Duration) -> impl Future<Output = ()> + Send;
 }
 
 /// Randomness for spreading retries: contenders that wait the same time

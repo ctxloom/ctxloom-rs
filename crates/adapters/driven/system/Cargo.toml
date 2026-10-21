@@ -1,0 +1,18 @@
+[package]
+name = "system"
+version = "0.1.0"
+description = "The system's clock, UUIDv7 command ids, tokio's timer and thread-local randomness, behind the ports"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+annals.workspace = true
+ports.workspace = true
+rand.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

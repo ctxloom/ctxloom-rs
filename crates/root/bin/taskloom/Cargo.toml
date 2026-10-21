@@ -8,17 +8,13 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-annals.workspace = true
-annals-diagnostic.workspace = true
-annals-store-sql.workspace = true
 harp-names.workspace = true
-ports.workspace = true
 project-registry.workspace = true
-rand.workspace = true
+system.workspace = true
+task-store-sqlite.workspace = true
 tasks-application.workspace = true
 tasks-cli.workspace = true
 tokio.workspace = true
-uuid.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

@@ -1,0 +1,22 @@
+[package]
+name = "task-store-sqlite"
+version = "0.1.0"
+description = "A project's task store: annals-store-sql's SQLite store at the project's path, behind the TaskStores port"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+annals.workspace = true
+annals-diagnostic.workspace = true
+annals-store-sql.workspace = true
+ports.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+fluent-syntax.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

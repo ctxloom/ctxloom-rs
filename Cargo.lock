@@ -1937,6 +1937,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "system"
+version = "0.1.0"
+dependencies = [
+ "annals",
+ "ports",
+ "rand 0.9.5",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "task-lists"
 version = "0.1.0"
 dependencies = [
@@ -1945,22 +1956,31 @@ dependencies = [
 ]
 
 [[package]]
-name = "taskloom"
+name = "task-store-sqlite"
 version = "0.1.0"
 dependencies = [
  "annals",
  "annals-diagnostic 0.1.0",
  "annals-store-sql",
- "harp-names",
+ "fluent-syntax",
  "ports",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "taskloom"
+version = "0.1.0"
+dependencies = [
+ "harp-names",
  "project-registry",
- "rand 0.9.5",
  "serde_json",
+ "system",
+ "task-store-sqlite",
  "tasks-application",
  "tasks-cli",
  "tempfile",
  "tokio",
- "uuid",
 ]
 
 [[package]]

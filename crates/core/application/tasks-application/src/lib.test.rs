@@ -60,6 +60,37 @@ fn command_ids(service: &mut Fake, harp: &str) -> Vec<annals::next::v1::Uuid> {
         .collect()
 }
 
+// ------------------------------------------------------------ Send
+
+/// Compiles only for a `Send` value.
+fn is_send<T: Send>(_: &T) {}
+
+/// What a server generic over the ports and the service relies on: it
+/// compiles only if the traits themselves promise `Send` futures, whatever
+/// implements them.
+fn spawnable<S, T, D>(service: &mut S, stores: &mut T, delay: &mut D)
+where
+    S: TaskService + Send,
+    T: ports::TaskStores + Send,
+    D: ports::Delay + Send,
+{
+    is_send(&service.add(NewTask::default()));
+    is_send(&service.tag(TagChange::default()));
+    is_send(&service.list(ListQuery::default()));
+    is_send(&stores.open(&project()));
+    is_send(&delay.sleep(std::time::Duration::ZERO));
+}
+
+#[test]
+fn test_every_use_case_and_port_future_is_send_so_a_server_can_spawn_it() {
+    let mut service = service(&["swift-amber"]);
+    is_send(&service.add(new_task("Ship it")));
+    is_send(&service.tag(change("swift-amber", &["x"], &[])));
+    is_send(&service.list(ListQuery::default()));
+    let (mut stores, mut delay) = (FakeStores::default(), FakeDelay::default());
+    spawnable(&mut service, &mut stores, &mut delay);
+}
+
 // ------------------------------------------------------------ add
 
 #[test]

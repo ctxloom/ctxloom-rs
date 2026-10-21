@@ -18,7 +18,10 @@ and angzarr here.
 - `core/read-model/task-lists`: the list projector, with a resumable cursor,
   caught up over the sync or the async store port.
 - `core/ports/ports`: project identity, the store opener, names, the clock,
-  command ids, and waiting with jitter.
+  command ids, and waiting with jitter. Every port future, and every use
+  case's, is `Send`, so a server can spawn them; project identity is
+  synchronous and blocks on the registry's lock, so an async server calls it
+  through `spawn_blocking`.
 - `core/application/tasks-application`: add, tag and list. An add mints a
   harp and re-mints on `TaskExists` (100 tries, a fresh command id each); on
   annals' `Recovery::Retry` the same command id runs again in a new unit
@@ -30,6 +33,11 @@ and angzarr here.
   mint under `index.yaml.lock` that re-checks first, so racing first writes
   bind one id. A read never mints.
 - `adapters/driven/harp-names`: harp-core behind the names port.
+- `adapters/driven/task-store-sqlite`: annals-store-sql's SQLite store at
+  the project's path, opened on first use and held, behind the store
+  opener.
+- `adapters/driven/system`: the clock, UUIDv7 command ids, tokio's timer and
+  jitter.
 - `adapters/driving/tasks-cli`: `add`, `list` and `tag`, text and json.
 - `root/bin/taskloom`: the binary, over annals-store-sql's SQLite store at
   `~/.ctxloom/projects/<project-id>/state.db` (CLAUDE.md, "Storage").

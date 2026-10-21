@@ -92,11 +92,12 @@ pub struct Listing {
     pub tasks: Vec<Task>,
 }
 
-/// The use cases, as a driving adapter calls them.
+/// The use cases, as a driving adapter calls them. Their futures are
+/// `Send`, so a server can spawn them.
 pub trait TaskService {
-    fn add(&mut self, task: NewTask) -> impl Future<Output = Result<Written, AppError>>;
-    fn tag(&mut self, change: TagChange) -> impl Future<Output = Result<Written, AppError>>;
-    fn list(&mut self, query: ListQuery) -> impl Future<Output = Result<Listing, AppError>>;
+    fn add(&mut self, task: NewTask) -> impl Future<Output = Result<Written, AppError>> + Send;
+    fn tag(&mut self, change: TagChange) -> impl Future<Output = Result<Written, AppError>> + Send;
+    fn list(&mut self, query: ListQuery) -> impl Future<Output = Result<Listing, AppError>> + Send;
 }
 
 /// The registry the tasks domain runs under.
@@ -136,11 +137,11 @@ impl<I, S, N, C, D> Service<I, S, N, C, D> {
 
 impl<I, S, N, C, D> TaskService for Service<I, S, N, C, D>
 where
-    I: ProjectIdentity,
-    S: TaskStores,
-    N: Names,
-    C: Clock + CommandIds,
-    D: Delay + Jitter,
+    I: ProjectIdentity + Send,
+    S: TaskStores + Send,
+    N: Names + Send,
+    C: Clock + CommandIds + Send,
+    D: Delay + Jitter + Send,
 {
     async fn add(&mut self, task: NewTask) -> Result<Written, AppError> {
         let project = self
