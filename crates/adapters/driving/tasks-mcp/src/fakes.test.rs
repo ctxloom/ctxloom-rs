@@ -9,8 +9,8 @@ use std::time::Duration;
 
 use annals::next::v1::{Cover, EventPage, Snapshot, Uuid};
 use annals::next::{
-    AsyncEventStore, AsyncStore, AsyncUnitOfWork, InMemoryStore, InMemoryTx, Ready, Slice,
-    StoreError, Timestamp,
+    AsyncEventStore, AsyncReadStore, AsyncStore, AsyncUnitOfWork, InMemoryRead, InMemoryStore,
+    InMemoryTx, Ready, Slice, StoreError, Timestamp,
 };
 use annals_diagnostic::Report;
 use ports::{Clock, CommandIds, Delay, Jitter, Names, Project, ProjectIdentity, TaskStores};
@@ -101,6 +101,14 @@ impl AsyncEventStore for Contended {
 
     async fn covers(&mut self, domain: &str) -> Result<Vec<Cover>, StoreError> {
         self.inner.covers(domain).await
+    }
+}
+
+impl AsyncReadStore for Contended {
+    type Reads<'s> = Ready<InMemoryRead<'s>>;
+
+    async fn begin_read(&mut self) -> Ready<InMemoryRead<'_>> {
+        self.inner.begin_read().await
     }
 }
 

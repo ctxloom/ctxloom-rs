@@ -14,7 +14,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use annals::next::v1::Uuid;
-use annals::next::{AsyncPurge, AsyncStore, AsyncUnitOfWork, StoreError, Timestamp};
+use annals::next::{
+    AsyncPurge, AsyncReadStore, AsyncStore, AsyncUnitOfWork, StoreError, Timestamp,
+};
 use annals_diagnostic::Report;
 
 mod project;
@@ -64,7 +66,10 @@ pub trait ProjectIdentity {
 
 /// Where a project's tasks are kept.
 pub trait TaskStores {
-    type Store: AsyncStore + Send;
+    /// A project's store: it writes in units of work, and opens read-only
+    /// units ([`AsyncReadStore`]) whose reads all see one moment, so a
+    /// read of many streams never mixes two.
+    type Store: AsyncStore + AsyncReadStore + Send;
 
     /// The project's store, to write: opened (and created) on first use and
     /// held after.

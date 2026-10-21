@@ -11,8 +11,8 @@ use std::time::Duration;
 
 use annals::next::v1::{Cover, EventPage, Snapshot, Uuid};
 use annals::next::{
-    AsyncEventStore, AsyncPurge, AsyncStore, AsyncUnitOfWork, InMemoryStore, InMemoryTx, Ready,
-    Slice, StoreError, Timestamp,
+    AsyncEventStore, AsyncPurge, AsyncReadStore, AsyncReadUnit, AsyncStore, AsyncUnitOfWork,
+    InMemoryRead, InMemoryStore, InMemoryTx, Ready, Slice, StoreError, Timestamp,
 };
 use annals_diagnostic::Report;
 use ports::{Clock, CommandIds, Delay, Jitter, Names, Project, ProjectIdentity, TaskStores};
@@ -109,8 +109,9 @@ pub struct Flaky {
     /// Done to the store as the next unit of work begins, before it: what
     /// another process does between a use case's read and its write.
     pub meanwhile: Option<Meanwhile>,
-    /// Every stream reads back with no events, outside a unit of work:
-    /// what a stream purged mid-read can look like.
+    /// Every stream reads back with no events, outside a unit of work and
+    /// in a read-only one: what a stream purged mid-read can look like
+    /// from a store whose reads are not held to one moment.
     pub hollow: bool,
 }
 
@@ -183,6 +184,39 @@ impl AsyncEventStore for Flaky {
 
     async fn covers(&mut self, domain: &str) -> Result<Vec<Cover>, StoreError> {
         self.inner.covers(domain).await
+    }
+}
+
+/// A read-only unit over a [`Flaky`] store: as hollow as the store is.
+pub struct FlakyRead<'s> {
+    inner: Ready<InMemoryRead<'s>>,
+    hollow: bool,
+}
+
+impl AsyncReadStore for Flaky {
+    type Reads<'s> = FlakyRead<'s>;
+
+    async fn begin_read(&mut self) -> FlakyRead<'_> {
+        FlakyRead {
+            inner: self.inner.begin_read().await,
+            hollow: self.hollow,
+        }
+    }
+}
+
+impl AsyncReadUnit for FlakyRead<'_> {
+    async fn covers(&mut self, domain: &str) -> Result<Vec<Cover>, StoreError> {
+        self.inner.covers(domain).await
+    }
+
+    async fn read_from(&mut self, stream: &Cover, from: u64) -> Result<Option<Slice>, StoreError> {
+        let mut read = self.inner.read_from(stream, from).await;
+        if self.hollow {
+            if let Ok(Some(slice)) = &mut read {
+                slice.pages.clear();
+            }
+        }
+        read
     }
 }
 

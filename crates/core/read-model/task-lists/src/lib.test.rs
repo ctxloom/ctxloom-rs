@@ -460,6 +460,29 @@ impl annals::next::EventStore for Hollow {
     }
 }
 
+/// Its read-only unit reads as hollowly.
+impl annals::next::ReadStore for Hollow {
+    type Reads<'s> = &'s mut Hollow;
+
+    fn begin_read(&mut self) -> &mut Hollow {
+        self
+    }
+}
+
+impl annals::next::ReadUnit for &mut Hollow {
+    fn covers(&mut self, domain: &str) -> Result<Vec<Cover>, annals::next::StoreError> {
+        annals::next::EventStore::covers(*self, domain)
+    }
+
+    fn read_from(
+        &mut self,
+        stream: &Cover,
+        from: u64,
+    ) -> Result<Option<annals::next::Slice>, annals::next::StoreError> {
+        annals::next::EventStore::read_from(*self, stream, from)
+    }
+}
+
 #[test]
 fn test_a_stream_that_replays_to_no_events_is_never_a_blank_task() {
     let mut project = Project::new();

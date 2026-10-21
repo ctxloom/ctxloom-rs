@@ -23,7 +23,9 @@ mod view;
 use std::future::Future;
 
 use annals::next::v1::{command_page, Command, CommandBook, CommandPage, Cover};
-use annals::next::{ids, AsyncEventStore, Payload, Registry, Rulebook, Stream, Upcaster};
+use annals::next::{
+    ids, AsyncReadStore, AsyncReadUnit, Payload, Registry, Rulebook, Stream, Upcaster,
+};
 use annals_diagnostic::Report;
 use ports::{Clock, CommandIds, Configuration, Delay, Jitter, Names, ProjectIdentity, TaskStores};
 use tasks::{AddTask, EditText, Retag, SetStatus, TaskCommand, TaskRejection, Tasks, TASK_DOMAIN};
@@ -512,21 +514,23 @@ fn book(harp_id: &str, command: TaskCommand) -> CommandBook {
     }
 }
 
-/// The task `harp_id` names, as the store holds it now; `None` when its
-/// stream holds no task.
-async fn read<S: AsyncEventStore>(
+/// The task `harp_id` names, as the store holds it now, read in a
+/// read-only unit of work; `None` when its stream holds no task.
+async fn read<S: AsyncReadStore>(
     store: &mut S,
     registry: &Registry,
     harp_id: &str,
 ) -> Result<Option<Task>, AppError> {
     let cover = cover(harp_id);
-    let Some(slice) = store.read_from(&cover, 0).await.map_err(failed)? else {
+    let mut reads = store.begin_read().await;
+    let Some(slice) = reads.read_from(&cover, 0).await.map_err(failed)? else {
         return Ok(None);
     };
     let stream = Stream::<Tasks>::replay(cover, &slice.pages, registry)
         .map_err(|e| AppError::Failed(Report::of(&e)))?;
-    // A stream that replays to no task (purged mid-read, read back with
-    // no events) is no task, never a blank one.
+    // A stream that replays to no task (read back with no events, as a
+    // store whose reads are not held to one moment can answer one purged
+    // mid-read) is no task, never a blank one.
     let state = stream.state();
     Ok((!state.harp_id.is_empty()).then(|| Task::of(state)))
 }

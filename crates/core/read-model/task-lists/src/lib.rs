@@ -11,8 +11,8 @@ use std::collections::BTreeMap;
 
 use annals::next::v1::Cover;
 use annals::next::{
-    projection, AsyncEventStore, Committed, EventStore, KernelError, Projection, Registry, Slice,
-    Stream,
+    projection, AsyncReadStore, AsyncReadUnit, Committed, EventStore, KernelError, Projection,
+    Registry, Slice, Stream,
 };
 use tasks::{RemovalReason, TaskEvent, TaskState, Tasks, TASK_DOMAIN};
 
@@ -102,13 +102,17 @@ impl TaskList {
     }
 
     /// [`TaskList::catch_up`], over the async store port: a database's.
-    pub async fn catch_up_async<S: AsyncEventStore>(
+    /// The streams are listed and read in one read-only unit of work, so
+    /// what is projected is one moment of the store: a write or a purge
+    /// landing meanwhile, through any handle, is not seen.
+    pub async fn catch_up_async<S: AsyncReadStore>(
         &mut self,
         store: &mut S,
         registry: &Registry,
     ) -> Result<(), Box<KernelError>> {
-        for cover in store.covers(TASK_DOMAIN).await.map_err(store_error)? {
-            let slice = store.read_from(&cover, 0).await.map_err(store_error)?;
+        let mut reads = store.begin_read().await;
+        for cover in reads.covers(TASK_DOMAIN).await.map_err(store_error)? {
+            let slice = reads.read_from(&cover, 0).await.map_err(store_error)?;
             self.project_slice(cover, slice, registry)?;
         }
         Ok(())

@@ -787,3 +787,6 @@ mod tags;
 
 #[path = "prune.test.rs"]
 mod prune;
+
+#[path = "snapshot.test.rs"]
+mod snapshot;

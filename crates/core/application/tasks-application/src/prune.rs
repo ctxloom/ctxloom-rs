@@ -26,7 +26,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::future::Future;
 
-use annals::next::{AsyncEventStore, Timestamp};
+use annals::next::{AsyncReadStore, Timestamp};
 use annals_diagnostic::{Arg, Diagnostic, Report};
 use ports::{
     Clock, CommandIds, Configuration, Delay, Jitter, ProjectIdentity, PurgingStore, TaskStores,
@@ -318,8 +318,8 @@ where
 }
 
 /// Every live task in `store`, and every task a prune removed but left
-/// unpurged, each in the order added.
-async fn live_tasks<S: AsyncEventStore>(
+/// unpurged, each in the order added: one moment of the store.
+async fn live_tasks<S: AsyncReadStore>(
     store: &mut S,
     registry: &annals::next::Registry,
 ) -> Result<(Vec<TaskState>, Vec<TaskState>), AppError> {

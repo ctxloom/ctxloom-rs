@@ -16,7 +16,8 @@ and angzarr here.
 - `core/domain/tasks`: decide and apply for add, set-status, edit, retag and
   remove, with localizable rejections.
 - `core/read-model/task-lists`: the list projector, with a resumable cursor,
-  caught up over the sync or the async store port. It forgets a stream's
+  caught up over the sync store port, or over the async one's read-only
+  unit of work, one moment of the store. It forgets a stream's
   last projected sequence when it projects a prune's removal
   (`TaskRemoved{PRUNED}`), so a task minted on the freed harp, whose
   stream restarts at sequence 0, is listed; a stream read back with no
@@ -267,9 +268,12 @@ Where the skeleton differs from Go, or from this plan:
   annals-store-sql now migrates under `BEGIN IMMEDIATE`, on annals' branch
   `concurrent-writers` (not merged), which this workspace's path dependency
   needs checked out.
-- A read outside a unit of work (`SqliteStore::read_from`) is three
-  statements, not one transaction, so a stream appended to mid-read can come
-  back inconsistent. Lists and read-backs go through it; not fixed yet.
+- Lists, prune's selection and the read-back after a write read through
+  annals' read-only unit of work (`AsyncReadStore::begin_read`, one SQLite
+  read transaction, on annals' branch `concurrent-writers`), which every
+  `TaskStores::Store` provides: a domain's `covers` and every stream read
+  after it are one moment, so a write or a purge by another process in
+  between is not seen (tested by forcing one there).
 - A read opens its store read-only (annals-store-sql's `open_existing`)
   and never creates, migrates or writes; `list` of a project with no store
   yet is empty, and `tag` resolves its project as a read does. A file a
@@ -387,14 +391,6 @@ not filed as a task.
   same. Settle before MCP serves sessions: `taskloom mcp` is built (step
   4) but not yet registered as ctxloom's companion, and this waits on a
   human decision (how a write, and repoint, keep the two clones apart).
-- **Store reads are not one snapshot.** annals' `read_from` should run as
-  one read transaction, and annals should gain a read-only unit, so that
-  `covers` and the reads after it see one snapshot. Prune is ported
-  without it: a stream purged between a listing's `covers` and its read
-  comes back as no stream or no events, and lists nothing (tested), but a
-  listing can still mix streams read at different moments. Once annals'
-  read-snapshot unit lands, `TaskList::catch_up_async` (behind `list`, and
-  prune's selection) and the application's `read` take it.
 - **JSON escapes no HTML** where Go's encoder escapes `<`, `>` and `&`:
   normalize it when comparing the Go and Rust binaries for parity ("Parity
   and cutover").
