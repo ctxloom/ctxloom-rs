@@ -1,5 +1,5 @@
-//! The tasks use cases: add a task, retag one, list a project's tasks, and
-//! import Go taskloom's logs.
+//! The tasks use cases: add a task, retag one, list a project's tasks,
+//! watch them change, and import Go taskloom's logs.
 //!
 //! Each resolves its project through [`ProjectIdentity`], opens the
 //! project's store through [`TaskStores`], and runs its command through
@@ -15,6 +15,7 @@ mod schema;
 mod semver;
 mod tags;
 mod view;
+mod watch;
 
 use std::future::Future;
 
@@ -43,6 +44,7 @@ pub use schema::{
 pub use semver::{Semver, Version};
 pub use tags::{admit, collapse, parse as parse_tag, Tag, TagRefusal, OPERATOR_WORDS};
 pub use view::{is_terminal, text_hash, Shown, Task, ARCHIVED, DONE};
+pub use watch::{Changed, Watch, WatchRequest, WatchService};
 
 /// How many task ids an add mints before giving up, each refused because a
 /// task already holds it: Go's `harp.UniqueFrom`.
