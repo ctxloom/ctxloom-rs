@@ -11,8 +11,8 @@ use annals_diagnostic::Report;
 use tasks_application::{
     AppError, Details, Finding, Hidden, ImportReport, ImportRequest, ImportService, LintReport,
     ListQuery, Listing, NewTask, Project, ProjectImport, Reach, Row, Scope, ShowQuery,
-    StatusChange, StatusInfo, Statuses, Summary, TagChange, TagCount, Task, TaskService, TextEdit,
-    Violation, Vocabulary, Written,
+    StatusChange, StatusInfo, Statuses, Summary, TagChange, TagCount, TagSchema, Task, TaskService,
+    TextEdit, Violation, Vocabulary, Written,
 };
 
 use presentation::{Catalog, Format};
@@ -130,6 +130,11 @@ impl TaskService for Fake {
     async fn lint(&mut self, scope: Scope) -> Result<LintReport, AppError> {
         self.linted.push(scope);
         self.report_of_lint.clone().expect("a lint answer scripted")
+    }
+
+    // The command line reads no schema through this; the MCP server does.
+    async fn tag_schema(&mut self, _: Vec<String>) -> Result<TagSchema, AppError> {
+        unreachable!("no command reads the tag schema")
     }
 }
 
