@@ -22,6 +22,7 @@ tasks-application.workspace = true
 tasks-cli.workspace = true
 tasks-config.workspace = true
 tasks-mcp.workspace = true
+tasks-run.workspace = true
 tasks-watch.workspace = true
 # `signal`: watch stops on SIGINT or SIGTERM, as Go's does.
 tokio = { workspace = true, features = ["signal"] }

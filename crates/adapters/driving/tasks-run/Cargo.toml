@@ -1,0 +1,23 @@
+[package]
+name = "tasks-run"
+version = "0.1.0"
+description = "taskloom run: pick a task and launch an agent session on it through `ctxloom run --seed-task`"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+annals-diagnostic.workspace = true
+clap.workspace = true
+presentation.workspace = true
+tasks-application.workspace = true
+
+[dev-dependencies]
+fluent-syntax.workspace = true
+mutants.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

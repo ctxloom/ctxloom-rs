@@ -2313,6 +2313,7 @@ dependencies = [
  "tasks-cli",
  "tasks-config",
  "tasks-mcp",
+ "tasks-run",
  "tasks-watch",
  "tempfile",
  "time",
@@ -2413,6 +2414,20 @@ dependencies = [
  "prost",
  "prost-types",
  "tagma-proto",
+]
+
+[[package]]
+name = "tasks-run"
+version = "0.1.0"
+dependencies = [
+ "annals-diagnostic 0.1.0",
+ "clap",
+ "fluent-syntax",
+ "mutants",
+ "presentation",
+ "serde_json",
+ "tasks-application",
+ "tempfile",
 ]
 
 [[package]]

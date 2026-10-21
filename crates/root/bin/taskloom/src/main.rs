@@ -5,8 +5,8 @@
 //! taskloom's logs to import), mounts the `project` group and `mcp` beside
 //! the task commands, and hands the command line to the CLI. `mcp` serves
 //! the task tools over stdio, each call on a service of its own; `watch`
-//! streams the project's changes until SIGINT or SIGTERM. It holds no
-//! logic of its own.
+//! streams the project's changes until SIGINT or SIGTERM; `run` hands a
+//! task to the `ctxloom` on PATH. It holds no logic of its own.
 
 use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
@@ -34,6 +34,7 @@ fn catalog() -> Result<presentation::Catalog, presentation::CatalogError> {
         go_task_log::EN_US,
         tasks_config::EN_US,
         tasks_mcp::EN_US,
+        tasks_run::EN_US,
         tasks_watch::EN_US,
     ])
 }
@@ -47,12 +48,15 @@ enum Mounted {
     Mcp(tasks_mcp::Group),
     #[command(flatten)]
     Watch(tasks_watch::Group),
+    #[command(flatten)]
+    Run(tasks_run::Group),
 }
 
 /// What runs once the command line has been read, on the runtime.
 enum After {
     Mcp(Option<String>),
     Watch(tasks_watch::Settings),
+    Run(tasks_run::Group, tasks_run::Settings),
 }
 
 /// The tasks use cases over the real adapters, configured from the work
@@ -164,6 +168,28 @@ fn watch<W: tasks_application::WatchService>(
     ExitCode::from(code)
 }
 
+/// `taskloom run`: the task handed to the `ctxloom` on PATH.
+fn launch<S: tasks_application::TaskService>(
+    runtime: &tokio::runtime::Runtime,
+    service: &mut S,
+    group: tasks_run::Group,
+    settings: &tasks_run::Settings,
+    catalog: &presentation::Catalog,
+) -> ExitCode {
+    let mut ctxloom = tasks_run::Ctxloom {
+        path: std::env::var_os("PATH"),
+    };
+    ExitCode::from(runtime.block_on(tasks_run::run(
+        service,
+        group,
+        settings,
+        &mut ctxloom,
+        &mut io::stdin().lock(),
+        catalog,
+        &mut io::stderr().lock(),
+    )))
+}
+
 fn main() -> ExitCode {
     let runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -197,7 +223,7 @@ fn main() -> ExitCode {
         version: env!("CARGO_PKG_VERSION").to_string(),
         lock_protocol: project_registry::LOCK_PROTOCOL,
     };
-    // `mcp` and `watch` run once the command line has been read, on the
+    // `mcp`, `watch` and `run` run once the command line has been read, on the
     // same runtime: the CLI's mounted commands are synchronous.
     let mut after = None;
     let mounted = |group,
@@ -215,6 +241,16 @@ fn main() -> ExitCode {
         }
         Mounted::Mcp(tasks_mcp::Group::Mcp) => {
             after = Some(After::Mcp(flags.project));
+            0
+        }
+        Mounted::Run(group) => {
+            let settings = tasks_run::Settings {
+                format: flags.format,
+                project: flags.project,
+                prog: tasks_cli::PROG,
+                interactive: io::stdin().is_terminal() && io::stdout().is_terminal(),
+            };
+            after = Some(After::Run(group, settings));
             0
         }
         Mounted::Watch(tasks_watch::Group::Watch) => {
@@ -237,6 +273,9 @@ fn main() -> ExitCode {
     ));
     match after {
         Some(After::Watch(settings)) => watch(&runtime, &mut service, &settings, &catalog),
+        Some(After::Run(group, settings)) => {
+            launch(&runtime, &mut service, group, &settings, &catalog)
+        }
         Some(After::Mcp(project)) => {
             let settings = tasks_mcp::Settings {
                 project,

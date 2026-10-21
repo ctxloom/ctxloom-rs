@@ -38,6 +38,7 @@ presentation = { path = "crates/adapters/driving/presentation" }
 tasks-presentation = { path = "crates/adapters/driving/tasks-presentation" }
 tasks-mcp = { path = "crates/adapters/driving/tasks-mcp" }
 tasks-watch = { path = "crates/adapters/driving/tasks-watch" }
+tasks-run = { path = "crates/adapters/driving/tasks-run" }
 project-cli = { path = "crates/adapters/driving/project-cli" }
 
 # tagma: the tag grammar and query engine (tagma-core) and its Tag message

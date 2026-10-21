@@ -403,6 +403,7 @@ fn test_every_diagnostic_of_every_crate_renders_from_the_binarys_catalog() {
         tasks_config::diagnostic_samples(),
         presentation::diagnostic_samples(),
         tasks_mcp::diagnostic_samples(),
+        tasks_run::diagnostic_samples(),
         tasks_watch::diagnostic_samples(),
     ]
     .into_iter()
@@ -554,6 +555,9 @@ mod mcp;
 
 #[path = "project.test.rs"]
 mod project;
+
+#[path = "run.test.rs"]
+mod run;
 
 #[path = "tags.test.rs"]
 mod tags;
