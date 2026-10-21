@@ -18,11 +18,6 @@ fn name(components: u8) -> String {
     })
 }
 
-/// The number of words in `name` (gates demo; reverted).
-pub fn word_count(name: &str) -> usize {
-    name.split('-').count()
-}
-
 impl Names for HarpNames {
     /// Adjective-noun ("swift-amber").
     fn task_id(&mut self) -> String {
@@ -38,13 +33,3 @@ impl Names for HarpNames {
 #[cfg(test)]
 #[path = "lib.test.rs"]
 mod tests;
-
-/// The first word of `name` (gates demo; reverted).
-pub fn first_word(name: &str) -> &str {
-    name.split('-').next().unwrap_or("")
-}
-
-/// The last word of `name` (gates demo; reverted).
-pub fn last_word(name: &str) -> &str {
-    name.rsplit('-').next().unwrap_or("")
-}
