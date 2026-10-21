@@ -9,10 +9,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use annals::next::v1::Cover;
+use annals::next::v1::{Cover, Uuid};
 use annals::next::{
-    ids, projection, AsyncReadStore, AsyncReadUnit, Committed, EventStore, KernelError, Projection,
-    Registry, Slice, Stream,
+    ids, projection, AsyncReadStore, AsyncReadUnit, Committed, Envelope, EventStore, KernelError,
+    Projection, Registry, Slice, Stream, Timestamp,
 };
 use tasks::{RemovalReason, TaskEvent, TaskState, Tasks, TASK_DOMAIN};
 
@@ -42,9 +42,10 @@ pub struct TaskList {
     entries: BTreeMap<String, TaskState>,
     /// Every change, in order: the change numbered `n` is at `n - 1`.
     deltas: Vec<Delta>,
-    /// The last stream sequence projected, per task stream (by root), so a
-    /// redelivered event changes nothing. A pruned stream's is forgotten.
-    projected: BTreeMap<Vec<u8>, u64>,
+    /// How far each task stream (by root) is projected, and which stream
+    /// it was: a redelivered event changes nothing, and a stream started
+    /// again on a freed harp is seen as new.
+    projected: BTreeMap<Vec<u8>, Seen>,
     /// The tasks whose stream's last projected event is a prune's removal,
     /// by harp id: removed, and not yet seen purged.
     unpurged: BTreeMap<String, TaskState>,
@@ -174,23 +175,30 @@ impl Projection<Tasks> for TaskList {
         }
         let root = root(cover);
         let sequence = committed.sequence();
-        if self
-            .projected
-            .get(&root)
-            .is_some_and(|&last| sequence <= last)
-        {
-            return;
+        // A pruned stream is purged, and a task minted on the freed harp
+        // starts it again from sequence 0, perhaps all between two
+        // catch-ups: a first event not the one seen first is a new stream,
+        // projected from its start (its first state replaces the old
+        // task's), not skipped as already seen.
+        let first = (sequence == 0).then(|| Fingerprint::of(committed.envelope()));
+        if let Some(seen) = self.projected.get(&root) {
+            let restarted = first.is_some() && first != seen.first;
+            if !restarted && sequence <= seen.last {
+                return;
+            }
         }
-        // A pruned stream is purged after its removal is projected, and a
-        // task minted on the freed harp starts it again from its first
-        // sequence: forget where it was, so that task is not skipped as
-        // already seen.
+        let first = first.or_else(|| self.projected.get(&root)?.first.clone());
+        self.projected.insert(
+            root,
+            Seen {
+                first,
+                last: sequence,
+            },
+        );
         let task = committed.state;
         if is_pruned(committed.event()) {
-            self.projected.remove(&root);
             self.unpurged.insert(task.harp_id.clone(), task.clone());
         } else {
-            self.projected.insert(root, sequence);
             self.unpurged.remove(&task.harp_id);
         }
 
@@ -204,6 +212,40 @@ impl Projection<Tasks> for TaskList {
             self.record(Change::Remove {
                 harp_id: task.harp_id.clone(),
             });
+        }
+    }
+}
+
+/// How far one task stream is projected.
+struct Seen {
+    /// Its first event's fingerprint; none when the list began projecting
+    /// it past its start (live, never caught up), so its first event, if
+    /// it comes, is projected again.
+    first: Option<Fingerprint>,
+    /// The last sequence projected.
+    last: u64,
+}
+
+/// What tells one stream on a harp from another: its first event's cause
+/// (the command that minted the task, or the correlation of a process's
+/// event) and when it was recorded. Both are on every recorded event and
+/// read back as written; a stream minted again is a new command at a
+/// later time. The sequence cannot tell them apart (each starts at 0),
+/// nor the payload (a task minted again may be the same).
+#[derive(Clone, PartialEq, Debug)]
+struct Fingerprint {
+    cause: Uuid,
+    recorded_at: Timestamp,
+}
+
+impl Fingerprint {
+    fn of(envelope: &Envelope<TaskEvent>) -> Fingerprint {
+        Fingerprint {
+            cause: envelope
+                .command_id()
+                .unwrap_or(envelope.correlation_id())
+                .clone(),
+            recorded_at: envelope.recorded_at(),
         }
     }
 }
