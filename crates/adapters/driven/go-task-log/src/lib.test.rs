@@ -18,7 +18,7 @@ fn logs(files: &[(&str, &str)]) -> (TempDir, GoTaskLogDir) {
     for (name, text) in files {
         fs::write(dir.join(name), text).unwrap();
     }
-    let logs = GoTaskLogDir::in_home(home.path());
+    let logs = GoTaskLogDir::in_home(Some(home.path()));
     (home, logs)
 }
 
@@ -184,7 +184,7 @@ fn test_projects_are_the_logs_in_the_directory_sorted() {
 fn test_no_directory_is_no_projects() {
     let home = TempDir::new().unwrap();
     assert_eq!(
-        GoTaskLogDir::in_home(home.path()).projects().unwrap(),
+        GoTaskLogDir::in_home(Some(home.path())).projects().unwrap(),
         Vec::<String>::new()
     );
 }
@@ -194,7 +194,9 @@ fn test_an_unreadable_directory_is_an_error() {
     let home = TempDir::new().unwrap();
     fs::create_dir(home.path().join(".ctxloom")).unwrap();
     fs::write(home.path().join(".ctxloom/tasks"), "not a directory").unwrap();
-    let error = GoTaskLogDir::in_home(home.path()).projects().unwrap_err();
+    let error = GoTaskLogDir::in_home(Some(home.path()))
+        .projects()
+        .unwrap_err();
     assert_eq!(error.code(), "go-task-log-unreadable");
 }
 
@@ -243,4 +245,23 @@ fn test_bytes_that_are_not_utf8_are_replaced_as_go_replaces_them() {
     fs::write(home.path().join(".ctxloom/tasks/able-calm-fox.jsonl"), line).unwrap();
     let records = logs.records("able-calm-fox").unwrap().unwrap();
     assert_eq!(records[0].text, "caf\u{fffd}");
+}
+
+#[test]
+fn test_without_a_home_every_read_says_so() {
+    for home in [None, Some(std::path::Path::new(""))] {
+        let mut logs = GoTaskLogDir::in_home(home);
+        assert_eq!(logs.projects().unwrap_err().code(), "go-task-log-no-home");
+        assert_eq!(
+            logs.records("able-calm-fox").unwrap_err().code(),
+            "go-task-log-no-home"
+        );
+    }
+}
+
+#[test]
+fn test_a_directory_named_outright_is_read() {
+    let (home, _) = logs(&[("able-calm-fox.jsonl", ADD)]);
+    let mut logs = GoTaskLogDir::new(home.path().join(".ctxloom/tasks"));
+    assert_eq!(logs.projects().unwrap(), ["able-calm-fox"]);
 }

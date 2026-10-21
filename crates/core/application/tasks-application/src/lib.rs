@@ -30,7 +30,7 @@ pub use import::{
     anomaly_key, record_command_id, rfc3339_nano, ImportReport, ImportRequest, ImportService, Lost,
     NoGoLogs, ProjectImport, Why,
 };
-pub use ports::Project;
+pub use ports::{GoOp, Project};
 pub use retry::Backoff;
 pub use view::{is_terminal, text_hash, Task, ARCHIVED, DONE};
 

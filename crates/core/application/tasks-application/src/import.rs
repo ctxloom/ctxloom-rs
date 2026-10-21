@@ -29,14 +29,16 @@
 //! new end.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 use std::future::Future;
 
 use annals::next::v1::Uuid;
 use annals::next::{ids, AsyncEventStore, Timestamp};
-use annals_diagnostic::Report;
+use annals_diagnostic::{Arg, Diagnostic, Report};
 use ports::{Clock, Delay, GoOp, GoRecord, GoTaskLogs, Jitter, ProjectIdentity, TaskStores};
-use tasks::TaskRejection;
-use tasks::{AddTask, EditText, RemovalReason, RemoveTask, Retag, SetStatus, TaskCommand};
+use tasks::{
+    AddTask, EditText, RemovalReason, RemoveTask, Retag, SetStatus, TaskCommand, TaskRejection,
+};
 
 use crate::{book, cover, retry, text_hash, AppError, Service};
 
@@ -118,6 +120,37 @@ pub enum Why {
     HarpTaken,
     /// A record to a task whose add was not imported.
     TaskNotImported,
+}
+
+impl fmt::Display for Why {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Why::Displaced => f.write_str(
+                "another task holds this harp in Go's log: run Go's `taskloom repair`, then import again",
+            ),
+            Why::Refused(rejection) => rejection.fmt(f),
+            Why::HarpTaken => f.write_str("a task not imported from this record already holds this harp"),
+            Why::TaskNotImported => f.write_str("its task was not imported"),
+        }
+    }
+}
+
+impl Diagnostic for Why {
+    fn code(&self) -> &'static str {
+        match self {
+            Why::Displaced => "tasks-application-import-displaced",
+            Why::Refused(rejection) => rejection.code(),
+            Why::HarpTaken => "tasks-application-import-harp-taken",
+            Why::TaskNotImported => "tasks-application-import-task-not-imported",
+        }
+    }
+
+    fn args(&self) -> Vec<(&'static str, Arg)> {
+        match self {
+            Why::Refused(rejection) => rejection.args(),
+            _ => Vec::new(),
+        }
+    }
 }
 
 /// Go's logs, as a service without any holds them: none.

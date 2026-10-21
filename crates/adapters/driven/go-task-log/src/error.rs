@@ -7,6 +7,8 @@ use annals_diagnostic::{Arg, Diagnostic};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum LogError {
+    /// No home to find Go's logs in.
+    NoHome,
     /// The log, or the directory of logs, could not be read.
     Unreadable { path: String, detail: String },
     /// A line is not a JSON record Go could decode.
@@ -24,6 +26,7 @@ pub enum LogError {
 impl fmt::Display for LogError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            LogError::NoHome => f.write_str("HOME is not set, so Go's task logs cannot be found"),
             LogError::Unreadable { path, detail } => write!(f, "cannot read {path}: {detail}"),
             LogError::Malformed { path, line, detail } => {
                 write!(f, "{path}:{line}: malformed task event: {detail}")
@@ -40,6 +43,7 @@ impl fmt::Display for LogError {
 impl Diagnostic for LogError {
     fn code(&self) -> &'static str {
         match self {
+            LogError::NoHome => "go-task-log-no-home",
             LogError::Unreadable { .. } => "go-task-log-unreadable",
             LogError::Malformed { .. } => "go-task-log-malformed",
             LogError::NoOp { .. } => "go-task-log-no-op",
@@ -49,6 +53,7 @@ impl Diagnostic for LogError {
 
     fn args(&self) -> Vec<(&'static str, Arg)> {
         match self {
+            LogError::NoHome => Vec::new(),
             LogError::Unreadable { path, detail } => vec![
                 ("path", path.as_str().into()),
                 ("detail", detail.as_str().into()),
@@ -74,6 +79,7 @@ impl Diagnostic for LogError {
 pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
     let path = || "/home/u/.ctxloom/tasks/jolly-mute-magma.jsonl".to_string();
     vec![
+        Box::new(LogError::NoHome),
         Box::new(LogError::Unreadable {
             path: path(),
             detail: "permission denied".to_string(),

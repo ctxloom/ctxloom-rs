@@ -14,6 +14,7 @@ fn test_each_error_renders_its_english_fallback() {
     assert_eq!(
         english,
         [
+            "HOME is not set, so Go's task logs cannot be found",
             "cannot read /home/u/.ctxloom/tasks/jolly-mute-magma.jsonl: permission denied",
             "/home/u/.ctxloom/tasks/jolly-mute-magma.jsonl:3: malformed task event: expected value at line 1 column 1",
             "/home/u/.ctxloom/tasks/jolly-mute-magma.jsonl:4: record has no op field",
@@ -42,6 +43,7 @@ fn test_each_error_gives_its_args_values() {
     assert_eq!(
         values,
         [
+            vec![],
             vec![path, "permission denied"],
             vec![path, "3", "expected value at line 1 column 1"],
             vec![path, "4"],
@@ -56,6 +58,7 @@ fn test_each_error_has_its_own_code() {
     assert_eq!(
         codes,
         [
+            "go-task-log-no-home",
             "go-task-log-unreadable",
             "go-task-log-malformed",
             "go-task-log-no-op",

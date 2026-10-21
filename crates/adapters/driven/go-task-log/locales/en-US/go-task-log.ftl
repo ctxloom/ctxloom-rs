@@ -1,3 +1,4 @@
+go-task-log-no-home = HOME is not set, so Go's task logs cannot be found
 go-task-log-unreadable = cannot read { $path }: { $detail }
 go-task-log-malformed = { $path }:{ $line }: malformed task event: { $detail }
 go-task-log-no-op = { $path }:{ $line }: record has no op field

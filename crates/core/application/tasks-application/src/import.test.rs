@@ -700,3 +700,26 @@ fn test_a_step_is_a_command_or_why_not() {
     assert_eq!(fold.step(&records[1]), Step::Unchanged);
     assert_eq!(fold.step(&record(GoOp::Text, "other", 3)), Step::Ignored);
 }
+
+// ------------------------------------------------------------ reasons
+
+#[test]
+fn test_each_reason_renders_its_english_and_a_refusal_is_its_rejection() {
+    let english: Vec<String> = [Why::Displaced, Why::HarpTaken, Why::TaskNotImported]
+        .iter()
+        .map(|w| w.to_string())
+        .collect();
+    assert_eq!(
+        english,
+        [
+            "another task holds this harp in Go's log: run Go's `taskloom repair`, then import again",
+            "a task not imported from this record already holds this harp",
+            "its task was not imported",
+        ]
+    );
+    let refused = Why::Refused(Report::new("tasks-status-reserved", "no @").arg("status", "@x"));
+    assert_eq!(refused.to_string(), "no @");
+    assert_eq!(refused.code(), "tasks-status-reserved");
+    assert_eq!(refused.args().len(), 1);
+    assert!(Why::Displaced.args().is_empty());
+}

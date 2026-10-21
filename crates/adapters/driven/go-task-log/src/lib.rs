@@ -31,34 +31,45 @@ pub const GO_ZERO_TIME: i64 = -62_135_596_800;
 /// The logs in one directory: Go's `~/.ctxloom/tasks`.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct GoTaskLogDir {
-    dir: PathBuf,
+    /// `None` where there is no home to find it in.
+    dir: Option<PathBuf>,
 }
 
 impl GoTaskLogDir {
     /// The logs in `dir`.
     pub fn new(dir: impl Into<PathBuf>) -> Self {
-        GoTaskLogDir { dir: dir.into() }
+        GoTaskLogDir {
+            dir: Some(dir.into()),
+        }
     }
 
-    /// The logs Go keeps under `home`: `<home>/.ctxloom/tasks`.
-    pub fn in_home(home: &Path) -> Self {
-        GoTaskLogDir::new(home.join(".ctxloom").join("tasks"))
+    /// The logs Go keeps under `home`, `<home>/.ctxloom/tasks`; with no
+    /// home (HOME unset or empty), every read fails saying so.
+    pub fn in_home(home: Option<&Path>) -> Self {
+        GoTaskLogDir {
+            dir: home
+                .filter(|h| !h.as_os_str().is_empty())
+                .map(|h| h.join(".ctxloom").join("tasks")),
+        }
     }
 
-    fn path(&self, project_id: &str) -> PathBuf {
-        self.dir.join(format!("{project_id}.{EXTENSION}"))
+    fn dir(&self) -> Result<&Path, Report> {
+        self.dir
+            .as_deref()
+            .ok_or_else(|| Report::of(&LogError::NoHome))
     }
 }
 
 impl GoTaskLogs for GoTaskLogDir {
     fn projects(&mut self) -> Result<Vec<String>, Report> {
+        let dir = self.dir()?;
         let unreadable = |e: io::Error| {
             Report::of(&LogError::Unreadable {
-                path: self.dir.display().to_string(),
+                path: dir.display().to_string(),
                 detail: e.to_string(),
             })
         };
-        let entries = match fs::read_dir(&self.dir) {
+        let entries = match fs::read_dir(dir) {
             Ok(entries) => entries,
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(e) => return Err(unreadable(e)),
@@ -77,7 +88,7 @@ impl GoTaskLogs for GoTaskLogDir {
     }
 
     fn records(&mut self, project_id: &str) -> Result<Option<Vec<GoRecord>>, Report> {
-        let path = self.path(project_id);
+        let path = self.dir()?.join(format!("{project_id}.{EXTENSION}"));
         let bytes = match fs::read(&path) {
             Ok(bytes) => bytes,
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),

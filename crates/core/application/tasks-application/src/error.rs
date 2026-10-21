@@ -84,8 +84,9 @@ impl Diagnostic for AppError {
     }
 }
 
-/// One value of every error this crate defines (not the wrappers, whose
-/// codes are their causes'), for the catalog test.
+/// One value of every error this crate defines, and of every reason an
+/// import gives for leaving a record behind (not the wrappers, whose codes
+/// are their causes'), for the catalog test.
 pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
     vec![
         Box::new(AppError::GaveUp {
@@ -100,6 +101,9 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(AppError::NoGoLog {
             project: "jolly-mute-magma".to_string(),
         }),
+        Box::new(crate::Why::Displaced),
+        Box::new(crate::Why::HarpTaken),
+        Box::new(crate::Why::TaskNotImported),
     ]
 }
 
