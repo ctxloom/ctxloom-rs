@@ -21,7 +21,7 @@ use annals_diagnostic::Report;
 pub struct Project {
     /// The project id ("jolly-mute-magma").
     pub id: String,
-    /// The work root the id was resolved for, as the user would type it.
+    /// The work root the id was resolved for: canonical, symlinks resolved.
     pub root: String,
     /// The project's database.
     pub store: PathBuf,

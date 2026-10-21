@@ -1,8 +1,9 @@
 //! The registry file: Go's schema read and written, unknown fields kept.
 
 use std::fs;
+use std::path::Path;
 
-use super::{load, lock, path, save, Index, SCHEMA_VERSION};
+use super::{load, lock, path, save, write_atomically, Index, SCHEMA_VERSION};
 use crate::RegistryError;
 
 const GO_WRITTEN: &str = "\
@@ -34,9 +35,15 @@ fn test_a_registry_go_wrote_is_read_with_each_entry() {
     fs::write(&file, GO_WRITTEN).unwrap();
     let index = load(&file).unwrap();
     assert_eq!(index.schema_version, 1);
-    assert_eq!(index.id_for("/work/main"), Some("high-tight-gulf"));
-    assert_eq!(index.id_for("/tmp/ctxloom-smoke"), Some("jolly-mute-magma"));
-    assert_eq!(index.id_for("/elsewhere"), None);
+    assert_eq!(
+        index.id_for(Path::new("/work/main")),
+        Some("high-tight-gulf")
+    );
+    assert_eq!(
+        index.id_for(Path::new("/tmp/ctxloom-smoke")),
+        Some("jolly-mute-magma")
+    );
+    assert_eq!(index.id_for(Path::new("/elsewhere")), None);
     assert!(index.holds("high-tight-gulf"));
     assert!(!index.holds("other"));
     assert_eq!(index.projects[1].last_seen_at, "", "absent: empty");
@@ -124,4 +131,59 @@ fn test_the_lock_is_the_file_go_locks_and_excludes_another_holder() {
     );
     drop(held);
     assert!(FileExt::try_lock(&other).is_ok(), "released on drop");
+}
+
+#[test]
+fn test_an_entry_matches_its_path_cleaned() {
+    let mut index = Index::default();
+    index.register("high-tight-gulf", "/work/./main/");
+    assert_eq!(
+        index.id_for(Path::new("/work/main")),
+        Some("high-tight-gulf")
+    );
+}
+
+#[test]
+fn test_the_text_written_is_what_gos_yaml_v3_reads() {
+    // yaml.v3 decodes `created_at` into a time.Time from an unquoted
+    // RFC 3339 scalar; quoted, it is a string and Go's decode fails.
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("index.yaml");
+    let mut index = Index::default();
+    index.projects.push(super::Entry {
+        project_id: "jolly-mute-magma".to_string(),
+        path: "/work/tree".to_string(),
+        created_at: "2026-06-10T02:35:20.837009562Z".to_string(),
+        last_seen_at: "2026-06-10T02:35:20.837009562Z".to_string(),
+        other: Default::default(),
+    });
+    save(&file, &index).unwrap();
+    assert_eq!(
+        fs::read_to_string(&file).unwrap(),
+        "\
+schema_version: 1
+projects:
+- project_id: jolly-mute-magma
+  path: /work/tree
+  created_at: 2026-06-10T02:35:20.837009562Z
+  last_seen_at: 2026-06-10T02:35:20.837009562Z
+"
+    );
+}
+
+#[test]
+fn test_nothing_is_written_or_locked_at_a_relative_path() {
+    // A path relative to the working directory would land wherever the
+    // process runs: in a crate's source, under its tests.
+    let relative = Path::new("relative-registry-dir/index.yaml");
+    let refused = |result: Result<(), RegistryError>| {
+        assert!(
+            matches!(&result, Err(RegistryError::RelativePath { path }) if path == "relative-registry-dir/index.yaml"),
+            "{result:?}"
+        );
+    };
+    refused(write_atomically(relative, b"x"));
+    refused(save(relative, &Index::default()));
+    refused(lock(relative).map(drop));
+    assert!(!Path::new("relative-registry-dir").exists());
 }

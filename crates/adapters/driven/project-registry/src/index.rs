@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
+use crate::path::canonical;
 use crate::RegistryError;
 
 /// The schema version this registry writes.
@@ -44,11 +45,13 @@ pub struct Index {
 }
 
 impl Index {
-    /// The id registered for `path`, if any: the first, if several are.
-    pub fn id_for(&self, path: &str) -> Option<&str> {
+    /// The id registered for `root`, a canonical path, if any: the first,
+    /// if several are. Each entry's path is compared canonical too, as Go
+    /// compares them.
+    pub fn id_for(&self, root: &Path) -> Option<&str> {
         self.projects
             .iter()
-            .find(|e| e.path == path)
+            .find(|e| canonical(Path::new(&e.path)) == root)
             .map(|e| e.project_id.as_str())
     }
 
@@ -103,10 +106,22 @@ pub fn save(path: &Path, index: &Index) -> Result<(), RegistryError> {
     write_atomically(path, text.as_bytes())
 }
 
-/// Write `bytes` to `path` by renaming a finished temporary file over it,
-/// creating the directory if need be.
+/// `path`, refused if it is relative: nothing here is written or locked
+/// relative to the working directory.
+fn absolute(path: &Path) -> Result<&Path, RegistryError> {
+    if path.is_absolute() {
+        Ok(path)
+    } else {
+        Err(RegistryError::RelativePath {
+            path: path.display().to_string(),
+        })
+    }
+}
+
+/// Write `bytes` to `path`, an absolute path, by renaming a finished
+/// temporary file over it, creating the directory if need be.
 pub fn write_atomically(path: &Path, bytes: &[u8]) -> Result<(), RegistryError> {
-    let dir = path.parent().unwrap_or(Path::new("."));
+    let dir = absolute(path)?.parent().unwrap_or(Path::new("/"));
     fs::create_dir_all(dir).map_err(|e| RegistryError::io(dir, e))?;
     let mut file = tempfile::NamedTempFile::new_in(dir).map_err(|e| RegistryError::io(dir, e))?;
     file.write_all(bytes)
@@ -122,9 +137,10 @@ pub struct Locked {
     _file: File,
 }
 
-/// Take the registry's lock, waiting for whoever holds it.
+/// Take the lock of the registry at `path`, an absolute path, waiting for
+/// whoever holds it.
 pub fn lock(path: &Path) -> Result<Locked, RegistryError> {
-    let lock_path = path.with_file_name("index.yaml.lock");
+    let lock_path = absolute(path)?.with_file_name("index.yaml.lock");
     if let Some(dir) = lock_path.parent() {
         fs::create_dir_all(dir).map_err(|e| RegistryError::io(dir, e))?;
     }

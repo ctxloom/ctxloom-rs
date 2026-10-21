@@ -22,6 +22,12 @@ pub enum RegistryError {
     Unreadable { path: String, detail: String },
     /// Every freshly minted project id was already registered.
     Exhausted { attempts: u32 },
+    /// The working directory, needed to find the work root, cannot be read
+    /// (it was deleted, say).
+    NoWorkingDirectory { detail: String },
+    /// A file the registry would write or lock is at a relative path, which
+    /// would land wherever the process happens to run.
+    RelativePath { path: String },
 }
 
 impl RegistryError {
@@ -48,6 +54,13 @@ impl fmt::Display for RegistryError {
             RegistryError::Exhausted { attempts } => {
                 write!(f, "no free project id after {attempts} tries")
             }
+            RegistryError::NoWorkingDirectory { detail } => {
+                write!(f, "the working directory cannot be read: {detail}")
+            }
+            RegistryError::RelativePath { path } => write!(
+                f,
+                "{path} is not an absolute path: nothing is written relative to the working directory"
+            ),
         }
     }
 }
@@ -60,6 +73,8 @@ impl Diagnostic for RegistryError {
             RegistryError::InvalidId { .. } => "project-registry-invalid-id",
             RegistryError::Unreadable { .. } => "project-registry-unreadable",
             RegistryError::Exhausted { .. } => "project-registry-exhausted",
+            RegistryError::NoWorkingDirectory { .. } => "project-registry-no-cwd",
+            RegistryError::RelativePath { .. } => "project-registry-relative-path",
         }
     }
 
@@ -78,6 +93,10 @@ impl Diagnostic for RegistryError {
                 ("reason", reason.as_str().into()),
             ],
             RegistryError::Exhausted { attempts } => vec![("attempts", (*attempts).into())],
+            RegistryError::NoWorkingDirectory { detail } => {
+                vec![("detail", detail.as_str().into())]
+            }
+            RegistryError::RelativePath { path } => vec![("path", path.as_str().into())],
         }
     }
 }
@@ -102,6 +121,12 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
             detail: detail(),
         }),
         Box::new(RegistryError::Exhausted { attempts: 100 }),
+        Box::new(RegistryError::NoWorkingDirectory {
+            detail: "No such file or directory (os error 2)".to_string(),
+        }),
+        Box::new(RegistryError::RelativePath {
+            path: "index.yaml".to_string(),
+        }),
     ]
 }
 

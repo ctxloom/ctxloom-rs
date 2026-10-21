@@ -28,7 +28,7 @@ fn main() -> ExitCode {
     };
     let env = Environment {
         home: std::env::var_os("HOME").map(PathBuf::from),
-        cwd: std::env::current_dir().unwrap_or_default(),
+        cwd: std::env::current_dir().map_err(|e| e.to_string()),
         root: std::env::var_os("CTXLOOM_ROOT").map(PathBuf::from),
         project_id: std::env::var("CTXLOOM_PROJECT_ID").ok(),
     };

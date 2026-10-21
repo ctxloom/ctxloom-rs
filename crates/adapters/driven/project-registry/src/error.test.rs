@@ -19,6 +19,8 @@ fn test_each_error_renders_its_english_fallback() {
             "the project id ../x from --project is not a valid id: it contains '/'",
             "the project registry /home/u/.ctxloom/projects/index.yaml cannot be read: permission denied",
             "no free project id after 100 tries",
+            "the working directory cannot be read: No such file or directory (os error 2)",
+            "index.yaml is not an absolute path: nothing is written relative to the working directory",
         ]
     );
 }
@@ -46,6 +48,14 @@ fn test_each_error_gives_its_args_values() {
     assert!(
         matches!(&io.args()[..], [("path", Arg::Str(p)), ("detail", Arg::Str(d))] if p == "p" && d == "d")
     );
+    let cwd = RegistryError::NoWorkingDirectory {
+        detail: "d".to_string(),
+    };
+    assert!(matches!(&cwd.args()[..], [("detail", Arg::Str(d))] if d == "d"));
+    let relative = RegistryError::RelativePath {
+        path: "p".to_string(),
+    };
+    assert!(matches!(&relative.args()[..], [("path", Arg::Str(p))] if p == "p"));
     let exhausted = RegistryError::Exhausted { attempts: 7 }.args();
     assert!(matches!(exhausted[0], ("attempts", Arg::Uint(7))));
 }
