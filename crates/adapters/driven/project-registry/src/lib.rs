@@ -129,7 +129,7 @@ impl<N: Names> ProjectRegistry<N> {
         if has_marker(&root) {
             return Ok(root);
         }
-        Ok(worktree::primary_checkout(&root).unwrap_or(root))
+        Ok(worktree::primary_checkout(&root)?.unwrap_or(root))
     }
 
     /// The project `id` names, resolved for `root`.

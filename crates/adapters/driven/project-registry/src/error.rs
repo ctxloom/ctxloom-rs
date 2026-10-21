@@ -38,6 +38,9 @@ pub enum RegistryError {
     Changed,
     /// What a removal would delete is not a database's directory.
     NotADatabase { path: String },
+    /// A linked worktree whose git directory is gone: its primary checkout
+    /// was deleted or moved.
+    StaleWorktree { root: String, git_dir: String },
 }
 
 impl RegistryError {
@@ -85,6 +88,10 @@ impl fmt::Display for RegistryError {
             RegistryError::NotADatabase { path } => {
                 write!(f, "{path} is not a project's database directory: not removed")
             }
+            RegistryError::StaleWorktree { root, git_dir } => write!(
+                f,
+                "{root} is a linked worktree whose git directory {git_dir} is gone: run `git worktree repair` from its primary checkout, or remove the worktree"
+            ),
         }
     }
 }
@@ -103,6 +110,7 @@ impl Diagnostic for RegistryError {
             RegistryError::LockReplaced { .. } => "project-registry-lock-replaced",
             RegistryError::Changed => "project-registry-changed",
             RegistryError::NotADatabase { .. } => "project-registry-not-a-database",
+            RegistryError::StaleWorktree { .. } => "project-registry-stale-worktree",
         }
     }
 
@@ -130,6 +138,10 @@ impl Diagnostic for RegistryError {
             RegistryError::LockTimeout { path, waited_ms } => vec![
                 ("path", path.as_str().into()),
                 ("waited_ms", (*waited_ms).into()),
+            ],
+            RegistryError::StaleWorktree { root, git_dir } => vec![
+                ("root", root.as_str().into()),
+                ("git_dir", git_dir.as_str().into()),
             ],
             RegistryError::LockReplaced { path, attempts } => vec![
                 ("path", path.as_str().into()),
@@ -176,6 +188,10 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(RegistryError::Changed),
         Box::new(RegistryError::NotADatabase {
             path: "/home/u/.ctxloom/projects/jolly-mute-magma".to_string(),
+        }),
+        Box::new(RegistryError::StaleWorktree {
+            root: "/work/linked".to_string(),
+            git_dir: "/work/main/.git/worktrees/linked".to_string(),
         }),
     ]
 }

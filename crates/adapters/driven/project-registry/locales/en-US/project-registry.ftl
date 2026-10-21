@@ -9,3 +9,4 @@ project-registry-lock-timeout = the project registry's lock { $path } is still h
 project-registry-lock-replaced = the project registry's lock { $path } was replaced { $attempts } times while being taken: try again
 project-registry-changed = the project registry or a marker changed while the change was planned: nothing was changed; run it again
 project-registry-not-a-database = { $path } is not a project's database directory: not removed
+project-registry-stale-worktree = { $root } is a linked worktree whose git directory { $git_dir } is gone: run `git worktree repair` from its primary checkout, or remove the worktree
