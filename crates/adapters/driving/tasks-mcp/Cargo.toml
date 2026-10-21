@@ -22,10 +22,11 @@ tokio.workspace = true
 [dev-dependencies]
 annals.workspace = true
 fluent-syntax.workspace = true
+mutants.workspace = true
 ports.workspace = true
-# In-memory duplex pipes stand in for stdio in the server's tests; rmcp's
-# transport turns io-util on already.
-tokio = { workspace = true, features = ["io-util"] }
+# In-memory duplex pipes stand in for stdio in the server's tests, and a
+# oneshot holds a call open; rmcp's transport turns both on already.
+tokio = { workspace = true, features = ["io-util", "sync"] }
 
 [lints]
 workspace = true

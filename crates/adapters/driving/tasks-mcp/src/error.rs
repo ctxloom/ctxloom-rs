@@ -100,6 +100,8 @@ impl Diagnostic for McpNotice {
         }
     }
 
+    // Equivalent mutant: an empty Vec is its only body, `vec![]` too.
+    #[cfg_attr(test, mutants::skip)]
     fn args(&self) -> Vec<(&'static str, Arg)> {
         Vec::new()
     }

@@ -89,7 +89,7 @@ impl Client {
 /// to initialize too.
 async fn connect(world: Arc<World>, settings: Settings) -> (Client, Value) {
     let (client_end, server_end) = tokio::io::duplex(1 << 20);
-    let tools = TaskTools::new(move || world.service(), settings, catalog());
+    let tools = TaskTools::new(move || world.service(), settings, Arc::new(catalog()));
     tokio::spawn(tools.serve(server_end));
     let (from_server, to_server) = tokio::io::split(client_end);
     let mut client = Client {

@@ -2272,6 +2272,7 @@ version = "0.1.0"
 dependencies = [
  "annals",
  "annals-diagnostic 0.1.0",
+ "clap",
  "go-task-log",
  "harp-names",
  "ports",
@@ -2286,6 +2287,7 @@ dependencies = [
  "tasks",
  "tasks-application",
  "tasks-cli",
+ "tasks-mcp",
  "tempfile",
  "time",
  "tokio",
@@ -2339,6 +2341,7 @@ dependencies = [
  "annals-diagnostic 0.1.0",
  "clap",
  "fluent-syntax",
+ "mutants",
  "ports",
  "presentation",
  "rmcp",

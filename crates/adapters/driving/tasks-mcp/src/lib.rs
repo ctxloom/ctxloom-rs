@@ -26,9 +26,9 @@ use rmcp::model::{
     ListToolsResult, PaginatedRequestParams, ServerCapabilities, ServerConfig, Tool,
 };
 use rmcp::service::RequestContext;
+use rmcp::transport::IntoTransport;
 use rmcp::{ErrorData, RoleServer, ServerHandler, ServiceExt};
 use tasks_application::TaskService;
-use tokio::io::{AsyncRead, AsyncWrite};
 
 pub use error::{diagnostic_samples, McpError, McpNotice, EN_US};
 
@@ -72,11 +72,11 @@ pub struct TaskTools<F> {
 
 impl<F> TaskTools<F> {
     /// The server over `services`, rendering its errors from `catalog`.
-    pub fn new(services: F, settings: Settings, catalog: Catalog) -> TaskTools<F> {
+    pub fn new(services: F, settings: Settings, catalog: Arc<Catalog>) -> TaskTools<F> {
         TaskTools {
             services: Arc::new(services),
             settings: Arc::new(settings),
-            catalog: Arc::new(catalog),
+            catalog,
             tools: tools::offered(),
         }
     }
@@ -87,11 +87,21 @@ where
     F: Fn() -> S + Send + Sync + 'static,
     S: TaskService + Send + 'static,
 {
-    /// Serve over `transport` (stdin and stdout, in use) until the client
-    /// goes away.
-    pub async fn serve<T>(self, transport: T) -> Result<(), McpError>
+    /// Serve over stdin and stdout, rmcp's stdio transport, until the
+    /// client goes away.
+    // Untestable here: stdin and stdout would be the test process's own.
+    // The binary's acceptance test (taskloom's mcp.test.rs) serves
+    // through it.
+    #[cfg_attr(test, mutants::skip)]
+    pub async fn serve_stdio(self) -> Result<(), McpError> {
+        self.serve(rmcp::transport::stdio()).await
+    }
+
+    /// Serve over `transport` until the client goes away.
+    pub async fn serve<T, E, A>(self, transport: T) -> Result<(), McpError>
     where
-        T: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+        T: IntoTransport<RoleServer, E, A>,
+        E: std::error::Error + Send + Sync + 'static,
     {
         let running = ServiceExt::serve(self, transport)
             .await
