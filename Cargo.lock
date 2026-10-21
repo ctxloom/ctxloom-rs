@@ -655,6 +655,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "go-task-log"
+version = "0.1.0"
+dependencies = [
+ "annals",
+ "annals-diagnostic 0.1.0",
+ "fluent-syntax",
+ "ports",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "time",
+]
+
+[[package]]
 name = "harp-core"
 version = "0.1.0"
 source = "git+https://github.com/benjaminabbitt/harp?rev=21648c9712ab60a84b609e1321201f158203a4bc#21648c9712ab60a84b609e1321201f158203a4bc"
@@ -1978,14 +1992,19 @@ dependencies = [
 name = "taskloom"
 version = "0.1.0"
 dependencies = [
+ "annals",
+ "go-task-log",
  "harp-names",
+ "ports",
  "project-registry",
  "serde_json",
  "system",
  "task-store-sqlite",
+ "tasks",
  "tasks-application",
  "tasks-cli",
  "tempfile",
+ "time",
  "tokio",
 ]
 

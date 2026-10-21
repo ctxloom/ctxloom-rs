@@ -1,0 +1,11 @@
+{"op":"status","task":"brisk-heron","status":"Done","session":"s2","ts":"2026-03-01T10:05:00Z"}
+{"op":"add","task":"brisk-heron","text":"Merged task","session":"s1","ts":"2026-03-01T10:01:00Z"}
+{"op":"tag","task":"brisk-heron","tags":["a"],"session":"s1","ts":"2026-03-01T10:02:00Z"}
+{"op":"tag","task":"brisk-heron","tags":["a"],"session":"s1","ts":"2026-03-01T10:02:00Z"}
+{"op":"add","task":"quiet-maple","text":"Tie breaker","session":"s1","ts":"2026-03-01T10:03:00Z"}
+{"op":"status","task":"quiet-maple","status":"In Progress","session":"s1","ts":"2026-03-01T10:04:00Z"}
+{"op":"status","task":"quiet-maple","status":"Archived","session":"s2","ts":"2026-03-01T10:04:00Z"}
+{"op":"text","task":"brisk-heron","text":"Merged task, edited","session":"s2","ts":"2026-03-01T10:06:00Z"}
+{"op":"status","task":"brisk-heron","status":"Done","session":"s2","ts":"2026-03-01T10:05:00Z"}
+
+   

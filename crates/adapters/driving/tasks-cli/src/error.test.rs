@@ -28,6 +28,22 @@ fn test_an_output_failure_says_what_failed() {
 }
 
 #[test]
+fn test_an_incomplete_import_says_what_it_left() {
+    let error = CliError::Incomplete {
+        stopped: 1,
+        lost: 2,
+    };
+    assert_eq!(
+        error.to_string(),
+        "not everything was imported: 1 projects stopped, 2 records not imported"
+    );
+    assert!(matches!(
+        &error.args()[..],
+        [("stopped", Arg::Uint(1)), ("lost", Arg::Uint(2))]
+    ));
+}
+
+#[test]
 fn test_every_error_has_a_catalog_message_with_exactly_its_args() {
     use fluent_syntax::ast::{Entry, Expression, InlineExpression, PatternElement};
 

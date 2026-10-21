@@ -1,13 +1,14 @@
 //! taskloom: per-project task tracking. The composition root: it reads the
 //! process's environment, wires the tasks use cases to their adapters (the
-//! project registry, harp names, the SQLite task store, and the system's
-//! clock, ids, timer and randomness), and hands the command line to the
-//! CLI. It holds no logic of its own.
+//! project registry, harp names, the SQLite task store, the system's
+//! clock, ids, timer and randomness, and Go taskloom's logs to import),
+//! and hands the command line to the CLI. It holds no logic of its own.
 
 use std::io::{self, IsTerminal};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use go_task_log::GoTaskLogDir;
 use harp_names::HarpNames;
 use project_registry::{Environment, ProjectRegistry};
 use system::System;
@@ -32,8 +33,10 @@ fn main() -> ExitCode {
         root: std::env::var_os("CTXLOOM_ROOT").map(PathBuf::from),
         project_id: std::env::var("CTXLOOM_PROJECT_ID").ok(),
     };
+    let go_logs = GoTaskLogDir::in_home(env.home.as_deref());
     let identity = ProjectRegistry::new(env, HarpNames);
-    let mut service = Service::new(identity, SqliteStores::default(), HarpNames, System, System);
+    let mut service = Service::new(identity, SqliteStores::default(), HarpNames, System, System)
+        .with_go_logs(go_logs);
     let context = Context {
         session: std::env::var("CTXLOOM_SESSION_HARP").unwrap_or_default(),
         stdout_is_terminal: io::stdout().is_terminal(),

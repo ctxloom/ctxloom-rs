@@ -1,0 +1,15 @@
+{"op":"add","task":"brisk-heron","text":"Write the tour","status":"To Do","session":"calm-otter","tags":["docs","area=cli"],"ts":"2026-03-01T10:00:00.123456789Z"}
+{"op":"add","task":"quiet-maple","text":"Revisit the cache","status":"Deferred","trigger":"after the release","session":"calm-otter","ts":"2026-03-01T10:01:00.5Z"}
+{"op":"status","task":"brisk-heron","status":"In Progress","session":"lone-wolf","ts":"2026-03-01T10:02:00.12Z"}
+{"op":"text","task":"brisk-heron","text":"  Write the whole tour  ","session":"lone-wolf","ts":"2026-03-01T10:03:00Z"}
+{"op":"tag","task":"brisk-heron","tags":["urgent"," docs "],"session":"lone-wolf","ts":"2026-03-01T10:04:00.000001Z"}
+{"op":"untag","task":"brisk-heron","tags":["area=cli"],"session":"lone-wolf","ts":"2026-03-01T10:05:00Z"}
+{"op":"status","task":"quiet-maple","status":"To Do","session":"lone-wolf","ts":"2026-03-01T10:06:00Z"}
+{"op":"status","task":"quiet-maple","status":"Deferred","session":"lone-wolf","ts":"2026-03-01T10:07:00Z"}
+{"op":"status","task":"quiet-maple","status":"Deferred","trigger":"when CI is green","ts":"2026-03-01T10:08:00Z"}
+{"op":"add","task":"tidy-otter","text":"Drop the old flag","session":"calm-otter","ts":"2026-03-01T10:09:00Z"}
+{"op":"status","task":"tidy-otter","status":"Done","session":"calm-otter","ts":"2026-03-01T10:10:00Z"}
+{"op":"add","task":"swift-lark","text":"A task removed","ts":"2026-03-01T10:11:00Z"}
+{"op":"remove","task":"swift-lark","session":"calm-otter","ts":"2026-03-01T10:12:00Z"}
+{"op":"add","task":"pale-finch","text":"Archived work","status":"Archived","tags":["old"],"session":"calm-otter","ts":"2026-03-01T10:13:00+02:00"}
+{"op":"add","task":"amber-crane","text":"No session, custom status","status":"Blocked","ts":"2026-03-01T10:14:00Z"}

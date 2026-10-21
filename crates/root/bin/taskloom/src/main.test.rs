@@ -381,3 +381,6 @@ fn test_a_tag_where_there_is_no_project_fails_and_binds_none() {
     assert!(!env.home.path().join(".ctxloom").exists());
     assert!(!env.project.path().join(".project-id").exists());
 }
+
+#[path = "import.test.rs"]
+mod import;

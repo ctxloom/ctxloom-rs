@@ -1,0 +1,4 @@
+{"op":"add","task":"brisk-heron","text":"First task","session":"s1","ts":"2026-03-01T10:01:00Z"}
+{"op":"add","task":"brisk-heron","text":"Displaced task","status":"Deferred","trigger":"later","session":"s2","tags":["b"],"ts":"2026-03-01T10:02:00.25Z"}
+{"op":"status","task":"brisk-heron","status":"Done","session":"s1","ts":"2026-03-01T10:03:00Z"}
+{"op":"add","task":"antivirus-lurk","text":"Displaced task","status":"Deferred","trigger":"later","session":"s2","repair_of":"5ed4446b6676","tags":["b"],"ts":"2026-03-01T10:02:00.25Z"}

@@ -1,6 +1,7 @@
 //! The ports the tasks application needs from outside, beyond annals' own
 //! store port: which project a call is about, where its store is, how ids
-//! are minted, what time it is, and how to wait. Each is a trait a driven
+//! are minted, what time it is, how to wait, and Go taskloom's logs to
+//! import. Each is a trait a driven
 //! adapter (or the composition root) implements; nothing here does I/O.
 //!
 //! Every future a port returns is `Send`, as annals requires of its async
@@ -96,3 +97,74 @@ pub trait Jitter {
     /// A duration drawn uniformly from zero to `ceiling`, inclusive.
     fn up_to(&mut self, ceiling: Duration) -> Duration;
 }
+
+/// One record of Go taskloom's task log, `~/.ctxloom/tasks/<project-id>.jsonl`:
+/// one JSON line, decoded as Go decodes it, with absent fields empty.
+#[derive(Clone, PartialEq, Debug)]
+pub struct GoRecord {
+    /// Its line in the log, from 1.
+    pub line: u32,
+    /// The line, trimmed: Go's fold skips a line repeating an earlier one
+    /// byte for byte, and the importer derives the record's command id
+    /// from it.
+    pub raw: String,
+    pub op: GoOp,
+    /// The task's harp id.
+    pub task: String,
+    pub text: String,
+    pub status: String,
+    pub trigger: String,
+    /// The session that added the task (an add), or acted on it.
+    pub session: String,
+    /// On an add written by Go's `repair`: the key of the displaced add it
+    /// re-adds.
+    pub repair_of: String,
+    pub tags: Vec<String>,
+    /// When it was recorded; Go's zero time (0001-01-01T00:00:00Z) when the
+    /// line has none.
+    pub ts: Timestamp,
+}
+
+/// What a Go record does.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum GoOp {
+    Add,
+    Status,
+    Text,
+    Remove,
+    Tag,
+    Untag,
+}
+
+impl GoOp {
+    /// The op as the log spells it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            GoOp::Add => "add",
+            GoOp::Status => "status",
+            GoOp::Text => "text",
+            GoOp::Remove => "remove",
+            GoOp::Tag => "tag",
+            GoOp::Untag => "untag",
+        }
+    }
+}
+
+/// Go taskloom's per-project task logs, read and never written.
+///
+/// Synchronous, and it blocks on the filesystem, as [`ProjectIdentity`]
+/// does.
+pub trait GoTaskLogs {
+    /// The ids of the projects that have a log, sorted.
+    fn projects(&mut self) -> Result<Vec<String>, Report>;
+
+    /// The project's records in the log's order, blank lines left out;
+    /// `None` when it has no log. A line Go's fold would refuse (malformed
+    /// JSON, no op or one Go does not know) refuses the whole log, as Go's
+    /// fold does.
+    fn records(&mut self, project_id: &str) -> Result<Option<Vec<GoRecord>>, Report>;
+}
+
+#[cfg(test)]
+#[path = "lib.test.rs"]
+mod tests;

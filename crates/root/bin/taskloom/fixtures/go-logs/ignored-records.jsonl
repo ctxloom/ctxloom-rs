@@ -1,0 +1,10 @@
+{"op":"status","task":"ghost-heron","status":"Done","ts":"2026-03-01T10:00:00Z"}
+{"op":"tag","task":"ghost-heron","tags":["x"],"ts":"2026-03-01T10:00:30Z"}
+{"op":"add","task":"brisk-heron","text":"Kept","tags":["x"],"ts":"2026-03-01T10:01:00Z"}
+{"op":"tag","task":"brisk-heron","tags":["x"],"ts":"2026-03-01T10:02:00Z"}
+{"op":"untag","task":"brisk-heron","tags":["absent"],"ts":"2026-03-01T10:03:00Z"}
+{"op":"tag","task":"brisk-heron","tags":[" "],"ts":"2026-03-01T10:03:30Z"}
+{"op":"add","task":"quiet-maple","text":"Removed","ts":"2026-03-01T10:04:00Z"}
+{"op":"remove","task":"quiet-maple","ts":"2026-03-01T10:05:00Z"}
+{"op":"text","task":"quiet-maple","text":"After removal","ts":"2026-03-01T10:06:00Z"}
+{"op":"remove","task":"quiet-maple","ts":"2026-03-01T10:07:00Z"}
