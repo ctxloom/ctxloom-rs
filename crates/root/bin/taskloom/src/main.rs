@@ -2,13 +2,15 @@
 //! process's environment, wires the tasks use cases to their adapters (the
 //! project registry, harp names, the SQLite task store, the system's
 //! clock, ids, timer and randomness, taskloom's configuration, and Go
-//! taskloom's logs to import), mounts the `project` group beside the task
-//! commands, and hands the command line to the CLI. It holds no logic of its
-//! own.
+//! taskloom's logs to import), mounts the `project` group and `mcp` beside
+//! the task commands, and hands the command line to the CLI. `mcp` serves
+//! the task tools over stdio, each call on a service of its own. It holds
+//! no logic of its own.
 
 use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use go_task_log::GoTaskLogDir;
 use harp_names::HarpNames;
@@ -16,7 +18,7 @@ use project_application::Projects;
 use project_registry::{Environment, ProjectRegistry};
 use system::System;
 use task_store_sqlite::SqliteStores;
-use tasks_application::Service;
+use tasks_application::{NoGoLogs, Service};
 use tasks_cli::Context;
 use tasks_config::TaskloomConfig;
 
@@ -30,7 +32,68 @@ fn catalog() -> Result<presentation::Catalog, presentation::CatalogError> {
         task_store_sqlite::EN_US,
         go_task_log::EN_US,
         tasks_config::EN_US,
+        tasks_mcp::EN_US,
     ])
+}
+
+/// The commands mounted beside the task commands.
+#[derive(clap::Subcommand, Debug)]
+enum Mounted {
+    #[command(flatten)]
+    Project(project_cli::Group),
+    #[command(flatten)]
+    Mcp(tasks_mcp::Group),
+}
+
+/// The tasks use cases over the real adapters, configured from the work
+/// root's config, as one call or command needs them. `vars` are the
+/// environment's, as the config reads them.
+fn service(
+    env: &Environment,
+    vars: Vec<(String, String)>,
+) -> Service<
+    ProjectRegistry<HarpNames>,
+    SqliteStores,
+    HarpNames,
+    System,
+    System,
+    NoGoLogs,
+    TaskloomConfig,
+> {
+    let identity = ProjectRegistry::new(env.clone(), HarpNames);
+    // The work root's config, where there is a work root: a command that
+    // needs one fails on resolving it, and says why.
+    let config = TaskloomConfig::new(env.home.clone(), identity.work_root().ok(), vars);
+    Service::new(identity, SqliteStores::default(), HarpNames, System, System)
+        .with_configuration(config)
+}
+
+/// `taskloom mcp`: serve the task tools on stdio until the client goes
+/// away, each call on a service of its own.
+fn serve_mcp(
+    runtime: tokio::runtime::Runtime,
+    env: Environment,
+    settings: tasks_mcp::Settings,
+    catalog: presentation::Catalog,
+) -> ExitCode {
+    let catalog = Arc::new(catalog);
+    let vars = utf8_vars();
+    let tools = tasks_mcp::TaskTools::new(
+        move || service(&env, vars.clone()),
+        settings,
+        Arc::clone(&catalog),
+    );
+    let served = runtime.block_on(tools.serve_stdio());
+    // Nothing is left to wait for: a stdin read still blocked is
+    // abandoned, not joined.
+    runtime.shutdown_background();
+    match served {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("{}: {}", tasks_cli::PROG, catalog.message(&e));
+            ExitCode::FAILURE
+        }
+    }
 }
 
 fn main() -> ExitCode {
@@ -59,40 +122,55 @@ fn main() -> ExitCode {
     };
     let go_logs = GoTaskLogDir::in_home(env.home.as_deref());
     let mut projects = Projects::new(ProjectRegistry::new(env.clone(), HarpNames));
-    let home = env.home.clone();
-    let identity = ProjectRegistry::new(env, HarpNames);
-    // The work root's config, where there is a work root: a command that
-    // needs one fails on resolving it, and says why.
-    let config = TaskloomConfig::new(home, identity.work_root().ok(), utf8_vars());
-    let mut service = Service::new(identity, SqliteStores::default(), HarpNames, System, System)
-        .with_go_logs(go_logs)
-        .with_configuration(config);
+    let mut service = service(&env, utf8_vars()).with_go_logs(go_logs);
     let context = Context {
         session: std::env::var("CTXLOOM_SESSION_HARP").unwrap_or_default(),
         stdout_is_terminal: io::stdout().is_terminal(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        lock_protocol: project_registry::LOCK_PROTOCOL,
     };
-    let project_group = |group,
-                         flags: tasks_cli::Mounted,
-                         catalog: &presentation::Catalog,
-                         out: &mut dyn Write,
-                         err: &mut dyn Write| {
-        let settings = project_cli::Settings {
-            format: flags.format,
-            project: flags.project,
-            prog: tasks_cli::PROG,
-        };
-        project_cli::run(group, &settings, catalog, &mut projects, out, err)
+    // `mcp` is served once the command line has been read, on the same
+    // runtime: the CLI's mounted commands are synchronous.
+    let mut mcp = None;
+    let mounted = |group,
+                   flags: tasks_cli::Mounted,
+                   catalog: &presentation::Catalog,
+                   out: &mut dyn Write,
+                   err: &mut dyn Write| match group {
+        Mounted::Project(group) => {
+            let settings = project_cli::Settings {
+                format: flags.format,
+                project: flags.project,
+                prog: tasks_cli::PROG,
+            };
+            project_cli::run(group, &settings, catalog, &mut projects, out, err)
+        }
+        Mounted::Mcp(tasks_mcp::Group::Mcp) => {
+            mcp = Some(flags.project);
+            0
+        }
     };
-    let code = runtime.block_on(tasks_cli::run_mounted::<_, project_cli::Group>(
+    let code = runtime.block_on(tasks_cli::run_mounted::<_, Mounted>(
         std::env::args_os(),
         &context,
         &catalog,
         &mut service,
-        project_group,
+        mounted,
         &mut io::stdout().lock(),
         &mut io::stderr().lock(),
     ));
-    ExitCode::from(code)
+    match mcp {
+        Some(project) => {
+            let settings = tasks_mcp::Settings {
+                project,
+                session: context.session,
+                name: tasks_cli::PROG.to_string(),
+                version: context.version,
+            };
+            serve_mcp(runtime, env, settings, catalog)
+        }
+        None => ExitCode::from(code),
+    }
 }
 
 /// The environment's variables whose names and values are UTF-8.

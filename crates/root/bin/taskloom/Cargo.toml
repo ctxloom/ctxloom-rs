@@ -3,11 +3,13 @@ name = "taskloom"
 version = "0.1.0"
 description = "The taskloom binary: the composition root that wires the tasks core to its adapters"
 edition.workspace = true
-rust-version.workspace = true
+# rmcp's, through tasks-mcp.
+rust-version = "1.88"
 license.workspace = true
 publish.workspace = true
 
 [dependencies]
+clap.workspace = true
 go-task-log.workspace = true
 harp-names.workspace = true
 presentation.workspace = true
@@ -19,12 +21,14 @@ task-store-sqlite.workspace = true
 tasks-application.workspace = true
 tasks-cli.workspace = true
 tasks-config.workspace = true
+tasks-mcp.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
 annals.workspace = true
 annals-diagnostic.workspace = true
 ports.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 tagma-core.workspace = true
 tasks.workspace = true

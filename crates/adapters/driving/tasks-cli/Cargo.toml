@@ -13,7 +13,7 @@ clap.workspace = true
 presentation.workspace = true
 serde.workspace = true
 tasks-application.workspace = true
-time.workspace = true
+tasks-presentation.workspace = true
 
 [dev-dependencies]
 fluent-syntax.workspace = true

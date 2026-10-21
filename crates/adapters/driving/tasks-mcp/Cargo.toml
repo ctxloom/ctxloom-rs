@@ -1,0 +1,32 @@
+[package]
+name = "tasks-mcp"
+version = "0.1.0"
+description = "The tasks MCP server: task_list and task_add over stdio, translated into the application's use cases"
+edition.workspace = true
+# rmcp's own.
+rust-version = "1.88"
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+annals-diagnostic.workspace = true
+clap.workspace = true
+presentation.workspace = true
+rmcp.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tasks-application.workspace = true
+tasks-presentation.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+annals.workspace = true
+fluent-syntax.workspace = true
+mutants.workspace = true
+ports.workspace = true
+# In-memory duplex pipes stand in for stdio in the server's tests, and a
+# oneshot holds a call open; rmcp's transport turns both on already.
+tokio = { workspace = true, features = ["io-util", "sync"] }
+
+[lints]
+workspace = true

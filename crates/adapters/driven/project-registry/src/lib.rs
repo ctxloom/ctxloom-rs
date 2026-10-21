@@ -38,7 +38,7 @@ use annals_diagnostic::Report;
 use ports::{IdSource, Names, Project, ProjectIdentity};
 
 pub use error::{diagnostic_samples, RegistryError, EN_US};
-pub use index::LOCK_WAIT;
+pub use index::{LOCK_PROTOCOL, LOCK_WAIT};
 
 /// How many project ids a mint draws before giving up, each already
 /// registered: Go's `harp.UniqueFrom`.

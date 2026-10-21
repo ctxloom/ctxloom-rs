@@ -402,6 +402,7 @@ fn test_every_diagnostic_of_every_crate_renders_from_the_binarys_catalog() {
         go_task_log::diagnostic_samples(),
         tasks_config::diagnostic_samples(),
         presentation::diagnostic_samples(),
+        tasks_mcp::diagnostic_samples(),
     ]
     .into_iter()
     .flatten()
@@ -527,8 +528,14 @@ fn test_in_json_each_project_command_writes_one_document_and_errors_an_envelope(
     );
 }
 
+#[path = "companion.test.rs"]
+mod companion;
+
 #[path = "import.test.rs"]
 mod import;
+
+#[path = "mcp.test.rs"]
+mod mcp;
 
 #[path = "project.test.rs"]
 mod project;

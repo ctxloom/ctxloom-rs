@@ -3,6 +3,7 @@
 use std::fmt;
 
 use annals_diagnostic::{Arg, Diagnostic};
+use presentation::UnknownFormat;
 use tasks_application::AppError;
 
 use crate::Notice;
@@ -19,6 +20,11 @@ pub enum CliError {
     /// The command line could not be parsed: clap's account of why, with
     /// the usage.
     Usage { detail: String },
+    /// A format the command does not speak: yaml, which only `loadout`
+    /// does.
+    Format(UnknownFormat),
+    /// `loadout` asked for in a format other than yaml.
+    LoadoutFormat { format: String },
 }
 
 impl fmt::Display for CliError {
@@ -31,6 +37,10 @@ impl fmt::Display for CliError {
                 "not everything was imported: {stopped} projects stopped, {lost} records not imported"
             ),
             CliError::Usage { detail } => f.write_str(detail),
+            CliError::Format(error) => error.fmt(f),
+            CliError::LoadoutFormat { format } => {
+                write!(f, "the loadout is printed only as yaml, not {format}")
+            }
         }
     }
 }
@@ -42,6 +52,8 @@ impl Diagnostic for CliError {
             CliError::Output { .. } => "tasks-cli-output",
             CliError::Incomplete { .. } => "tasks-cli-import-incomplete",
             CliError::Usage { .. } => "tasks-cli-usage",
+            CliError::Format(error) => error.code(),
+            CliError::LoadoutFormat { .. } => "tasks-cli-loadout-format",
         }
     }
 
@@ -54,6 +66,8 @@ impl Diagnostic for CliError {
             CliError::Incomplete { stopped, lost } => {
                 vec![("stopped", (*stopped).into()), ("lost", (*lost).into())]
             }
+            CliError::Format(error) => error.args(),
+            CliError::LoadoutFormat { format } => vec![("format", format.as_str().into())],
         }
     }
 }
@@ -79,6 +93,9 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(Notice::Project {
             root: "/work/tree".to_string(),
             id: "jolly-mute-magma".to_string(),
+        }),
+        Box::new(CliError::LoadoutFormat {
+            format: "json".to_string(),
         }),
         Box::new(Notice::NoProject),
     ]
