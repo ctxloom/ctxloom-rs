@@ -209,8 +209,8 @@ fn test_reading_another_project_does_not_serve_the_held_one() {
 #[test]
 fn test_reading_a_database_not_yet_migrated_migrates_it_as_a_write_would() {
     // A writer creates the file, then migrates it under its write lock; a
-    // reader between the two finds it unmigrated, and waits on that lock
-    // for the migration rather than failing.
+    // reader between the two finds it unmigrated (here, empty), and waits on
+    // that lock for the migration rather than failing.
     let home = tempfile::tempdir().unwrap();
     let path = home.path().join("state.db");
     std::fs::write(&path, "").unwrap();

@@ -78,9 +78,9 @@ impl Ran {
 }
 
 impl Env {
-    /// A fresh env, its project identity seeded by one `seed` command run
-    /// before any concurrency, as Go's tests do: first sight of a project
-    /// is not what these tests exercise.
+    /// A fresh home and project directory: no registry, no marker, no
+    /// store. A test that is not about first sight seeds the project with a
+    /// real `add` before any concurrency, as Go's tests do.
     fn new(session: &'static str) -> Env {
         Env {
             home: tempfile::tempdir().unwrap(),
@@ -109,6 +109,29 @@ impl Env {
         let ran = self.run(&["list", "--json"]);
         assert!(ran.ok, "list failed: {}", ran.stderr);
         ran.json().as_array().expect("an array").clone()
+    }
+
+    /// Add `text` alone, before any concurrency: the project is minted, its
+    /// store created and migrated. The task's JSON.
+    fn seed(&self, text: &str) -> Value {
+        let added = self.run(&["add", text, "--format", "json"]);
+        assert!(added.ok, "seed: {}", added.stderr);
+        added.json()
+    }
+
+    /// The registry's entries, as `project_id` lines.
+    fn registered(&self) -> Vec<String> {
+        let index = self.home.path().join(".ctxloom/projects/index.yaml");
+        std::fs::read_to_string(index)
+            .expect("the registry")
+            .lines()
+            .filter(|l| {
+                l.trim_start()
+                    .trim_start_matches("- ")
+                    .starts_with("project_id:")
+            })
+            .map(str::to_string)
+            .collect()
     }
 
     /// The project stores under the home: one, or identities forked.
@@ -148,11 +171,12 @@ fn texts(tasks: &[Value], field: &str) -> Vec<String> {
         .collect()
 }
 
+/// A first-sight race: the project is unseeded, so the 40 adds race to
+/// mint and bind its id (under the registry's lock) and to create and
+/// migrate its database (under SQLite's write lock), as well as to add.
 #[test]
-fn test_concurrent_adds_lose_no_task_and_duplicate_no_harp() {
+fn test_concurrent_adds_at_first_sight_bind_one_project_and_lose_no_task() {
     let env = Env::new("cross-proc-harp");
-    let seed = env.run(&["list"]);
-    assert!(seed.ok, "seed: {}", seed.stderr);
 
     let n = 40;
     let ran = concurrently(&env, n, |i| {
@@ -183,18 +207,74 @@ fn test_concurrent_adds_lose_no_task_and_duplicate_no_harp() {
         "each stamped with its session"
     );
     assert_eq!(env.stores().len(), 1, "one project, one store");
+    assert_eq!(
+        env.registered().len(),
+        1,
+        "one id bound: {:?}",
+        env.registered()
+    );
 }
 
 #[test]
 fn test_readers_during_writes_see_whole_listings() {
     let env = Env::new("reader-writer-harp");
-    let seed = env.run(&["list"]);
-    assert!(seed.ok, "seed: {}", seed.stderr);
+    env.seed("rw-seed");
 
     let (writers, readers) = (20, 10);
     let ran = concurrently(&env, writers + readers, |i| {
         if i < writers {
             vec!["add".to_string(), format!("rw-task-{i:03}")]
+        } else {
+            vec!["list".to_string(), "--json".to_string()]
+        }
+    });
+    let last: BTreeMap<String, Value> = env
+        .list()
+        .into_iter()
+        .map(|t| (t["harp_id"].as_str().expect("harp_id").to_string(), t))
+        .collect();
+    assert_eq!(last.len(), writers + 1, "every add, and the seed");
+    for (i, r) in ran.iter().enumerate() {
+        assert!(r.ok, "process {i} failed: {}", r.stderr);
+        if i < writers {
+            continue;
+        }
+        assert!(
+            !r.stderr.contains("no project here"),
+            "reader {i} found the seeded project: {}",
+            r.stderr
+        );
+        let rows = r.json();
+        let rows = rows.as_array().expect("an array");
+        assert!(!rows.is_empty(), "reader {i} saw at least the seed");
+        for row in rows {
+            let harp = row["harp_id"].as_str().expect("harp_id");
+            assert_eq!(
+                Some(row),
+                last.get(harp),
+                "reader {i}: a task of the final listing, every field whole"
+            );
+        }
+    }
+    assert_eq!(env.stores().len(), 1);
+}
+
+/// A first-sight race for readers: listings run while the first adds
+/// mint the project and create its database. A reader may find no project
+/// yet, or a database not yet migrated or in WAL, and must still answer.
+#[test]
+fn test_readers_at_first_sight_answer_while_the_store_is_made() {
+    let env = Env::new("first-sight-reader-harp");
+    let before = env.run(&["list"]);
+    assert!(
+        before.ok && before.stderr.contains("no project here"),
+        "{}",
+        before.stderr
+    );
+    let (writers, readers) = (20, 10);
+    let ran = concurrently(&env, writers + readers, |i| {
+        if i < writers {
+            vec!["add".to_string(), format!("fs-task-{i:03}")]
         } else {
             vec!["list".to_string(), "--json".to_string()]
         }
@@ -206,15 +286,13 @@ fn test_readers_during_writes_see_whole_listings() {
         }
     }
     assert_eq!(env.list().len(), writers);
-    assert_eq!(env.stores().len(), 1);
+    assert_eq!(env.registered().len(), 1);
 }
 
 #[test]
 fn test_concurrent_tags_of_one_task_lose_no_tag() {
     let env = Env::new("cross-proc-tag-harp");
-    let added = env.run(&["add", "tag-me", "--format", "json"]);
-    assert!(added.ok, "seed: {}", added.stderr);
-    let harp = added.json()["harp_id"]
+    let harp = env.seed("tag-me")["harp_id"]
         .as_str()
         .expect("a harp id")
         .to_string();

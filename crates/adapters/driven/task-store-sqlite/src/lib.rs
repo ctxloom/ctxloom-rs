@@ -9,7 +9,7 @@ mod error;
 use std::path::{Path, PathBuf};
 
 use annals::next::StoreError;
-use annals_diagnostic::{Diagnostic, Report};
+use annals_diagnostic::Report;
 use annals_store_sql::sqlite::SqliteStore;
 use ports::{Project, TaskStores};
 
@@ -65,7 +65,7 @@ impl TaskStores for SqliteStores {
                     store,
                 },
                 Ok(None) => return Ok(None),
-                Err(error) if unmigrated(&error) => Held {
+                Err(_) if being_made(&project.store) => Held {
                     path: project.store.clone(),
                     writable: true,
                     store: open_writable(project.store.clone()).await?,
@@ -88,17 +88,16 @@ fn create_parent(path: &Path) -> Result<(), StoreOpenError> {
     })
 }
 
-/// Whether `error` is a read-only open refusing a database whose
-/// migrations are not all applied. A writer creates the file and then
-/// migrates it under its write lock, so a read between the two finds it
-/// so; the file exists, so opening it to write creates nothing, and waits
-/// on that lock for the migration.
-fn unmigrated(error: &StoreError) -> bool {
-    matches!(error, StoreError::Unavailable(report) if report.code() == UNMIGRATED)
+/// Whether a database at `path` whose read-only open failed may be one a
+/// writer is making: the file exists. A writer creates the file, moves it
+/// into WAL and migrates it, and a read-only open in between fails (not yet
+/// migrated; or "unable to open", reading a file mid-move to WAL). The file
+/// exists, so opening it to write creates nothing, and waits on the
+/// writer's lock until it is done. A file that is not a database fails that
+/// open too; what is not a file at all (a directory) is not tried.
+fn being_made(path: &Path) -> bool {
+    path.is_file()
 }
-
-/// annals-store-sql's code for [`unmigrated`].
-const UNMIGRATED: &str = "annals-store-sql-unmigrated";
 
 fn unavailable(error: StoreOpenError) -> StoreError {
     StoreError::Unavailable(Report::of(&error))
