@@ -47,14 +47,13 @@ pub fn flat_name(path: &str) -> String {
             flat.push(c);
         }
     }
-    if flat.len() > TAIL_MAX {
-        let mut cut = flat.len() - TAIL_MAX;
-        while !flat.is_char_boundary(cut) {
-            cut += 1;
-        }
-        flat = flat[cut..].to_string();
+    // The cut is 0 for a name within the bound; past it, a cut inside a
+    // character steps forward to the next one.
+    let mut cut = flat.len().saturating_sub(TAIL_MAX);
+    while !flat.is_char_boundary(cut) {
+        cut += 1;
     }
-    format!("{flat}__{hash}")
+    format!("{}__{hash}", &flat[cut..])
 }
 
 #[derive(Deserialize, Default)]
