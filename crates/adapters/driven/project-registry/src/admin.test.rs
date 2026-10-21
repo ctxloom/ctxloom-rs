@@ -138,12 +138,18 @@ fn test_a_survey_in_a_linked_worktree_is_rooted_at_its_primary_checkout() {
 }
 
 #[test]
-fn test_a_survey_fails_on_an_unreadable_projects_directory() {
+fn test_a_survey_fails_on_a_projects_directory_it_cannot_list() {
+    use std::os::unix::fs::PermissionsExt;
+
     let world = World::new();
-    fs::create_dir_all(world.home.path().join(".ctxloom")).unwrap();
-    fs::write(world.projects(), "a file").unwrap();
+    fs::create_dir_all(world.projects()).unwrap();
+    // Its files can be opened by name (there is no registry yet), but it
+    // cannot be listed.
+    fs::set_permissions(world.projects(), fs::Permissions::from_mode(0o300)).unwrap();
     let error = world.registry(&[]).survey(None).unwrap_err();
+    fs::set_permissions(world.projects(), fs::Permissions::from_mode(0o700)).unwrap();
     assert_eq!(error.code(), "project-registry-io");
+    assert!(error.to_string().contains("projects"), "{error}");
 }
 
 // ------------------------------------------------------------ apply
