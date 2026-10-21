@@ -1,24 +1,30 @@
 //! The tasks command line: `add`, `list`, `tag` and `import`, translated
-//! into the application's use cases and their answers rendered. Text on a terminal,
-//! JSON otherwise, unless `--format` or `--json` says; the project a write
-//! went to on stderr, so stdout stays parseable. Exit 0, or 1 with the
-//! error on stderr.
+//! into the application's use cases and their answers rendered through
+//! presentation. Text on a terminal, JSON otherwise, unless `--format` or
+//! `--json` says; stdout holds the answer alone (one JSON document), and
+//! notices, such as the project a write went to, go to stderr. Exit 0, or 1
+//! with the error on stderr: its catalog message in text, its envelope in
+//! JSON.
 
 mod error;
 mod import;
+mod notice;
 mod render;
 
 use std::ffi::OsString;
 use std::io::{self, Write};
 
-use clap::{Parser, Subcommand, ValueEnum};
+use annals_diagnostic::Diagnostic;
+use clap::{Parser, Subcommand};
+use presentation::{Catalog, CatalogError, Format, Render, Source};
 use tasks_application::{
     ImportRequest, ImportService, ListQuery, NewTask, TagChange, TaskService, Written,
 };
 
-pub use error::{diagnostic_samples, CliError};
-pub use import::ImportJson;
-pub use render::{headline, rfc3339, table, TaskJson, HEADLINE_WIDTH};
+pub use error::{diagnostic_samples, CliError, EN_US};
+pub use import::{ImportJson, Imported};
+pub use notice::Notice;
+pub use render::{headline, rfc3339, table, Added, Listed, Tagged, TaskJson, HEADLINE_WIDTH};
 
 /// The program's name: every diagnostic's prefix.
 pub const PROG: &str = "taskloom";
@@ -32,17 +38,21 @@ pub struct Context {
     pub stdout_is_terminal: bool,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug, ValueEnum)]
-pub enum Format {
-    Text,
-    Json,
+/// The catalog of every diagnostic the command line prints: its own, the
+/// use cases', and `adapters'`, the driven adapters' catalogs, which only
+/// the composition root knows.
+pub fn catalog(adapters: &[Source]) -> Result<Catalog, CatalogError> {
+    let mut sources = vec![EN_US];
+    sources.extend(tasks_application::CATALOGS);
+    sources.extend_from_slice(adapters);
+    Catalog::en_us(&sources)
 }
 
 #[derive(Parser, Debug)]
 #[command(name = PROG, about = "Manage the per-project task store")]
 struct Cli {
     /// Output format: text, or json (the default when stdout is not a terminal).
-    #[arg(long, global = true, value_enum)]
+    #[arg(long, global = true)]
     format: Option<Format>,
     /// Shorthand for --format json.
     #[arg(long, global = true)]
@@ -99,31 +109,51 @@ enum Command {
 impl Cli {
     /// The format asked for, else text on a terminal and JSON off one.
     fn format(&self, context: &Context) -> Format {
-        match (self.json, self.format) {
-            (true, _) => Format::Json,
-            (false, Some(format)) => format,
-            (false, None) if context.stdout_is_terminal => Format::Text,
-            (false, None) => Format::Json,
-        }
+        Format::choose(self.json, self.format, context.stdout_is_terminal)
     }
 }
 
+/// The format `args` ask for, read without parsing them: for a usage
+/// error, where clap parsed nothing.
+fn asked_format(args: &[OsString], context: &Context) -> Format {
+    let (mut json, mut asked) = (false, None);
+    let mut words = args.iter().skip(1).map(|a| a.to_str().unwrap_or_default());
+    while let Some(word) = words.next() {
+        let value = match word {
+            "--" => break,
+            "--json" => {
+                json = true;
+                continue;
+            }
+            "--format" => words.next(),
+            _ => word.strip_prefix("--format="),
+        };
+        asked = value.and_then(|v| v.parse().ok()).or(asked);
+    }
+    Format::choose(json, asked, context.stdout_is_terminal)
+}
+
 /// Run the command line `args` (the program name first) against `service`,
-/// writing to `out` and `err`; the exit code.
+/// writing to `out` and `err` with messages from `catalog`; the exit code.
 pub async fn run<S: TaskService + ImportService>(
     args: impl IntoIterator<Item = OsString>,
     context: &Context,
+    catalog: &Catalog,
     service: &mut S,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> u8 {
-    let cli = match Cli::try_parse_from(args) {
+    let args: Vec<OsString> = args.into_iter().collect();
+    let cli = match Cli::try_parse_from(&args) {
         Ok(cli) => cli,
         Err(e) => {
             // Help and --version are answers, on stdout; the rest are
             // usage errors.
             if e.use_stderr() {
-                let _ = write!(err, "{}", e.render());
+                let usage = CliError::Usage {
+                    detail: e.render().to_string(),
+                };
+                let _ = report(&usage, asked_format(&args, context), catalog, err);
                 return 1;
             }
             let _ = write!(out, "{}", e.render());
@@ -147,9 +177,7 @@ pub async fn run<S: TaskService + ImportService>(
                 origin_session: context.session.clone(),
             };
             match service.add(task).await {
-                Ok(written) => written_task(&written, format, out, err, |t| {
-                    format!("{}\t{}\t{}", t.harp_id, t.status, t.text)
-                }),
+                Ok(written) => wrote(&written, &Added(&written.task), format, catalog, out, err),
                 Err(e) => Err(CliError::App(e)),
             }
         }
@@ -165,9 +193,7 @@ pub async fn run<S: TaskService + ImportService>(
                 remove,
             };
             match service.tag(change).await {
-                Ok(written) => written_task(&written, format, out, err, |t| {
-                    format!("{}\t{}\t{}", t.harp_id, t.status, t.tags.join(","))
-                }),
+                Ok(written) => wrote(&written, &Tagged(&written.task), format, catalog, out, err),
                 Err(e) => Err(CliError::App(e)),
             }
         }
@@ -178,7 +204,7 @@ pub async fn run<S: TaskService + ImportService>(
                 all,
             };
             match service.list(query).await {
-                Ok(listing) => listed(&listing, format, out, err),
+                Ok(listing) => listed(&listing, format, catalog, out, err),
                 Err(e) => Err(CliError::App(e)),
             }
         }
@@ -187,7 +213,7 @@ pub async fn run<S: TaskService + ImportService>(
                 project: cli.project,
             };
             match service.import(request).await {
-                Ok(report) => imported(&report, format, out),
+                Ok(report) => imported(&report, format, catalog, out),
                 Err(e) => Err(CliError::App(e)),
             }
         }
@@ -195,55 +221,69 @@ pub async fn run<S: TaskService + ImportService>(
     match result {
         Ok(()) => 0,
         Err(error) => {
-            let _ = writeln!(err, "{PROG}: {error}");
+            let _ = report(&error, format, catalog, err);
             1
         }
     }
 }
 
-/// Name the project on stderr, then render the task.
-fn written_task(
-    written: &Written,
+/// `error` on stderr: its envelope in JSON; in text its catalog message
+/// after the program's name, or a usage error as clap words it.
+fn report(
+    error: &CliError,
     format: Format,
-    out: &mut dyn Write,
+    catalog: &Catalog,
     err: &mut dyn Write,
-    line: impl Fn(&tasks_application::Task) -> String,
-) -> Result<(), CliError> {
-    let wrote = writeln!(
-        err,
-        "{PROG}: project {}",
-        render::project_label(&written.project)
-    )
-    .and_then(|()| match format {
-        Format::Text => writeln!(out, "{}", line(&written.task)),
-        Format::Json => render::json(out, &TaskJson::of(&written.task)),
-    });
-    wrote.map_err(output_failed)
+) -> io::Result<()> {
+    match (format, error) {
+        (Format::Json, _) => presentation::write_json(err, &catalog.envelope(error)),
+        (Format::Text, CliError::Usage { .. }) => write!(err, "{}", catalog.message(error)),
+        (Format::Text, _) => writeln!(err, "{PROG}: {}", catalog.message(error)),
+    }
 }
 
+/// `notice` on stderr, after the program's name.
+fn notify(notice: &Notice, catalog: &Catalog, err: &mut dyn Write) -> io::Result<()> {
+    writeln!(
+        err,
+        "{PROG}: {}",
+        catalog.message(notice as &dyn Diagnostic)
+    )
+}
+
+/// Name the project on stderr, then render the task.
+fn wrote(
+    written: &Written,
+    view: &impl Render,
+    format: Format,
+    catalog: &Catalog,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<(), CliError> {
+    notify(&Notice::project(&written.project), catalog, err)
+        .and_then(|()| presentation::render(out, format, view))
+        .map_err(output_failed)
+}
+
+/// Say on stderr when there is no project here, then render the listing.
 fn listed(
     listing: &tasks_application::Listing,
     format: Format,
+    catalog: &Catalog,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> Result<(), CliError> {
-    let wrote = match (&listing.project, format) {
-        (None, format) => writeln!(err, "{PROG}: no project here yet: nothing to list").and_then(
-            |()| match format {
-                Format::Text => render::table(out, &[]),
-                Format::Json => render::json(out, &Vec::<TaskJson>::new()),
-            },
-        ),
-        (Some(project), Format::Text) => {
-            writeln!(out, "Project: {}\n", render::project_label(project))
-                .and_then(|()| render::table(out, &listing.tasks))
-        }
-        (Some(_), Format::Json) => {
-            let tasks: Vec<TaskJson> = listing.tasks.iter().map(TaskJson::of).collect();
-            render::json(out, &tasks)
-        }
+    let view = Listed {
+        project: listing.project.as_ref(),
+        tasks: &listing.tasks,
     };
-    wrote.map_err(output_failed)
+    let noticed = match listing.project {
+        None => notify(&Notice::NoProject, catalog, err),
+        Some(_) => Ok(()),
+    };
+    noticed
+        .and_then(|()| presentation::render(out, format, &view))
+        .map_err(output_failed)
 }
 
 /// Render the report; refuse when it left something behind, so a script
@@ -251,13 +291,10 @@ fn listed(
 fn imported(
     report: &tasks_application::ImportReport,
     format: Format,
+    catalog: &Catalog,
     out: &mut dyn Write,
 ) -> Result<(), CliError> {
-    match format {
-        Format::Text => import::text(out, report),
-        Format::Json => render::json(out, &ImportJson::of(report)),
-    }
-    .map_err(output_failed)?;
+    presentation::render(out, format, &Imported { report, catalog }).map_err(output_failed)?;
     if report.complete() {
         return Ok(());
     }

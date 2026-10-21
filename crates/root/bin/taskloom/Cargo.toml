@@ -10,6 +10,7 @@ publish.workspace = true
 [dependencies]
 go-task-log.workspace = true
 harp-names.workspace = true
+presentation.workspace = true
 project-registry.workspace = true
 system.workspace = true
 task-store-sqlite.workspace = true
@@ -19,6 +20,7 @@ tokio.workspace = true
 
 [dev-dependencies]
 annals.workspace = true
+annals-diagnostic.workspace = true
 ports.workspace = true
 serde_json.workspace = true
 tasks.workspace = true

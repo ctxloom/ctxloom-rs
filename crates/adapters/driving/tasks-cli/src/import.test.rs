@@ -6,6 +6,10 @@ use tasks_application::{GoOp, ImportReport, Lost, ProjectImport, Why};
 
 use super::{text, ImportJson};
 
+fn catalog() -> presentation::Catalog {
+    crate::catalog(&[]).expect("the catalog loads")
+}
+
 fn every_count() -> ProjectImport {
     ProjectImport {
         project_id: "jolly-mute-magma".to_string(),
@@ -39,10 +43,12 @@ fn every_count() -> ProjectImport {
 
 fn texted(report: &ImportReport) -> String {
     let mut out = Vec::new();
-    text(&mut out, report).unwrap();
+    text(&mut out, report, &catalog()).unwrap();
     String::from_utf8(out).unwrap()
 }
 
+/// The record a rejection left behind gives the catalog's message, not the
+/// English it carried; a code no catalog has keeps its English.
 #[test]
 fn test_text_names_every_count_and_every_record_left_behind() {
     let mut stopped = every_count();
@@ -57,7 +63,7 @@ fn test_text_names_every_count_and_every_record_left_behind() {
          6 to no live task, as Go ignores them, 7 displaced adds Go's repair re-added, \
          2 not imported\n  \
          not imported: line 12, add swift-amber \"Ship it\": another task holds this harp in Go's log: run Go's `taskloom repair`, then import again\n  \
-         not imported: line 13, status calm-otter: needs a trigger\n  \
+         not imported: line 13, status calm-otter: a Deferred task needs a trigger: the condition that should revive it\n  \
          stopped: the store failed\n"
     );
 }
@@ -93,14 +99,14 @@ fn test_json_carries_the_whole_report() {
     let report = ImportReport {
         projects: vec![stopped],
     };
-    let json: Value = serde_json::to_value(ImportJson::of(&report)).unwrap();
+    let json: Value = serde_json::to_value(ImportJson::of(&report, &catalog())).unwrap();
     assert_eq!(
         json,
         json!({
             "complete": false,
             "projects": [{
                 "project_id": "jolly-mute-magma",
-                "failed": {"code": "x-bad", "message": "the store failed"},
+                "failed": {"code": "x-bad", "args": {}, "message": "the store failed"},
                 "records": 9,
                 "repeated": 1,
                 "tasks": 2,
@@ -117,6 +123,7 @@ fn test_json_carries_the_whole_report() {
                         "text": "Ship it\nwith notes",
                         "why": {
                             "code": "tasks-application-import-displaced",
+                            "args": {},
                             "message": "another task holds this harp in Go's log: run Go's `taskloom repair`, then import again"
                         }
                     },
@@ -125,7 +132,7 @@ fn test_json_carries_the_whole_report() {
                         "op": "status",
                         "harp_id": "calm-otter",
                         "text": "",
-                        "why": {"code": "tasks-trigger-required", "message": "needs a trigger"}
+                        "why": {"code": "tasks-trigger-required", "args": {}, "message": "a Deferred task needs a trigger: the condition that should revive it"}
                     }
                 ]
             }]
@@ -138,7 +145,7 @@ fn test_json_of_a_complete_import_says_so() {
     let report = ImportReport {
         projects: vec![ProjectImport::default()],
     };
-    let json: Value = serde_json::to_value(ImportJson::of(&report)).unwrap();
+    let json: Value = serde_json::to_value(ImportJson::of(&report, &catalog())).unwrap();
     assert_eq!(json["complete"], true);
     assert_eq!(json["projects"][0]["failed"], Value::Null);
 }

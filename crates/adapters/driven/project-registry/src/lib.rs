@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use annals_diagnostic::Report;
 use ports::{Names, Project, ProjectIdentity};
 
-pub use error::{diagnostic_samples, RegistryError};
+pub use error::{diagnostic_samples, RegistryError, EN_US};
 
 /// How many project ids a mint draws before giving up, each already
 /// registered: Go's `harp.UniqueFrom`.

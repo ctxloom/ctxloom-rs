@@ -75,6 +75,13 @@ impl Diagnostic for LogError {
     }
 }
 
+/// This crate's en-US messages, its name first: what an edge's catalog
+/// embeds to render its diagnostics.
+pub const EN_US: (&str, &str) = (
+    "go-task-log",
+    include_str!("../locales/en-US/go-task-log.ftl"),
+);
+
 /// One value of every error, for the catalog test.
 pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
     let path = || "/home/u/.ctxloom/tasks/jolly-mute-magma.jsonl".to_string();

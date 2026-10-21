@@ -17,7 +17,7 @@ use std::convert::Infallible;
 use annals::next::{ids, Domain, IngestCtx, Tx};
 
 pub use generated::*;
-pub use rejection::{diagnostic_samples, TaskRejection};
+pub use rejection::{diagnostic_samples, TaskRejection, EN_US};
 
 /// The status a task gets when none is given.
 pub const TO_DO: &str = "To Do";

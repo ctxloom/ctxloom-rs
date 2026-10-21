@@ -25,7 +25,7 @@ use tasks::{
 };
 
 pub use annals::next::Timestamp;
-pub use error::{diagnostic_samples, AppError};
+pub use error::{diagnostic_samples, AppError, CATALOGS, EN_US};
 pub use import::{
     anomaly_key, record_command_id, rfc3339_nano, ImportReport, ImportRequest, ImportService, Lost,
     NoGoLogs, ProjectImport, Why,

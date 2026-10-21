@@ -19,7 +19,7 @@ use serde::Deserialize;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
-pub use error::{diagnostic_samples, LogError};
+pub use error::{diagnostic_samples, LogError, EN_US};
 
 /// The log file's extension.
 const EXTENSION: &str = "jsonl";

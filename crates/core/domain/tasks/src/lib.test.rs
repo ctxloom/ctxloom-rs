@@ -664,7 +664,7 @@ fn test_a_rejection_renders_its_english_fallback() {
 fn test_every_rejection_has_a_catalog_message_with_exactly_its_args() {
     use fluent_syntax::ast::{Entry, Expression, InlineExpression, PatternElement};
 
-    let ftl = include_str!("../locales/en-US/tasks.ftl");
+    let ftl = crate::EN_US.1;
     let resource = fluent_syntax::parser::parse(ftl).expect("the catalog parses");
     let samples = crate::diagnostic_samples();
     // Both ways: every catalog message has a sample, and every sample a

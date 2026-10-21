@@ -87,7 +87,7 @@ fn test_each_error_gives_its_args_values() {
 fn test_every_error_has_a_catalog_message_with_exactly_its_args() {
     use fluent_syntax::ast::{Entry, Expression, InlineExpression, PatternElement};
 
-    let ftl = include_str!("../locales/en-US/tasks-application.ftl");
+    let ftl = crate::EN_US.1;
     let resource = fluent_syntax::parser::parse(ftl).expect("the catalog parses");
     let samples = diagnostic_samples();
     let mut catalog: Vec<&str> = resource

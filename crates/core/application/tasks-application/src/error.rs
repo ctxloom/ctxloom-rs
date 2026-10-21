@@ -84,6 +84,17 @@ impl Diagnostic for AppError {
     }
 }
 
+/// This crate's en-US messages, its name first: what an edge's catalog
+/// embeds to render its diagnostics.
+pub const EN_US: (&str, &str) = (
+    "tasks-application",
+    include_str!("../locales/en-US/tasks-application.ftl"),
+);
+
+/// The en-US catalogs of every diagnostic a use case returns but its
+/// adapters': the domain's rejections and this crate's errors.
+pub const CATALOGS: [(&str, &str); 2] = [tasks::EN_US, EN_US];
+
 /// One value of every error this crate defines, and of every reason an
 /// import gives for leaving a record behind (not the wrappers, whose codes
 /// are their causes'), for the catalog test.

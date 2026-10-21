@@ -5,6 +5,8 @@ use std::fmt;
 use annals_diagnostic::{Arg, Diagnostic};
 use tasks_application::AppError;
 
+use crate::Notice;
+
 #[derive(Clone, PartialEq, Debug)]
 pub enum CliError {
     /// The use case failed: its error's diagnostic.
@@ -14,6 +16,9 @@ pub enum CliError {
     /// An import left something behind: projects it stopped in, and
     /// records it could not bring over.
     Incomplete { stopped: usize, lost: usize },
+    /// The command line could not be parsed: clap's account of why, with
+    /// the usage.
+    Usage { detail: String },
 }
 
 impl fmt::Display for CliError {
@@ -25,6 +30,7 @@ impl fmt::Display for CliError {
                 f,
                 "not everything was imported: {stopped} projects stopped, {lost} records not imported"
             ),
+            CliError::Usage { detail } => f.write_str(detail),
         }
     }
 }
@@ -35,13 +41,16 @@ impl Diagnostic for CliError {
             CliError::App(error) => error.code(),
             CliError::Output { .. } => "tasks-cli-output",
             CliError::Incomplete { .. } => "tasks-cli-import-incomplete",
+            CliError::Usage { .. } => "tasks-cli-usage",
         }
     }
 
     fn args(&self) -> Vec<(&'static str, Arg)> {
         match self {
             CliError::App(error) => error.args(),
-            CliError::Output { detail } => vec![("detail", detail.as_str().into())],
+            CliError::Output { detail } | CliError::Usage { detail } => {
+                vec![("detail", detail.as_str().into())]
+            }
             CliError::Incomplete { stopped, lost } => {
                 vec![("stopped", (*stopped).into()), ("lost", (*lost).into())]
             }
@@ -49,8 +58,12 @@ impl Diagnostic for CliError {
     }
 }
 
-/// One value of every error this crate defines (not the wrapper), for the
-/// catalog test.
+/// This crate's en-US messages, its name first: what an edge's catalog
+/// embeds to render its diagnostics.
+pub const EN_US: (&str, &str) = ("tasks-cli", include_str!("../locales/en-US/tasks-cli.ftl"));
+
+/// One value of every error and notice this crate defines (not the
+/// wrapper), for the catalog test.
 pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
     vec![
         Box::new(CliError::Output {
@@ -60,6 +73,14 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
             stopped: 1,
             lost: 2,
         }),
+        Box::new(CliError::Usage {
+            detail: "error: unrecognized subcommand 'frobnicate'\n".to_string(),
+        }),
+        Box::new(Notice::Project {
+            root: "/work/tree".to_string(),
+            id: "jolly-mute-magma".to_string(),
+        }),
+        Box::new(Notice::NoProject),
     ]
 }
 

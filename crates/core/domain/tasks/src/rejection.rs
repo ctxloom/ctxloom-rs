@@ -81,6 +81,10 @@ impl Diagnostic for TaskRejection {
     }
 }
 
+/// This crate's en-US messages, its name first: what an edge's catalog
+/// embeds to render its diagnostics.
+pub const EN_US: (&str, &str) = ("tasks", include_str!("../locales/en-US/tasks.ftl"));
+
 /// One value of every rejection, for the catalog test.
 pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
     let harp_id = || "swift-amber".to_string();
