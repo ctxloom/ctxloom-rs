@@ -288,6 +288,23 @@ fn test_a_watch_of_no_store_yet_reads_nothing_until_one_appears() {
     assert_eq!(service.stores.store.reads, reads + 1, "then the token");
 }
 
+// ------------------------------------------------------------ prune
+
+#[test]
+fn test_a_prune_landing_whole_between_polls_answers_the_removal() {
+    let mut service = service(&["swift-amber", "quiet-heron"]);
+    add(&mut service, "Pruned");
+    add(&mut service, "Kept");
+    let mut watch = ready(service.watch(WatchRequest::default()))
+        .unwrap()
+        .unwrap();
+    remove_for(&mut service, "swift-amber", RemovalReason::Pruned);
+    ready(service.stores.store.purge(&cover("swift-amber"))).unwrap();
+    let changes = ready(service.poll(&mut watch)).unwrap();
+    assert_eq!(texts(&changes), ["swift-amber removed"]);
+    assert_eq!(ready(service.poll(&mut watch)).unwrap(), vec![]);
+}
+
 /// Compiles only for a `Send` value.
 fn is_send<T: Send>(_: &T) {}
 

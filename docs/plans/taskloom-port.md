@@ -22,7 +22,9 @@ and angzarr here.
   (`TaskRemoved{PRUNED}`), so a task minted on the freed harp, whose
   stream restarts at sequence 0, is listed; a stream read back with no
   events lists nothing. It names each task a prune removed whose stream
-  is still held (`unpurged`), for a prune to finish.
+  is still held (`unpurged`), for a prune to finish. A catch-up drops
+  each task whose stream the store no longer holds, and forgets the
+  stream: a prune that landed whole since a long-lived list last read.
 - `core/ports/ports`: project identity and its survey (`ProjectAdmin`), the
   store opener, `PurgingStore` (a store whose store and units of work
   implement annals' opt-in `AsyncPurge`, as SQLite's do), names, the
@@ -592,10 +594,10 @@ new task minted on the freed harp, whose stream starts again at sequence 0
 (appended at expected 0), would be skipped as already seen. A long-lived
 projector that re-reads a pruned stream before its purge lands projects its
 events again (the task back, then removed again): the end state is right,
-the deltas between are not. `watch` (step 7) holds such a projector: a
-poll landing between a prune's removal and its purge answers the task
-back and removed again, so a subscriber gets a `changed` line for it,
-and no list it reads is wrong.
+the deltas between are not. A prune that lands whole between two
+catch-ups (the usual case for a watch polling every 100ms) is seen from
+the stream's absence: the catch-up drops each task whose stream the
+store no longer holds, with a removal delta, and forgets the stream.
 
 ## Project identity: heal and repoint
 
