@@ -20,3 +20,13 @@ pre-commit:
     deps:
       priority: 4
       run: just lint-deps
+    tests:
+      # The tests of the crates the commit changes and of their workspace
+      # dependents, over the STAGED tree (`just test-staged` says how).
+      priority: 5
+      run: just test-staged
+    mutants:
+      # cargo mutants over the staged diff, judged per tier by the justfile's
+      # mutation_thresholds; last, because it is the slowest.
+      priority: 6
+      run: just mutants-staged

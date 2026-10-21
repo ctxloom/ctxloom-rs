@@ -95,5 +95,8 @@ crate's catalog test checks messages and samples both ways.
 
 `just test`, `just lint` (clippy, warnings denied) and `just lint-deps`
 (cargo-deny) are the checks; lefthook's pre-commit runs fmt, gitleaks,
-clippy and cargo-deny. Mutation testing (`cargo mutants`) holds new logic to
-its tier: domain and read models 85% or more, adapters 50% or more.
+clippy and cargo-deny, then judges the staged change alone: `just
+test-staged` tests the changed crates and their dependents, and `just
+mutants-staged` mutation-tests the staged diff (`cargo mutants --in-diff`),
+holding new logic to its tier: domain and read models 85% or more, adapters
+50% or more (the justfile's `mutation_thresholds` has every tier).
