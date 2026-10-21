@@ -9,6 +9,7 @@ package ctxloom.tasks.v1;
 
 import "google/protobuf/timestamp.proto";
 import "io/angzarr/v1/options.proto";
+import "tagma/v1/tag.proto";
 
 // The task, folded from its events. Derived values (whether the status is
 // terminal, the text hash, a priority) are computed when read, never stored.
@@ -30,8 +31,8 @@ message TaskState {
   string trigger = 4;
   // The session that created the task, if one did.
   string origin_session = 5;
-  // Normalized: trimmed, non-empty, unique, sorted.
-  repeated string tags = 6;
+  // Normalized: unique, sorted by their canonical spelling.
+  repeated tagma.v1.Tag tags = 6;
   google.protobuf.Timestamp created_at = 7;
   // When the status last changed (the add counts).
   google.protobuf.Timestamp status_set_at = 8;
@@ -58,7 +59,7 @@ message AddTask {
   string status = 3;
   // Required when status is Deferred.
   string trigger = 4;
-  repeated string tags = 5;
+  repeated tagma.v1.Tag tags = 5;
   string origin_session = 6;
 }
 
@@ -94,8 +95,8 @@ message Retag {
     emits: ["ctxloom.tasks.v1.Retagged"]
   };
 
-  repeated string add = 1;
-  repeated string remove = 2;
+  repeated tagma.v1.Tag add = 1;
+  repeated tagma.v1.Tag remove = 2;
 }
 
 message RemoveTask {
@@ -135,7 +136,7 @@ message TaskAdded {
   string status = 3;
   string trigger = 4;
   // Normalized.
-  repeated string tags = 5;
+  repeated tagma.v1.Tag tags = 5;
   string origin_session = 6;
   google.protobuf.Timestamp at = 7;
   // `at` when the task is added Deferred; absent otherwise.
@@ -165,7 +166,7 @@ message Retagged {
   option (io.angzarr.v1.event) = {component: "ctxloom.tasks.v1.TaskState"};
 
   // The task's tags after the retag, normalized.
-  repeated string tags = 1;
+  repeated tagma.v1.Tag tags = 1;
 }
 
 message TaskRemoved {

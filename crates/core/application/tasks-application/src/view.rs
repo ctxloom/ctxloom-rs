@@ -3,7 +3,7 @@
 
 use annals::next::Timestamp;
 use sha2::{Digest, Sha256};
-use tasks::TaskState;
+use tasks::{Tag, TaskState};
 
 /// The status of a finished task.
 pub const DONE: &str = "Done";
@@ -28,8 +28,9 @@ pub struct Task {
     pub text_hash: String,
     pub trigger: String,
     pub origin_session: String,
-    /// Normalized: unique and sorted.
-    pub tags: Vec<String>,
+    /// Normalized: unique, sorted by their canonical spelling (their
+    /// `Display`).
+    pub tags: Vec<Tag>,
     pub created_at: Timestamp,
 }
 
@@ -58,6 +59,37 @@ pub fn text_hash(text: &str) -> String {
         .take(6)
         .map(|byte| format!("{byte:02x}"))
         .collect()
+}
+
+/// Which of a task's tags a person is shown: tagma's display hiding
+/// (SPEC §7), from the tag schema's `hide` facts, with `tagma:*` hidden
+/// unless a fact says otherwise. Storage, matching and JSON are never
+/// touched: only what a person reads.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Shown(tagma_core::HideConfig);
+
+impl Shown {
+    /// What `schema`'s hide facts show.
+    pub fn of(schema: &crate::TagSchema) -> Shown {
+        Shown(tagma_core::HideConfig::from_patterns(schema.hide_facts()))
+    }
+
+    /// Whether `tag` is shown.
+    pub fn shows(&self, tag: &Tag) -> bool {
+        !tagma_core::tag_hidden(&tag.to_core(), &self.0)
+    }
+
+    /// Those of `tags` shown, in their order.
+    pub fn shown<'a>(&self, tags: &'a [Tag]) -> Vec<&'a Tag> {
+        tags.iter().filter(|t| self.shows(t)).collect()
+    }
+}
+
+/// What no hide fact shows: everything but `tagma:*`.
+impl Default for Shown {
+    fn default() -> Self {
+        Shown::of(&crate::TagSchema::default())
+    }
 }
 
 #[cfg(test)]

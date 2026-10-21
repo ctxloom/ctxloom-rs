@@ -103,6 +103,11 @@ struct Compared {
     go_tasks: usize,
     /// Tasks that agree on every field.
     agreeing: usize,
+    /// The tags of the live tasks in Go's fold, each task's counted.
+    go_tags: usize,
+    /// Those of them that are not tags in tagma's grammar: the import
+    /// reports each and leaves it out.
+    unparseable_tags: usize,
     /// `<harp>: <field>` for every field that disagrees: values are left
     /// out, since a real log's are private.
     mismatches: Vec<String>,
@@ -126,12 +131,22 @@ fn compare(go: &Value, rust: &BTreeMap<String, TaskState>) -> Compared {
                 fields.push("removed");
             }
         } else {
-            let tags: Vec<String> = task["tags"]
-                .as_array()
-                .unwrap()
+            // Go's tags as tagma parses them, each in its canonical
+            // spelling; one that does not parse is left out, as the import
+            // leaves it out.
+            let go_tags = task["tags"].as_array().unwrap();
+            compared.go_tags += go_tags.len();
+            let tags: BTreeSet<String> = go_tags
                 .iter()
-                .map(|t| t.as_str().unwrap().to_string())
+                .filter_map(|t| tagma_core::Tag::parse(t.as_str().unwrap()).ok())
+                .map(|t| t.to_string())
                 .collect();
+            compared.unparseable_tags += go_tags
+                .iter()
+                .filter(|t| tagma_core::Tag::parse(t.as_str().unwrap()).is_err())
+                .count();
+            let tags: Vec<String> = tags.into_iter().collect();
+            let ours: Vec<String> = state.tags.iter().map(ToString::to_string).collect();
             let checks = [
                 ("removed", !state.removed),
                 ("text", task["text"] == state.text),
@@ -141,7 +156,7 @@ fn compare(go: &Value, rust: &BTreeMap<String, TaskState>) -> Compared {
                     "origin_session",
                     task["origin_session"] == state.origin_session,
                 ),
-                ("tags", tags == state.tags),
+                ("tags", tags == ours),
                 (
                     "created_at",
                     instant(&task["created_at"]) == Some(state.created_at),
@@ -318,6 +333,27 @@ fn test_the_import_agrees_with_gos_fold_of_every_fixture() {
             ),
         ]
     );
+    // A Go tag outside tagma's grammar is reported, record by record, and
+    // left out; the rest of the record imports, and `k="v"` is `k=v`.
+    let unparseable = reported(&report, "unparseable-tags");
+    let tag = code("tasks-application-tag-unparseable");
+    let heron = || harp("brisk-heron");
+    assert_eq!(
+        lost(unparseable),
+        [
+            (1, heron(), tag.clone()),
+            (1, heron(), tag.clone()),
+            (2, heron(), tag.clone()),
+            (3, heron(), tag.clone()),
+            (4, heron(), tag.clone()),
+        ]
+    );
+    assert_eq!(
+        unparseable["lost"][1]["why"]["args"]["tag"], "area/cli",
+        "each names its tag"
+    );
+    assert_eq!(compared["unparseable-tags"].go_tags, 5);
+    assert_eq!(compared["unparseable-tags"].unparseable_tags, 3);
     for (project, compared) in &compared {
         if project != "domain-refusals" {
             assert_eq!(compared.mismatches, Vec::<String>::new(), "{project}");
@@ -361,7 +397,10 @@ fn test_the_import_agrees_with_gos_fold_of_real_logs() {
     let (ran, report) = import(home.path());
     let compared = check(&go, home.path(), &report);
     let mut mismatched = 0;
+    let (mut tags, mut unparseable) = (0, 0);
     for (project, compared) in &compared {
+        tags += compared.go_tags;
+        unparseable += compared.unparseable_tags;
         let ours = reported(&report, project);
         println!(
             "{project}: {} Go tasks, {} agree; {} records, {} imported, {} repeated, {} unchanged, {} ignored, {} repaired, {} not imported",
@@ -383,7 +422,25 @@ fn test_the_import_agrees_with_gos_fold_of_real_logs() {
         }
         mismatched += compared.mismatches.len();
     }
+    println!(
+        "tags of live tasks: {tags}, {} parse, {unparseable} do not",
+        tags - unparseable
+    );
     assert_idempotent(home.path(), &report);
     assert_eq!(mismatched, 0, "every task agrees");
-    assert!(ran.ok, "everything imported: {}", ran.stderr);
+    // What is left behind is only what tagma cannot parse, if anything.
+    let all_lost: Vec<String> = report["projects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|p| lost(p).into_iter().map(|(_, _, why)| why))
+        .collect();
+    assert!(
+        all_lost
+            .iter()
+            .all(|why| why == "tasks-application-tag-unparseable"),
+        "everything else imported: {}",
+        ran.stderr
+    );
+    assert_eq!(ran.ok, all_lost.is_empty());
 }

@@ -6,7 +6,7 @@
 //! store-backed pipeline together.
 
 use crate::{
-    AddTask, EditText, RemovalReason, RemoveTask, Retag, Retagged, SetStatus, StatusChanged,
+    AddTask, EditText, RemovalReason, RemoveTask, Retag, Retagged, SetStatus, StatusChanged, Tag,
     TaskAdded, TaskCommand, TaskEvent, TaskRejection, TaskRemoved, TaskState, Tasks, TextEdited,
     DEFERRED, TO_DO,
 };
@@ -152,13 +152,17 @@ fn status(status: &str, trigger: &str) -> SetStatus {
 
 fn retag(add: &[&str], remove: &[&str]) -> Retag {
     Retag {
-        add: add.iter().map(|t| t.to_string()).collect(),
-        remove: remove.iter().map(|t| t.to_string()).collect(),
+        add: tags(add),
+        remove: tags(remove),
     }
 }
 
-fn strings(values: &[&str]) -> Vec<String> {
-    values.iter().map(|v| v.to_string()).collect()
+/// Each of `spelled`, parsed as tagma parses a tag.
+fn tags(spelled: &[&str]) -> Vec<Tag> {
+    spelled
+        .iter()
+        .map(|s| tagma_core::Tag::parse(s).expect("a valid tag").into())
+        .collect()
 }
 
 // ------------------------------------------------------------ usage
@@ -195,12 +199,40 @@ fn test_add_records_the_task_with_its_creation_time() {
 fn test_add_trims_text_and_normalizes_tags() {
     let mut task = Task::new();
     task.run(AddTask {
-        tags: strings(&[" urgent", "", "release", "urgent", "  "]),
+        tags: tags(&["urgent", "release", "urgent", "\"urgent\""]),
         ..add("  Ship it \n")
     })
     .unwrap();
     assert_eq!(task.state().text, "Ship it");
-    assert_eq!(task.state().tags, strings(&["release", "urgent"]));
+    assert_eq!(task.state().tags, tags(&["release", "urgent"]));
+}
+
+// Sorted as Go's taskloom sorted its tag strings: by the spelling, so a
+// namespace or a value sorts by its characters, not as a component.
+#[test]
+fn test_tags_are_sorted_by_their_canonical_spelling() {
+    let mut task = Task::new();
+    task.run(AddTask {
+        tags: tags(&["b", "a=\"x y\"", "a:z", "a"]),
+        ..add("Ship it")
+    })
+    .unwrap();
+    let spelled: Vec<String> = task.state().tags.iter().map(Tag::to_string).collect();
+    assert_eq!(spelled, ["a", "a:z", "a=\"x y\"", "b"]);
+}
+
+// A tag and the same tag with a value, or in a namespace, are different
+// tags; removing one leaves the others.
+#[test]
+fn test_a_retag_removes_exactly_the_tag_it_names() {
+    let mut task = Task::new();
+    task.run(AddTask {
+        tags: tags(&["level", "level=1", "triage:level=1"]),
+        ..add("Ship it")
+    })
+    .unwrap();
+    task.run(retag(&[], &["level=1"])).unwrap();
+    assert_eq!(task.state().tags, tags(&["level", "triage:level=1"]));
 }
 
 #[test]
@@ -301,7 +333,7 @@ fn test_edit_text_replaces_the_text_whole() {
 fn test_retag_records_the_tags_the_task_holds_after_it() {
     let mut task = Task::new();
     task.run(AddTask {
-        tags: strings(&["later", "release"]),
+        tags: tags(&["later", "release"]),
         ..add("Ship it")
     })
     .unwrap();
@@ -311,10 +343,10 @@ fn test_retag_records_the_tags_the_task_holds_after_it() {
     assert_eq!(
         events,
         vec![TaskEvent::Retagged(Retagged {
-            tags: strings(&["release", "urgent"]),
+            tags: tags(&["release", "urgent"]),
         })]
     );
-    assert_eq!(task.state().tags, strings(&["release", "urgent"]));
+    assert_eq!(task.state().tags, tags(&["release", "urgent"]));
 }
 
 #[test]
@@ -323,7 +355,7 @@ fn test_retag_with_only_tags_to_add_records_them() {
     assert_eq!(
         task.run(retag(&["urgent"], &[])).unwrap(),
         vec![TaskEvent::Retagged(Retagged {
-            tags: strings(&["urgent"]),
+            tags: tags(&["urgent"]),
         })]
     );
 }
@@ -332,7 +364,7 @@ fn test_retag_with_only_tags_to_add_records_them() {
 fn test_retag_with_only_tags_to_remove_records_them() {
     let mut task = Task::new();
     task.run(AddTask {
-        tags: strings(&["later"]),
+        tags: tags(&["later"]),
         ..add("Ship it")
     })
     .unwrap();
@@ -340,21 +372,21 @@ fn test_retag_with_only_tags_to_remove_records_them() {
         task.run(retag(&[], &["later"])).unwrap(),
         vec![TaskEvent::Retagged(Retagged { tags: Vec::new() })]
     );
-    assert_eq!(task.state().tags, Vec::<String>::new());
+    assert_eq!(task.state().tags, Vec::<Tag>::new());
 }
 
 #[test]
 fn test_retag_naming_a_tag_in_both_lists_ends_without_it() {
     let mut task = Task::added("Ship it");
     task.run(retag(&["urgent"], &["urgent"])).unwrap();
-    assert_eq!(task.state().tags, Vec::<String>::new());
+    assert_eq!(task.state().tags, Vec::<Tag>::new());
 }
 
 #[test]
 fn test_retag_that_changes_nothing_records_nothing() {
     let mut task = Task::new();
     task.run(AddTask {
-        tags: strings(&["urgent"]),
+        tags: tags(&["urgent"]),
         ..add("Ship it")
     })
     .unwrap();
@@ -502,7 +534,7 @@ fn test_edit_text_to_nothing_is_refused() {
 #[test]
 fn test_retag_without_a_tag_is_refused() {
     assert_eq!(
-        Task::added("Ship it").run(retag(&[" "], &[])),
+        Task::added("Ship it").run(retag(&[], &[])),
         Err(TaskRejection::TagRequired)
     );
 }
@@ -585,7 +617,7 @@ fn test_an_event_round_trips_through_the_wire() {
 fn test_a_snapshot_resumes_to_the_same_state() {
     let mut task = Task::new();
     task.run(AddTask {
-        tags: strings(&["urgent"]),
+        tags: tags(&["urgent"]),
         status: DEFERRED.to_string(),
         trigger: "after the release".to_string(),
         ..add("Ship it")

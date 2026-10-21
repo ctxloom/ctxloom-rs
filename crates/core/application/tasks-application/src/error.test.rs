@@ -16,8 +16,11 @@ fn arg_names(d: &dyn Diagnostic) -> Vec<&'static str> {
 fn test_a_wrapper_is_its_causes_diagnostic() {
     for wrapper in [
         AppError::Rejected(cause()),
+        AppError::TagRefused(cause()),
         AppError::Failed(cause()),
         AppError::Identity(cause()),
+        AppError::Configuration(cause()),
+        AppError::TagQuery(cause()),
     ] {
         assert_eq!(wrapper.code(), "tasks-text-required");
         assert_eq!(wrapper.to_string(), "a task needs text");

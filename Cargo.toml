@@ -31,10 +31,19 @@ project-registry = { path = "crates/adapters/driven/project-registry" }
 harp-names = { path = "crates/adapters/driven/harp-names" }
 task-store-sqlite = { path = "crates/adapters/driven/task-store-sqlite" }
 go-task-log = { path = "crates/adapters/driven/go-task-log" }
+tasks-config = { path = "crates/adapters/driven/tasks-config" }
 system = { path = "crates/adapters/driven/system" }
 tasks-cli = { path = "crates/adapters/driving/tasks-cli" }
 presentation = { path = "crates/adapters/driving/presentation" }
 project-cli = { path = "crates/adapters/driving/project-cli" }
+
+# tagma: the tag grammar and query engine (tagma-core) and its Tag message
+# (tagma-proto), from tagma's `tag-proto` worktree while the two change
+# together. Once tag-proto is merged in tagma this path becomes
+# `../../kvtag/crates/...` (tagma's primary checkout), or a git dependency
+# pinned by commit.
+tagma-core = { path = "../../worktrees/kvtag--tag-proto/crates/tagma-core" }
+tagma-proto = { path = "../../worktrees/kvtag--tag-proto/crates/tagma-proto" }
 
 # Task and project ids: harp's word lists, as Go's harp ports them.
 harp-core = { git = "https://github.com/benjaminabbitt/harp", rev = "21648c9712ab60a84b609e1321201f158203a4bc" }

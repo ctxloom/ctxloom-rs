@@ -61,6 +61,11 @@ struct Cli<X: Subcommand> {
     /// Project id to act on (overrides CTXLOOM_PROJECT_ID and the working directory's).
     #[arg(long, global = true)]
     project: Option<String>,
+    /// Override a configuration key for this run: <path>=<value>, e.g.
+    /// tag_schema=<declaration>,... (repeatable; beats TASKLOOM_CONFIG_*
+    /// and every config.yaml).
+    #[arg(long = "config-set", global = true, value_name = "PATH=VALUE")]
+    config_set: Vec<String>,
     #[command(subcommand)]
     command: Command<X>,
 }
@@ -90,6 +95,13 @@ enum Command<X: Subcommand> {
         /// Include the tasks hidden by default.
         #[arg(long)]
         all: bool,
+        /// Only the tasks this tag query selects: postfix, tags first and
+        /// the operator after (urgent/release/and, urgent/not), or infix
+        /// (urgent and not release). Operators: and, or, not; atoms
+        /// [ns:]key[op value] with op one of = != > >= < <= ~, and * (any)
+        /// or + (present) for a namespace, key or value.
+        #[arg(long = "tag-query", default_value = "")]
+        tag_query: String,
     },
     /// Add and/or remove tags on a task; adds apply before removes.
     Tag {
@@ -168,6 +180,29 @@ pub async fn run<S: TaskService + ImportService>(
     run_mounted(args, context, catalog, service, unmounted, out, err).await
 }
 
+/// The command line parsed, or the exit code of answering it without a
+/// command: help and --version on stdout, a usage error on `err`.
+fn parse<X: Subcommand>(
+    args: impl IntoIterator<Item = OsString>,
+    context: &Context,
+    catalog: &Catalog,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<Cli<X>, u8> {
+    let args: Vec<OsString> = args.into_iter().collect();
+    Cli::<X>::try_parse_from(&args).map_err(|e| {
+        if e.use_stderr() {
+            let usage = CliError::Usage {
+                detail: e.render().to_string(),
+            };
+            let _ = report(&usage, asked_format(&args, context), catalog, err);
+            return 1;
+        }
+        let _ = write!(out, "{}", e.render());
+        0
+    })
+}
+
 /// [`run`], with the commands `X` mounted beside the task commands: one
 /// of them parsed is handed to `mounted` with the global flags and the
 /// catalog it renders its diagnostics from, and its exit code is the
@@ -181,22 +216,9 @@ pub async fn run_mounted<S: TaskService + ImportService, X: Subcommand>(
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> u8 {
-    let args: Vec<OsString> = args.into_iter().collect();
-    let cli = match Cli::<X>::try_parse_from(&args) {
+    let cli = match parse::<X>(args, context, catalog, out, err) {
         Ok(cli) => cli,
-        Err(e) => {
-            // Help and --version are answers, on stdout; the rest are
-            // usage errors.
-            if e.use_stderr() {
-                let usage = CliError::Usage {
-                    detail: e.render().to_string(),
-                };
-                let _ = report(&usage, asked_format(&args, context), catalog, err);
-                return 1;
-            }
-            let _ = write!(out, "{}", e.render());
-            return 0;
-        }
+        Err(code) => return code,
     };
     let format = cli.format(context);
     let result = match cli.command {
@@ -213,6 +235,7 @@ pub async fn run_mounted<S: TaskService + ImportService, X: Subcommand>(
                 trigger,
                 tags,
                 origin_session: context.session.clone(),
+                config_set: cli.config_set,
             };
             match service.add(task).await {
                 Ok(written) => wrote(&written, &Added(&written.task), format, catalog, out, err),
@@ -229,17 +252,31 @@ pub async fn run_mounted<S: TaskService + ImportService, X: Subcommand>(
                 harp_id,
                 add,
                 remove,
+                config_set: cli.config_set,
             };
             match service.tag(change).await {
-                Ok(written) => wrote(&written, &Tagged(&written.task), format, catalog, out, err),
+                Ok(written) => wrote(
+                    &written,
+                    &Tagged(&written.task, &written.shown),
+                    format,
+                    catalog,
+                    out,
+                    err,
+                ),
                 Err(e) => Err(CliError::App(e)),
             }
         }
-        Command::List { status, all } => {
+        Command::List {
+            status,
+            all,
+            tag_query,
+        } => {
             let query = ListQuery {
                 project: cli.project,
                 statuses: status,
                 all,
+                tag_query,
+                config_set: cli.config_set,
             };
             match service.list(query).await {
                 Ok(listing) => listed(&listing, format, catalog, out, err),
@@ -321,6 +358,7 @@ fn listed(
     let view = Listed {
         project: listing.project.as_ref(),
         tasks: &listing.tasks,
+        shown: &listing.shown,
     };
     let noticed = match listing.project {
         None => notify(&Notice::NoProject, catalog, err),

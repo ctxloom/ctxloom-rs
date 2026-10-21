@@ -18,6 +18,7 @@ system.workspace = true
 task-store-sqlite.workspace = true
 tasks-application.workspace = true
 tasks-cli.workspace = true
+tasks-config.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
@@ -25,6 +26,7 @@ annals.workspace = true
 annals-diagnostic.workspace = true
 ports.workspace = true
 serde_json.workspace = true
+tagma-core.workspace = true
 tasks.workspace = true
 tempfile.workspace = true
 time.workspace = true

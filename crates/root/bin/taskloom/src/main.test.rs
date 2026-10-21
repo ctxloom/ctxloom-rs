@@ -92,6 +92,11 @@ impl Env {
     /// Run `taskloom args` in the project directory, with only HOME, PATH
     /// and the session in its environment. Safe to call concurrently.
     fn run(&self, args: &[&str]) -> Ran {
+        self.run_with(args, &[])
+    }
+
+    /// [`Env::run`], with `vars` in its environment too.
+    fn run_with(&self, args: &[&str], vars: &[(&str, &str)]) -> Ran {
         let output = Command::new(binary())
             .args(args)
             .current_dir(self.project.path())
@@ -99,6 +104,7 @@ impl Env {
             .env("HOME", self.home.path())
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
             .env("CTXLOOM_SESSION_HARP", self.session)
+            .envs(vars.iter().copied())
             .output()
             .expect("taskloom runs");
         Ran::of(output)
@@ -394,6 +400,7 @@ fn test_every_diagnostic_of_every_crate_renders_from_the_binarys_catalog() {
         project_application::diagnostic_samples(),
         project_cli::diagnostic_samples(),
         go_task_log::diagnostic_samples(),
+        tasks_config::diagnostic_samples(),
         presentation::diagnostic_samples(),
     ]
     .into_iter()
@@ -444,6 +451,16 @@ fn test_in_json_each_command_writes_one_document_and_errors_an_envelope() {
     let listed = env.run(&["list", "--json"]);
     assert!(listed.ok, "{}", listed.stderr);
     assert_eq!(one_document(&listed.stdout)[0]["harp_id"], harp.as_str());
+    let queried = env.run(&["list", "--tag-query", "x", "--json"]);
+    assert!(queried.ok, "{}", queried.stderr);
+    assert_eq!(one_document(&queried.stdout)[0]["harp_id"], harp.as_str());
+    let unread = env.run(&["list", "--tag-query", "x/and", "--json"]);
+    assert!(!unread.ok);
+    assert_eq!(unread.stdout, "", "an error leaves stdout empty");
+    assert_eq!(
+        one_document(&unread.stderr)["code"],
+        "tasks-application-tag-query"
+    );
 
     let failed = env.run(&["tag", "no-such-task", "--add", "x", "--json"]);
     assert!(!failed.ok);
@@ -479,7 +496,13 @@ fn test_in_json_each_command_writes_one_document_and_errors_an_envelope() {
         one_document(&incomplete.stderr)["code"],
         "tasks-cli-import-incomplete"
     );
+}
 
+#[test]
+fn test_in_json_each_project_command_writes_one_document_and_errors_an_envelope() {
+    let env = Env::new("jq-project-harp");
+    let added = env.run(&["add", "Ship", "it", "--json"]);
+    assert!(added.ok, "{}", added.stderr);
     let shown = env.run(&["project", "show", "--json"]);
     assert!(shown.ok, "{}", shown.stderr);
     let project = one_document(&shown.stdout)["project_id"]
@@ -509,3 +532,6 @@ mod import;
 
 #[path = "project.test.rs"]
 mod project;
+
+#[path = "tags.test.rs"]
+mod tags;

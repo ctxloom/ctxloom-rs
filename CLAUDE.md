@@ -49,8 +49,9 @@ and `just lint` refuses to run if they disagree.
 Dependencies point inward; a review refuses a change that breaks these:
 
 - The core depends on nothing outside it. A domain or read model links only
-  annals, annals-diagnostic, prost and angzarr-proto: no I/O, async runtime
-  or clock in decide, apply or a projection.
+  annals, annals-diagnostic, prost, angzarr-proto, and tagma's tagma-core
+  (the tag grammar and query engine) and tagma-proto (its `Tag` message): no
+  I/O, async runtime or clock in decide, apply or a projection.
 - A driven adapter sees only ports (and wire types), never a use case. A
   driving adapter sees only the application layer, never a domain's
   internals. Adapters never depend on each other.
@@ -67,7 +68,10 @@ Wire and domain types are generated into `OUT_DIR` by `angzarr-build` from
 `proto/`. A core crate's `build.rs` is one call (`angzarr_build::wire` or
 `angzarr_build::domain`): angzarr-build reads the build environment itself,
 so the core's clippy rules hold in build scripts too. Change the `.proto`,
-never generated output.
+never generated output. A tag is tagma's message, `tagma.v1.Tag`, imported
+from tagma-proto's `PROTO_INCLUDE`; the generated domain layer gives it a
+domain `Tag` that converts to `tagma_core::Tag` and spells itself
+canonically.
 
 ## Storage is annals-store-sql, in annals for now
 

@@ -1,9 +1,10 @@
 //! taskloom: per-project task tracking. The composition root: it reads the
 //! process's environment, wires the tasks use cases to their adapters (the
 //! project registry, harp names, the SQLite task store, the system's
-//! clock, ids, timer and randomness, and Go taskloom's logs to import),
-//! mounts the `project` group beside the task commands, and hands the
-//! command line to the CLI. It holds no logic of its own.
+//! clock, ids, timer and randomness, taskloom's configuration, and Go
+//! taskloom's logs to import), mounts the `project` group beside the task
+//! commands, and hands the command line to the CLI. It holds no logic of its
+//! own.
 
 use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
@@ -17,6 +18,7 @@ use system::System;
 use task_store_sqlite::SqliteStores;
 use tasks_application::Service;
 use tasks_cli::Context;
+use tasks_config::TaskloomConfig;
 
 /// Every crate's en-US catalog the binary's diagnostics come from. annals'
 /// own crates export none yet, so their errors print their English.
@@ -27,6 +29,7 @@ fn catalog() -> Result<presentation::Catalog, presentation::CatalogError> {
         project_registry::EN_US,
         task_store_sqlite::EN_US,
         go_task_log::EN_US,
+        tasks_config::EN_US,
     ])
 }
 
@@ -56,9 +59,14 @@ fn main() -> ExitCode {
     };
     let go_logs = GoTaskLogDir::in_home(env.home.as_deref());
     let mut projects = Projects::new(ProjectRegistry::new(env.clone(), HarpNames));
+    let home = env.home.clone();
     let identity = ProjectRegistry::new(env, HarpNames);
+    // The work root's config, where there is a work root: a command that
+    // needs one fails on resolving it, and says why.
+    let config = TaskloomConfig::new(home, identity.work_root().ok(), utf8_vars());
     let mut service = Service::new(identity, SqliteStores::default(), HarpNames, System, System)
-        .with_go_logs(go_logs);
+        .with_go_logs(go_logs)
+        .with_configuration(config);
     let context = Context {
         session: std::env::var("CTXLOOM_SESSION_HARP").unwrap_or_default(),
         stdout_is_terminal: io::stdout().is_terminal(),
@@ -85,6 +93,13 @@ fn main() -> ExitCode {
         &mut io::stderr().lock(),
     ));
     ExitCode::from(code)
+}
+
+/// The environment's variables whose names and values are UTF-8.
+fn utf8_vars() -> Vec<(String, String)> {
+    std::env::vars_os()
+        .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
+        .collect()
 }
 
 #[cfg(test)]

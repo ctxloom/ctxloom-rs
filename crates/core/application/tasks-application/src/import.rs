@@ -20,7 +20,10 @@
 //! What the tasks domain refuses that Go's fold accepted (empty text, a
 //! Deferred status with no trigger, a status starting with `@`) is not
 //! imported, and is reported; so is every later record to a task whose add
-//! was not imported.
+//! was not imported. A Go tag that is not a tag in tagma's grammar is left
+//! out of its record's command, and reported; the rest of the record is
+//! imported. Go's fold still counts it, so a later record is judged as Go
+//! judged it.
 //!
 //! Re-running an import duplicates nothing: a record's command id derives
 //! from its line ([`record_command_id`]), so a record already imported is
@@ -40,6 +43,7 @@ use tasks::{
     AddTask, EditText, RemovalReason, RemoveTask, Retag, SetStatus, TaskCommand, TaskRejection,
 };
 
+use crate::tags::{self, Tag, TagRefusal};
 use crate::{book, cover, retry, text_hash, AppError, Service};
 
 /// What to import: every project Go keeps a log for, or the one named.
@@ -94,7 +98,7 @@ pub struct ProjectImport {
     pub lost: Vec<Lost>,
 }
 
-/// A record that could not be brought over.
+/// A record, or a tag of one, that could not be brought over.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Lost {
     /// Its line in the log.
@@ -120,6 +124,9 @@ pub enum Why {
     HarpTaken,
     /// A record to a task whose add was not imported.
     TaskNotImported,
+    /// One of the record's tags, not a tag in tagma's grammar; the rest of
+    /// the record was imported.
+    Tag(TagRefusal),
 }
 
 impl fmt::Display for Why {
@@ -131,6 +138,7 @@ impl fmt::Display for Why {
             Why::Refused(rejection) => rejection.fmt(f),
             Why::HarpTaken => f.write_str("a task not imported from this record already holds this harp"),
             Why::TaskNotImported => f.write_str("its task was not imported"),
+            Why::Tag(refusal) => refusal.fmt(f),
         }
     }
 }
@@ -142,12 +150,14 @@ impl Diagnostic for Why {
             Why::Refused(rejection) => rejection.code(),
             Why::HarpTaken => "tasks-application-import-harp-taken",
             Why::TaskNotImported => "tasks-application-import-task-not-imported",
+            Why::Tag(refusal) => refusal.code(),
         }
     }
 
     fn args(&self) -> Vec<(&'static str, Arg)> {
         match self {
             Why::Refused(rejection) => rejection.args(),
+            Why::Tag(refusal) => refusal.args(),
             _ => Vec::new(),
         }
     }
@@ -166,7 +176,7 @@ pub trait ImportService {
     ) -> impl Future<Output = Result<ImportReport, AppError>> + Send;
 }
 
-impl<I, S, N, C, D, L> ImportService for Service<I, S, N, C, D, L>
+impl<I, S, N, C, D, L, G> ImportService for Service<I, S, N, C, D, L, G>
 where
     I: ProjectIdentity + Send,
     S: TaskStores + Send,
@@ -174,6 +184,7 @@ where
     C: Send,
     D: Delay + Jitter + Send,
     L: GoTaskLogs + Send,
+    G: Send,
 {
     async fn import(&mut self, request: ImportRequest) -> Result<ImportReport, AppError> {
         let projects = match request.project {
@@ -195,7 +206,7 @@ where
     }
 }
 
-impl<I, S, N, C, D, L> Service<I, S, N, C, D, L>
+impl<I, S, N, C, D, L, G> Service<I, S, N, C, D, L, G>
 where
     I: ProjectIdentity + Send,
     S: TaskStores + Send,
@@ -225,8 +236,13 @@ where
             .map_err(|e| Report::of(&e))?;
         let mut fold = Fold::new(&records);
         for record in &records {
-            let command = match fold.step(record) {
+            let step = fold.step(record);
+            for refusal in fold.unparsed.drain(..) {
+                report.lost.push(lost(record, Why::Tag(refusal)));
+            }
+            let command = match step {
                 Step::Run(command) => command,
+                Step::NothingLeft => continue,
                 Step::Unchanged => {
                     report.unchanged += 1;
                     continue;
@@ -336,6 +352,8 @@ enum Step {
     Repaired,
     /// It cannot be brought over.
     Lost(Why),
+    /// A retag that changed Go's tags only by tags left out, unparseable.
+    NothingLeft,
 }
 
 /// Go's fold, as far as it decides which records count: the harps the log
@@ -346,6 +364,9 @@ struct Fold {
     repaired: BTreeSet<String>,
     /// Harps whose add was not imported.
     missing: BTreeSet<String>,
+    /// The tags of the last record stepped that are not tags in tagma's
+    /// grammar, left out of its command.
+    unparsed: Vec<TagRefusal>,
 }
 
 impl Fold {
@@ -361,7 +382,29 @@ impl Fold {
                 .map(|r| r.repair_of.clone())
                 .collect(),
             missing: BTreeSet::new(),
+            unparsed: Vec::new(),
         }
+    }
+
+    /// `spelled` as tags, those that do not parse left out and kept in
+    /// [`Fold::unparsed`].
+    fn parsed<'a>(&mut self, spelled: impl IntoIterator<Item = &'a String>) -> Vec<Tag> {
+        let mut parsed = Vec::new();
+        for result in spelled.into_iter().filter_map(|s| tags::parse(s)) {
+            match result {
+                Ok(tag) => parsed.push(tag),
+                Err(refusal) => self.unparsed.push(refusal),
+            }
+        }
+        parsed
+    }
+
+    /// Keep in [`Fold::unparsed`] those of `spelled` that do not parse;
+    /// whether there were any.
+    fn unparsed_of(&mut self, spelled: &BTreeSet<String>) -> bool {
+        let before = self.unparsed.len();
+        self.parsed(spelled);
+        self.unparsed.len() > before
     }
 
     /// The task `harp_id`'s add was not imported.
@@ -374,7 +417,7 @@ impl Fold {
             return self.add(record);
         }
         let harp = &record.task;
-        let Some(tags) = self.live.get_mut(harp) else {
+        let Some(held) = self.live.get_mut(harp) else {
             return Step::Ignored;
         };
         // Go's fold changes as Go's did, whether or not the task was
@@ -383,25 +426,37 @@ impl Fold {
             GoOp::Tag | GoOp::Untag => {
                 let given = normalized(&record.tags);
                 let after: BTreeSet<String> = if record.op == GoOp::Tag {
-                    tags.union(&given).cloned().collect()
+                    held.union(&given).cloned().collect()
                 } else {
-                    tags.difference(&given).cloned().collect()
+                    held.difference(&given).cloned().collect()
                 };
-                let changed = after != *tags;
-                *tags = after;
-                let given: Vec<String> = given.into_iter().collect();
-                let retag = if record.op == GoOp::Tag {
-                    Retag {
-                        add: given,
-                        remove: Vec::new(),
-                    }
-                } else {
-                    Retag {
-                        add: Vec::new(),
-                        remove: given,
-                    }
-                };
-                changed.then(|| retag.into())
+                // The task's tags are Go's, parsed: two Go spellings of
+                // one tag (`k=v`, `k="v"`) are one tag here, so the retag
+                // takes the task from Go's tags before to Go's tags after,
+                // as tags, whatever the record named.
+                let before = parsed_set(held);
+                let now = parsed_set(&after);
+                *held = after;
+                let unparsed = self.unparsed_of(&given);
+                let add: Vec<Tag> = now
+                    .iter()
+                    .filter(|(spelled, _)| !before.contains_key(*spelled))
+                    .map(|(_, tag)| tag.clone())
+                    .collect();
+                let remove: Vec<Tag> = before
+                    .iter()
+                    .filter(|(spelled, _)| !now.contains_key(*spelled))
+                    .map(|(_, tag)| tag.clone())
+                    .collect();
+                if add.is_empty() && remove.is_empty() {
+                    let step = if unparsed {
+                        Step::NothingLeft
+                    } else {
+                        Step::Unchanged
+                    };
+                    return self.unless_missing(harp, step);
+                }
+                Some(Retag { add, remove }.into())
             }
             GoOp::Status => Some(
                 SetStatus {
@@ -427,10 +482,16 @@ impl Fold {
                 )
             }
         };
+        self.unless_missing(harp, command.map_or(Step::Unchanged, Step::Run))
+    }
+
+    /// `step`, unless `harp`'s add was not imported.
+    fn unless_missing(&mut self, harp: &str, step: Step) -> Step {
         if self.missing.contains(harp) {
+            self.unparsed.clear();
             return Step::Lost(Why::TaskNotImported);
         }
-        command.map_or(Step::Unchanged, Step::Run)
+        step
     }
 
     /// An add: the task, unless the harp is already issued.
@@ -444,18 +505,28 @@ impl Fold {
             };
         }
         self.live.insert(harp.clone(), normalized(&record.tags));
+        let tags = self.parsed(&record.tags);
         Step::Run(
             AddTask {
                 harp_id: harp.clone(),
                 text: record.text.clone(),
                 status: record.status.clone(),
                 trigger: record.trigger.clone(),
-                tags: record.tags.clone(),
+                tags,
                 origin_session: record.session.clone(),
             }
             .into(),
         )
     }
+}
+
+/// The tags of Go's `spelled` that parse, by their canonical spelling.
+fn parsed_set(spelled: &BTreeSet<String>) -> BTreeMap<String, Tag> {
+    spelled
+        .iter()
+        .filter_map(|s| tags::parse(s)?.ok())
+        .map(|tag| (tag.to_string(), tag))
+        .collect()
 }
 
 /// Tags trimmed, empties dropped, deduplicated and sorted, as Go

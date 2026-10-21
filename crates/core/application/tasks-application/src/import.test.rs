@@ -176,7 +176,7 @@ fn test_an_add_imports_the_task_with_its_harp_session_and_time() {
     assert_eq!(task.text, "Write the tour");
     assert_eq!(task.status, "In Progress");
     assert_eq!(task.trigger, "later");
-    assert_eq!(task.tags, strings(&["a", "b"]));
+    assert_eq!(spelled(&task.tags), strings(&["a", "b"]));
     assert_eq!(task.origin_session, "calm-otter");
     assert_eq!(task.created_at, at(1), "Go's instant, not the clock's");
     assert_eq!(task.status_set_at, at(1));
@@ -244,7 +244,7 @@ fn test_edits_tags_untags_and_a_removal_are_imported() {
     assert_eq!(only(&report).tasks, 2);
     let task = state(&mut service, HARP).unwrap();
     assert_eq!(task.text, "Final");
-    assert_eq!(task.tags, strings(&["y"]));
+    assert_eq!(spelled(&task.tags), strings(&["y"]));
     assert_eq!(
         task.status_set_at,
         at(1),
@@ -287,7 +287,10 @@ fn test_a_line_repeated_byte_for_byte_counts_once() {
     assert_eq!(project.records, 5);
     assert_eq!(project.repeated, 1);
     assert_eq!(project.applied, 4);
-    assert_eq!(state(&mut service, HARP).unwrap().tags, strings(&["x"]));
+    assert_eq!(
+        spelled(&state(&mut service, HARP).unwrap().tags),
+        strings(&["x"])
+    );
 }
 
 #[test]
@@ -323,6 +326,76 @@ fn test_a_retag_that_changes_nothing_records_nothing() {
     assert_eq!(only(&report).unchanged, 3);
     assert_eq!(only(&report).applied, 1);
     assert_eq!(events(&mut service, HARP), 1);
+}
+
+// A Go tag that is not a tag in tagma's grammar is reported and left out;
+// the rest of its record imports. Go's fold still counts it.
+#[test]
+fn test_a_go_tag_outside_the_grammar_is_reported_and_the_rest_imported() {
+    let mut service = service(numbered(vec![
+        GoRecord {
+            tags: strings(&["ok", "has space"]),
+            ..add(HARP, "Ship it", 1)
+        },
+        tags(GoOp::Tag, HARP, &["a/b", "y"], 2),
+        tags(GoOp::Tag, HARP, &["c/d"], 3),
+        tags(GoOp::Untag, HARP, &["has space"], 4),
+    ]));
+    let report = import(&mut service);
+    let project = only(&report);
+    let lost: Vec<(u32, String)> = project
+        .lost
+        .iter()
+        .map(|l| (l.line, l.why.to_string()))
+        .collect();
+    assert_eq!(lost.len(), 4, "{lost:?}");
+    assert_eq!(
+        lost.iter().map(|(line, _)| *line).collect::<Vec<_>>(),
+        [1, 2, 3, 4]
+    );
+    assert!(lost[0].1.contains("has space"), "{lost:?}");
+    assert!(project
+        .lost
+        .iter()
+        .all(|l| l.why.code() == "tasks-application-tag-unparseable"));
+    let named: Vec<&str> = project.lost[0]
+        .why
+        .args()
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect();
+    assert_eq!(named, ["tag", "detail"], "the why is the refusal's");
+    assert_eq!(project.applied, 2, "the add, and the tag of y");
+    assert_eq!(project.unchanged, 0, "each record changed Go's tags");
+    assert_eq!(
+        spelled(&state(&mut service, HARP).unwrap().tags),
+        ["ok", "y"]
+    );
+}
+
+// Go keeps tags as strings, so it can hold one tag twice, spelled two
+// ways; an untag of one spelling leaves the other, and the task still
+// carries the tag. A real log has this (`sig:"a.b"` beside `sig:a.b`).
+#[test]
+fn test_a_task_keeps_a_tag_go_still_holds_under_another_spelling() {
+    let mut service = service(numbered(vec![
+        GoRecord {
+            tags: strings(&["sig:\"a.b\""]),
+            ..add(HARP, "Ship it", 1)
+        },
+        tags(GoOp::Tag, HARP, &["sig:a.b"], 2),
+        tags(GoOp::Untag, HARP, &["sig:a.b"], 3),
+        tags(GoOp::Untag, HARP, &["sig:\"a.b\""], 4),
+    ]));
+    let report = import(&mut service);
+    let project = only(&report);
+    assert!(project.lost.is_empty());
+    assert_eq!(
+        project.unchanged, 2,
+        "one tag, spelled again, then one of two"
+    );
+    assert_eq!(project.applied, 2, "the add, and the last untag");
+    assert!(state(&mut service, HARP).unwrap().tags.is_empty());
 }
 
 // ------------------------------------------------------------ anomalies
@@ -722,4 +795,9 @@ fn test_each_reason_renders_its_english_and_a_refusal_is_its_rejection() {
     assert_eq!(refused.code(), "tasks-status-reserved");
     assert_eq!(refused.args().len(), 1);
     assert!(Why::Displaced.args().is_empty());
+}
+
+/// Each tag in its canonical spelling.
+fn spelled(tags: &[tasks::Tag]) -> Vec<String> {
+    tags.iter().map(ToString::to_string).collect()
 }

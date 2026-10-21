@@ -93,6 +93,7 @@ impl ImportService for Fake {
 
 fn written(task: Task) -> Option<Result<Written, AppError>> {
     Some(Ok(Written {
+        shown: tasks_application::Shown::default(),
         project: project(),
         task,
     }))
@@ -124,7 +125,7 @@ fn run_on(fake: &mut Fake, terminal: bool, args: &[&str]) -> Ran {
 
 fn tagged_task() -> Task {
     let mut task = shapes::task("swift-amber", "To Do");
-    task.tags = vec!["a".to_string(), "b".to_string()];
+    task.tags = vec![tag("a"), tag("b")];
     task
 }
 
@@ -153,6 +154,10 @@ fn test_add_joins_its_words_and_passes_its_flags_and_the_session() {
             "a",
             "--tag",
             "b",
+            "--config-set",
+            "tag_schema=x",
+            "--config-set",
+            "homing=home",
         ],
     );
     assert_eq!(ran.code, 0, "{}", ran.err);
@@ -165,6 +170,7 @@ fn test_add_joins_its_words_and_passes_its_flags_and_the_session() {
             trigger: "later".to_string(),
             tags: vec!["a".to_string(), "b".to_string()],
             origin_session: "cross-proc-harp".to_string(),
+            config_set: vec!["tag_schema=x".to_string(), "homing=home".to_string()],
         }]
     );
     assert_eq!(ran.err, "taskloom: project /work/tree (jolly-mute-magma)\n");
@@ -270,6 +276,7 @@ fn test_tag_passes_its_adds_and_removes_and_answers_with_the_tags() {
             harp_id: "swift-amber".to_string(),
             add: vec!["a".to_string(), "b".to_string()],
             remove: vec!["c".to_string()],
+            config_set: Vec::new(),
         }]
     );
     assert_eq!(ran.err, "taskloom: project /work/tree (jolly-mute-magma)\n");
@@ -309,6 +316,7 @@ fn test_a_failed_tag_exits_1() {
 
 fn listing(tasks: Vec<Task>) -> Option<Result<Listing, AppError>> {
     Some(Ok(Listing {
+        shown: tasks_application::Shown::default(),
         project: Some(project()),
         tasks,
     }))
@@ -332,6 +340,8 @@ fn test_list_passes_its_filters() {
             "--status",
             "Deferred",
             "--all",
+            "--tag-query",
+            "urgent/not",
         ],
     );
     assert_eq!(
@@ -344,6 +354,8 @@ fn test_list_passes_its_filters() {
                 "Deferred".to_string()
             ],
             all: true,
+            tag_query: "urgent/not".to_string(),
+            config_set: Vec::new(),
         }]
     );
     let mut fake = Fake {
@@ -389,6 +401,7 @@ fn test_list_where_there_is_no_project_says_so_and_lists_nothing() {
     for (terminal, shown) in [(true, "(no tasks)\n"), (false, "[]\n")] {
         let mut fake = Fake {
             listing: Some(Ok(Listing {
+                shown: tasks_application::Shown::default(),
                 project: None,
                 tasks: Vec::new(),
             })),
@@ -786,4 +799,12 @@ fn test_mounted_commands_are_listed_beside_the_task_commands() {
     assert!(handed.is_empty());
     assert!(ran.out.contains("hello"), "{}", ran.out);
     assert!(ran.out.contains("import"), "{}", ran.out);
+}
+
+fn tag(key: &str) -> tasks_application::Tag {
+    tasks_application::Tag {
+        namespace: None,
+        key: key.to_string(),
+        value: None,
+    }
 }

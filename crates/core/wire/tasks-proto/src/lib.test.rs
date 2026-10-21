@@ -14,9 +14,30 @@ fn test_type_url_names_each_message_by_full_name() {
 
 #[test]
 fn test_event_round_trips_through_its_encoding() {
+    let tag = |key: &str| v1::Tag {
+        namespace: None,
+        key: key.to_string(),
+        value: None,
+    };
     let event = v1::Retagged {
-        tags: vec!["later".to_string(), "urgent".to_string()],
+        tags: vec![tag("later"), tag("urgent")],
     };
     let decoded = v1::Retagged::decode(event.encode_to_vec().as_slice()).expect("decode");
     assert_eq!(decoded, event);
+}
+
+// The tags are tagma's own message, not a copy of it.
+#[test]
+fn test_tags_are_tagmas_message() {
+    let tag = tagma_proto::v1::Tag {
+        namespace: Some("geo".to_string()),
+        key: "lat".to_string(),
+        value: Some("57.64".to_string()),
+    };
+    let state = v1::TaskState {
+        tags: vec![tag.clone()],
+        ..v1::TaskState::default()
+    };
+    let decoded = v1::TaskState::decode(state.encode_to_vec().as_slice()).expect("decode");
+    assert_eq!(decoded.tags, vec![tag]);
 }

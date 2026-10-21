@@ -104,13 +104,14 @@ fn test_an_add_mints_a_harp_and_answers_with_the_task_and_its_project() {
         trigger: String::new(),
         tags: vec!["b".to_string(), "a".to_string()],
         origin_session: "calm-otter-fox".to_string(),
+        config_set: Vec::new(),
     };
     let written = add(&mut service, task).unwrap();
     assert_eq!(written.project, project());
     assert_eq!(written.task.harp_id, "swift-amber");
     assert_eq!(written.task.text, "Ship it");
     assert_eq!(written.task.status, "In Progress");
-    assert_eq!(written.task.tags, ["a", "b"]);
+    assert_eq!(spelled(&written.task.tags), ["a", "b"]);
     assert_eq!(written.task.origin_session, "calm-otter-fox");
     assert_eq!(
         written.task.created_at.seconds, 1_700_000_001,
@@ -196,7 +197,223 @@ fn change(harp: &str, add: &[&str], remove: &[&str]) -> TagChange {
         harp_id: harp.to_string(),
         add: add.iter().map(|s| s.to_string()).collect(),
         remove: remove.iter().map(|s| s.to_string()).collect(),
+        config_set: Vec::new(),
     }
+}
+
+// A tag outside tagma's grammar could never be queried: it is refused
+// before anything is resolved or written.
+#[test]
+fn test_an_add_with_a_tag_outside_the_grammar_is_refused_and_writes_nothing() {
+    let mut service = service(&["swift-amber"]);
+    let task = NewTask {
+        tags: vec!["ok".to_string(), "not ok".to_string()],
+        ..new_task("Ship it")
+    };
+    let error = add(&mut service, task).unwrap_err();
+    assert_eq!(error.code(), "tasks-application-tag-unparseable");
+    assert!(error.to_string().contains("not ok"), "{error}");
+    assert!(service.identity.pins.is_empty(), "no project resolved");
+    assert!(service.stores.opened.is_empty());
+}
+
+#[test]
+fn test_a_tag_naming_a_tag_outside_the_grammar_is_refused_either_way() {
+    let mut service = service(&["swift-amber"]);
+    add(&mut service, new_task("Ship it")).unwrap();
+    for change in [
+        change("swift-amber", &["a/b"], &[]),
+        change("swift-amber", &[], &["a/b"]),
+    ] {
+        let error = ready(service.tag(change)).unwrap_err();
+        assert_eq!(error.code(), "tasks-application-tag-unparseable");
+    }
+    assert_eq!(command_ids(&mut service, "swift-amber").len(), 1, "the add");
+}
+
+// A tag's spelling is not its identity: `k="v"` is `k=v`.
+#[test]
+fn test_a_tag_spelled_another_way_is_the_same_tag() {
+    let mut service = service(&["swift-amber"]);
+    let task = NewTask {
+        tags: vec!["k=v".to_string()],
+        ..new_task("Ship it")
+    };
+    add(&mut service, task).unwrap();
+    let written = ready(service.tag(change("swift-amber", &[], &["k=\"v\""]))).unwrap();
+    assert!(written.task.tags.is_empty());
+}
+
+// ------------------------------------------------------------ schema
+
+/// What the configuration answers, and the overrides it was asked with.
+#[derive(Default)]
+struct FakeConfiguration {
+    declarations: Vec<String>,
+    asked: Vec<Vec<String>>,
+}
+
+impl ports::Configuration for FakeConfiguration {
+    fn tag_schema(&mut self, overrides: &[String]) -> Result<Vec<String>, Report> {
+        self.asked.push(overrides.to_vec());
+        if self.declarations.iter().any(|d| d == "unreadable") {
+            return Err(Report::new("x-config", "the config cannot be read"));
+        }
+        Ok(self.declarations.clone())
+    }
+}
+
+type Configured = Service<
+    FakeIdentity,
+    FakeStores,
+    FakeNames,
+    FakeClock,
+    FakeDelay,
+    crate::NoGoLogs,
+    FakeConfiguration,
+>;
+
+fn configured(declarations: &[&str]) -> Configured {
+    service(&["swift-amber"]).with_configuration(FakeConfiguration {
+        declarations: declarations.iter().map(|d| d.to_string()).collect(),
+        asked: Vec::new(),
+    })
+}
+
+fn tagged(add: &[&str]) -> NewTask {
+    NewTask {
+        tags: add.iter().map(|s| s.to_string()).collect(),
+        ..new_task("Ship it")
+    }
+}
+
+// The default schema holds with nothing configured: triage:level is 1-5.
+#[test]
+fn test_a_write_is_held_to_the_default_schema() {
+    let mut service = service(&["swift-amber"]);
+    let error = add(&mut service, tagged(&["triage:level=9"])).unwrap_err();
+    assert_eq!(error.code(), "tasks-application-tag-out-of-range");
+    assert!(service.identity.pins.is_empty(), "refused before resolving");
+    for refused in [
+        &["and"][..],
+        &["tagma.hide:x=true"],
+        &["triage:kind=sparkles"],
+    ] {
+        assert!(add(&mut service, tagged(refused)).is_err(), "{refused:?}");
+    }
+}
+
+#[test]
+fn test_a_configured_declaration_extends_the_default_schema() {
+    let mut service = configured(&[
+        r#"tagma.range:"triage:level"="1,9""#,
+        r#"tagma.enum:"area:x"="a""#,
+    ]);
+    let task = NewTask {
+        config_set: vec!["tag_schema=x".to_string()],
+        ..tagged(&["triage:level=9"])
+    };
+    let written = ready(service.add(task)).unwrap();
+    assert_eq!(spelled(&written.task.tags), ["triage:level=9"]);
+    assert_eq!(
+        service.configuration.asked,
+        [vec!["tag_schema=x".to_string()]]
+    );
+    let error = ready(service.add(tagged(&["area:x=b"]))).unwrap_err();
+    assert_eq!(error.code(), "tasks-application-tag-not-in-enum");
+    let error = ready(service.add(tagged(&["triage:kind=sparkles"]))).unwrap_err();
+    assert_eq!(
+        error.code(),
+        "tasks-application-tag-not-in-enum",
+        "the default still holds"
+    );
+}
+
+#[test]
+fn test_a_malformed_or_unreadable_configuration_refuses_every_write() {
+    let mut service = configured(&["tagma.arty:x=1"]);
+    let error = ready(service.add(new_task("Ship it"))).unwrap_err();
+    assert_eq!(error.code(), "tasks-application-schema-unknown-facet");
+    assert!(matches!(error, AppError::Configuration(_)));
+    let error = ready(service.tag(change("swift-amber", &["x"], &[]))).unwrap_err();
+    assert_eq!(error.code(), "tasks-application-schema-unknown-facet");
+    let mut service = configured(&["unreadable"]);
+    let error = ready(service.add(new_task("Ship it"))).unwrap_err();
+    assert_eq!(error.code(), "x-config");
+    assert!(service.stores.opened.is_empty());
+}
+
+// Scalar collapse, resolved before the retag is sent: Go's
+// TestScalarCollapse_* cases, over the default schema's scalars.
+#[test]
+fn test_a_new_scalar_value_displaces_the_one_the_task_holds() {
+    let mut service = service(&["swift-amber"]);
+    add(
+        &mut service,
+        tagged(&["triage:level=3", "triage:kind=chore", "x"]),
+    )
+    .unwrap();
+    let written = ready(service.tag(change("swift-amber", &["triage:level=1"], &[]))).unwrap();
+    assert_eq!(
+        spelled(&written.task.tags),
+        ["triage:kind=chore", "triage:level=1", "x"]
+    );
+    let written = ready(service.tag(change("swift-amber", &["triage:level=\"1\""], &[]))).unwrap();
+    assert_eq!(
+        written.task.tags.len(),
+        3,
+        "the same value, spelled otherwise"
+    );
+    assert_eq!(
+        command_ids(&mut service, "swift-amber").len(),
+        2,
+        "nothing recorded"
+    );
+}
+
+#[test]
+fn test_an_add_keeps_the_last_of_several_scalar_values() {
+    let mut service = service(&["swift-amber"]);
+    let written = add(
+        &mut service,
+        tagged(&["triage:level=3", "area:x=1", "area:x=2", "triage:level=2"]),
+    )
+    .unwrap();
+    assert_eq!(
+        spelled(&written.task.tags),
+        ["area:x=1", "area:x=2", "triage:level=2"]
+    );
+}
+
+#[test]
+fn test_a_removed_tag_is_never_checked_against_the_schema() {
+    let mut service = configured(&[]);
+    add_unchecked(&mut service, "triage:level=9");
+    let written = ready(service.tag(change("swift-amber", &[], &["triage:level=9"]))).unwrap();
+    assert!(written.task.tags.is_empty());
+}
+
+/// Add a task holding `tag` as one written before the schema forbade it:
+/// its add goes past the use case, straight to the domain.
+fn add_unchecked(service: &mut Configured, tag: &str) {
+    use crate::tags::parse;
+    let add = tasks::AddTask {
+        harp_id: "swift-amber".to_string(),
+        text: "Ship it".to_string(),
+        status: String::new(),
+        trigger: String::new(),
+        tags: vec![parse(tag).unwrap().unwrap()],
+        origin_session: String::new(),
+    };
+    let mut runner = crate::retry::Runner {
+        registry: &service.registry,
+        clock: &mut service.clock,
+        delay: &mut service.delay,
+        backoff: service.backoff,
+    };
+    let book = crate::book("swift-amber", add.into());
+    let id = annals::next::v1::Uuid::from_bytes([7; 16]);
+    ready(runner.run(&mut service.stores.store, &book, &id)).unwrap();
 }
 
 #[test]
@@ -209,7 +426,7 @@ fn test_a_tag_adds_then_removes_and_answers_with_the_task() {
     add(&mut service, task).unwrap();
     let written =
         ready(service.tag(change("swift-amber", &["new", "both"], &["old", "both"]))).unwrap();
-    assert_eq!(written.task.tags, ["new"]);
+    assert_eq!(spelled(&written.task.tags), ["new"]);
     assert_eq!(written.project, project());
     assert_eq!(
         service.identity.pins.last(),
@@ -226,7 +443,7 @@ fn test_a_tag_changing_nothing_answers_with_the_task_as_it_is() {
     };
     add(&mut service, task).unwrap();
     let written = ready(service.tag(change("swift-amber", &["kept"], &[]))).unwrap();
-    assert_eq!(written.task.tags, ["kept"]);
+    assert_eq!(spelled(&written.task.tags), ["kept"]);
 }
 
 #[test]
@@ -269,7 +486,7 @@ fn test_a_tag_retries_through_store_failures() {
     add(&mut service, new_task("Ship it")).unwrap();
     service.stores.store.faults = [Fault::Conflict, Fault::LandsThenFails].into();
     let written = ready(service.tag(change("swift-amber", &["x"], &[]))).unwrap();
-    assert_eq!(written.task.tags, ["x"]);
+    assert_eq!(spelled(&written.task.tags), ["x"]);
     assert_eq!(service.delay.slept.len(), 2);
     assert_eq!(
         command_ids(&mut service, "swift-amber").len(),
@@ -361,6 +578,76 @@ fn test_a_list_of_named_statuses_holds_exactly_their_tasks() {
         ..ListQuery::default()
     };
     assert_eq!(listed(&mut service, named), ["deferred", "done"]);
+}
+
+// ------------------------------------------------------------ tag queries
+
+fn queried(query: &str) -> ListQuery {
+    ListQuery {
+        tag_query: query.to_string(),
+        ..ListQuery::default()
+    }
+}
+
+// Go's TestFilterTasksTagQueryPreservesInputOrder: the tasks a query
+// selects keep the listing's order.
+#[test]
+fn test_a_tag_query_keeps_the_tasks_it_selects_in_the_listings_order() {
+    let mut service = service(&["zebra-a", "mango-b", "apple-c", "kiwi-d"]);
+    for tags in [&["urgent"][..], &["urgent"], &["urgent", "x"], &[]] {
+        add(&mut service, tagged(tags)).unwrap();
+    }
+    assert_eq!(
+        listed(&mut service, queried("urgent")),
+        ["zebra-a", "mango-b", "apple-c"]
+    );
+    assert_eq!(
+        listed(&mut service, queried("urgent and not x")),
+        ["zebra-a", "mango-b"]
+    );
+    assert_eq!(listed(&mut service, queried("urgent/not")), ["kiwi-d"]);
+}
+
+// Go's TestFilterTasksTagQueryNotScopedToStatusCandidates: `not`
+// complements within the tasks the listing admits, never past them.
+#[test]
+fn test_not_complements_within_the_listed_tasks() {
+    let mut service = service(&["keep-me", "done-urgent"]);
+    add(&mut service, new_task("Keep")).unwrap();
+    let done = NewTask {
+        status: "Done".to_string(),
+        ..tagged(&["urgent"])
+    };
+    add(&mut service, done).unwrap();
+    assert_eq!(listed(&mut service, queried("urgent/not")), ["keep-me"]);
+    let all = ListQuery {
+        all: true,
+        ..queried("urgent")
+    };
+    assert_eq!(listed(&mut service, all), ["done-urgent"]);
+}
+
+#[test]
+fn test_a_malformed_tag_query_is_refused_even_with_nothing_to_list() {
+    let mut service = service(&[]);
+    let error = ready(service.list(queried("urgent/and"))).unwrap_err();
+    assert_eq!(error.code(), "tasks-application-tag-query");
+    assert!(matches!(error, AppError::TagQuery(_)));
+    assert!(service.identity.pins.is_empty(), "refused before resolving");
+}
+
+// The default schema declares triage:blocks-release a SemVer version.
+#[test]
+fn test_a_tag_query_orders_a_semver_target_by_precedence() {
+    let mut service = service(&["below-a", "pre-b", "above-c"]);
+    for version in ["0.6.9", "0.7.0-pre001", "0.8.0"] {
+        let tag = format!("triage:blocks-release={version}");
+        add(&mut service, tagged(&[tag.as_str()])).unwrap();
+    }
+    assert_eq!(
+        listed(&mut service, queried("triage:blocks-release<=0.7.0")),
+        ["below-a", "pre-b"]
+    );
 }
 
 #[test]
@@ -479,4 +766,9 @@ fn test_the_default_query_admits_open_statuses_only() {
     assert!(!query.admits(&task("Done")));
     assert!(!query.admits(&task("Archived")));
     assert!(!query.admits(&task("Deferred")));
+}
+
+/// Each tag in its canonical spelling.
+fn spelled(tags: &[tasks::Tag]) -> Vec<String> {
+    tags.iter().map(ToString::to_string).collect()
 }

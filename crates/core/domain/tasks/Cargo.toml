@@ -12,10 +12,14 @@ annals.workspace = true
 annals-diagnostic.workspace = true
 # The generated domain layer names prost::Name and the wire types.
 prost.workspace = true
+tagma-core.workspace = true
+tagma-proto.workspace = true
 tasks-proto.workspace = true
 
 [build-dependencies]
 angzarr-build.workspace = true
+# Only for the directory tagma/v1/tag.proto is imported from.
+tagma-proto.workspace = true
 
 [dev-dependencies]
 fluent-syntax = "0.11"
