@@ -631,3 +631,34 @@ fn test_a_tags_read_refuses_a_malformed_query_or_class_before_reading() {
     }
     assert!(service.identity.pins.is_empty());
 }
+
+// ------------------------------------------------------------ lint
+
+/// A configuration declaring `area:x` an enum of `a` and `b`.
+struct Enum;
+
+impl ports::Configuration for Enum {
+    fn tag_schema(&mut self, _: &[String]) -> Result<Vec<String>, annals_diagnostic::Report> {
+        Ok(vec![r#"tagma.enum:"area:x"="a,b""#.to_string()])
+    }
+}
+
+#[test]
+fn test_lint_sweeps_every_task_the_read_reaches_under_the_schema_now() {
+    let mut service = service(&["first", "second"]);
+    tagged(&mut service, "a", "Done", &["area:x=c"]);
+    tagged(&mut service, "b", "To Do", &["area:x=a"]);
+    let mut service = service.with_configuration(Enum);
+    let report = ready(service.lint(Scope::default())).unwrap();
+    let found: Vec<(&str, &str)> = report
+        .violations
+        .iter()
+        .map(|v| (v.harp_id.as_str(), v.project.as_deref().unwrap_or("")))
+        .collect();
+    assert_eq!(found, [("first", "jolly-mute-magma")]);
+    assert!(
+        report.checked_targets > 1,
+        "the default schema's, and area:x"
+    );
+    assert_eq!(report.reach, Reach::Project(crate::fakes::project()));
+}

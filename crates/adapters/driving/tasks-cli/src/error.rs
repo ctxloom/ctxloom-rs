@@ -19,6 +19,10 @@ pub enum CliError {
     /// The command line could not be parsed: clap's account of why, with
     /// the usage.
     Usage { detail: String },
+    /// A lint found violations.
+    LintViolations { count: usize },
+    /// A lint checked no target, so its finding nothing proves nothing.
+    LintCheckedNothing,
 }
 
 impl fmt::Display for CliError {
@@ -31,6 +35,12 @@ impl fmt::Display for CliError {
                 "not everything was imported: {stopped} projects stopped, {lost} records not imported"
             ),
             CliError::Usage { detail } => f.write_str(detail),
+            CliError::LintViolations { count } => {
+                write!(f, "{count} tag-standard violations found")
+            }
+            CliError::LintCheckedNothing => f.write_str(
+                "lint checked no target: the tag schema declares no enum or range, so a clean sweep proves nothing",
+            ),
         }
     }
 }
@@ -42,6 +52,8 @@ impl Diagnostic for CliError {
             CliError::Output { .. } => "tasks-cli-output",
             CliError::Incomplete { .. } => "tasks-cli-import-incomplete",
             CliError::Usage { .. } => "tasks-cli-usage",
+            CliError::LintViolations { .. } => "tasks-cli-lint-violations",
+            CliError::LintCheckedNothing => "tasks-cli-lint-checked-nothing",
         }
     }
 
@@ -54,6 +66,8 @@ impl Diagnostic for CliError {
             CliError::Incomplete { stopped, lost } => {
                 vec![("stopped", (*stopped).into()), ("lost", (*lost).into())]
             }
+            CliError::LintViolations { count } => vec![("count", (*count).into())],
+            CliError::LintCheckedNothing => Vec::new(),
         }
     }
 }
@@ -76,6 +90,8 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(CliError::Usage {
             detail: "error: unrecognized subcommand 'frobnicate'\n".to_string(),
         }),
+        Box::new(CliError::LintViolations { count: 2 }),
+        Box::new(CliError::LintCheckedNothing),
         Box::new(Notice::Project {
             root: "/work/tree".to_string(),
             id: "jolly-mute-magma".to_string(),

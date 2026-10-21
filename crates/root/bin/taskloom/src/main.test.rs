@@ -687,6 +687,28 @@ fn test_in_json_each_read_writes_one_document_and_errors_an_envelope() {
         &["tags", "--tag-query", "x/and", "--json"],
         "tasks-application-tag-query",
     );
+
+    let linted = jq.ok(&["lint", "--json"]);
+    assert_eq!(linted["violations"], serde_json::json!([]));
+    assert!(linted["checked_targets"].as_u64() > Some(0), "{linted}");
+    let declared = r#"tag_schema=tagma.enum:"release"="beta""#;
+    let report = jq.ok(&["lint", "--config-set", declared, "--json"]);
+    assert_eq!(
+        report["violations"],
+        serde_json::json!([]),
+        "release has no value"
+    );
+    let tagged = jq.ok(&["tag", harp, "--add", "area:x=c", "--json"]);
+    assert_eq!(tagged["tags"].as_array().map(Vec::len), Some(2));
+    let declared = r#"tag_schema=tagma.enum:"area:x"="a,b""#;
+    let ran = jq.env.run(&["lint", "--config-set", declared, "--json"]);
+    assert!(!ran.ok, "a violation exits 1");
+    let report = one_document(&ran.stdout);
+    assert_eq!(report["violations"][0]["harp_id"], harp);
+    assert_eq!(
+        one_document(&ran.stderr)["code"],
+        "tasks-cli-lint-violations"
+    );
 }
 
 #[test]

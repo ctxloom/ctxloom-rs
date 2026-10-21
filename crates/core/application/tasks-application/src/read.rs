@@ -13,6 +13,7 @@ use annals_diagnostic::Report;
 use ports::{Configuration, ProjectIdentity, TaskStores};
 use task_lists::TaskList;
 
+use crate::lint::{self, LintReport};
 use crate::view::{
     is_active, is_terminal, Row, StatusInfo, Task, DEFAULT_STATUSES, IN_PROGRESS, OPEN,
     STATUS_CLASSES, TERMINAL,
@@ -390,6 +391,18 @@ where
         Ok(Vocabulary {
             reach: scan.reach,
             tags: counts.into_values().collect(),
+        })
+    }
+
+    /// Every task `scope` reaches, and the schema, linted.
+    pub(crate) async fn linted(&mut self, scope: crate::Scope) -> Result<LintReport, AppError> {
+        let schema = self.schema(&scope.config_set)?;
+        let scan = self.scan(scope.project.as_deref(), scope.global).await?;
+        let (violations, checked_targets) = lint::lint(&scan.rows, &schema);
+        Ok(LintReport {
+            reach: scan.reach,
+            violations,
+            checked_targets,
         })
     }
 

@@ -33,3 +33,8 @@ tasks-application-schema-arity-target = tag_schema: { $declaration } targets { $
 tasks-application-schema-enum-empty = tag_schema: { $declaration } lists no enum member in { $value }
 tasks-application-schema-range = tag_schema: { $declaration }'s range { $value } is not min,max: two finite numbers, the least first
 tasks-application-tag-query = the tag query { $query } is malformed (as postfix: { $postfix }; as infix: { $infix }): { $grammar }
+tasks-application-lint-not-in-enum = { $target }={ $value } is not one of the declared enum values: { $members }
+tasks-application-lint-not-a-number = { $target }={ $value } does not parse as a finite number
+tasks-application-lint-out-of-range = { $target }={ $value } is outside the declared range [{ $min }, { $max }]
+tasks-application-lint-scalar = { $target } carries { $count } distinct values ({ $values }) but is declared arity=scalar
+tasks-application-lint-formula-enum = { $facet } on { $target } references the placeholder { $placeholder }, but { $value } is not one of { $reference }'s declared enum values: { $members }

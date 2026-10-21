@@ -10,7 +10,7 @@ use tasks_application::{
     TextEdit,
 };
 
-use crate::render::{Added, Counted, Detailed, Listed, Summed, Tagged, Taxonomy};
+use crate::render::{Added, Counted, Detailed, Linted, Listed, Summed, Tagged, Taxonomy};
 use crate::{notify, output_failed, wrote, CliError, Notice};
 
 /// What every task command is handed besides its own arguments: the
@@ -357,6 +357,33 @@ pub(crate) async fn tags(
     reached(&vocabulary.reach, ctx.catalog, err)
         .and_then(|()| presentation::render(out, ctx.format, &Counted(&vocabulary)))
         .map_err(output_failed)
+}
+
+/// Lint, then refuse when it found a violation or checked no target, so
+/// that CI sees it in the exit code.
+pub(crate) async fn lint(
+    args: GlobalArgs,
+    ctx: Ctx<'_>,
+    service: &mut impl TaskService,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<(), CliError> {
+    let (format, catalog) = (ctx.format, ctx.catalog);
+    let report = service.lint(args.scope(ctx)).await.map_err(CliError::App)?;
+    let view = Linted {
+        report: &report,
+        catalog,
+    };
+    reached(&report.reach, catalog, err)
+        .and_then(|()| presentation::render(out, format, &view))
+        .map_err(output_failed)?;
+    if report.checked_targets == 0 {
+        return Err(CliError::LintCheckedNothing);
+    }
+    match report.violations.len() {
+        0 => Ok(()),
+        count => Err(CliError::LintViolations { count }),
+    }
 }
 
 /// Say on stderr which project a read was in: the one here, by name, or

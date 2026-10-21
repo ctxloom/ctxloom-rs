@@ -3,13 +3,14 @@
 
 use std::io::{self, Write};
 
-use presentation::{text, Render};
+use annals_diagnostic::Diagnostic;
+use presentation::{text, Catalog, Envelope, Render};
 use serde::Serialize;
 use std::collections::BTreeMap;
 
 use tasks_application::{
-    Details, Listing, Project, Reach, Row, Shown, StatusInfo, Statuses, Summary, Tag, Task,
-    Timestamp, Vocabulary,
+    Details, LintReport, Listing, Project, Reach, Row, Shown, StatusInfo, Statuses, Summary, Tag,
+    Task, Timestamp, Vocabulary,
 };
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
@@ -475,6 +476,71 @@ impl Render for Counted<'_> {
                 count.active,
                 count.total
             )?;
+        }
+        Ok(())
+    }
+}
+
+/// A lint's report, with the catalog its findings are worded from: JSON
+/// Go's `Result` (each violation's subject and reason, with its project
+/// and its finding's envelope), text a line per violation, or what the
+/// sweep came to.
+pub struct Linted<'a> {
+    pub report: &'a LintReport,
+    pub catalog: &'a Catalog,
+}
+
+#[derive(Serialize)]
+struct LintJson<'a> {
+    violations: Vec<ViolationJson<'a>>,
+    checked_targets: usize,
+}
+
+#[derive(Serialize)]
+struct ViolationJson<'a> {
+    harp_id: &'a str,
+    project_id: &'a str,
+    reason: String,
+    finding: Envelope,
+}
+
+impl Render for Linted<'_> {
+    fn json(&self) -> impl Serialize + '_ {
+        LintJson {
+            violations: self
+                .report
+                .violations
+                .iter()
+                .map(|v| ViolationJson {
+                    harp_id: &v.harp_id,
+                    project_id: v.project.as_deref().unwrap_or_default(),
+                    reason: self.catalog.message(&v.finding as &dyn Diagnostic),
+                    finding: self.catalog.envelope(&v.finding),
+                })
+                .collect(),
+            checked_targets: self.report.checked_targets,
+        }
+    }
+
+    fn text(&self, out: &mut dyn Write) -> io::Result<()> {
+        let report = self.report;
+        if report.checked_targets == 0 {
+            writeln!(
+                out,
+                "0 targets checked: the tag schema declares no enum or range for lint to check"
+            )?;
+        } else if report.violations.is_empty() {
+            writeln!(out, "no tag-standard violations found")?;
+        }
+        let every = report.reach.is_every();
+        for violation in &report.violations {
+            let reason = self.catalog.message(&violation.finding as &dyn Diagnostic);
+            match (&violation.project, every) {
+                (Some(project), true) => {
+                    writeln!(out, "{} ({project}): {reason}", violation.harp_id)?
+                }
+                _ => writeln!(out, "{}: {reason}", violation.harp_id)?,
+            }
         }
         Ok(())
     }

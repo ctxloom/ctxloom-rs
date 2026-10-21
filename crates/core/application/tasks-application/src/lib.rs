@@ -9,6 +9,7 @@
 
 mod error;
 mod import;
+mod lint;
 mod query;
 mod read;
 mod retry;
@@ -31,6 +32,7 @@ pub use import::{
     anomaly_key, record_command_id, rfc3339_nano, ImportReport, ImportRequest, ImportService, Lost,
     NoGoLogs, ProjectImport, Why,
 };
+pub use lint::{Finding, LintReport, Violation, SCHEMA_SUBJECT};
 pub use ports::{GoOp, Project};
 pub use query::{QueryError, QUERY_GRAMMAR};
 pub use read::{Details, Hidden, Listing, Reach, Statuses, Summary, TagCount, Vocabulary};
@@ -182,6 +184,7 @@ pub trait TaskService {
         &mut self,
         query: ListQuery,
     ) -> impl Future<Output = Result<Vocabulary, AppError>> + Send;
+    fn lint(&mut self, scope: Scope) -> impl Future<Output = Result<LintReport, AppError>> + Send;
 }
 
 /// The registry the tasks domain runs under.
@@ -461,6 +464,10 @@ where
 
     async fn tags(&mut self, query: ListQuery) -> Result<Vocabulary, AppError> {
         self.vocabulary(query).await
+    }
+
+    async fn lint(&mut self, scope: Scope) -> Result<LintReport, AppError> {
+        self.linted(scope).await
     }
 }
 

@@ -9,9 +9,10 @@ use std::task::{Context as TaskContext, Poll, Waker};
 
 use annals_diagnostic::Report;
 use tasks_application::{
-    AppError, Details, Hidden, ImportReport, ImportRequest, ImportService, ListQuery, Listing,
-    NewTask, Project, ProjectImport, Reach, Row, Scope, ShowQuery, StatusChange, StatusInfo,
-    Statuses, Summary, TagChange, TagCount, Task, TaskService, TextEdit, Vocabulary, Written,
+    AppError, Details, Finding, Hidden, ImportReport, ImportRequest, ImportService, LintReport,
+    ListQuery, Listing, NewTask, Project, ProjectImport, Reach, Row, Scope, ShowQuery,
+    StatusChange, StatusInfo, Statuses, Summary, TagChange, TagCount, Task, TaskService, TextEdit,
+    Violation, Vocabulary, Written,
 };
 
 use presentation::{Catalog, Format};
@@ -67,6 +68,8 @@ struct Fake {
     summed: Vec<Scope>,
     taxonomies: Vec<Scope>,
     counts: Vec<ListQuery>,
+    linted: Vec<Scope>,
+    report_of_lint: Option<Result<LintReport, AppError>>,
     vocabulary: Option<Result<Vocabulary, AppError>>,
     statuses: Option<Result<Statuses, AppError>>,
     summary: Option<Result<Summary, AppError>>,
@@ -122,6 +125,11 @@ impl TaskService for Fake {
     async fn tags(&mut self, query: ListQuery) -> Result<Vocabulary, AppError> {
         self.counts.push(query);
         self.vocabulary.clone().expect("a tags answer scripted")
+    }
+
+    async fn lint(&mut self, scope: Scope) -> Result<LintReport, AppError> {
+        self.linted.push(scope);
+        self.report_of_lint.clone().expect("a lint answer scripted")
     }
 }
 
@@ -776,6 +784,8 @@ fn test_tags_passes_its_filters_and_aligns_its_counts() {
             "--tag-query",
             "x",
             "--global",
+            "--config-set",
+            "tag_schema=x",
         ],
     );
     assert_eq!(ran.code, 0, "{}", ran.err);
@@ -787,6 +797,7 @@ fn test_tags_passes_its_filters_and_aligns_its_counts() {
             tag_query: "x".to_string(),
             term: "ship".to_string(),
             global: true,
+            config_set: vec!["tag_schema=x".to_string()],
             ..ListQuery::default()
         }]
     );
@@ -830,6 +841,132 @@ fn test_tags_with_none_in_use_says_how_to_apply_one() {
         "{}",
         ran.out
     );
+}
+
+// ------------------------------------------------------------ lint
+
+fn lint_report(reach: Reach, checked: usize, found: usize) -> Option<Result<LintReport, AppError>> {
+    let violation = |harp: &str| Violation {
+        project: Some("jolly-mute-magma".to_string()),
+        harp_id: harp.to_string(),
+        finding: Finding::NotInEnum {
+            target: "area:x".to_string(),
+            value: "c".to_string(),
+            members: "a, b".to_string(),
+        },
+    };
+    Some(Ok(LintReport {
+        reach,
+        violations: ["swift-amber", "calm-otter"][..found]
+            .iter()
+            .map(|h| violation(h))
+            .collect(),
+        checked_targets: checked,
+    }))
+}
+
+#[test]
+fn test_lint_says_each_violation_and_exits_1_for_any() {
+    let mut fake = Fake {
+        report_of_lint: lint_report(Reach::Project(project()), 3, 2),
+        ..Fake::default()
+    };
+    let ran = run_on(
+        &mut fake,
+        true,
+        &[
+            "--project",
+            "p",
+            "lint",
+            "--global",
+            "--config-set",
+            "tag_schema=x",
+        ],
+    );
+    assert_eq!(ran.code, 1);
+    assert_eq!(
+        fake.linted,
+        [Scope {
+            project: Some("p".to_string()),
+            global: true,
+            config_set: vec!["tag_schema=x".to_string()],
+        }]
+    );
+    assert_eq!(
+        ran.out,
+        "swift-amber: area:x=c is not one of the declared enum values: a, b\n\
+         calm-otter: area:x=c is not one of the declared enum values: a, b\n"
+    );
+    assert_eq!(ran.err, "taskloom: 2 tag-standard violations found\n");
+    let ran = run_on(&mut fake, false, &["lint"]);
+    assert_eq!(ran.code, 1);
+    let json: serde_json::Value = serde_json::from_str(&ran.out).unwrap();
+    assert_eq!(json["checked_targets"], 3);
+    let first = &json["violations"][0];
+    assert_eq!(first["harp_id"], "swift-amber");
+    assert_eq!(first["project_id"], "jolly-mute-magma");
+    assert_eq!(
+        first["reason"],
+        "area:x=c is not one of the declared enum values: a, b"
+    );
+    assert_eq!(
+        first["finding"]["code"],
+        "tasks-application-lint-not-in-enum"
+    );
+    assert_eq!(first["finding"]["args"]["value"], "c");
+    let envelope: serde_json::Value = serde_json::from_str(&ran.err).unwrap();
+    assert_eq!(envelope["code"], "tasks-cli-lint-violations");
+}
+
+#[test]
+fn test_lint_across_projects_names_each_violations_project() {
+    let every = Reach::Every {
+        projects: 2,
+        fallback: None,
+    };
+    let mut fake = Fake {
+        report_of_lint: lint_report(every, 3, 1),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["lint", "--global"]);
+    assert_eq!(
+        ran.out,
+        "swift-amber (jolly-mute-magma): area:x=c is not one of the declared enum values: a, b\n"
+    );
+}
+
+#[test]
+fn test_a_clean_lint_exits_0_and_one_that_checked_nothing_exits_1() {
+    let mut fake = Fake {
+        report_of_lint: lint_report(Reach::Project(project()), 3, 0),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["lint"]);
+    assert_eq!(ran.code, 0, "{}", ran.err);
+    assert_eq!(ran.out, "no tag-standard violations found\n");
+    assert_eq!(ran.err, "");
+    let ran = run_on(&mut fake, false, &["lint"]);
+    assert_eq!(
+        ran.out,
+        "{\n  \"violations\": [],\n  \"checked_targets\": 3\n}\n"
+    );
+    fake.report_of_lint = lint_report(Reach::Project(project()), 0, 0);
+    let ran = run_on(&mut fake, true, &["lint"]);
+    assert_eq!(ran.code, 1);
+    assert_eq!(
+        ran.out,
+        "0 targets checked: the tag schema declares no enum or range for lint to check\n"
+    );
+    assert!(ran.err.contains("lint checked no target"), "{}", ran.err);
+    fake.report_of_lint = lint_report(Reach::Project(project()), 0, 1);
+    let ran = run_on(&mut fake, true, &["lint"]);
+    assert!(ran.out.starts_with("0 targets checked"), "{}", ran.out);
+    assert!(
+        ran.out.contains("swift-amber: area:x=c"),
+        "both: {}",
+        ran.out
+    );
+    assert!(ran.err.contains("lint checked no target"), "{}", ran.err);
 }
 
 // ------------------------------------------------------------ list

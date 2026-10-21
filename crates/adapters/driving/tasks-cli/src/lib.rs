@@ -1,5 +1,5 @@
 //! The tasks command line: `add`, `status`, `edit`, `list`, `show`,
-//! `summary`, `statuses`, `tag`, `tags` and `import`, translated
+//! `summary`, `statuses`, `tag`, `tags`, `lint` and `import`, translated
 //! into the application's use cases and their answers rendered through
 //! presentation, with room for another crate's commands mounted beside
 //! them ([`run_mounted`]). Text on a terminal, JSON otherwise, unless
@@ -90,6 +90,12 @@ enum Command<X: Subcommand> {
     /// every line of their text. Every id must be found, or nothing is
     /// shown. In JSON one id is an object, several an array.
     Show(commands::ShowArgs),
+    /// Check every task's tags, whatever its status, against the tag
+    /// schema: a value outside its enum or range, a scalar target with two
+    /// values, and a formula naming a value no enum declares. Advisory,
+    /// never a write gate; it exits 1 on a violation, and when the schema
+    /// gave it no target to check.
+    Lint(commands::GlobalArgs),
     /// Count the tasks in each status, every task included whatever list
     /// would hide, and name those In Progress.
     Summary(commands::GlobalArgs),
@@ -225,6 +231,7 @@ pub async fn run_mounted<S: TaskService + ImportService, X: Subcommand>(
         Command::Status(args) => commands::status(args, ctx, service, out, err).await,
         Command::Edit(args) => commands::edit(args, ctx, service, out, err).await,
         Command::Show(args) => commands::show(args, ctx, service, out, err).await,
+        Command::Lint(args) => commands::lint(args, ctx, service, out, err).await,
         Command::Summary(args) => commands::summary(args, ctx, service, out, err).await,
         Command::Statuses(args) => commands::statuses(args, ctx, service, out, err).await,
         Command::Tag(args) => commands::tag(args, ctx, service, out, err).await,

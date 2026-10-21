@@ -195,6 +195,16 @@ impl TagSchema {
         self.ranges.get(target).copied()
     }
 
+    /// Every declared `(target, members)` enum, by target.
+    pub fn enums(&self) -> impl Iterator<Item = (&str, &[String])> {
+        self.enums.iter().map(|(t, m)| (t.as_str(), m.as_slice()))
+    }
+
+    /// Every declared `(target, range)`, by target.
+    pub fn ranges(&self) -> impl Iterator<Item = (&str, Range)> {
+        self.ranges.iter().map(|(t, r)| (t.as_str(), *r))
+    }
+
     /// `target`'s declared type, if any.
     pub fn type_of(&self, target: &str) -> Option<&str> {
         self.types.get(target).map(String::as_str)
