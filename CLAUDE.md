@@ -92,9 +92,9 @@ Any store is held to annals' store contract (`annals::store_contract!` or
 and projector tests run through annals' kernel over `InMemoryStore`, as the
 binary runs over SQLite.
 
-The path dependencies are local checkouts (Cargo.toml says where): annals
-must be on its branch `concurrent-writers`, and tagma is its `tag-proto`
-worktree.
+The path dependencies are local checkouts on their `main` (Cargo.toml says
+where): annals at `../../annals`, tagma at `../../kvtag`, both resolving
+from the primary checkout and from `~/workspace/worktrees/<name>`.
 
 ## Errors are localizable: a code, args, and an en-US message
 

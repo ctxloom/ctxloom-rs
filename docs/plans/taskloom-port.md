@@ -286,7 +286,7 @@ cutover ("What remains").
   key`, `optional string value`) and `crates/tagma-proto` (prost 0.14,
   generated at build time, conversions both ways with `tagma_core::Tag`,
   `PROTO_INCLUDE` for importers), and tagma-core a `Display for Tag`, the
-  canonical spelling Go's port already had, on tagma's `tag-proto` branch.
+  canonical spelling Go's port already had.
   tagma is the one tag model for taskloom, ctxloom and ltk alike: a later
   domain that tags (bundles, sessions, ltk rules) imports `tagma.v1.Tag`
   as `tasks.proto` does. Tags on `TaskState`, `AddTask`, `Retag`,
@@ -344,12 +344,10 @@ Where the port differs from Go:
   them pass.
 - A new database opened by several processes at once failed its migration
   ("table events already exists"): sqlx takes no migration lock on SQLite.
-  annals-store-sql now migrates under `BEGIN IMMEDIATE`, on annals' branch
-  `concurrent-writers` (not merged), which this workspace's path dependency
-  needs checked out.
+  annals-store-sql now migrates under `BEGIN IMMEDIATE`.
 - Lists, prune's selection and the read-back after a write read through
   annals' read-only unit of work (`AsyncReadStore::begin_read`, one SQLite
-  read transaction, on annals' branch `concurrent-writers`), which every
+  read transaction), which every
   `TaskStores::Store` provides: a domain's `covers` and every stream read
   after it are one moment, so a write or a purge by another process in
   between is not seen (tested by forcing one there).
@@ -357,8 +355,7 @@ Where the port differs from Go:
   and never creates, migrates or writes; `list` of a project with no store
   yet is empty, and `tag` resolves its project as a read does. A file a
   writer has created but not yet migrated or moved into WAL is waited for
-  by annals-store-sql (up to its 5s busy timeout), on annals' branch
-  `concurrent-writers`; one that stays empty, or holds a database with
+  by annals-store-sql (up to its 5s busy timeout); one that stays empty, or holds a database with
   migrations pending, is refused as unmigrated until a write migrates it.
 - Work roots and registry entries are compared canonical, as Go's
   `cleanPath` (symlinks resolved, else cleaned lexically), and the
@@ -552,13 +549,12 @@ Loose ends outside the steps:
   both sides is re-minted, and the result says so. Not started: it needs a
   tasks use case reading one project's store into another's, beyond the
   identity ports.
-- Outside this repository: merging tagma's `tag-proto` branch and annals'
-  `concurrent-writers`, then pointing Cargo.toml's paths at their primary
-  checkouts or pinned commits.
+- Outside this repository: pinning annals and tagma by commit as git
+  dependencies once pushed, in place of the local path dependencies.
 
 ## Purging a stream in annals
 
-Done, in the annals repository (`concurrent-writers`), for Decided 6: a
+Done, in the annals repository, for Decided 6: a
 purge on the store port, sync and async, deletes a stream's events, its
 snapshots and the command ids recorded with them in one unit of work.
 Stores that can purge opt in (`Purge`, `AsyncPurge`), so a store with no
