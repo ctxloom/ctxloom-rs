@@ -1,4 +1,4 @@
-//! The tasks command line: `add`, `list`, `tag` and `import`, translated
+//! The tasks command line: `add`, `list`, `tag`, `prune` and `import`, translated
 //! into the application's use cases and their answers rendered through
 //! presentation, with room for another crate's commands mounted beside
 //! them ([`run_mounted`]); and the companion contract ctxloom reads,
@@ -12,6 +12,7 @@ mod companion;
 mod error;
 mod import;
 mod notice;
+mod prune;
 mod render;
 
 use std::ffi::OsString;
@@ -21,13 +22,15 @@ use annals_diagnostic::Diagnostic;
 use clap::{Parser, Subcommand};
 use presentation::{Catalog, CatalogError, Format, Render, Source, UnknownFormat};
 use tasks_application::{
-    ImportRequest, ImportService, ListQuery, NewTask, TagChange, TaskService, Written,
+    ImportRequest, ImportService, ListQuery, NewTask, PruneRequest, PruneService, TagChange,
+    TaskService, Written, DEFAULT_OLDER_THAN, DEFAULT_PRUNE_STATUSES,
 };
 
 pub use companion::{Asked, VersionJson, LOADOUT};
 pub use error::{diagnostic_samples, CliError, EN_US};
 pub use import::{ImportJson, Imported};
 pub use notice::Notice;
+pub use prune::{apply_command, PruneReport};
 pub use render::{headline, table, Added, Listed, Tagged, HEADLINE_WIDTH};
 pub use tasks_presentation::{rfc3339, TaskJson};
 
@@ -125,6 +128,16 @@ enum Command<X: Subcommand> {
         #[arg(long)]
         remove: Vec<String>,
     },
+    /// Drop old finished tasks from the store (reports only, without
+    /// --yes). A task is selected when its status is one of --status, its
+    /// last status change is older than --older-than, and it matches
+    /// --tag-query, if given. With --yes each is removed, so every list
+    /// drops it, and its stream purged, freeing its harp to be minted
+    /// again; without it nothing changes. A surviving task naming a pruned
+    /// one (a relates:<harp> tag, or the harp in its text or trigger) is
+    /// reported, and left as written. To keep a finished task, archive it
+    /// and leave Archived out of --status.
+    Prune(PruneArgs),
     /// Import Go taskloom's task logs (~/.ctxloom/tasks/<project-id>.jsonl)
     /// into each project's store: every project's, or --project's alone.
     /// Running it again imports only what is new.
@@ -138,6 +151,40 @@ enum Command<X: Subcommand> {
     /// Commands another crate defines, mounted beside these.
     #[command(flatten)]
     Mounted(X),
+}
+
+/// `prune`'s flags.
+#[derive(clap::Args, Debug)]
+struct PruneArgs {
+    /// Only tasks whose last status change is older than this age (30d,
+    /// 12w, 720h) or date (2026-01-01).
+    #[arg(long = "older-than", default_value = DEFAULT_OLDER_THAN)]
+    older_than: String,
+    /// The statuses that qualify a task (repeatable, or comma-separated).
+    #[arg(long, value_delimiter = ',', default_values = DEFAULT_PRUNE_STATUSES)]
+    status: Vec<String>,
+    /// Only tasks matching this tag query (see list --tag-query).
+    #[arg(long = "tag-query", default_value = "")]
+    tag_query: String,
+    /// Remove and purge; without it prune only reports what it would.
+    #[arg(long)]
+    yes: bool,
+}
+
+impl PruneArgs {
+    /// The prune these flags ask for, and the command that applies it.
+    fn request(self, project: Option<String>, config_set: Vec<String>) -> (PruneRequest, String) {
+        let apply = apply_command(&self.older_than, &self.status, &self.tag_query);
+        let request = PruneRequest {
+            project,
+            statuses: self.status,
+            older_than: self.older_than,
+            tag_query: self.tag_query,
+            apply: self.yes,
+            config_set,
+        };
+        (request, apply)
+    }
 }
 
 /// Nothing mounted.
@@ -193,7 +240,7 @@ fn asked_format(args: &[OsString], context: &Context) -> Format {
 
 /// Run the command line `args` (the program name first) against `service`,
 /// writing to `out` and `err` with messages from `catalog`; the exit code.
-pub async fn run<S: TaskService + ImportService>(
+pub async fn run<S: TaskService + ImportService + PruneService>(
     args: impl IntoIterator<Item = OsString>,
     context: &Context,
     catalog: &Catalog,
@@ -235,7 +282,7 @@ fn parse<X: Subcommand>(
 /// of them parsed is handed to `mounted` with the global flags and the
 /// catalog it renders its diagnostics from, and its exit code is the
 /// run's.
-pub async fn run_mounted<S: TaskService + ImportService, X: Subcommand>(
+pub async fn run_mounted<S: TaskService + ImportService + PruneService, X: Subcommand>(
     args: impl IntoIterator<Item = OsString>,
     context: &Context,
     catalog: &Catalog,
@@ -314,6 +361,10 @@ pub async fn run_mounted<S: TaskService + ImportService, X: Subcommand>(
                 Err(e) => Err(CliError::App(e)),
             }
         }
+        Command::Prune(args) => {
+            let asked = args.request(cli.project, cli.config_set);
+            prune(service, asked, format, catalog, out, err).await
+        }
         Command::Mounted(command) => {
             let flags = Mounted {
                 format,
@@ -321,14 +372,7 @@ pub async fn run_mounted<S: TaskService + ImportService, X: Subcommand>(
             };
             return mounted(command, flags, catalog, out, err);
         }
-        Command::Version => {
-            let version = VersionJson {
-                name: PROG,
-                version: &context.version,
-                lock_protocol: context.lock_protocol,
-            };
-            presentation::render(out, format, &version).map_err(output_failed)
-        }
+        Command::Version => version(context, format, out),
         // Answered before the format is chosen: it has its own.
         Command::Loadout => Ok(()),
         Command::Import => {
@@ -437,6 +481,40 @@ fn listed(
     noticed
         .and_then(|()| presentation::render(out, format, &view))
         .map_err(output_failed)
+}
+
+/// The version, as ctxloom's boot probe reads it.
+fn version(context: &Context, format: Format, out: &mut dyn Write) -> Result<(), CliError> {
+    let version = VersionJson {
+        name: PROG,
+        version: &context.version,
+        lock_protocol: context.lock_protocol,
+    };
+    presentation::render(out, format, &version).map_err(output_failed)
+}
+
+/// Run the prune `asked` (the request, and the command that applies it).
+/// Say on stderr when there is no project here, then render the report,
+/// and after a report that would take something, say nothing was taken
+/// and how to take it.
+async fn prune<S: PruneService>(
+    service: &mut S,
+    (request, apply): (PruneRequest, String),
+    format: Format,
+    catalog: &Catalog,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<(), CliError> {
+    let pruning = service.prune(request).await.map_err(CliError::App)?;
+    if pruning.project.is_none() {
+        notify(&Notice::NothingToPrune, catalog, err).map_err(output_failed)?;
+    }
+    presentation::render(out, format, &PruneReport(&pruning)).map_err(output_failed)?;
+    if pruning.applied || pruning.pruned.is_empty() {
+        return Ok(());
+    }
+    let report_only = Notice::ReportOnly { command: apply };
+    notify(&report_only, catalog, err).map_err(output_failed)
 }
 
 /// Render the report; refuse when it left something behind, so a script

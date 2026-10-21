@@ -98,6 +98,10 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
             format: "json".to_string(),
         }),
         Box::new(Notice::NoProject),
+        Box::new(Notice::NothingToPrune),
+        Box::new(Notice::ReportOnly {
+            command: "taskloom prune --older-than 7d --status Done --yes".to_string(),
+        }),
     ]
 }
 

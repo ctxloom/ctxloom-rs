@@ -4,3 +4,5 @@ tasks-cli-usage = { $detail }
 tasks-cli-project = project { $root } ({ $id })
 tasks-cli-no-project = no project here yet: nothing to list
 tasks-cli-loadout-format = the loadout is printed only as yaml, not { $format }
+tasks-cli-nothing-to-prune = no project here yet: nothing to prune
+tasks-cli-report-only = removed nothing: this was a report, not a removal; to apply exactly this plan, run it again with --yes: { $command }

@@ -12,6 +12,11 @@ pub enum Notice {
     Project { root: String, id: String },
     /// A listing found no project here, so lists nothing.
     NoProject,
+    /// A prune found no project here, so prunes nothing.
+    NothingToPrune,
+    /// A prune reported what it would take, and took nothing: `command`
+    /// takes it.
+    ReportOnly { command: String },
 }
 
 impl Notice {
@@ -28,6 +33,11 @@ impl fmt::Display for Notice {
         match self {
             Notice::Project { root, id } => write!(f, "project {root} ({id})"),
             Notice::NoProject => f.write_str("no project here yet: nothing to list"),
+            Notice::NothingToPrune => f.write_str("no project here yet: nothing to prune"),
+            Notice::ReportOnly { command } => write!(
+                f,
+                "removed nothing: this was a report, not a removal; to apply exactly this plan, run it again with --yes: {command}"
+            ),
         }
     }
 }
@@ -37,6 +47,8 @@ impl Diagnostic for Notice {
         match self {
             Notice::Project { .. } => "tasks-cli-project",
             Notice::NoProject => "tasks-cli-no-project",
+            Notice::NothingToPrune => "tasks-cli-nothing-to-prune",
+            Notice::ReportOnly { .. } => "tasks-cli-report-only",
         }
     }
 
@@ -45,7 +57,8 @@ impl Diagnostic for Notice {
             Notice::Project { root, id } => {
                 vec![("root", root.as_str().into()), ("id", id.as_str().into())]
             }
-            Notice::NoProject => Vec::new(),
+            Notice::ReportOnly { command } => vec![("command", command.as_str().into())],
+            Notice::NoProject | Notice::NothingToPrune => Vec::new(),
         }
     }
 }
