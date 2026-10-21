@@ -60,12 +60,19 @@ Wire and domain types are generated into `OUT_DIR` by `angzarr-build` from
 so the core's clippy rules hold in build scripts too. Change the `.proto`,
 never generated output.
 
-## Stores are held to annals' store contract
+## Storage is annals-store-sql, in annals for now
 
-A store adapter runs `annals::store_contract!` (sync) or
-`annals::async_store_contract!` (async) in its tests: the same checks
-`InMemoryStore` passes. Domain and projector tests run through annals'
-kernel over `InMemoryStore`, as the daemon runs over SQLite.
+The SQL store is `annals-store-sql` (feature `sqlite`), in the annals
+repository: backend-neutral statements, with each backend's execution and
+migrations behind a feature. It lives in annals until angzarr core's older
+SQL storage is brought onto it, and then moves to angzarr core. ctxloom
+writes no SQL of its own; a project's database is that crate's SQLite store,
+opened at `~/.ctxloom/projects/<project-id>/state.db`.
+
+Any store is held to annals' store contract (`annals::store_contract!` or
+`annals::async_store_contract!`), the checks `InMemoryStore` passes. Domain
+and projector tests run through annals' kernel over `InMemoryStore`, as the
+daemon runs over SQLite.
 
 ## Errors are localizable: a code, args, and an en-US message
 
