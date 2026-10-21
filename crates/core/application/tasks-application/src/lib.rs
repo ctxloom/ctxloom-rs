@@ -443,7 +443,8 @@ fn book(harp_id: &str, command: TaskCommand) -> CommandBook {
     }
 }
 
-/// The task `harp_id` names, as the store holds it now.
+/// The task `harp_id` names, as the store holds it now; `None` when its
+/// stream holds no task.
 async fn read<S: AsyncEventStore>(
     store: &mut S,
     registry: &Registry,
@@ -455,7 +456,10 @@ async fn read<S: AsyncEventStore>(
     };
     let stream = Stream::<Tasks>::replay(cover, &slice.pages, registry)
         .map_err(|e| AppError::Failed(Report::of(&e)))?;
-    Ok(Some(Task::of(stream.state())))
+    // A stream that replays to no task (purged mid-read, read back with
+    // no events) is no task, never a blank one.
+    let state = stream.state();
+    Ok((!state.harp_id.is_empty()).then(|| Task::of(state)))
 }
 
 fn failed(error: annals::next::StoreError) -> AppError {

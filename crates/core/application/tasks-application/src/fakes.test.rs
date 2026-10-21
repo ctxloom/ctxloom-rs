@@ -91,6 +91,9 @@ pub struct Flaky {
     /// Done to the store as the next unit of work begins, before it: what
     /// another process does between a use case's read and its write.
     pub meanwhile: Option<Meanwhile>,
+    /// Every stream reads back with no events, outside a unit of work:
+    /// what a stream purged mid-read can look like.
+    pub hollow: bool,
 }
 
 impl Default for Flaky {
@@ -101,6 +104,7 @@ impl Default for Flaky {
             begun: 0,
             open_fails: false,
             meanwhile: None,
+            hollow: false,
         }
     }
 }
@@ -142,7 +146,13 @@ impl AsyncEventStore for Flaky {
     }
 
     async fn read_from(&mut self, stream: &Cover, from: u64) -> Result<Option<Slice>, StoreError> {
-        self.inner.read_from(stream, from).await
+        let mut read = self.inner.read_from(stream, from).await;
+        if self.hollow {
+            if let Ok(Some(slice)) = &mut read {
+                slice.pages.clear();
+            }
+        }
+        read
     }
 
     async fn find_command(

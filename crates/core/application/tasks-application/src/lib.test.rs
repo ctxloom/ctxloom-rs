@@ -772,3 +772,20 @@ fn test_the_default_query_admits_open_statuses_only() {
 fn spelled(tags: &[tasks::Tag]) -> Vec<String> {
     tags.iter().map(ToString::to_string).collect()
 }
+
+// ------------------------------------------------------------ reading back
+
+#[test]
+fn test_a_task_read_back_as_no_events_is_never_a_blank_task() {
+    // A stream purged mid-read can read back as a stream with no events.
+    let mut service = service(&["swift-amber"]);
+    service.stores.store.hollow = true;
+    let error = add(&mut service, new_task("Ship it")).unwrap_err();
+    assert_eq!(
+        error,
+        AppError::Vanished {
+            harp_id: "swift-amber".to_string()
+        }
+    );
+    assert!(listed(&mut service, ListQuery::default()).is_empty());
+}
