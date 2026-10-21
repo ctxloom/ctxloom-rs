@@ -10,7 +10,7 @@ use tasks_application::{
     TextEdit,
 };
 
-use crate::render::{Added, Detailed, Listed, Summed, Tagged};
+use crate::render::{Added, Detailed, Listed, Summed, Tagged, Taxonomy};
 use crate::{notify, output_failed, wrote, CliError, Notice};
 
 /// What every task command is handed besides its own arguments: the
@@ -293,6 +293,29 @@ pub(crate) async fn summary(
         .map_err(CliError::App)?;
     reached(&summary.reach, catalog, err)
         .and_then(|()| presentation::render(out, format, &Summed(&summary)))
+        .map_err(output_failed)
+}
+
+pub(crate) async fn statuses(
+    args: GlobalArgs,
+    ctx: Ctx<'_>,
+    service: &mut impl TaskService,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<(), CliError> {
+    let (format, catalog) = (ctx.format, ctx.catalog);
+    let statuses = service
+        .statuses(args.scope(ctx))
+        .await
+        .map_err(CliError::App)?;
+    // With no project the defaults are still the answer: only a read of
+    // every project for want of one is worth saying.
+    let noticed = match statuses.reach {
+        Reach::Every { .. } => reached(&statuses.reach, catalog, err),
+        Reach::Project(_) | Reach::NoProject => Ok(()),
+    };
+    noticed
+        .and_then(|()| presentation::render(out, format, &Taxonomy(&statuses)))
         .map_err(output_failed)
 }
 

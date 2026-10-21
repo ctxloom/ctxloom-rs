@@ -10,8 +10,8 @@ use std::task::{Context as TaskContext, Poll, Waker};
 use annals_diagnostic::Report;
 use tasks_application::{
     AppError, Details, Hidden, ImportReport, ImportRequest, ImportService, ListQuery, Listing,
-    NewTask, Project, ProjectImport, Reach, Row, Scope, ShowQuery, StatusChange, Summary,
-    TagChange, Task, TaskService, TextEdit, Written,
+    NewTask, Project, ProjectImport, Reach, Row, Scope, ShowQuery, StatusChange, StatusInfo,
+    Statuses, Summary, TagChange, Task, TaskService, TextEdit, Written,
 };
 
 use presentation::{Catalog, Format};
@@ -65,6 +65,8 @@ struct Fake {
     edits: Vec<TextEdit>,
     shows: Vec<ShowQuery>,
     summed: Vec<Scope>,
+    taxonomies: Vec<Scope>,
+    statuses: Option<Result<Statuses, AppError>>,
     summary: Option<Result<Summary, AppError>>,
     details: Option<Result<Details, AppError>>,
     listed: Vec<ListQuery>,
@@ -108,6 +110,11 @@ impl TaskService for Fake {
     async fn summary(&mut self, scope: Scope) -> Result<Summary, AppError> {
         self.summed.push(scope);
         self.summary.clone().expect("a summary answer scripted")
+    }
+
+    async fn statuses(&mut self, scope: Scope) -> Result<Statuses, AppError> {
+        self.taxonomies.push(scope);
+        self.statuses.clone().expect("a statuses answer scripted")
     }
 }
 
@@ -652,6 +659,72 @@ fn test_summary_across_projects_names_each_task_with_its_project() {
     assert_eq!(ran.err, "taskloom: no project here yet: nothing to list\n");
     let ran = run_on(&mut fake, false, &["summary"]);
     assert_eq!(ran.out, "{\n  \"counts\": {},\n  \"in_progress\": []\n}\n");
+}
+
+// ------------------------------------------------------------ statuses
+
+fn statuses(reach: Reach, names: &[&str]) -> Option<Result<Statuses, AppError>> {
+    Some(Ok(Statuses {
+        reach,
+        statuses: names
+            .iter()
+            .enumerate()
+            .map(|(order, name)| StatusInfo::of(name, order))
+            .collect(),
+    }))
+}
+
+#[test]
+fn test_statuses_are_a_line_each_or_gos_array() {
+    let names = ["In Progress", "Deferred", "Done", "Blocked"];
+    let mut fake = Fake {
+        statuses: statuses(Reach::NoProject, &names),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["--project", "p", "statuses", "--global"]);
+    assert_eq!(ran.code, 0, "{}", ran.err);
+    assert_eq!(
+        fake.taxonomies,
+        [Scope {
+            project: Some("p".to_string()),
+            global: true,
+            config_set: Vec::new(),
+        }]
+    );
+    assert_eq!(
+        ran.out,
+        "0\tIn Progress\n1\tDeferred\trequires-trigger\n2\tDone\tterminal\n3\tBlocked\n"
+    );
+    assert_eq!(ran.err, "", "no project: the defaults, nothing to say");
+    let ran = run_on(&mut fake, false, &["statuses"]);
+    let json: Vec<serde_json::Value> = serde_json::from_str(&ran.out).unwrap();
+    assert_eq!(
+        json[1],
+        serde_json::json!({"name": "Deferred", "order": 1, "terminal": false, "requires_trigger": true})
+    );
+    let keys: Vec<&String> = json[0].as_object().unwrap().keys().collect();
+    assert_eq!(keys, ["name", "order", "requires_trigger", "terminal"]);
+}
+
+#[test]
+fn test_statuses_read_across_projects_for_want_of_one_say_so() {
+    let every = Reach::Every {
+        projects: 1,
+        fallback: Some("/tmp/x".to_string()),
+    };
+    let mut fake = Fake {
+        statuses: statuses(every, &["To Do"]),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["statuses"]);
+    assert!(
+        ran.err.starts_with("taskloom: no project here: /tmp/x"),
+        "{}",
+        ran.err
+    );
+    fake.statuses = statuses(Reach::Project(project()), &["To Do"]);
+    let ran = run_on(&mut fake, true, &["statuses"]);
+    assert_eq!(ran.err, "");
 }
 
 // ------------------------------------------------------------ list

@@ -8,7 +8,8 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 
 use tasks_application::{
-    Details, Listing, Project, Reach, Row, Shown, Summary, Tag, Task, Timestamp,
+    Details, Listing, Project, Reach, Row, Shown, StatusInfo, Statuses, Summary, Tag, Task,
+    Timestamp,
 };
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
@@ -377,6 +378,53 @@ impl Render for Summed<'_> {
             })
             .collect();
         writeln!(out, "\nIn-progress: {}", names.join(", "))
+    }
+}
+
+/// The statuses: JSON Go's `StatusInfo` array; text a line each, its
+/// order, its name, and whether it is terminal or requires a trigger.
+pub struct Taxonomy<'a>(pub &'a Statuses);
+
+#[derive(Serialize)]
+struct StatusJson<'a> {
+    name: &'a str,
+    order: usize,
+    terminal: bool,
+    requires_trigger: bool,
+}
+
+impl<'a> StatusJson<'a> {
+    fn of(status: &'a StatusInfo) -> StatusJson<'a> {
+        StatusJson {
+            name: &status.name,
+            order: status.order,
+            terminal: status.terminal,
+            requires_trigger: status.requires_trigger,
+        }
+    }
+}
+
+impl Render for Taxonomy<'_> {
+    fn json(&self) -> impl Serialize + '_ {
+        self.0
+            .statuses
+            .iter()
+            .map(StatusJson::of)
+            .collect::<Vec<_>>()
+    }
+
+    fn text(&self, out: &mut dyn Write) -> io::Result<()> {
+        for status in &self.0.statuses {
+            write!(out, "{}\t{}", status.order, status.name)?;
+            if status.terminal {
+                write!(out, "\tterminal")?;
+            }
+            if status.requires_trigger {
+                write!(out, "\trequires-trigger")?;
+            }
+            writeln!(out)?;
+        }
+        Ok(())
     }
 }
 

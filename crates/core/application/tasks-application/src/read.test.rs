@@ -466,3 +466,50 @@ fn test_a_summary_across_projects_sums_them() {
     assert_eq!(summary.counts.get("To Do"), Some(&3));
     assert!(summary.reach.is_every());
 }
+
+// ------------------------------------------------------------ statuses
+
+fn taxonomy(service: &mut Fake, scope: Scope) -> Vec<(String, usize, bool, bool)> {
+    ready(service.statuses(scope))
+        .unwrap()
+        .statuses
+        .into_iter()
+        .map(|s| (s.name, s.order, s.terminal, s.requires_trigger))
+        .collect()
+}
+
+fn info(name: &str, order: usize, terminal: bool, trigger: bool) -> (String, usize, bool, bool) {
+    (name.to_string(), order, terminal, trigger)
+}
+
+#[test]
+fn test_the_statuses_are_the_defaults_in_order_where_there_is_no_task() {
+    let mut service = service(&[]);
+    assert_eq!(
+        taxonomy(&mut service, Scope::default()),
+        [
+            info("In Progress", 0, false, false),
+            info("To Do", 1, false, false),
+            info("Deferred", 2, false, true),
+            info("Done", 3, true, false),
+            info("Archived", 4, true, false),
+        ]
+    );
+}
+
+#[test]
+fn test_the_statuses_in_use_follow_the_defaults_by_name_each_once() {
+    let mut service = service(&["first", "second", "third", "fourth"]);
+    for status in ["Waiting", "Blocked", "Waiting", "Done"] {
+        add(&mut service, status, status);
+    }
+    let statuses = taxonomy(&mut service, Scope::default());
+    assert_eq!(
+        statuses[5..],
+        [
+            info("Blocked", 5, false, false),
+            info("Waiting", 6, false, false)
+        ]
+    );
+    assert_eq!(statuses.len(), 7);
+}

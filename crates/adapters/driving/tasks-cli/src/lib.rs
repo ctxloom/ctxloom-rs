@@ -1,5 +1,5 @@
 //! The tasks command line: `add`, `status`, `edit`, `list`, `show`,
-//! `summary`, `tag` and `import`, translated
+//! `summary`, `statuses`, `tag` and `import`, translated
 //! into the application's use cases and their answers rendered through
 //! presentation, with room for another crate's commands mounted beside
 //! them ([`run_mounted`]). Text on a terminal, JSON otherwise, unless
@@ -93,6 +93,11 @@ enum Command<X: Subcommand> {
     /// Count the tasks in each status, every task included whatever list
     /// would hide, and name those In Progress.
     Summary(commands::GlobalArgs),
+    /// List the statuses: the defaults in their display order (In
+    /// Progress, To Do, Deferred, Done, Archived), then any other in use,
+    /// each saying whether it is terminal or requires a trigger. @open and
+    /// @terminal are the classes of the statuses not terminal and terminal.
+    Statuses(commands::GlobalArgs),
     /// Add and/or remove tags on a task; adds apply before removes.
     Tag(commands::TagArgs),
     /// Import Go taskloom's task logs (~/.ctxloom/tasks/<project-id>.jsonl)
@@ -216,6 +221,7 @@ pub async fn run_mounted<S: TaskService + ImportService, X: Subcommand>(
         Command::Edit(args) => commands::edit(args, ctx, service, out, err).await,
         Command::Show(args) => commands::show(args, ctx, service, out, err).await,
         Command::Summary(args) => commands::summary(args, ctx, service, out, err).await,
+        Command::Statuses(args) => commands::statuses(args, ctx, service, out, err).await,
         Command::Tag(args) => commands::tag(args, ctx, service, out, err).await,
         Command::List(args) => commands::list(args, ctx, service, out, err).await,
         Command::Import => {

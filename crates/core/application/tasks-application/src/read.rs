@@ -7,13 +7,16 @@
 //! working directory lies in no work root of its own (no CTXLOOM_ROOT, no
 //! git repository), as Go's does; inside a work root it reads nothing.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use annals_diagnostic::Report;
 use ports::{Configuration, ProjectIdentity, TaskStores};
 use task_lists::TaskList;
 
-use crate::view::{is_active, is_terminal, Row, Task, IN_PROGRESS, OPEN, STATUS_CLASSES, TERMINAL};
+use crate::view::{
+    is_active, is_terminal, Row, StatusInfo, Task, DEFAULT_STATUSES, IN_PROGRESS, OPEN,
+    STATUS_CLASSES, TERMINAL,
+};
 use crate::{failed, query, AppError, Project, Service, Shown};
 
 /// What a read reached.
@@ -115,6 +118,14 @@ pub struct Summary {
     /// By status, sorted.
     pub counts: BTreeMap<String, usize>,
     pub in_progress: Vec<Row>,
+}
+
+/// The statuses: the default ones in their order, then any other a task
+/// the read reached holds, by name.
+#[derive(Clone, PartialEq, Debug)]
+pub struct Statuses {
+    pub reach: Reach,
+    pub statuses: Vec<StatusInfo>,
 }
 
 /// A status filter: statuses by name, and the classes `@open` (every
@@ -310,6 +321,27 @@ where
             reach: scan.reach,
             counts,
             in_progress,
+        })
+    }
+
+    /// The default statuses, and those in use where `scope` reaches.
+    pub(crate) async fn taxonomy(&mut self, scope: crate::Scope) -> Result<Statuses, AppError> {
+        let scan = self.scan(scope.project.as_deref(), scope.global).await?;
+        let others: BTreeSet<&str> = scan
+            .rows
+            .iter()
+            .map(|row| row.task.status.as_str())
+            .filter(|status| !DEFAULT_STATUSES.contains(status))
+            .collect();
+        let statuses = DEFAULT_STATUSES
+            .into_iter()
+            .chain(others)
+            .enumerate()
+            .map(|(order, name)| StatusInfo::of(name, order))
+            .collect();
+        Ok(Statuses {
+            reach: scan.reach,
+            statuses,
         })
     }
 

@@ -651,6 +651,19 @@ fn test_in_json_each_later_command_writes_one_document_and_errors_an_envelope() 
         assert_eq!(summary["counts"]["To Do"], 1, "{args:?}");
         assert_eq!(summary["in_progress"], serde_json::json!([]), "{args:?}");
     }
+
+    let statuses = env.run(&["statuses", "--json"]);
+    assert!(statuses.ok, "{}", statuses.stderr);
+    let names: Vec<Value> = one_document(&statuses.stdout)
+        .as_array()
+        .expect("an array")
+        .iter()
+        .map(|s| s["name"].clone())
+        .collect();
+    assert_eq!(
+        names,
+        ["In Progress", "To Do", "Deferred", "Done", "Archived"].map(Value::from)
+    );
 }
 
 #[test]
