@@ -4,13 +4,13 @@
 use annals::next::v1::event_meta::Causation;
 use annals::next::AsyncEventStore;
 use annals_diagnostic::{Diagnostic, Report};
-use tasks::TaskState;
 
 use crate::fakes::{
     project, ready, FakeClock, FakeDelay, FakeIdentity, FakeNames, FakeStores, Fault, Flaky,
 };
 use crate::{
-    cover, AppError, ListQuery, NewTask, Service, TagChange, TaskService, Written, HARP_ATTEMPTS,
+    cover, AppError, ListQuery, NewTask, Service, StatusChange, TagChange, TaskService, TextEdit,
+    Written, HARP_ATTEMPTS,
 };
 
 type Fake = Service<FakeIdentity, FakeStores, FakeNames, FakeClock, FakeDelay>;
@@ -39,9 +39,8 @@ fn add(service: &mut Fake, task: NewTask) -> Result<Written, AppError> {
 fn listed(service: &mut Fake, query: ListQuery) -> Vec<String> {
     ready(service.list(query))
         .unwrap()
-        .tasks
-        .into_iter()
-        .map(|t| t.harp_id)
+        .tasks()
+        .map(|t| t.harp_id.clone())
         .collect()
 }
 
@@ -77,6 +76,13 @@ where
     is_send(&service.add(NewTask::default()));
     is_send(&service.tag(TagChange::default()));
     is_send(&service.list(ListQuery::default()));
+    is_send(&service.set_status(StatusChange::default()));
+    is_send(&service.edit(TextEdit::default()));
+    is_send(&service.show(crate::ShowQuery::default()));
+    is_send(&service.summary(crate::Scope::default()));
+    is_send(&service.statuses(crate::Scope::default()));
+    is_send(&service.tags(ListQuery::default()));
+    is_send(&service.lint(crate::Scope::default()));
     is_send(&stores.open(&project()));
     is_send(&stores.open_existing(&project()));
     is_send(&delay.sleep(std::time::Duration::ZERO));
@@ -447,6 +453,22 @@ fn test_a_tag_changing_nothing_answers_with_the_task_as_it_is() {
 }
 
 #[test]
+fn test_a_tag_with_nothing_to_add_or_remove_is_refused_before_anything_is_read() {
+    let mut service = configured(&["unreadable"]);
+    for (add, remove) in [(&[][..], &[][..]), (&[" "], &[""])] {
+        let error = ready(service.tag(change("swift-amber", add, remove))).unwrap_err();
+        assert_eq!(error.code(), "tasks-tag-required");
+    }
+    assert!(
+        service.configuration.asked.is_empty(),
+        "no configuration read"
+    );
+    assert!(service.identity.pins.is_empty(), "no project resolved");
+    let error = ready(service.tag(change("swift-amber", &[], &[" x "]))).unwrap_err();
+    assert_eq!(error.code(), "x-config", "one tag is something to do");
+}
+
+#[test]
 fn test_a_tag_of_no_task_is_refused() {
     let mut service = service(&["swift-amber"]);
     add(&mut service, new_task("Ship it")).unwrap();
@@ -523,6 +545,148 @@ fn test_a_tag_whose_store_does_not_open_fails() {
     service.stores.store.open_fails = true;
     let error = ready(service.tag(change("swift-amber", &["x"], &[]))).unwrap_err();
     assert_eq!(error.code(), "annals-next-store-unavailable");
+}
+
+// ------------------------------------------------------------ status
+
+fn moved(harp: &str, status: &str, trigger: &str) -> StatusChange {
+    StatusChange {
+        project: Some("pinned-id".to_string()),
+        harp_id: harp.to_string(),
+        status: status.to_string(),
+        trigger: trigger.to_string(),
+        config_set: Vec::new(),
+    }
+}
+
+#[test]
+fn test_a_status_change_moves_the_task_and_answers_with_it_and_its_project() {
+    let mut service = service(&["swift-amber"]);
+    add(&mut service, new_task("Ship it")).unwrap();
+    let written = ready(service.set_status(moved("swift-amber", "Done", ""))).unwrap();
+    assert_eq!(written.task.status, "Done");
+    assert!(written.task.checked);
+    assert_eq!(written.project, project());
+    assert_eq!(
+        service.identity.pins.last(),
+        Some(&Some("pinned-id".to_string()))
+    );
+    assert_eq!(command_ids(&mut service, "swift-amber").len(), 2);
+}
+
+#[test]
+fn test_deferred_needs_a_trigger_given_or_held() {
+    let mut service = service(&["swift-amber"]);
+    add(&mut service, new_task("Ship it")).unwrap();
+    let error = ready(service.set_status(moved("swift-amber", "Deferred", " "))).unwrap_err();
+    assert_eq!(error.code(), "tasks-trigger-required");
+    let written =
+        ready(service.set_status(moved("swift-amber", "Deferred", "the release"))).unwrap();
+    assert_eq!(written.task.trigger, "the release");
+    ready(service.set_status(moved("swift-amber", "To Do", ""))).unwrap();
+    let again = ready(service.set_status(moved("swift-amber", "Deferred", ""))).unwrap();
+    assert_eq!(again.task.trigger, "the release", "kept from before");
+}
+
+#[test]
+fn test_a_status_class_is_no_status_to_move_to() {
+    let mut service = service(&["swift-amber"]);
+    add(&mut service, new_task("Ship it")).unwrap();
+    let error = ready(service.set_status(moved("swift-amber", "@open", ""))).unwrap_err();
+    assert_eq!(error.code(), "tasks-status-reserved");
+}
+
+#[test]
+fn test_a_status_change_of_no_task_or_where_there_is_none_is_refused() {
+    let mut held = service(&["swift-amber"]);
+    add(&mut held, new_task("Ship it")).unwrap();
+    let error = ready(held.set_status(moved("calm-otter", "Done", ""))).unwrap_err();
+    assert_eq!(error.code(), "tasks-no-task");
+    let mut nowhere = service(&[]);
+    let unpinned = StatusChange {
+        project: None,
+        ..moved("swift-amber", "Done", "")
+    };
+    let error = ready(nowhere.set_status(unpinned)).unwrap_err();
+    assert_eq!(error, AppError::NoProject);
+    assert!(nowhere.stores.opened.is_empty() && nowhere.stores.looked.is_empty());
+    let mut storeless = service(&[]);
+    storeless.stores.absent = true;
+    let error = ready(storeless.set_status(moved("swift-amber", "Done", ""))).unwrap_err();
+    assert_eq!(error.code(), "tasks-no-task");
+    assert!(storeless.stores.opened.is_empty(), "no store created");
+}
+
+#[test]
+fn test_a_status_change_retries_through_store_failures() {
+    let mut service = service(&["swift-amber"]);
+    add(&mut service, new_task("Ship it")).unwrap();
+    service.stores.store.faults = [Fault::Conflict].into();
+    let written = ready(service.set_status(moved("swift-amber", "Done", ""))).unwrap();
+    assert_eq!(written.task.status, "Done");
+    assert_eq!(service.delay.slept.len(), 1);
+}
+
+#[test]
+fn test_a_status_change_under_a_malformed_configuration_is_refused() {
+    let mut service = configured(&["tagma.arty:x=1"]);
+    let error = ready(service.set_status(moved("swift-amber", "Done", ""))).unwrap_err();
+    assert_eq!(error.code(), "tasks-application-schema-unknown-facet");
+    assert!(service.identity.pins.is_empty());
+}
+
+// ------------------------------------------------------------ edit
+
+fn edited(harp: &str, text: &str) -> TextEdit {
+    TextEdit {
+        project: Some("pinned-id".to_string()),
+        harp_id: harp.to_string(),
+        text: text.to_string(),
+        config_set: Vec::new(),
+    }
+}
+
+#[test]
+fn test_an_edit_replaces_the_text_whole_and_keeps_the_status_and_trigger() {
+    let mut service = service(&["swift-amber"]);
+    let deferred = NewTask {
+        status: "Deferred".to_string(),
+        trigger: "the release".to_string(),
+        ..new_task("Ship it")
+    };
+    let before = add(&mut service, deferred).unwrap();
+    let written = ready(service.edit(edited("swift-amber", "  Ship it, then tell\n"))).unwrap();
+    assert_eq!(written.task.text, "Ship it, then tell", "trimmed");
+    assert_ne!(written.task.text_hash, before.task.text_hash);
+    assert_eq!(written.task.status, "Deferred");
+    assert_eq!(written.task.trigger, "the release");
+    assert_eq!(written.project, project());
+    assert_eq!(
+        service.identity.pins.last(),
+        Some(&Some("pinned-id".to_string()))
+    );
+}
+
+#[test]
+fn test_an_edit_to_no_text_or_no_task_is_refused() {
+    let mut service = service(&["swift-amber"]);
+    add(&mut service, new_task("Ship it")).unwrap();
+    let error = ready(service.edit(edited("swift-amber", " "))).unwrap_err();
+    assert_eq!(error.code(), "tasks-text-required");
+    let error = ready(service.edit(edited("calm-otter", "x"))).unwrap_err();
+    assert_eq!(error.code(), "tasks-no-task");
+    let mut nowhere = self::service(&[]);
+    let unpinned = TextEdit {
+        project: None,
+        ..edited("swift-amber", "x")
+    };
+    assert_eq!(
+        ready(nowhere.edit(unpinned)).unwrap_err(),
+        AppError::NoProject
+    );
+    let mut configured = configured(&["tagma.arty:x=1"]);
+    let error = ready(configured.edit(edited("swift-amber", "x"))).unwrap_err();
+    assert_eq!(error.code(), "tasks-application-schema-unknown-facet");
 }
 
 // ------------------------------------------------------------ list
@@ -667,16 +831,16 @@ fn test_a_list_answers_with_each_tasks_values_and_its_project() {
     let mut service = service(&["swift-amber"]);
     let added = add(&mut service, new_task("Ship it")).unwrap();
     let listing = ready(service.list(ListQuery::default())).unwrap();
-    assert_eq!(listing.project, Some(project()));
-    assert_eq!(listing.tasks, [added.task]);
+    assert_eq!(listing.project(), Some(&project()));
+    assert_eq!(listing.tasks().collect::<Vec<_>>(), [&added.task]);
 }
 
 #[test]
-fn test_a_list_where_there_is_no_project_is_empty_and_opens_no_store() {
+fn test_a_list_where_there_is_no_project_in_a_work_root_is_empty_and_opens_no_store() {
     let mut service = service(&[]);
     let listing = ready(service.list(ListQuery::default())).unwrap();
-    assert_eq!(listing.project, None);
-    assert!(listing.tasks.is_empty());
+    assert_eq!(listing.reach, crate::Reach::NoProject);
+    assert!(listing.rows.is_empty());
     assert!(service.stores.opened.is_empty() && service.stores.looked.is_empty());
     assert_eq!(
         service.identity.bound, None,
@@ -693,8 +857,8 @@ fn test_a_list_of_a_project_with_no_store_yet_is_empty_and_creates_none() {
         ..ListQuery::default()
     };
     let listing = ready(service.list(query)).unwrap();
-    assert_eq!(listing.project, Some(project()));
-    assert!(listing.tasks.is_empty());
+    assert_eq!(listing.project(), Some(&project()));
+    assert!(listing.rows.is_empty());
     assert_eq!(service.stores.looked, ["jolly-mute-magma"]);
     assert!(service.stores.opened.is_empty(), "no store opened to write");
     assert_eq!(service.identity.pins, [Some("pinned-id".to_string())]);
@@ -727,23 +891,6 @@ fn test_a_list_whose_store_does_not_open_fails() {
 }
 
 #[test]
-fn test_a_list_of_a_status_class_is_refused_until_classes_exist() {
-    let mut service = service(&[]);
-    service.identity.bound = Some(project());
-    let query = ListQuery {
-        statuses: vec!["To Do".to_string(), " @open".to_string()],
-        ..ListQuery::default()
-    };
-    let error = ready(service.list(query)).unwrap_err();
-    let AppError::Rejected(rejection) = &error else {
-        panic!("rejected: {error:?}");
-    };
-    assert_eq!(rejection.code(), "tasks-status-reserved");
-    assert!(rejection.to_string().contains("@open"), "{rejection}");
-    assert!(service.stores.looked.is_empty(), "refused before any read");
-}
-
-#[test]
 fn test_an_add_in_a_status_class_is_refused() {
     let mut service = service(&["swift-amber"]);
     let task = NewTask {
@@ -752,20 +899,6 @@ fn test_an_add_in_a_status_class_is_refused() {
     };
     let error = add(&mut service, task).unwrap_err();
     assert_eq!(error.code(), "tasks-status-reserved");
-}
-
-#[test]
-fn test_the_default_query_admits_open_statuses_only() {
-    let query = ListQuery::default();
-    let task = |status: &str| TaskState {
-        status: status.to_string(),
-        ..TaskState::default()
-    };
-    assert!(query.admits(&task("To Do")));
-    assert!(query.admits(&task("Blocked")));
-    assert!(!query.admits(&task("Done")));
-    assert!(!query.admits(&task("Archived")));
-    assert!(!query.admits(&task("Deferred")));
 }
 
 /// Each tag in its canonical spelling.

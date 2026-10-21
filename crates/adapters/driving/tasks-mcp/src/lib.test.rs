@@ -411,7 +411,9 @@ fn test_a_project_is_resolved_off_the_servers_thread() {
         client.call("task_add", json!({"text": "x"})).await;
         client.call("task_list", json!({})).await;
         let asked_on = world.asked_on.lock().unwrap().clone();
-        assert_eq!(asked_on.len(), 2);
+        // The add's project; the listing's, and, finding none, whether
+        // the working directory lies outside every work root.
+        assert_eq!(asked_on.len(), 3);
         let here = std::thread::current().id();
         assert!(
             asked_on.iter().all(|thread| *thread != here),

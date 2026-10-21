@@ -4,7 +4,9 @@
 use std::path::PathBuf;
 
 use serde_json::json;
-use tasks_application::{ListQuery, Listing, Project, Shown, Task, Timestamp, Written};
+use tasks_application::{
+    Hidden, ListQuery, Listing, Project, Reach, Row, Shown, Task, Timestamp, Written,
+};
 
 use super::{added, list_query, listed, new_task, offered};
 use crate::{McpError, Settings};
@@ -48,6 +50,25 @@ fn tag(spelled: &str) -> tasks_application::Tag {
 /// What `hide` facts show.
 fn hiding(facts: &[&str]) -> Shown {
     Shown::of(&tasks_application::TagSchema::parse(facts).unwrap())
+}
+
+/// A listing that read `reach`, of `tasks` in `project()`.
+fn listing(reach: Reach, tasks: Vec<Task>, shown: Shown) -> Listing {
+    let rows = tasks
+        .into_iter()
+        .map(|task| Row {
+            project: project(),
+            task,
+        })
+        .collect();
+    Listing {
+        reach,
+        rows,
+        shown,
+        hidden: Hidden::default(),
+        searched: false,
+        omitted: 0,
+    }
 }
 
 fn catalog() -> presentation::Catalog {
@@ -132,11 +153,7 @@ fn test_an_add_asks_for_its_task_in_the_servers_session() {
 
 #[test]
 fn test_a_listed_task_carries_its_project_and_no_priority_yet() {
-    let listing = Listing {
-        project: Some(project()),
-        tasks: vec![task()],
-        shown: Shown::default(),
-    };
+    let listing = listing(Reach::Project(project()), vec![task()], Shown::default());
     let value = listed(&listing, &catalog());
     assert_eq!(value["path"], "/s/state.db");
     assert_eq!(value.get("warning"), None);
@@ -177,10 +194,24 @@ fn test_a_result_spells_every_tag_canonically_hidden_ones_too() {
         shown: shown.clone(),
     };
     assert_eq!(added(&written)["task"]["tags"], spelled);
-    let listing = Listing {
-        project: Some(project()),
-        tasks: vec![task],
-        shown,
-    };
+    let listing = listing(Reach::Project(project()), vec![task], shown);
     assert_eq!(listed(&listing, &catalog())["tasks"][0]["tags"], spelled);
+}
+
+// Go falls back to every project where none is found outside a work
+// root, and says so in `global` and `notice`; until that is served, such
+// a listing is answered as no project, as it was before the fallback.
+#[test]
+fn test_a_listing_of_no_project_or_every_project_is_answered_as_no_project() {
+    let every = Reach::Every {
+        projects: 1,
+        fallback: Some("/tmp/somewhere".to_string()),
+    };
+    for reach in [Reach::NoProject, every] {
+        let value = listed(&listing(reach, vec![task()], Shown::default()), &catalog());
+        assert_eq!(value["path"], "");
+        assert_eq!(value.get("project_id"), None);
+        assert_eq!(value["tasks"], json!([]));
+        assert!(value["warning"].as_str().is_some_and(|w| !w.is_empty()));
+    }
 }

@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use tasks_application::{Project, Shown, Task, Timestamp};
+use tasks_application::{Hidden, Listing, Project, Reach, Row, Shown, Task, Timestamp};
 
 use presentation::{render, write_json, Format};
 
@@ -56,7 +56,8 @@ fn test_a_table_aligns_ids_and_statuses_and_separates_tasks() {
     let mut deferred = task("calm-otter", "Deferred");
     deferred.trigger = "the release".to_string();
     deferred.tags = vec![tag("a"), tag("b")];
-    let tasks = [task("swift-amber-x", "Done"), deferred];
+    let (done, deferred) = (task("swift-amber-x", "Done"), deferred);
+    let tasks = [&done, &deferred];
     assert_eq!(
         rendered(|out| table(out, &tasks, &Shown::default())),
         "[x] swift-amber-x  Done         Ship it\n\
@@ -67,16 +68,21 @@ fn test_a_table_aligns_ids_and_statuses_and_separates_tasks() {
 
 #[test]
 fn test_a_table_aligns_wide_characters_by_their_display_width() {
-    let tasks = [
+    let (wide, narrow) = (
         task("swift-amber", "\u{5b8c}\u{4e86}"),
         task("calm-otter", "To Do"),
-    ];
+    );
+    let tasks = [&wide, &narrow];
     assert_eq!(
         rendered(|out| table(out, &tasks, &Shown::default())),
         "[ ] swift-amber  \u{5b8c}\u{4e86}         Ship it\n\
          \n\
          [ ] calm-otter   To Do        Ship it\n"
     );
+}
+
+fn listing_none() -> Listing {
+    listing(Reach::NoProject, &[], Shown::default())
 }
 
 fn project() -> Project {
@@ -108,14 +114,30 @@ fn test_a_written_task_is_one_line_of_text_or_the_task_in_json() {
     }
 }
 
+fn listing(reach: Reach, tasks: &[Task], shown: Shown) -> Listing {
+    Listing {
+        reach,
+        rows: tasks
+            .iter()
+            .map(|task| Row {
+                project: project(),
+                task: task.clone(),
+            })
+            .collect(),
+        shown,
+        hidden: Hidden::default(),
+        searched: false,
+        omitted: 0,
+    }
+}
+
 #[test]
 fn test_a_listing_names_its_project_in_text_and_is_an_array_in_json() {
-    let project = project();
     let tasks = [task("swift-amber", "To Do")];
+    let listing = listing(Reach::Project(project()), &tasks, Shown::default());
     let listed = Listed {
-        shown: &Shown::default(),
-        project: Some(&project),
-        tasks: &tasks,
+        listing: &listing,
+        compact: false,
     };
     assert_eq!(
         rendered(|out| render(out, Format::Text, &listed)),
@@ -124,16 +146,59 @@ fn test_a_listing_names_its_project_in_text_and_is_an_array_in_json() {
     let json: serde_json::Value =
         serde_json::from_str(&rendered(|out| render(out, Format::Json, &listed))).unwrap();
     assert_eq!(json[0]["harp_id"], "swift-amber");
-    let nowhere = Listed {
-        shown: &Shown::default(),
-        project: None,
-        tasks: &[],
+    assert_eq!(json[0].get("project_id"), None, "one project: named once");
+    let nowhere = listing_none();
+    let listed = Listed {
+        listing: &nowhere,
+        compact: false,
     };
     assert_eq!(
-        rendered(|out| render(out, Format::Text, &nowhere)),
+        rendered(|out| render(out, Format::Text, &listed)),
         "(no tasks)\n"
     );
-    assert_eq!(rendered(|out| render(out, Format::Json, &nowhere)), "[]\n");
+    assert_eq!(rendered(|out| render(out, Format::Json, &listed)), "[]\n");
+}
+
+#[test]
+fn test_a_listing_across_projects_has_a_table_for_each() {
+    let other = Project {
+        id: "brisk-tall-oak".to_string(),
+        root: String::new(),
+        store: PathBuf::new(),
+    };
+    let mut listing = listing(
+        Reach::Every {
+            projects: 2,
+            fallback: None,
+        },
+        &[task("swift-amber", "To Do"), task("calm-otter", "To Do")],
+        Shown::default(),
+    );
+    listing.rows[1].project = other;
+    let listed = Listed {
+        listing: &listing,
+        compact: false,
+    };
+    assert_eq!(
+        rendered(|out| render(out, Format::Text, &listed)),
+        "Projects: 2 (--global)\n\n\
+         Project: /work/tree (jolly-mute-magma)\n\
+         [ ] swift-amber  To Do        Ship it\n\n\
+         Project: brisk-tall-oak\n\
+         [ ] calm-otter  To Do        Ship it\n\n"
+    );
+    let json: serde_json::Value =
+        serde_json::from_str(&rendered(|out| render(out, Format::Json, &listed))).unwrap();
+    assert_eq!(json[1]["project_id"], "brisk-tall-oak");
+    assert_eq!(json[1]["project_dir"], "");
+    assert_eq!(json[1]["text_hash"], "0123456789ab", "the task whole");
+}
+
+#[test]
+fn test_a_project_with_no_known_directory_is_labelled_by_its_id() {
+    let mut project = project();
+    project.root.clear();
+    assert_eq!(project_label(&project), "jolly-mute-magma");
 }
 
 fn tag(key: &str) -> tasks_application::Tag {
@@ -167,7 +232,7 @@ fn test_a_hidden_tag_is_left_out_of_text_and_kept_in_json() {
         rendered(|out| render(out, Format::Text, &Tagged(&tagged, &shown))),
         "swift-amber\tTo Do\ttriage:kind=defect,x\n"
     );
-    let tasks = [tagged.clone()];
+    let tasks = [&tagged];
     assert_eq!(
         rendered(|out| table(out, &tasks, &shown)),
         "[ ] swift-amber  To Do        Ship it  [triage:kind=defect, x]\n"
@@ -180,10 +245,10 @@ fn test_a_hidden_tag_is_left_out_of_text_and_kept_in_json() {
         json["tags"],
         serde_json::json!(["triage:cwe=79", "triage:kind=defect", "x"])
     );
+    let listing = listing(Reach::NoProject, &[tagged.clone()], shown.clone());
     let listed = Listed {
-        shown: &shown,
-        project: None,
-        tasks: &tasks,
+        listing: &listing,
+        compact: false,
     };
     let json: serde_json::Value =
         serde_json::from_str(&rendered(|out| render(out, Format::Json, &listed))).unwrap();

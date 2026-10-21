@@ -37,11 +37,15 @@ pub fn project() -> Project {
 /// A work root with a project, or none yet. A write binds one; a pin
 /// resolves, as an explicit id always does; the pin a call gave is
 /// recorded.
+/// Every project is `every`; the working directory is `rootless` when
+/// it lies in no work root.
 #[derive(Default)]
 pub struct FakeIdentity {
     pub bound: Option<Project>,
     pub pins: Vec<Option<String>>,
     pub fails: Option<Report>,
+    pub every: Vec<Project>,
+    pub rootless: Option<String>,
 }
 
 impl ProjectIdentity for FakeIdentity {
@@ -59,6 +63,20 @@ impl ProjectIdentity for FakeIdentity {
             return Err(report.clone());
         }
         Ok(self.bound.clone().or_else(|| pinned.map(|_| project())))
+    }
+
+    fn every_project(&mut self) -> Result<Vec<Project>, Report> {
+        if let Some(report) = &self.fails {
+            return Err(report.clone());
+        }
+        Ok(self.every.clone())
+    }
+
+    fn rootless_directory(&mut self) -> Result<Option<String>, Report> {
+        if let Some(report) = &self.fails {
+            return Err(report.clone());
+        }
+        Ok(self.rootless.clone())
     }
 }
 
@@ -216,15 +234,17 @@ impl AsyncUnitOfWork for FlakyUnit<'_> {
     }
 }
 
-/// One store, whichever project is asked for: absent until a write opens
-/// it, if `absent`. The projects opened to write (`opened`) and to read
-/// (`looked`) are recorded.
+/// One store, whichever project is asked for, but a project in `others`,
+/// which has its own: absent until a write opens it, if `absent`. The
+/// projects opened to write (`opened`) and to read (`looked`) are
+/// recorded.
 #[derive(Default)]
 pub struct FakeStores {
     pub store: Flaky,
     pub absent: bool,
     pub opened: Vec<String>,
     pub looked: Vec<String>,
+    pub others: std::collections::BTreeMap<String, Flaky>,
 }
 
 impl TaskStores for FakeStores {
@@ -235,6 +255,9 @@ impl TaskStores for FakeStores {
         if self.store.open_fails {
             return Err(unavailable());
         }
+        if let Some(other) = self.others.get_mut(&project.id) {
+            return Ok(other);
+        }
         self.absent = false;
         Ok(&mut self.store)
     }
@@ -243,6 +266,9 @@ impl TaskStores for FakeStores {
         self.looked.push(project.id.clone());
         if self.store.open_fails {
             return Err(unavailable());
+        }
+        if let Some(other) = self.others.get_mut(&project.id) {
+            return Ok(Some(other));
         }
         Ok((!self.absent).then_some(&mut self.store))
     }

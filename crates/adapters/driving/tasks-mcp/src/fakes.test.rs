@@ -51,6 +51,18 @@ impl ProjectIdentity for FakeIdentity {
         self.asked();
         Ok(self.bound.then(project))
     }
+
+    fn every_project(&mut self) -> Result<Vec<Project>, Report> {
+        self.asked();
+        Ok(Vec::new())
+    }
+
+    /// Always in a work root: the server's reads never fall back to every
+    /// project here.
+    fn rootless_directory(&mut self) -> Result<Option<String>, Report> {
+        self.asked();
+        Ok(None)
+    }
 }
 
 /// An in-memory store whose first `conflicts` commits are refused, as when

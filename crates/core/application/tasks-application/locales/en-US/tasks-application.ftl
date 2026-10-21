@@ -3,6 +3,17 @@ tasks-application-harps-exhausted = no free task id after { $attempts } tries
 tasks-application-vanished = task { $harp_id } was written but cannot be read back
 tasks-application-no-project = there is no project here yet, so no task to change
 tasks-application-no-go-log = Go taskloom has no task log for project { $project }
+tasks-application-unknown-status-class = { $status } is no status class (the classes are { $classes }): '@' is reserved for them, so no status starts with it
+tasks-application-unknown-sort = { $sort } is no sort: the only one is priority
+tasks-application-priority-unavailable = sorting by priority is not available yet: this taskloom does not compute priority
+tasks-application-not-found = no task holds { $count ->
+    [one] this harp id
+   *[other] these harp ids
+}: { $harp_ids } (see `taskloom list`)
+tasks-application-ambiguous = { $count ->
+    [one] a harp id is
+   *[other] harp ids are
+} held by more than one project ({ $held }): pass --project <id> instead of --global to choose one
 tasks-application-import-displaced = another task holds this harp in Go's log: run Go's `taskloom repair`, then import again
 tasks-application-import-harp-taken = a task not imported from this record already holds this harp
 tasks-application-import-task-not-imported = its task was not imported
@@ -22,3 +33,8 @@ tasks-application-schema-arity-target = tag_schema: { $declaration } targets { $
 tasks-application-schema-enum-empty = tag_schema: { $declaration } lists no enum member in { $value }
 tasks-application-schema-range = tag_schema: { $declaration }'s range { $value } is not min,max: two finite numbers, the least first
 tasks-application-tag-query = the tag query { $query } is malformed (as postfix: { $postfix }; as infix: { $infix }): { $grammar }
+tasks-application-lint-not-in-enum = { $target }={ $value } is not one of the declared enum values: { $members }
+tasks-application-lint-not-a-number = { $target }={ $value } does not parse as a finite number
+tasks-application-lint-out-of-range = { $target }={ $value } is outside the declared range [{ $min }, { $max }]
+tasks-application-lint-scalar = { $target } carries { $count } distinct values ({ $values }) but is declared arity=scalar
+tasks-application-lint-formula-enum = { $facet } on { $target } references the placeholder { $placeholder }, but { $value } is not one of { $reference }'s declared enum values: { $members }

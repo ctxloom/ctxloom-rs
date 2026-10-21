@@ -35,6 +35,33 @@ pub enum AppError {
     NoProject,
     /// An import of a project Go keeps no task log for.
     NoGoLog { project: String },
+    /// A status filter's value starting with `@` that names no class.
+    UnknownStatusClass { status: String },
+    /// A sort taskloom does not know.
+    UnknownSort { sort: String },
+    /// The sort by priority, which is not computed yet.
+    PriorityUnavailable,
+    /// Ids asked for that no task holds: every one of them.
+    NotFound { harp_ids: Vec<String> },
+    /// Ids held in more than one project, read across projects: each with
+    /// the projects holding it.
+    Ambiguous { held: Vec<(String, Vec<String>)> },
+}
+
+/// Each of `ids`, quoted, comma-separated.
+fn quoted(ids: &[String]) -> String {
+    ids.iter()
+        .map(|id| format!("{id:?}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Each id held twice and the projects that hold it.
+fn held_in(held: &[(String, Vec<String>)]) -> String {
+    held.iter()
+        .map(|(id, projects)| format!("{id:?} in {}", projects.join(", ")))
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 impl fmt::Display for AppError {
@@ -61,6 +88,27 @@ impl fmt::Display for AppError {
             AppError::NoGoLog { project } => {
                 write!(f, "Go taskloom has no task log for project {project}")
             }
+            AppError::UnknownStatusClass { status } => write!(
+                f,
+                "{status} is no status class (the classes are {}): '@' is reserved for them, so no status starts with it",
+                crate::read::classes()
+            ),
+            AppError::UnknownSort { sort } => {
+                write!(f, "{sort} is no sort: the only one is priority")
+            }
+            AppError::PriorityUnavailable => f.write_str(
+                "sorting by priority is not available yet: this taskloom does not compute priority",
+            ),
+            AppError::NotFound { harp_ids } => write!(
+                f,
+                "no task holds these harp ids: {} (see `taskloom list`)",
+                quoted(harp_ids)
+            ),
+            AppError::Ambiguous { held } => write!(
+                f,
+                "harp ids held by more than one project ({}): pass --project <id> instead of --global to choose one",
+                held_in(held)
+            ),
         }
     }
 }
@@ -79,6 +127,11 @@ impl Diagnostic for AppError {
             AppError::Vanished { .. } => "tasks-application-vanished",
             AppError::NoProject => "tasks-application-no-project",
             AppError::NoGoLog { .. } => "tasks-application-no-go-log",
+            AppError::UnknownStatusClass { .. } => "tasks-application-unknown-status-class",
+            AppError::UnknownSort { .. } => "tasks-application-unknown-sort",
+            AppError::PriorityUnavailable => "tasks-application-priority-unavailable",
+            AppError::NotFound { .. } => "tasks-application-not-found",
+            AppError::Ambiguous { .. } => "tasks-application-ambiguous",
         }
     }
 
@@ -96,8 +149,20 @@ impl Diagnostic for AppError {
             ],
             AppError::HarpsExhausted { attempts } => vec![("attempts", (*attempts).into())],
             AppError::Vanished { harp_id } => vec![("harp_id", harp_id.as_str().into())],
-            AppError::NoProject => Vec::new(),
+            AppError::NoProject | AppError::PriorityUnavailable => Vec::new(),
             AppError::NoGoLog { project } => vec![("project", project.as_str().into())],
+            AppError::UnknownStatusClass { status } => vec![
+                ("status", status.as_str().into()),
+                ("classes", crate::read::classes().into()),
+            ],
+            AppError::UnknownSort { sort } => vec![("sort", sort.as_str().into())],
+            AppError::NotFound { harp_ids } => vec![
+                ("harp_ids", quoted(harp_ids).into()),
+                ("count", harp_ids.len().into()),
+            ],
+            AppError::Ambiguous { held } => {
+                vec![("held", held_in(held).into()), ("count", held.len().into())]
+            }
         }
     }
 }
@@ -132,12 +197,33 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(AppError::NoGoLog {
             project: "jolly-mute-magma".to_string(),
         }),
+        Box::new(AppError::UnknownStatusClass {
+            status: "@done".to_string(),
+        }),
+        Box::new(AppError::UnknownSort {
+            sort: "age".to_string(),
+        }),
+        Box::new(AppError::PriorityUnavailable),
+        Box::new(AppError::NotFound {
+            harp_ids: vec!["swift-amber".to_string(), "calm-otter".to_string()],
+        }),
+        Box::new(AppError::Ambiguous {
+            held: vec![(
+                "swift-amber".to_string(),
+                vec!["jolly-mute-magma".to_string(), "brisk-tall-oak".to_string()],
+            )],
+        }),
         Box::new(crate::Why::Displaced),
         Box::new(crate::Why::HarpTaken),
         Box::new(crate::Why::TaskNotImported),
     ];
     samples.extend(tags.map(|t| Box::new(t) as Box<dyn Diagnostic>));
     samples.extend(schema.map(|s| Box::new(s) as Box<dyn Diagnostic>));
+    samples.extend(
+        crate::lint::samples()
+            .into_iter()
+            .map(|f| Box::new(f) as Box<dyn Diagnostic>),
+    );
     samples.push(Box::new(crate::QueryError {
         query: "and".to_string(),
         postfix: "x".to_string(),

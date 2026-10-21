@@ -1,4 +1,5 @@
-//! The tasks command line: `add`, `list`, `tag` and `import`, translated
+//! The tasks command line: `add`, `status`, `edit`, `list`, `show`,
+//! `summary`, `statuses`, `tag`, `tags`, `lint` and `import`, translated
 //! into the application's use cases and their answers rendered through
 //! presentation, with room for another crate's commands mounted beside
 //! them ([`run_mounted`]); and the companion contract ctxloom reads,
@@ -8,6 +9,7 @@
 //! stderr. Exit 0, or 1 with the error on stderr: its catalog message in
 //! text, its envelope in JSON.
 
+mod commands;
 mod companion;
 mod error;
 mod import;
@@ -20,15 +22,13 @@ use std::io::{self, Write};
 use annals_diagnostic::Diagnostic;
 use clap::{Parser, Subcommand};
 use presentation::{Catalog, CatalogError, Format, Render, Source, UnknownFormat};
-use tasks_application::{
-    ImportRequest, ImportService, ListQuery, NewTask, TagChange, TaskService, Written,
-};
+use tasks_application::{ImportRequest, ImportService, TaskService, Written};
 
 pub use companion::{Asked, VersionJson, LOADOUT};
 pub use error::{diagnostic_samples, CliError, EN_US};
 pub use import::{ImportJson, Imported};
 pub use notice::Notice;
-pub use render::{headline, table, Added, Listed, Tagged, HEADLINE_WIDTH};
+pub use render::{headline, table, Added, CompactJson, Listed, RowJson, Tagged, HEADLINE_WIDTH};
 pub use tasks_presentation::{rfc3339, TaskJson};
 
 /// The program's name: every diagnostic's prefix.
@@ -85,46 +85,42 @@ struct Cli<X: Subcommand> {
 #[derive(Subcommand, Debug)]
 enum Command<X: Subcommand> {
     /// Add a new task.
-    Add {
-        /// The task's text; several words are joined with spaces.
-        #[arg(required = true, num_args = 1..)]
-        text: Vec<String>,
-        /// Initial status (default: "To Do").
-        #[arg(long, default_value = "")]
-        status: String,
-        /// Revive condition for a Deferred task (required when --status Deferred).
-        #[arg(long, default_value = "")]
-        trigger: String,
-        /// Tag to set at creation (repeatable).
-        #[arg(long = "tag")]
-        tags: Vec<String>,
-    },
-    /// List tasks: by default the open ones (not Done, Archived or Deferred).
-    List {
-        /// Only tasks in this status (repeatable, or comma-separated).
-        #[arg(long, value_delimiter = ',')]
-        status: Vec<String>,
-        /// Include the tasks hidden by default.
-        #[arg(long)]
-        all: bool,
-        /// Only the tasks this tag query selects: postfix, tags first and
-        /// the operator after (urgent/release/and, urgent/not), or infix
-        /// (urgent and not release). Operators: and, or, not; atoms
-        /// [ns:]key[op value] with op one of = != > >= < <= ~, and * (any)
-        /// or + (present) for a namespace, key or value.
-        #[arg(long = "tag-query", default_value = "")]
-        tag_query: String,
-    },
+    Add(commands::AddArgs),
+    /// List tasks: by default the active ones (not Done, Archived or
+    /// Deferred), of this project, or of every project with --global (and
+    /// where the working directory is in no project, no git repository and
+    /// no CTXLOOM_ROOT, saying so on stderr).
+    List(commands::ListArgs),
+    /// Change the status of a task; Deferred needs a revive trigger, which
+    /// hides the task from the default list until it fires.
+    Status(commands::StatusArgs),
+    /// Replace a task's text whole; its status and trigger are kept.
+    Edit(commands::EditArgs),
+    /// Show tasks whole, in the order asked: status, tags, trigger and
+    /// every line of their text. Every id must be found, or nothing is
+    /// shown. In JSON one id is an object, several an array.
+    Show(commands::ShowArgs),
+    /// Check every task's tags, whatever its status, against the tag
+    /// schema: a value outside its enum or range, a scalar target with two
+    /// values, and a formula naming a value no enum declares. Advisory,
+    /// never a write gate; it exits 1 on a violation, and when the schema
+    /// gave it no target to check.
+    Lint(commands::GlobalArgs),
+    /// Count the tasks in each status, every task included whatever list
+    /// would hide, and name those In Progress.
+    Summary(commands::GlobalArgs),
+    /// List the statuses: the defaults in their display order (In
+    /// Progress, To Do, Deferred, Done, Archived), then any other in use,
+    /// each saying whether it is terminal or requires a trigger. @open and
+    /// @terminal are the classes of the statuses not terminal and terminal.
+    Statuses(commands::GlobalArgs),
     /// Add and/or remove tags on a task; adds apply before removes.
-    Tag {
-        harp_id: String,
-        /// Tag to add (repeatable).
-        #[arg(long)]
-        add: Vec<String>,
-        /// Tag to remove (repeatable).
-        #[arg(long)]
-        remove: Vec<String>,
-    },
+    Tag(commands::TagArgs),
+    /// List the tags in use, with how many tasks hold each: "active" those
+    /// a default list shows, "total" every one, finished or Deferred too.
+    /// The tag schema's hidden tags are left out. The filters narrow the
+    /// tasks counted.
+    Tags(commands::TagsArgs),
     /// Import Go taskloom's task logs (~/.ctxloom/tasks/<project-id>.jsonl)
     /// into each project's store: every project's, or --project's alone.
     /// Running it again imports only what is new.
@@ -252,72 +248,37 @@ pub async fn run_mounted<S: TaskService + ImportService, X: Subcommand>(
         Ok(format) => format,
         Err(code) => return code,
     };
+    let ctx = commands::Ctx {
+        project: cli.project,
+        config_set: cli.config_set,
+        format,
+        catalog,
+        session: &context.session,
+    };
     let result = match cli.command {
-        Command::Add {
-            text,
-            status,
-            trigger,
-            tags,
-        } => {
-            let task = NewTask {
-                project: cli.project,
-                text: text.join(" "),
-                status,
-                trigger,
-                tags,
-                origin_session: context.session.clone(),
-                config_set: cli.config_set,
+        Command::Add(args) => commands::add(args, ctx, service, out, err).await,
+        Command::Status(args) => commands::status(args, ctx, service, out, err).await,
+        Command::Edit(args) => commands::edit(args, ctx, service, out, err).await,
+        Command::Show(args) => commands::show(args, ctx, service, out, err).await,
+        Command::Lint(args) => commands::lint(args, ctx, service, out, err).await,
+        Command::Summary(args) => commands::summary(args, ctx, service, out, err).await,
+        Command::Statuses(args) => commands::statuses(args, ctx, service, out, err).await,
+        Command::Tag(args) => commands::tag(args, ctx, service, out, err).await,
+        Command::Tags(args) => commands::tags(args, ctx, service, out, err).await,
+        Command::List(args) => commands::list(args, ctx, service, out, err).await,
+        Command::Import => {
+            let request = ImportRequest {
+                project: ctx.project,
             };
-            match service.add(task).await {
-                Ok(written) => wrote(&written, &Added(&written.task), format, catalog, out, err),
-                Err(e) => Err(CliError::App(e)),
-            }
-        }
-        Command::Tag {
-            harp_id,
-            add,
-            remove,
-        } => {
-            let change = TagChange {
-                project: cli.project,
-                harp_id,
-                add,
-                remove,
-                config_set: cli.config_set,
-            };
-            match service.tag(change).await {
-                Ok(written) => wrote(
-                    &written,
-                    &Tagged(&written.task, &written.shown),
-                    format,
-                    catalog,
-                    out,
-                    err,
-                ),
-                Err(e) => Err(CliError::App(e)),
-            }
-        }
-        Command::List {
-            status,
-            all,
-            tag_query,
-        } => {
-            let query = ListQuery {
-                project: cli.project,
-                statuses: status,
-                all,
-                tag_query,
-                config_set: cli.config_set,
-            };
-            match service.list(query).await {
-                Ok(listing) => listed(&listing, format, catalog, out, err),
+            match service.import(request).await {
+                Ok(report) => imported(&report, format, catalog, out),
                 Err(e) => Err(CliError::App(e)),
             }
         }
         Command::Mounted(command) => {
             let flags = Mounted {
                 format,
-                project: cli.project,
+                project: ctx.project,
             };
             return mounted(command, flags, catalog, out, err);
         }
@@ -331,15 +292,6 @@ pub async fn run_mounted<S: TaskService + ImportService, X: Subcommand>(
         }
         // Answered before the format is chosen: it has its own.
         Command::Loadout => Ok(()),
-        Command::Import => {
-            let request = ImportRequest {
-                project: cli.project,
-            };
-            match service.import(request).await {
-                Ok(report) => imported(&report, format, catalog, out),
-                Err(e) => Err(CliError::App(e)),
-            }
-        }
     };
     finish(result, format, catalog, err)
 }
@@ -395,7 +347,7 @@ fn report(
 }
 
 /// `notice` on stderr, after the program's name.
-fn notify(notice: &Notice, catalog: &Catalog, err: &mut dyn Write) -> io::Result<()> {
+pub(crate) fn notify(notice: &Notice, catalog: &Catalog, err: &mut dyn Write) -> io::Result<()> {
     writeln!(
         err,
         "{PROG}: {}",
@@ -404,7 +356,7 @@ fn notify(notice: &Notice, catalog: &Catalog, err: &mut dyn Write) -> io::Result
 }
 
 /// Name the project on stderr, then render the task.
-fn wrote(
+pub(crate) fn wrote(
     written: &Written,
     view: &impl Render,
     format: Format,
@@ -414,28 +366,6 @@ fn wrote(
 ) -> Result<(), CliError> {
     notify(&Notice::project(&written.project), catalog, err)
         .and_then(|()| presentation::render(out, format, view))
-        .map_err(output_failed)
-}
-
-/// Say on stderr when there is no project here, then render the listing.
-fn listed(
-    listing: &tasks_application::Listing,
-    format: Format,
-    catalog: &Catalog,
-    out: &mut dyn Write,
-    err: &mut dyn Write,
-) -> Result<(), CliError> {
-    let view = Listed {
-        project: listing.project.as_ref(),
-        tasks: &listing.tasks,
-        shown: &listing.shown,
-    };
-    let noticed = match listing.project {
-        None => notify(&Notice::NoProject, catalog, err),
-        Some(_) => Ok(()),
-    };
-    noticed
-        .and_then(|()| presentation::render(out, format, &view))
         .map_err(output_failed)
 }
 
@@ -460,7 +390,7 @@ fn imported(
     Err(CliError::Incomplete { stopped, lost })
 }
 
-fn output_failed(error: io::Error) -> CliError {
+pub(crate) fn output_failed(error: io::Error) -> CliError {
     CliError::Output {
         detail: error.to_string(),
     }

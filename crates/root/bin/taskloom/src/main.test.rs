@@ -97,9 +97,14 @@ impl Env {
 
     /// [`Env::run`], with `vars` in its environment too.
     fn run_with(&self, args: &[&str], vars: &[(&str, &str)]) -> Ran {
+        self.run_in(self.project.path(), args, vars)
+    }
+
+    /// [`Env::run_with`], in `dir`.
+    fn run_in(&self, dir: &Path, args: &[&str], vars: &[(&str, &str)]) -> Ran {
         let output = Command::new(binary())
             .args(args)
-            .current_dir(self.project.path())
+            .current_dir(dir)
             .env_clear()
             .env("HOME", self.home.path())
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
@@ -389,6 +394,61 @@ fn test_a_tag_where_there_is_no_project_fails_and_binds_none() {
 }
 
 #[test]
+fn test_a_read_spans_every_project_when_asked_or_outside_any_work_root() {
+    let env = Env::new("global-harp");
+    env.seed("in the first");
+    let (repo, stray, empty_repo) = (
+        tempfile::tempdir().unwrap(),
+        tempfile::tempdir().unwrap(),
+        tempfile::tempdir().unwrap(),
+    );
+    for dir in [&repo, &empty_repo] {
+        std::fs::create_dir(dir.path().join(".git")).unwrap();
+    }
+    let added = env.run_in(repo.path(), &["add", "in the repo", "--json"], &[]);
+    assert!(added.ok, "{}", added.stderr);
+
+    let here = env.run(&["list", "--json"]);
+    assert_eq!(
+        texts(&here.json().as_array().unwrap().clone(), "text"),
+        ["in the first"]
+    );
+    let every = env.run(&["list", "--global", "--json"]);
+    assert!(every.ok, "{}", every.stderr);
+    assert_eq!(every.stderr, "", "asked for: nothing to explain");
+    let rows = every.json().as_array().unwrap().clone();
+    let mut seen = texts(&rows, "text");
+    seen.sort();
+    assert_eq!(seen, ["in the first", "in the repo"]);
+    assert!(rows.iter().all(|r| r["project_id"].is_string()), "{rows:?}");
+
+    let fallback = env.run_in(stray.path(), &["list", "--json"], &[]);
+    assert!(fallback.ok, "{}", fallback.stderr);
+    assert_eq!(fallback.json().as_array().unwrap().len(), 2);
+    assert!(
+        fallback.stderr.contains("so this reads every project"),
+        "{}",
+        fallback.stderr
+    );
+    let text = env.run_in(stray.path(), &["list", "--format", "text"], &[]);
+    assert!(
+        text.stdout.starts_with("Projects: 2 (--global)\n"),
+        "{}",
+        text.stdout
+    );
+
+    let in_repo = env.run_in(empty_repo.path(), &["list", "--json"], &[]);
+    assert_eq!(in_repo.json(), serde_json::json!([]));
+    assert!(
+        in_repo.stderr.contains("no project here yet"),
+        "{}",
+        in_repo.stderr
+    );
+    assert!(!stray.path().join(".project-id").exists());
+    assert!(!empty_repo.path().join(".project-id").exists());
+}
+
+#[test]
 fn test_every_diagnostic_of_every_crate_renders_from_the_binarys_catalog() {
     let catalog = super::catalog().expect("every catalog loads, no message twice");
     let samples: Vec<Box<dyn annals_diagnostic::Diagnostic>> = [
@@ -498,6 +558,186 @@ fn test_in_json_each_command_writes_one_document_and_errors_an_envelope() {
     assert_eq!(
         one_document(&incomplete.stderr)["code"],
         "tasks-cli-import-incomplete"
+    );
+}
+
+/// A project with one task added, for a command's JSON to be checked.
+struct Jq {
+    env: Env,
+    harp: String,
+}
+
+impl Jq {
+    fn new(session: &'static str) -> Jq {
+        let env = Env::new(session);
+        let harp = env.seed("Ship it")["harp_id"]
+            .as_str()
+            .expect("harp_id")
+            .to_string();
+        Jq { env, harp }
+    }
+
+    /// `args`' answer: it succeeded, and wrote one JSON document.
+    fn ok(&self, args: &[&str]) -> Value {
+        let ran = self.env.run(args);
+        assert!(ran.ok, "{args:?}: {}", ran.stderr);
+        one_document(&ran.stdout)
+    }
+
+    /// `args` failed with `code`: an envelope on stderr, stdout empty.
+    fn refused(&self, args: &[&str], code: &str) {
+        let ran = self.env.run(args);
+        assert!(!ran.ok, "{args:?}");
+        assert_eq!(ran.stdout, "", "{args:?}: an error leaves stdout empty");
+        assert_eq!(one_document(&ran.stderr)["code"], code, "{args:?}");
+    }
+}
+
+#[test]
+fn test_in_json_each_change_writes_one_document_and_errors_an_envelope() {
+    let jq = Jq::new("jq-change-harp");
+    let harp = jq.harp.as_str();
+    let task = jq.ok(&["status", harp, "Deferred", "--trigger", "later", "--json"]);
+    assert_eq!(
+        (&task["status"], &task["trigger"]),
+        (&"Deferred".into(), &"later".into())
+    );
+    let back = jq.ok(&["status", harp, "To Do", "--json"]);
+    assert_eq!(back["trigger"], "later", "kept");
+    jq.refused(
+        &["status", harp, "@open", "--json"],
+        "tasks-status-reserved",
+    );
+    jq.refused(
+        &["status", "no-such-task", "Done", "--json"],
+        "tasks-no-task",
+    );
+    let task = jq.ok(&["edit", harp, "Ship", "it", "today", "--json"]);
+    assert_eq!(
+        (&task["text"], &task["status"]),
+        (&"Ship it today".into(), &"To Do".into())
+    );
+    jq.refused(&["edit", harp, " ", "--json"], "tasks-text-required");
+    jq.refused(&["tag", harp, "--json"], "tasks-tag-required");
+    let tagged = jq.ok(&[
+        "tag",
+        harp,
+        "--add",
+        "triage:level=3",
+        "--add",
+        "x",
+        "--json",
+    ]);
+    assert_eq!(tagged["tags"], serde_json::json!(["triage:level=3", "x"]));
+    let collapsed = jq.ok(&[
+        "tag",
+        harp,
+        "--add",
+        "triage:level=1",
+        "--remove",
+        "x",
+        "--add",
+        "x",
+        "--json",
+    ]);
+    assert_eq!(
+        collapsed["tags"],
+        serde_json::json!(["triage:level=1"]),
+        "the scalar collapsed, the add then the remove"
+    );
+}
+
+#[test]
+fn test_in_json_each_read_writes_one_document_and_errors_an_envelope() {
+    let jq = Jq::new("jq-read-harp");
+    let harp = jq.harp.as_str();
+    jq.ok(&["tag", harp, "--add", "release", "--json"]);
+    let narrowed = jq.ok(&[
+        "list",
+        "--status",
+        "@open",
+        "--term",
+        "SHIP",
+        "--compact",
+        "--limit",
+        "1",
+        "--json",
+    ]);
+    assert_eq!(narrowed[0]["headline"], "Ship it");
+    assert_eq!(jq.ok(&["list", "--global", "--json"])[0]["harp_id"], harp);
+    jq.refused(
+        &["list", "--sort", "priority", "--json"],
+        "tasks-application-priority-unavailable",
+    );
+    jq.refused(
+        &["list", "--status", "@done", "--json"],
+        "tasks-application-unknown-status-class",
+    );
+
+    assert_eq!(jq.ok(&["show", harp, "--json"])["text"], "Ship it");
+    let twice = jq.ok(&["show", harp, harp, "--global", "--json"]);
+    assert_eq!(twice.as_array().map(Vec::len), Some(2));
+    jq.refused(
+        &["show", harp, "no-such-task", "--json"],
+        "tasks-application-not-found",
+    );
+
+    for args in [
+        &["summary", "--json"][..],
+        &["summary", "--global", "--json"],
+    ] {
+        let summary = jq.ok(args);
+        assert_eq!(summary["counts"]["To Do"], 1, "{args:?}");
+        assert_eq!(summary["in_progress"], serde_json::json!([]), "{args:?}");
+    }
+
+    let statuses = jq.ok(&["statuses", "--json"]);
+    let names: Vec<&Value> = statuses
+        .as_array()
+        .expect("an array")
+        .iter()
+        .map(|s| &s["name"])
+        .collect();
+    assert_eq!(
+        names,
+        ["In Progress", "To Do", "Deferred", "Done", "Archived"]
+    );
+
+    for args in [
+        &["tags", "--json"][..],
+        &["tags", "--global", "--status", "@open", "--json"],
+    ] {
+        assert_eq!(
+            jq.ok(args),
+            serde_json::json!([{"tag": "release", "active": 1, "total": 1}]),
+            "{args:?}"
+        );
+    }
+    jq.refused(
+        &["tags", "--tag-query", "x/and", "--json"],
+        "tasks-application-tag-query",
+    );
+
+    let linted = jq.ok(&["lint", "--json"]);
+    assert_eq!(linted["violations"], serde_json::json!([]));
+    assert!(linted["checked_targets"].as_u64() > Some(0), "{linted}");
+    let declared = r#"tag_schema=tagma.enum:"release"="beta""#;
+    let report = jq.ok(&["lint", "--config-set", declared, "--json"]);
+    assert_eq!(
+        report["violations"],
+        serde_json::json!([]),
+        "release has no value"
+    );
+    let tagged = jq.ok(&["tag", harp, "--add", "area:x=c", "--json"]);
+    assert_eq!(tagged["tags"].as_array().map(Vec::len), Some(2));
+    let declared = r#"tag_schema=tagma.enum:"area:x"="a,b""#;
+    let ran = jq.env.run(&["lint", "--config-set", declared, "--json"]);
+    assert!(!ran.ok, "a violation exits 1");
+    let report = one_document(&ran.stdout);
+    assert_eq!(report["violations"][0]["harp_id"], harp);
+    assert_eq!(
+        one_document(&ran.stderr)["code"],
+        "tasks-cli-lint-violations"
     );
 }
 

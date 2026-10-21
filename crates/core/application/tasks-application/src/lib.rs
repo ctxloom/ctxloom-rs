@@ -1,5 +1,5 @@
-//! The tasks use cases: add a task, retag one, list a project's tasks, and
-//! import Go taskloom's logs.
+//! The tasks use cases: add a task, move, edit or retag one, read a
+//! project's tasks (or every project's), and import Go taskloom's logs.
 //!
 //! Each resolves its project through [`ProjectIdentity`], opens the
 //! project's store through [`TaskStores`], and runs its command through
@@ -9,7 +9,9 @@
 
 mod error;
 mod import;
+mod lint;
 mod query;
+mod read;
 mod retry;
 mod schema;
 mod semver;
@@ -22,11 +24,7 @@ use annals::next::v1::{command_page, Command, CommandBook, CommandPage, Cover};
 use annals::next::{ids, AsyncEventStore, Payload, Registry, Rulebook, Stream, Upcaster};
 use annals_diagnostic::Report;
 use ports::{Clock, CommandIds, Configuration, Delay, Jitter, Names, ProjectIdentity, TaskStores};
-use task_lists::TaskList;
-use tasks::{
-    AddTask, Retag, TaskCommand, TaskRejection, TaskState, Tasks, DEFERRED, STATUS_CLASS_SIGIL,
-    TASK_DOMAIN,
-};
+use tasks::{AddTask, EditText, Retag, SetStatus, TaskCommand, TaskRejection, Tasks, TASK_DOMAIN};
 
 pub use annals::next::Timestamp;
 pub use error::{diagnostic_samples, AppError, CATALOGS, EN_US};
@@ -34,15 +32,20 @@ pub use import::{
     anomaly_key, record_command_id, rfc3339_nano, ImportReport, ImportRequest, ImportService, Lost,
     NoGoLogs, ProjectImport, Why,
 };
+pub use lint::{Finding, LintReport, Violation, SCHEMA_SUBJECT};
 pub use ports::{GoOp, Project};
 pub use query::{QueryError, QUERY_GRAMMAR};
+pub use read::{Details, Hidden, Listing, Reach, Statuses, Summary, TagCount, Vocabulary};
 pub use retry::Backoff;
 pub use schema::{
     target, Range, SchemaError, TagSchema, DEFAULT_TAG_SCHEMA, FACETS, FACET_NAMESPACE, SEMVER,
 };
 pub use semver::{Semver, Version};
 pub use tags::{admit, collapse, parse as parse_tag, Tag, TagRefusal, OPERATOR_WORDS};
-pub use view::{is_terminal, text_hash, Shown, Task, ARCHIVED, DONE};
+pub use view::{
+    is_active, is_terminal, text_hash, Row, Shown, StatusInfo, Task, ARCHIVED, DEFAULT_STATUSES,
+    DONE, IN_PROGRESS, OPEN, STATUS_CLASSES, TERMINAL,
+};
 
 /// How many task ids an add mints before giving up, each refused because a
 /// task already holds it: Go's `harp.UniqueFrom`.
@@ -80,9 +83,54 @@ pub struct TagChange {
     pub config_set: Vec<String>,
 }
 
-/// Which tasks to list. By default the open ones: neither terminal nor
-/// Deferred. `all` lists every task; naming statuses lists exactly the
-/// tasks in them. A tag query keeps those of them it selects.
+/// A task moved to a status. An empty trigger keeps the one it holds;
+/// Deferred needs one, given or held.
+#[derive(Clone, PartialEq, Debug, Default)]
+pub struct StatusChange {
+    pub project: Option<String>,
+    pub harp_id: String,
+    pub status: String,
+    pub trigger: String,
+    /// Configuration overrides, `<path>=<value>` (`--config-set`).
+    pub config_set: Vec<String>,
+}
+
+/// A task's text replaced whole; its status and trigger untouched.
+#[derive(Clone, PartialEq, Debug, Default)]
+pub struct TextEdit {
+    pub project: Option<String>,
+    pub harp_id: String,
+    pub text: String,
+    /// Configuration overrides, `<path>=<value>` (`--config-set`).
+    pub config_set: Vec<String>,
+}
+
+/// The tasks to show, by id, every one of which must be found: in the
+/// work root's project, or with `global` in every project.
+#[derive(Clone, PartialEq, Debug, Default)]
+pub struct ShowQuery {
+    pub project: Option<String>,
+    pub global: bool,
+    pub harp_ids: Vec<String>,
+    /// Configuration overrides, `<path>=<value>` (`--config-set`).
+    pub config_set: Vec<String>,
+}
+
+/// Where a read that takes no filter reads: the work root's project (or
+/// the one pinned), or with `global` every project.
+#[derive(Clone, PartialEq, Debug, Default)]
+pub struct Scope {
+    pub project: Option<String>,
+    pub global: bool,
+    /// Configuration overrides, `<path>=<value>` (`--config-set`).
+    pub config_set: Vec<String>,
+}
+
+/// Which tasks to list. By default the active ones: neither terminal nor
+/// Deferred. `all` lists every task; naming statuses (or the classes
+/// `@open` and `@terminal`) lists exactly the tasks in them. A term keeps
+/// those whose text mentions it, case-insensitively, and a tag query those
+/// it selects. `global` reads every project.
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct ListQuery {
     pub project: Option<String>,
@@ -93,20 +141,20 @@ pub struct ListQuery {
     pub tag_query: String,
     /// Configuration overrides, `<path>=<value>` (`--config-set`).
     pub config_set: Vec<String>,
+    /// A substring of the text, any case; empty for none.
+    pub term: String,
+    /// Every project's tasks, not the work root's project's.
+    pub global: bool,
+    /// At most this many tasks, the rest counted as omitted; 0 for no
+    /// limit.
+    pub limit: usize,
+    /// The order: empty for the listing's own. Go's one sort, [`PRIORITY`],
+    /// waits on priority, which is not computed yet.
+    pub sort: String,
 }
 
-impl ListQuery {
-    /// Whether the listing holds `task`.
-    pub fn admits(&self, task: &TaskState) -> bool {
-        if self.all {
-            return true;
-        }
-        if !self.statuses.is_empty() {
-            return self.statuses.contains(&task.status);
-        }
-        !is_terminal(&task.status) && task.status != DEFERRED
-    }
-}
+/// The sort by derived priority, Go's `--sort priority`.
+pub const PRIORITY: &str = "priority";
 
 /// A task written, the project it was written in, and which of its tags a
 /// person is shown.
@@ -117,22 +165,26 @@ pub struct Written {
     pub shown: Shown,
 }
 
-/// A project's tasks, in the order they were added; no project when the
-/// work root has none yet.
-#[derive(Clone, PartialEq, Debug)]
-pub struct Listing {
-    pub project: Option<Project>,
-    pub tasks: Vec<Task>,
-    /// Which of their tags a person is shown.
-    pub shown: Shown,
-}
-
 /// The use cases, as a driving adapter calls them. Their futures are
 /// `Send`, so a server can spawn them.
 pub trait TaskService {
     fn add(&mut self, task: NewTask) -> impl Future<Output = Result<Written, AppError>> + Send;
     fn tag(&mut self, change: TagChange) -> impl Future<Output = Result<Written, AppError>> + Send;
     fn list(&mut self, query: ListQuery) -> impl Future<Output = Result<Listing, AppError>> + Send;
+    fn set_status(
+        &mut self,
+        change: StatusChange,
+    ) -> impl Future<Output = Result<Written, AppError>> + Send;
+    fn edit(&mut self, edit: TextEdit) -> impl Future<Output = Result<Written, AppError>> + Send;
+    fn show(&mut self, query: ShowQuery) -> impl Future<Output = Result<Details, AppError>> + Send;
+    fn summary(&mut self, scope: Scope) -> impl Future<Output = Result<Summary, AppError>> + Send;
+    fn statuses(&mut self, scope: Scope)
+        -> impl Future<Output = Result<Statuses, AppError>> + Send;
+    fn tags(
+        &mut self,
+        query: ListQuery,
+    ) -> impl Future<Output = Result<Vocabulary, AppError>> + Send;
+    fn lint(&mut self, scope: Scope) -> impl Future<Output = Result<LintReport, AppError>> + Send;
 }
 
 /// The registry the tasks domain runs under.
@@ -234,6 +286,57 @@ impl<I, S, N, C, D, L, G: Configuration> Service<I, S, N, C, D, L, G> {
     }
 }
 
+impl<I, S, N, C, D, L, G> Service<I, S, N, C, D, L, G>
+where
+    I: ProjectIdentity,
+    S: TaskStores,
+    C: Clock + CommandIds,
+    D: Delay + Jitter,
+{
+    /// The project of a change to an existing task, resolved as a read
+    /// resolves it: where there is none, or no store yet, there is no task
+    /// to change, and nothing is minted or created to say so.
+    async fn existing(&mut self, pinned: Option<&str>) -> Result<Project, AppError> {
+        let project = self
+            .identity
+            .for_read(pinned)
+            .map_err(AppError::Identity)?
+            .ok_or(AppError::NoProject)?;
+        match self.stores.open_existing(&project).await.map_err(failed)? {
+            Some(_) => Ok(project),
+            None => Err(rejected(&TaskRejection::NoTask)),
+        }
+    }
+
+    /// Run `command` on the task `harp_id` in `project`'s store, under a
+    /// fresh command id, retried as annals says; the task after it.
+    async fn commit(
+        &mut self,
+        project: &Project,
+        harp_id: &str,
+        command: TaskCommand,
+    ) -> Result<Task, AppError> {
+        let store = self.stores.open(project).await.map_err(failed)?;
+        let command_id = self.clock.command_id();
+        let book = book(harp_id, command);
+        let mut runner = retry::Runner {
+            registry: &self.registry,
+            clock: &mut self.clock,
+            delay: &mut self.delay,
+            backoff: self.backoff,
+        };
+        match runner.run(store, &book, &command_id).await? {
+            retry::Outcome::Committed => {}
+            retry::Outcome::Refused(rejection) => return Err(rejected(&rejection)),
+        }
+        read(store, &self.registry, harp_id)
+            .await?
+            .ok_or_else(|| AppError::Vanished {
+                harp_id: harp_id.to_string(),
+            })
+    }
+}
+
 impl<I, S, N, C, D, L, G> TaskService for Service<I, S, N, C, D, L, G>
 where
     I: ProjectIdentity + Send,
@@ -293,26 +396,20 @@ where
     }
 
     async fn tag(&mut self, change: TagChange) -> Result<Written, AppError> {
+        // Nothing to add or remove is refused before anything is read, as
+        // Go's `tag` refuses it.
+        if change
+            .add
+            .iter()
+            .chain(&change.remove)
+            .all(|t| t.trim().is_empty())
+        {
+            return Err(rejected(&TaskRejection::TagRequired));
+        }
         let schema = self.schema(&change.config_set)?;
         let add = tags::admit_all(&change.add, &schema).map_err(|r| refused(&r))?;
         let mut remove = tags::parse_all(&change.remove).map_err(|r| refused(&r))?;
-        // A change to an existing task resolves its project as a read does:
-        // where there is none, or no store yet, there is no task to change,
-        // and nothing is minted or created to say so.
-        let project = self
-            .identity
-            .for_read(change.project.as_deref())
-            .map_err(AppError::Identity)?
-            .ok_or(AppError::NoProject)?;
-        if self
-            .stores
-            .open_existing(&project)
-            .await
-            .map_err(failed)?
-            .is_none()
-        {
-            return Err(rejected(&TaskRejection::NoTask));
-        }
+        let project = self.existing(change.project.as_deref()).await?;
         let store = self.stores.open(&project).await.map_err(failed)?;
         // A scalar target's new value displaces the one the task holds:
         // resolved here, against the task as it is, so decide never reads
@@ -323,25 +420,35 @@ where
             .unwrap_or_default();
         let (add, displaced) = tags::collapse(&schema, &held, add);
         remove.extend(displaced);
-        let command_id = self.clock.command_id();
         let retag = Retag { add, remove };
-        let book = book(&change.harp_id, retag.into());
-        let mut runner = retry::Runner {
-            registry: &self.registry,
-            clock: &mut self.clock,
-            delay: &mut self.delay,
-            backoff: self.backoff,
+        let task = self.commit(&project, &change.harp_id, retag.into()).await?;
+        Ok(Written {
+            project,
+            task,
+            shown: Shown::of(&schema),
+        })
+    }
+
+    async fn set_status(&mut self, change: StatusChange) -> Result<Written, AppError> {
+        let schema = self.schema(&change.config_set)?;
+        let project = self.existing(change.project.as_deref()).await?;
+        let set = SetStatus {
+            status: change.status,
+            trigger: change.trigger,
         };
-        match runner.run(store, &book, &command_id).await? {
-            retry::Outcome::Committed => {}
-            retry::Outcome::Refused(rejection) => return Err(rejected(&rejection)),
-        }
-        let task =
-            read(store, &self.registry, &change.harp_id)
-                .await?
-                .ok_or(AppError::Vanished {
-                    harp_id: change.harp_id,
-                })?;
+        let task = self.commit(&project, &change.harp_id, set.into()).await?;
+        Ok(Written {
+            project,
+            task,
+            shown: Shown::of(&schema),
+        })
+    }
+
+    async fn edit(&mut self, edit: TextEdit) -> Result<Written, AppError> {
+        let schema = self.schema(&edit.config_set)?;
+        let project = self.existing(edit.project.as_deref()).await?;
+        let command = EditText { text: edit.text };
+        let task = self.commit(&project, &edit.harp_id, command.into()).await?;
         Ok(Written {
             project,
             task,
@@ -350,66 +457,27 @@ where
     }
 
     async fn list(&mut self, query: ListQuery) -> Result<Listing, AppError> {
-        // A malformed query is refused whatever there is to run it over.
-        query::check(&query.tag_query).map_err(|e| AppError::TagQuery(Report::of(&e)))?;
-        let schema = self.schema(&query.config_set)?;
-        // `@open` and `@terminal` will name classes of statuses; until they
-        // do, a status starting with the sigil is refused, as a write
-        // refuses it, rather than matching no task.
-        if let Some(class) = query
-            .statuses
-            .iter()
-            .map(|s| s.trim())
-            .find(|s| s.starts_with(STATUS_CLASS_SIGIL))
-        {
-            return Err(rejected(&TaskRejection::StatusReserved {
-                status: class.to_string(),
-            }));
-        }
-        let Some(project) = self
-            .identity
-            .for_read(query.project.as_deref())
-            .map_err(AppError::Identity)?
-        else {
-            return Ok(Listing {
-                project: None,
-                tasks: Vec::new(),
-                shown: Shown::of(&schema),
-            });
-        };
-        let Some(store) = self.stores.open_existing(&project).await.map_err(failed)? else {
-            return Ok(Listing {
-                project: Some(project),
-                tasks: Vec::new(),
-                shown: Shown::of(&schema),
-            });
-        };
-        let admitted = query.clone();
-        let mut list = TaskList::new(Box::new(move |task| admitted.admits(task)));
-        list.catch_up_async(store, &self.registry)
-            .await
-            .map_err(|e| AppError::Failed(Report::of(&*e)))?;
-        let mut tasks: Vec<Task> = list.entries().into_iter().map(Task::of).collect();
-        let selected = query::select(
-            &query.tag_query,
-            tasks
-                .iter()
-                .map(|t| (t.harp_id.as_str(), t.tags.as_slice())),
-            &schema,
-        )
-        .map_err(|e| AppError::TagQuery(Report::of(&e)))?;
-        tasks.retain(|t| selected.contains(&t.harp_id));
-        tasks.sort_by(|a, b| {
-            let added = |t: &Task| (t.created_at.seconds, t.created_at.nanos);
-            added(a)
-                .cmp(&added(b))
-                .then_with(|| a.harp_id.cmp(&b.harp_id))
-        });
-        Ok(Listing {
-            project: Some(project),
-            tasks,
-            shown: Shown::of(&schema),
-        })
+        self.listing(query).await
+    }
+
+    async fn show(&mut self, query: ShowQuery) -> Result<Details, AppError> {
+        self.details(query).await
+    }
+
+    async fn summary(&mut self, scope: Scope) -> Result<Summary, AppError> {
+        self.summed(scope).await
+    }
+
+    async fn statuses(&mut self, scope: Scope) -> Result<Statuses, AppError> {
+        self.taxonomy(scope).await
+    }
+
+    async fn tags(&mut self, query: ListQuery) -> Result<Vocabulary, AppError> {
+        self.vocabulary(query).await
+    }
+
+    async fn lint(&mut self, scope: Scope) -> Result<LintReport, AppError> {
+        self.linted(scope).await
     }
 }
 

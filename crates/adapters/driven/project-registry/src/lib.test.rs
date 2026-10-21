@@ -671,3 +671,91 @@ fn test_a_linked_worktree_with_gos_older_marker_keeps_its_own_project() {
         "adopted where it was"
     );
 }
+
+// ------------------------------------------------------------ every project
+
+#[test]
+fn test_every_project_is_each_database_directory_by_id_with_its_registered_root() {
+    let world = World::new();
+    let projects = world.home.path().join(".ctxloom/projects");
+    for id in ["zesty-lone-fern", "brisk-tall-oak"] {
+        fs::create_dir_all(projects.join(id)).unwrap();
+    }
+    fs::write(projects.join("not-a-dir"), "").unwrap();
+    fs::create_dir_all(projects.join("Not An Id")).unwrap();
+    let mut index = index::Index::default();
+    let link = world.home.path().join("link-to-tree");
+    std::os::unix::fs::symlink(world.tree(), &link).unwrap();
+    index.register("zesty-lone-fern", &text(&link));
+    index.register("zesty-lone-fern", "/elsewhere");
+    index::save(&index::path(world.home.path()), &index).unwrap();
+
+    let every = world.registry(&[]).every_project().unwrap();
+    let seen: Vec<(&str, &str)> = every
+        .iter()
+        .map(|p| (p.id.as_str(), p.root.as_str()))
+        .collect();
+    let tree = text(&world.tree());
+    assert_eq!(
+        seen,
+        [("brisk-tall-oak", ""), ("zesty-lone-fern", tree.as_str())],
+        "by id; the first registered path, canonical; none unregistered"
+    );
+    assert_eq!(every[1].store, world.store("zesty-lone-fern"));
+}
+
+#[test]
+fn test_every_project_is_none_before_any_and_creates_nothing() {
+    let world = World::new();
+    assert_eq!(world.registry(&[]).every_project().unwrap(), []);
+    assert!(!world.home.path().join(".ctxloom").exists());
+}
+
+#[test]
+fn test_every_project_without_a_home_fails() {
+    let world = World::new();
+    let mut env = world.env();
+    env.home = None;
+    let error = ProjectRegistry::new(env, names(&[]))
+        .every_project()
+        .unwrap_err();
+    assert_eq!(error.code(), "project-registry-no-home");
+}
+
+// ------------------------------------------------------------ rootless
+
+#[test]
+fn test_a_directory_in_no_git_repository_and_no_ctxloom_root_is_rootless() {
+    let world = World::new();
+    assert_eq!(
+        world.registry(&[]).rootless_directory().unwrap(),
+        Some(text(&world.tree()))
+    );
+}
+
+#[test]
+fn test_a_directory_in_a_git_repository_or_under_ctxloom_root_is_not_rootless() {
+    let world = World::new();
+    let mut env = world.env();
+    env.root = Some(world.tree());
+    let mut registry = ProjectRegistry::new(env, names(&[]));
+    assert_eq!(registry.rootless_directory().unwrap(), None);
+    fs::create_dir(world.tree().join(".git")).unwrap();
+    let deep = world.tree().join("a");
+    fs::create_dir_all(&deep).unwrap();
+    let mut env = world.env();
+    env.cwd = Ok(deep);
+    let mut registry = ProjectRegistry::new(env, names(&[]));
+    assert_eq!(registry.rootless_directory().unwrap(), None);
+}
+
+#[test]
+fn test_rootlessness_with_no_working_directory_fails() {
+    let world = World::new();
+    let mut env = world.env();
+    env.cwd = Err("gone".to_string());
+    let error = ProjectRegistry::new(env, names(&[]))
+        .rootless_directory()
+        .unwrap_err();
+    assert_eq!(error.code(), "project-registry-no-cwd");
+}

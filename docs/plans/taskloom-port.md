@@ -22,13 +22,29 @@ and angzarr here.
   case's, is `Send`, so a server can spawn them; project identity is
   synchronous and blocks on the registry's lock, so an async server calls it
   through `spawn_blocking`.
-- `core/application/tasks-application`: add, tag, list and import, and the
-  tag schema, write-time admission and tag queries (step 3, below). An add mints a
+- `core/application/tasks-application`: add, status, edit, tag, list,
+  show, summary, statuses, tags, lint and import, and the tag schema,
+  write-time admission and tag queries (step 3, below). An add mints a
   harp and re-mints on `TaskExists` (100 tries, a fresh command id each); on
   annals' `Recovery::Retry` the same command id runs again in a new unit
   after capped exponential backoff with full jitter (10ms doubling to 1s,
-  10 attempts). A list hides terminal and Deferred tasks unless `--all` or
-  `--status`, in the order added.
+  10 attempts). A status change, an edit and a tag resolve their project
+  as a read does (no project, or no store, is no task). Every read goes
+  through one scan of the project's live tasks, or with `--global` every
+  project's with a store (by project id, then harp id, as Go's); with no
+  project, outside any work root (no git repository, no CTXLOOM_ROOT), it
+  reads every project and says why, as Go's does, and inside one it reads
+  nothing. A list takes statuses and the classes `@open` and `@terminal`,
+  a term, a tag query, `--all`, `--limit` and `--compact`, and hides
+  terminal and Deferred tasks unless `--all` or a status is given, saying
+  on stderr what a search's default view hid and what a limit left out.
+  `show` needs every id found (and, across projects, held once); `summary`
+  counts every task whatever a listing would filter; `statuses` is Go's
+  five then every other in use; `tags` counts active and total over what
+  its filters select, the schema's hidden tags left out; `lint` (Go's
+  `internal/shared/tasks/lint`) sweeps every task and the schema's
+  formulas, each finding a diagnostic, and exits 1 on a violation or when
+  it checked no target.
 - `core/application/project-application`: `show`, `heal`, `repoint` and the
   orphaned databases, planned from the port's survey; it depends on no
   tasks crate. The marker is authoritative and the registry heals toward
@@ -73,8 +89,9 @@ and angzarr here.
   driving edge (`TaskJson`, each tag in its canonical spelling, hidden ones
   kept, and RFC 3339 instants), shared by the CLI and the MCP server, so
   one jq filter reads both.
-- `adapters/driving/tasks-cli`: `add`, `list` (`--tag-query`), `tag` and
-  `import`, with `--config-set`, text and json, its errors and notices
+- `adapters/driving/tasks-cli`: `add`, `status`, `edit`, `list`, `show`,
+  `summary`, `statuses`, `tag`, `tags`, `lint` and `import`, with
+  `--config-set`, text and json in Go's shapes, its errors and notices
   rendered from the catalogs, and `run_mounted`, which flattens another
   crate's commands in beside them and hands one parsed to its caller with
   the global flags and the catalog. Text hides the tags the schema hides;
@@ -235,8 +252,7 @@ Where the skeleton differs from Go, or from this plan:
   migrations pending, is refused as unmigrated until a write migrates it.
 - Work roots and registry entries are compared canonical, as Go's
   `cleanPath` (symlinks resolved, else cleaned lexically), and the
-  canonical path is registered. A status starting with `@` is refused in
-  `list --status` as on writes.
+  canonical path is registered.
 - harp-core has one word list, Go's "long" group, so project ids are three
   words from it, not from Go's smaller default group.
 - The importer brings over only what the tasks domain accepts. What Go's
@@ -260,7 +276,10 @@ Where the skeleton differs from Go, or from this plan:
   ignored. A result's `path` is the project's store (`state.db`), not Go's
   jsonl log; `derived_priority` is always null, as Go's is unsorted; there
   is no `refused` (no `--degraded`) and no project-resolution `warning`
-  but "no project here". `--degraded` is not ported. Go's MCP results
+  but "no project here", which it also answers where the command line
+  would fall back to every project (outside a work root): Go's fallback,
+  with its `global` and `notice`, waits for `task_list`'s `global`.
+  `--degraded` is not ported. Go's MCP results
   happen to have their keys sorted; Rust's do too (serde_json's map),
   though nothing depends on it.
 - The loadout is Go's document verbatim, its `command: taskloom` included,
@@ -272,10 +291,30 @@ Where the skeleton differs from Go, or from this plan:
   parity tests keep them Go's.
 - `version` reports the crate's version (`0.1.0`), not Go's versionator
   stamp; its yaml form is not ported.
-- `list` with no project here says so and lists nothing; Go falls back to
-  `--global`. The `@open`/`@terminal` classes are not taken, and JSON has
-  no `derived_priority` and escapes no HTML: they come with statuses and
-  priority.
+- A read with no project falls back to every project only outside a
+  work root, as Go's; inside one (a git repository's first call) Go mints
+  the project and lists it empty, and here nothing is minted and the read
+  says there is no project yet.
+- JSON has no `derived_priority`, which Go writes `null` unless asked to
+  sort: priority is step 6, and `--sort priority` is refused until then
+  (`tasks-application-priority-unavailable`), an unknown sort as Go
+  refuses it.
+- `@open` is every status not terminal, a status outside the default set
+  included; Go's expands to the default set's non-terminal names only.
+  `statuses` lists the default five, then every other status in use where
+  the read reaches, by name; Go's lists its five alone. Both read the
+  project, so `statuses` takes `--global`, and so does `lint`, which Go
+  runs over the one project.
+- Across projects a row's `project_dir` is the path the registry holds
+  for its project (Go leaves it empty), and each table of a `--global`
+  listing is headed by that label rather than the id alone.
+- `lint`'s violations carry `project_id` and their finding's envelope
+  (`finding`) beside Go's `harp_id` and `reason`, and its reasons are
+  catalog messages, not Go's wording. Go's check for a stored tag that
+  does not parse has nothing to find: every stored tag here is parsed.
+- `show`'s ids not found are named in one message that agrees in number
+  (Fluent's plural); the notices for what a search hid always give both
+  counts.
 - Tags, against Go: a refused write names its first refused tag, where Go
   names every one, and there is no `--degraded` to write past a refusal.
   An enum or range declaration that cannot be read refuses the schema when
@@ -335,12 +374,14 @@ and step 3, tags on tagma, are done (see "Where it stands"); step 2 leaves
    and instructions' Go-specific prose is reworded, and the clone that
    shares the original's database (see "Open"). Risk retired once
    registered: ctxloom loading the Rust binary as its companion.
-5. **The remaining commands and tools**: status, edit, show, summary,
-   tags, statuses, prune and lint (which reads the tag schema), the
-   remaining MCP tools (`task_set_status`, `task_edit`, `task_tag`),
+5. **The remaining commands and tools**: prune (in flight on another
+   branch, waiting on annals' purge, "Purging a stream in annals"), and
+   the remaining MCP tools (`task_set_status`, `task_edit`, `task_tag`),
    `task_list`'s unserved parameters, and the resources
    `taskloom://tag-schema` and `taskloom://tag-vocabulary` (Go's texts are
-   authorized to copy verbatim, as the tools' were).
+   authorized to copy verbatim, as the tools' were). status, edit, show,
+   summary, tags, statuses, lint and list's remaining flags are done (see
+   "Where it stands").
 6. **Priority**: choosing or writing the formula evaluator. It is isolated
    from everything else, so it can move earlier if the evaluator looks
    risky.
@@ -361,22 +402,12 @@ minting, project resolution, and configuration.
 
 Command handlers (`core/application`):
 
-- add: mint a harp, and retry on `TaskExists` up to 100 times, as Go's
-  `harp.UniqueFrom` does.
-- set-status, edit, tag: tag applies its adds, then its removes, after scalar
-  collapse.
+- add, set-status, edit and tag, and the queries (list, show, summary,
+  tags, statuses, lint) are done (see "Where it stands").
 - remove and prune: prune selects by status, `status_set_at` older than a cut,
   and a tag query. It reports without `--yes`, and reports dangling
   `relates:`, text and trigger references.
-
-Queries:
-
-- list: statuses and the `@open`/`@terminal` classes, a term, a tag query,
-  `--all`, global, sort, compact, limit. By default it hides terminal and
-  Deferred tasks, and an explicit status turns that hiding off.
-- show (every id must resolve), summary (counts ignore filters and limit),
-  the tags vocabulary (active and total counts), statuses, and lint
-  (exits non-zero on a violation, and when it checked no target).
+- list's `--sort priority`, with priority (step 6).
 
 Priority, computed when read and never stored: the `priority_fn` and
 `decay_fn` formulas with `age_days` and `age_factor`, rank-normalized to

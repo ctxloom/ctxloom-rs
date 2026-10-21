@@ -88,6 +88,10 @@ pub fn list_query(arguments: Value, settings: &Settings) -> Result<ListQuery, Mc
         all: args.include_completed,
         tag_query: String::new(),
         config_set: Vec::new(),
+        term: String::new(),
+        global: false,
+        limit: 0,
+        sort: String::new(),
     })
 }
 
@@ -163,14 +167,16 @@ fn store_path(project: &Project) -> String {
     project.store.display().to_string()
 }
 
-/// `listing` as `task_list` answers it.
+/// `listing` as `task_list` answers it. A listing that fell back to
+/// every project, where no project was found outside a work root, is
+/// answered as no project: Go's fallback, with its `global` and `notice`,
+/// is not served yet.
 pub fn listed(listing: &Listing, catalog: &Catalog) -> Value {
-    let project = listing.project.as_ref();
+    let project = listing.project();
     let rows = project
         .map(|project| {
             listing
-                .tasks
-                .iter()
+                .tasks()
                 .map(|task| Row {
                     task: ToolTask::of(task),
                     project_id: &project.id,

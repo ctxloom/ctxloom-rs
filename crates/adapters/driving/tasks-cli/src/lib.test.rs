@@ -9,8 +9,10 @@ use std::task::{Context as TaskContext, Poll, Waker};
 
 use annals_diagnostic::Report;
 use tasks_application::{
-    AppError, ImportReport, ImportRequest, ImportService, ListQuery, Listing, NewTask, Project,
-    ProjectImport, TagChange, Task, TaskService, Written,
+    AppError, Details, Finding, Hidden, ImportReport, ImportRequest, ImportService, LintReport,
+    ListQuery, Listing, NewTask, Project, ProjectImport, Reach, Row, Scope, ShowQuery,
+    StatusChange, StatusInfo, Statuses, Summary, TagChange, TagCount, Task, TaskService, TextEdit,
+    Violation, Vocabulary, Written,
 };
 
 use presentation::{Catalog, Format};
@@ -60,6 +62,18 @@ fn project() -> Project {
 struct Fake {
     added: Vec<NewTask>,
     tagged: Vec<TagChange>,
+    moved: Vec<StatusChange>,
+    edits: Vec<TextEdit>,
+    shows: Vec<ShowQuery>,
+    summed: Vec<Scope>,
+    taxonomies: Vec<Scope>,
+    counts: Vec<ListQuery>,
+    linted: Vec<Scope>,
+    report_of_lint: Option<Result<LintReport, AppError>>,
+    vocabulary: Option<Result<Vocabulary, AppError>>,
+    statuses: Option<Result<Statuses, AppError>>,
+    summary: Option<Result<Summary, AppError>>,
+    details: Option<Result<Details, AppError>>,
     listed: Vec<ListQuery>,
     written: Option<Result<Written, AppError>>,
     listing: Option<Result<Listing, AppError>>,
@@ -81,6 +95,41 @@ impl TaskService for Fake {
     async fn list(&mut self, query: ListQuery) -> Result<Listing, AppError> {
         self.listed.push(query);
         self.listing.clone().expect("a list answer scripted")
+    }
+
+    async fn set_status(&mut self, change: StatusChange) -> Result<Written, AppError> {
+        self.moved.push(change);
+        self.written.clone().expect("a status answer scripted")
+    }
+
+    async fn edit(&mut self, edit: TextEdit) -> Result<Written, AppError> {
+        self.edits.push(edit);
+        self.written.clone().expect("an edit answer scripted")
+    }
+
+    async fn show(&mut self, query: ShowQuery) -> Result<Details, AppError> {
+        self.shows.push(query);
+        self.details.clone().expect("a show answer scripted")
+    }
+
+    async fn summary(&mut self, scope: Scope) -> Result<Summary, AppError> {
+        self.summed.push(scope);
+        self.summary.clone().expect("a summary answer scripted")
+    }
+
+    async fn statuses(&mut self, scope: Scope) -> Result<Statuses, AppError> {
+        self.taxonomies.push(scope);
+        self.statuses.clone().expect("a statuses answer scripted")
+    }
+
+    async fn tags(&mut self, query: ListQuery) -> Result<Vocabulary, AppError> {
+        self.counts.push(query);
+        self.vocabulary.clone().expect("a tags answer scripted")
+    }
+
+    async fn lint(&mut self, scope: Scope) -> Result<LintReport, AppError> {
+        self.linted.push(scope);
+        self.report_of_lint.clone().expect("a lint answer scripted")
     }
 }
 
@@ -318,14 +367,636 @@ fn test_a_failed_tag_exits_1() {
     assert!(ran.err.starts_with("taskloom: task x"), "{}", ran.err);
 }
 
+// ------------------------------------------------------------ status
+
+#[test]
+fn test_status_passes_its_id_status_and_trigger_and_answers_like_add() {
+    let mut fake = Fake {
+        written: written(shapes::task("swift-amber", "Deferred")),
+        ..Fake::default()
+    };
+    let ran = run_on(
+        &mut fake,
+        true,
+        &[
+            "--project",
+            "p",
+            "status",
+            "swift-amber",
+            "Deferred",
+            "--trigger",
+            "the release",
+            "--config-set",
+            "tag_schema=x",
+        ],
+    );
+    assert_eq!(ran.code, 0, "{}", ran.err);
+    assert_eq!(
+        fake.moved,
+        [StatusChange {
+            project: Some("p".to_string()),
+            harp_id: "swift-amber".to_string(),
+            status: "Deferred".to_string(),
+            trigger: "the release".to_string(),
+            config_set: vec!["tag_schema=x".to_string()],
+        }]
+    );
+    assert_eq!(ran.out, "swift-amber\tDeferred\tShip it\n");
+    assert_eq!(ran.err, "taskloom: project /work/tree (jolly-mute-magma)\n");
+    let ran = run_on(&mut fake, false, &["status", "swift-amber", "Done"]);
+    let json: serde_json::Value = serde_json::from_str(&ran.out).unwrap();
+    assert_eq!(json["harp_id"], "swift-amber");
+    assert_eq!(fake.moved[1].trigger, "", "no trigger given");
+}
+
+#[test]
+fn test_status_needs_an_id_and_a_status_and_says_why_it_failed() {
+    let ran = run_on(&mut Fake::default(), true, &["status", "swift-amber"]);
+    assert_eq!(ran.code, 1);
+    let mut fake = Fake {
+        written: Some(Err(AppError::NoProject)),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["status", "swift-amber", "Done"]);
+    assert_eq!(ran.code, 1);
+    assert_eq!(
+        ran.err,
+        "taskloom: there is no project here yet, so no task to change\n"
+    );
+}
+
+// ------------------------------------------------------------ edit
+
+#[test]
+fn test_edit_joins_its_words_and_answers_like_add() {
+    let mut fake = Fake {
+        written: written(shapes::task("swift-amber", "To Do")),
+        ..Fake::default()
+    };
+    let ran = run_on(
+        &mut fake,
+        true,
+        &[
+            "--project",
+            "p",
+            "edit",
+            "swift-amber",
+            "Ship",
+            "it",
+            "--",
+            "--now",
+        ],
+    );
+    assert_eq!(ran.code, 0, "{}", ran.err);
+    assert_eq!(
+        fake.edits,
+        [TextEdit {
+            project: Some("p".to_string()),
+            harp_id: "swift-amber".to_string(),
+            text: "Ship it --now".to_string(),
+            config_set: Vec::new(),
+        }]
+    );
+    assert_eq!(ran.out, "swift-amber\tTo Do\tShip it\n");
+    assert_eq!(ran.err, "taskloom: project /work/tree (jolly-mute-magma)\n");
+    let ran = run_on(&mut fake, false, &["edit", "swift-amber", "x"]);
+    let json: serde_json::Value = serde_json::from_str(&ran.out).unwrap();
+    assert_eq!(json["harp_id"], "swift-amber");
+}
+
+#[test]
+fn test_edit_needs_text_and_says_why_it_failed() {
+    let ran = run_on(&mut Fake::default(), true, &["edit", "swift-amber"]);
+    assert_eq!(ran.code, 1);
+    let mut fake = Fake {
+        written: Some(Err(AppError::NoProject)),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["edit", "swift-amber", "x"]);
+    assert_eq!(ran.code, 1);
+    assert!(
+        ran.err.starts_with("taskloom: there is no project"),
+        "{}",
+        ran.err
+    );
+}
+
+// ------------------------------------------------------------ show
+
+fn details(reach: Reach, tasks: Vec<Task>) -> Option<Result<Details, AppError>> {
+    let listing = listing_in(reach, tasks);
+    Some(Ok(Details {
+        reach: listing.reach,
+        rows: listing.rows,
+        shown: listing.shown,
+    }))
+}
+
+#[test]
+fn test_show_passes_its_ids_and_names_the_project_on_stderr() {
+    let mut task = shapes::task("swift-amber", "Deferred");
+    task.text = "Ship it\nwith every line".to_string();
+    task.trigger = "the release".to_string();
+    task.tags = vec![tag("a"), tag("b")];
+    let mut fake = Fake {
+        details: details(Reach::Project(project()), vec![task]),
+        ..Fake::default()
+    };
+    let ran = run_on(
+        &mut fake,
+        true,
+        &["--project", "p", "show", "swift-amber", "--global"],
+    );
+    assert_eq!(ran.code, 0, "{}", ran.err);
+    assert_eq!(
+        fake.shows,
+        [ShowQuery {
+            project: Some("p".to_string()),
+            global: true,
+            harp_ids: vec!["swift-amber".to_string()],
+            config_set: Vec::new(),
+        }]
+    );
+    assert_eq!(
+        ran.out,
+        "[ ] swift-amber  Deferred\n    tags: a, b\n    trigger: the release\n\nShip it\nwith every line\n"
+    );
+    assert_eq!(ran.err, "taskloom: project /work/tree (jolly-mute-magma)\n");
+}
+
+#[test]
+fn test_show_of_one_id_is_an_object_and_of_several_an_array() {
+    let mut fake = Fake {
+        details: details(
+            Reach::Project(project()),
+            vec![shapes::task("swift-amber", "To Do")],
+        ),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, false, &["show", "swift-amber"]);
+    let json: serde_json::Value = serde_json::from_str(&ran.out).unwrap();
+    assert_eq!(json["harp_id"], "swift-amber");
+    assert_eq!(json["project_id"], "jolly-mute-magma");
+    fake.details = details(
+        Reach::Project(project()),
+        vec![
+            shapes::task("swift-amber", "To Do"),
+            shapes::task("calm-otter", "To Do"),
+        ],
+    );
+    let ran = run_on(&mut fake, false, &["show", "swift-amber", "calm-otter"]);
+    let json: Vec<serde_json::Value> = serde_json::from_str(&ran.out).unwrap();
+    assert_eq!(json[1]["harp_id"], "calm-otter");
+}
+
+#[test]
+fn test_show_across_projects_heads_each_task_with_its_project() {
+    let every = Reach::Every {
+        projects: 1,
+        fallback: None,
+    };
+    let mut fake = Fake {
+        details: details(
+            every,
+            vec![
+                shapes::task("swift-amber", "To Do"),
+                shapes::task("calm-otter", "Done"),
+            ],
+        ),
+        ..Fake::default()
+    };
+    let ran = run_on(
+        &mut fake,
+        true,
+        &["show", "swift-amber", "calm-otter", "--global"],
+    );
+    assert_eq!(
+        ran.out,
+        "project: /work/tree (jolly-mute-magma)\n[ ] swift-amber  To Do\n\nShip it\n\n\
+         project: /work/tree (jolly-mute-magma)\n[ ] calm-otter  Done\n\nShip it\n"
+    );
+    assert_eq!(ran.err, "");
+}
+
+#[test]
+fn test_show_needs_an_id_and_says_which_were_not_found() {
+    let ran = run_on(&mut Fake::default(), true, &["show"]);
+    assert_eq!(ran.code, 1);
+    let mut fake = Fake {
+        details: Some(Err(AppError::NotFound {
+            harp_ids: vec!["nope".to_string()],
+        })),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["show", "nope"]);
+    assert_eq!(ran.code, 1);
+    assert_eq!(ran.out, "");
+    assert_eq!(
+        ran.err,
+        "taskloom: no task holds this harp id: \"nope\" (see `taskloom list`)\n"
+    );
+}
+
+// ------------------------------------------------------------ summary
+
+fn summary(reach: Reach) -> Option<Result<Summary, AppError>> {
+    let rows = listing_in(
+        reach.clone(),
+        vec![shapes::task("swift-amber", "In Progress")],
+    )
+    .rows;
+    Some(Ok(Summary {
+        reach,
+        counts: [("To Do".to_string(), 2), ("In Progress".to_string(), 1)]
+            .into_iter()
+            .collect(),
+        in_progress: rows,
+    }))
+}
+
+#[test]
+fn test_summary_counts_each_status_then_names_those_in_progress() {
+    let mut fake = Fake {
+        summary: summary(Reach::Project(project())),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["--project", "p", "summary"]);
+    assert_eq!(ran.code, 0, "{}", ran.err);
+    assert_eq!(
+        fake.summed,
+        [Scope {
+            project: Some("p".to_string()),
+            ..Scope::default()
+        }]
+    );
+    assert_eq!(
+        ran.out,
+        "In Progress\t1\nTo Do\t2\n\nIn-progress: swift-amber\n"
+    );
+    assert_eq!(ran.err, "");
+    let ran = run_on(&mut fake, false, &["summary"]);
+    assert_eq!(
+        ran.out,
+        r#"{
+  "counts": {
+    "In Progress": 1,
+    "To Do": 2
+  },
+  "in_progress": [
+    {
+      "harp_id": "swift-amber",
+      "project": "/work/tree (jolly-mute-magma)"
+    }
+  ]
+}
+"#
+    );
+}
+
+#[test]
+fn test_summary_across_projects_names_each_task_with_its_project() {
+    let mut fake = Fake {
+        summary: summary(Reach::Every {
+            projects: 2,
+            fallback: None,
+        }),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["summary", "--global"]);
+    assert!(fake.summed[0].global);
+    assert_eq!(
+        ran.out,
+        "Projects: 2 (--global)\n\nIn Progress\t1\nTo Do\t2\n\n\
+         In-progress: swift-amber (/work/tree (jolly-mute-magma))\n"
+    );
+    let quiet = Summary {
+        reach: Reach::NoProject,
+        counts: Default::default(),
+        in_progress: Vec::new(),
+    };
+    fake.summary = Some(Ok(quiet));
+    let ran = run_on(&mut fake, true, &["summary"]);
+    assert_eq!(ran.out, "");
+    assert_eq!(ran.err, "taskloom: no project here yet: nothing to list\n");
+    let ran = run_on(&mut fake, false, &["summary"]);
+    assert_eq!(ran.out, "{\n  \"counts\": {},\n  \"in_progress\": []\n}\n");
+}
+
+// ------------------------------------------------------------ statuses
+
+fn statuses(reach: Reach, names: &[&str]) -> Option<Result<Statuses, AppError>> {
+    Some(Ok(Statuses {
+        reach,
+        statuses: names
+            .iter()
+            .enumerate()
+            .map(|(order, name)| StatusInfo::of(name, order))
+            .collect(),
+    }))
+}
+
+#[test]
+fn test_statuses_are_a_line_each_or_gos_array() {
+    let names = ["In Progress", "Deferred", "Done", "Blocked"];
+    let mut fake = Fake {
+        statuses: statuses(Reach::NoProject, &names),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["--project", "p", "statuses", "--global"]);
+    assert_eq!(ran.code, 0, "{}", ran.err);
+    assert_eq!(
+        fake.taxonomies,
+        [Scope {
+            project: Some("p".to_string()),
+            global: true,
+            config_set: Vec::new(),
+        }]
+    );
+    assert_eq!(
+        ran.out,
+        "0\tIn Progress\n1\tDeferred\trequires-trigger\n2\tDone\tterminal\n3\tBlocked\n"
+    );
+    assert_eq!(ran.err, "", "no project: the defaults, nothing to say");
+    let ran = run_on(&mut fake, false, &["statuses"]);
+    let json: Vec<serde_json::Value> = serde_json::from_str(&ran.out).unwrap();
+    assert_eq!(
+        json[1],
+        serde_json::json!({"name": "Deferred", "order": 1, "terminal": false, "requires_trigger": true})
+    );
+    let keys: Vec<&String> = json[0].as_object().unwrap().keys().collect();
+    assert_eq!(keys, ["name", "order", "requires_trigger", "terminal"]);
+}
+
+#[test]
+fn test_statuses_read_across_projects_for_want_of_one_say_so() {
+    let every = Reach::Every {
+        projects: 1,
+        fallback: Some("/tmp/x".to_string()),
+    };
+    let mut fake = Fake {
+        statuses: statuses(every, &["To Do"]),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["statuses"]);
+    assert!(
+        ran.err.starts_with("taskloom: no project here: /tmp/x"),
+        "{}",
+        ran.err
+    );
+    fake.statuses = statuses(Reach::Project(project()), &["To Do"]);
+    let ran = run_on(&mut fake, true, &["statuses"]);
+    assert_eq!(ran.err, "");
+}
+
+// ------------------------------------------------------------ tags
+
+fn vocabulary(
+    reach: Reach,
+    counts: &[(&str, usize, usize)],
+) -> Option<Result<Vocabulary, AppError>> {
+    Some(Ok(Vocabulary {
+        reach,
+        tags: counts
+            .iter()
+            .map(|&(t, active, total)| TagCount {
+                tag: tasks_application::parse_tag(t).unwrap().unwrap(),
+                active,
+                total,
+            })
+            .collect(),
+    }))
+}
+
+#[test]
+fn test_tags_passes_its_filters_and_aligns_its_counts() {
+    let mut fake = Fake {
+        vocabulary: vocabulary(
+            Reach::Project(project()),
+            &[("docs", 1, 2), ("triage:kind=chore", 10, 120)],
+        ),
+        ..Fake::default()
+    };
+    let ran = run_on(
+        &mut fake,
+        true,
+        &[
+            "--project",
+            "p",
+            "tags",
+            "--status",
+            "@open,Done",
+            "--term",
+            "ship",
+            "--tag-query",
+            "x",
+            "--global",
+            "--config-set",
+            "tag_schema=x",
+        ],
+    );
+    assert_eq!(ran.code, 0, "{}", ran.err);
+    assert_eq!(
+        fake.counts,
+        [ListQuery {
+            project: Some("p".to_string()),
+            statuses: vec!["@open".to_string(), "Done".to_string()],
+            tag_query: "x".to_string(),
+            term: "ship".to_string(),
+            global: true,
+            config_set: vec!["tag_schema=x".to_string()],
+            ..ListQuery::default()
+        }]
+    );
+    assert_eq!(
+        ran.out,
+        "Project: /work/tree (jolly-mute-magma)\n\n\
+         docs                 1 active    2 total\n\
+         triage:kind=chore   10 active  120 total\n"
+    );
+    let ran = run_on(&mut fake, false, &["tags"]);
+    let json: Vec<serde_json::Value> = serde_json::from_str(&ran.out).unwrap();
+    assert_eq!(
+        json[1],
+        serde_json::json!({"tag": "triage:kind=chore", "active": 10, "total": 120})
+    );
+}
+
+#[test]
+fn test_tags_with_none_in_use_says_how_to_apply_one() {
+    let mut fake = Fake {
+        vocabulary: vocabulary(Reach::NoProject, &[]),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["tags"]);
+    assert_eq!(
+        ran.out,
+        "(no tags in use \u{2014} apply one with `taskloom tag <harp-id> --add <tag>`)\n"
+    );
+    assert_eq!(ran.err, "taskloom: no project here yet: nothing to list\n");
+    assert_eq!(run_on(&mut fake, false, &["tags"]).out, "[]\n");
+    fake.vocabulary = vocabulary(
+        Reach::Every {
+            projects: 3,
+            fallback: None,
+        },
+        &[],
+    );
+    let ran = run_on(&mut fake, true, &["tags", "--global"]);
+    assert!(
+        ran.out.starts_with("Projects: 3 (--global)\n\n(no tags"),
+        "{}",
+        ran.out
+    );
+}
+
+// ------------------------------------------------------------ lint
+
+fn lint_report(reach: Reach, checked: usize, found: usize) -> Option<Result<LintReport, AppError>> {
+    let violation = |harp: &str| Violation {
+        project: Some("jolly-mute-magma".to_string()),
+        harp_id: harp.to_string(),
+        finding: Finding::NotInEnum {
+            target: "area:x".to_string(),
+            value: "c".to_string(),
+            members: "a, b".to_string(),
+        },
+    };
+    Some(Ok(LintReport {
+        reach,
+        violations: ["swift-amber", "calm-otter"][..found]
+            .iter()
+            .map(|h| violation(h))
+            .collect(),
+        checked_targets: checked,
+    }))
+}
+
+#[test]
+fn test_lint_says_each_violation_and_exits_1_for_any() {
+    let mut fake = Fake {
+        report_of_lint: lint_report(Reach::Project(project()), 3, 2),
+        ..Fake::default()
+    };
+    let ran = run_on(
+        &mut fake,
+        true,
+        &[
+            "--project",
+            "p",
+            "lint",
+            "--global",
+            "--config-set",
+            "tag_schema=x",
+        ],
+    );
+    assert_eq!(ran.code, 1);
+    assert_eq!(
+        fake.linted,
+        [Scope {
+            project: Some("p".to_string()),
+            global: true,
+            config_set: vec!["tag_schema=x".to_string()],
+        }]
+    );
+    assert_eq!(
+        ran.out,
+        "swift-amber: area:x=c is not one of the declared enum values: a, b\n\
+         calm-otter: area:x=c is not one of the declared enum values: a, b\n"
+    );
+    assert_eq!(ran.err, "taskloom: 2 tag-standard violations found\n");
+    let ran = run_on(&mut fake, false, &["lint"]);
+    assert_eq!(ran.code, 1);
+    let json: serde_json::Value = serde_json::from_str(&ran.out).unwrap();
+    assert_eq!(json["checked_targets"], 3);
+    let first = &json["violations"][0];
+    assert_eq!(first["harp_id"], "swift-amber");
+    assert_eq!(first["project_id"], "jolly-mute-magma");
+    assert_eq!(
+        first["reason"],
+        "area:x=c is not one of the declared enum values: a, b"
+    );
+    assert_eq!(
+        first["finding"]["code"],
+        "tasks-application-lint-not-in-enum"
+    );
+    assert_eq!(first["finding"]["args"]["value"], "c");
+    let envelope: serde_json::Value = serde_json::from_str(&ran.err).unwrap();
+    assert_eq!(envelope["code"], "tasks-cli-lint-violations");
+}
+
+#[test]
+fn test_lint_across_projects_names_each_violations_project() {
+    let every = Reach::Every {
+        projects: 2,
+        fallback: None,
+    };
+    let mut fake = Fake {
+        report_of_lint: lint_report(every, 3, 1),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["lint", "--global"]);
+    assert_eq!(
+        ran.out,
+        "swift-amber (jolly-mute-magma): area:x=c is not one of the declared enum values: a, b\n"
+    );
+}
+
+#[test]
+fn test_a_clean_lint_exits_0_and_one_that_checked_nothing_exits_1() {
+    let mut fake = Fake {
+        report_of_lint: lint_report(Reach::Project(project()), 3, 0),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["lint"]);
+    assert_eq!(ran.code, 0, "{}", ran.err);
+    assert_eq!(ran.out, "no tag-standard violations found\n");
+    assert_eq!(ran.err, "");
+    let ran = run_on(&mut fake, false, &["lint"]);
+    assert_eq!(
+        ran.out,
+        "{\n  \"violations\": [],\n  \"checked_targets\": 3\n}\n"
+    );
+    fake.report_of_lint = lint_report(Reach::Project(project()), 0, 0);
+    let ran = run_on(&mut fake, true, &["lint"]);
+    assert_eq!(ran.code, 1);
+    assert_eq!(
+        ran.out,
+        "0 targets checked: the tag schema declares no enum or range for lint to check\n"
+    );
+    assert!(ran.err.contains("lint checked no target"), "{}", ran.err);
+    fake.report_of_lint = lint_report(Reach::Project(project()), 0, 1);
+    let ran = run_on(&mut fake, true, &["lint"]);
+    assert!(ran.out.starts_with("0 targets checked"), "{}", ran.out);
+    assert!(
+        ran.out.contains("swift-amber: area:x=c"),
+        "both: {}",
+        ran.out
+    );
+    assert!(ran.err.contains("lint checked no target"), "{}", ran.err);
+}
+
 // ------------------------------------------------------------ list
 
 fn listing(tasks: Vec<Task>) -> Option<Result<Listing, AppError>> {
-    Some(Ok(Listing {
+    Some(Ok(listing_in(Reach::Project(project()), tasks)))
+}
+
+/// A listing of `tasks`, all in [`project`], as reached by `reach`.
+fn listing_in(reach: Reach, tasks: Vec<Task>) -> Listing {
+    Listing {
+        reach,
+        rows: tasks
+            .into_iter()
+            .map(|task| Row {
+                project: project(),
+                task,
+            })
+            .collect(),
         shown: tasks_application::Shown::default(),
-        project: Some(project()),
-        tasks,
-    }))
+        hidden: Hidden::default(),
+        searched: false,
+        omitted: 0,
+    }
 }
 
 #[test]
@@ -348,6 +1019,14 @@ fn test_list_passes_its_filters() {
             "--all",
             "--tag-query",
             "urgent/not",
+            "--term",
+            "docs",
+            "--global",
+            "--sort",
+            "priority",
+            "--limit",
+            "5",
+            "--compact",
         ],
     );
     assert_eq!(
@@ -362,6 +1041,10 @@ fn test_list_passes_its_filters() {
             all: true,
             tag_query: "urgent/not".to_string(),
             config_set: Vec::new(),
+            term: "docs".to_string(),
+            global: true,
+            limit: 5,
+            sort: "priority".to_string(),
         }]
     );
     let mut fake = Fake {
@@ -406,11 +1089,7 @@ fn test_list_as_json_is_an_array_of_tasks() {
 fn test_list_where_there_is_no_project_says_so_and_lists_nothing() {
     for (terminal, shown) in [(true, "(no tasks)\n"), (false, "[]\n")] {
         let mut fake = Fake {
-            listing: Some(Ok(Listing {
-                shown: tasks_application::Shown::default(),
-                project: None,
-                tasks: Vec::new(),
-            })),
+            listing: Some(Ok(listing_in(Reach::NoProject, Vec::new()))),
             ..Fake::default()
         };
         let ran = run_on(&mut fake, terminal, &["list"]);
@@ -418,6 +1097,144 @@ fn test_list_where_there_is_no_project_says_so_and_lists_nothing() {
         assert_eq!(ran.out, shown);
         assert_eq!(ran.err, "taskloom: no project here yet: nothing to list\n");
     }
+}
+
+#[test]
+fn test_list_across_projects_is_headed_by_their_count_and_each_project() {
+    let every = Reach::Every {
+        projects: 2,
+        fallback: None,
+    };
+    let mut fake = Fake {
+        listing: Some(Ok(listing_in(
+            every,
+            vec![shapes::task("swift-amber", "To Do")],
+        ))),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["list", "--global"]);
+    assert_eq!(ran.code, 0, "{}", ran.err);
+    assert_eq!(
+        ran.out,
+        "Projects: 2 (--global)\n\n\
+         Project: /work/tree (jolly-mute-magma)\n\
+         [ ] swift-amber  To Do        Ship it\n\n"
+    );
+    assert_eq!(ran.err, "", "an asked-for --global says nothing");
+    let ran = run_on(&mut fake, false, &["list", "--global"]);
+    let rows: Vec<serde_json::Value> = serde_json::from_str(&ran.out).unwrap();
+    assert_eq!(rows[0]["harp_id"], "swift-amber");
+    assert_eq!(rows[0]["created_at"], "1970-01-01T00:00:00Z");
+    assert_eq!(rows[0]["project_id"], "jolly-mute-magma");
+    assert_eq!(rows[0]["project_dir"], "/work/tree");
+}
+
+#[test]
+fn test_list_across_projects_for_want_of_one_says_why_on_stderr() {
+    let every = Reach::Every {
+        projects: 0,
+        fallback: Some("/tmp/x".to_string()),
+    };
+    let mut fake = Fake {
+        listing: Some(Ok(listing_in(every, Vec::new()))),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["list"]);
+    assert_eq!(ran.out, "Projects: 0 (--global)\n\n(no tasks)\n");
+    assert!(
+        ran.err
+            .starts_with("taskloom: no project here: /tmp/x is in no git repository"),
+        "{}",
+        ran.err
+    );
+}
+
+#[test]
+fn test_list_compact_is_each_tasks_headline_in_json() {
+    let mut task = shapes::task("swift-amber", "Done");
+    task.checked = true;
+    task.text = "First line\nmore".to_string();
+    task.tags = vec![tag("a")];
+    let mut fake = Fake {
+        listing: Some(Ok(listing_in(Reach::Project(project()), vec![task]))),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, false, &["list", "--compact"]);
+    assert_eq!(
+        ran.out,
+        r#"[
+  {
+    "harp_id": "swift-amber",
+    "status": "Done",
+    "checked": true,
+    "tags": [
+      "a"
+    ],
+    "headline": "First line"
+  }
+]
+"#
+    );
+    fake.listing = Some(Ok(listing_in(
+        Reach::Every {
+            projects: 1,
+            fallback: None,
+        },
+        vec![shapes::task("calm-otter", "To Do")],
+    )));
+    let ran = run_on(&mut fake, false, &["list", "--compact", "--global"]);
+    let rows: Vec<serde_json::Value> = serde_json::from_str(&ran.out).unwrap();
+    let keys: Vec<&String> = rows[0].as_object().unwrap().keys().collect();
+    assert_eq!(
+        keys,
+        [
+            "checked",
+            "harp_id",
+            "headline",
+            "project_dir",
+            "project_id",
+            "status",
+            "tags"
+        ],
+        "the compact row and its project"
+    );
+    let ran = run_on(&mut fake, true, &["list", "--compact"]);
+    assert!(
+        ran.out.contains("[ ] calm-otter"),
+        "text ignores it: {}",
+        ran.out
+    );
+}
+
+#[test]
+fn test_list_says_on_stderr_what_a_search_hid_and_a_limit_left_out() {
+    let mut searched = listing_in(Reach::Project(project()), Vec::new());
+    searched.searched = true;
+    searched.hidden = Hidden {
+        completed: 2,
+        deferred: 1,
+    };
+    searched.omitted = 4;
+    let mut fake = Fake {
+        listing: Some(Ok(searched.clone())),
+        ..Fake::default()
+    };
+    let ran = run_on(&mut fake, true, &["list", "--term", "x"]);
+    assert_eq!(
+        ran.err,
+        "taskloom: 3 more matching tasks hidden by the default view (2 completed, 1 deferred): add --all to include them\n\
+         taskloom: 4 more tasks omitted by --limit: raise or drop it to see them (summary's counts are unaffected)\n"
+    );
+    searched.searched = false;
+    searched.omitted = 0;
+    fake.listing = Some(Ok(searched.clone()));
+    let ran = run_on(&mut fake, true, &["list"]);
+    assert_eq!(ran.err, "", "an unsearched listing hides by design");
+    searched.searched = true;
+    searched.hidden = Hidden::default();
+    fake.listing = Some(Ok(searched));
+    let ran = run_on(&mut fake, true, &["list", "--term", "x"]);
+    assert_eq!(ran.err, "", "a search that hid nothing says nothing");
 }
 
 #[test]

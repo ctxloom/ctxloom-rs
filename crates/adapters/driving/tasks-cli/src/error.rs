@@ -25,6 +25,10 @@ pub enum CliError {
     Format(UnknownFormat),
     /// `loadout` asked for in a format other than yaml.
     LoadoutFormat { format: String },
+    /// A lint found violations.
+    LintViolations { count: usize },
+    /// A lint checked no target, so its finding nothing proves nothing.
+    LintCheckedNothing,
 }
 
 impl fmt::Display for CliError {
@@ -41,6 +45,12 @@ impl fmt::Display for CliError {
             CliError::LoadoutFormat { format } => {
                 write!(f, "the loadout is printed only as yaml, not {format}")
             }
+            CliError::LintViolations { count } => {
+                write!(f, "{count} tag-standard violations found")
+            }
+            CliError::LintCheckedNothing => f.write_str(
+                "lint checked no target: the tag schema declares no enum or range, so a clean sweep proves nothing",
+            ),
         }
     }
 }
@@ -54,6 +64,8 @@ impl Diagnostic for CliError {
             CliError::Usage { .. } => "tasks-cli-usage",
             CliError::Format(error) => error.code(),
             CliError::LoadoutFormat { .. } => "tasks-cli-loadout-format",
+            CliError::LintViolations { .. } => "tasks-cli-lint-violations",
+            CliError::LintCheckedNothing => "tasks-cli-lint-checked-nothing",
         }
     }
 
@@ -68,6 +80,8 @@ impl Diagnostic for CliError {
             }
             CliError::Format(error) => error.args(),
             CliError::LoadoutFormat { format } => vec![("format", format.as_str().into())],
+            CliError::LintViolations { count } => vec![("count", (*count).into())],
+            CliError::LintCheckedNothing => Vec::new(),
         }
     }
 }
@@ -90,6 +104,8 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(CliError::Usage {
             detail: "error: unrecognized subcommand 'frobnicate'\n".to_string(),
         }),
+        Box::new(CliError::LintViolations { count: 2 }),
+        Box::new(CliError::LintCheckedNothing),
         Box::new(Notice::Project {
             root: "/work/tree".to_string(),
             id: "jolly-mute-magma".to_string(),
@@ -98,6 +114,15 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
             format: "json".to_string(),
         }),
         Box::new(Notice::NoProject),
+        Box::new(Notice::EveryProject {
+            directory: "/tmp/somewhere".to_string(),
+        }),
+        Box::new(Notice::Hidden {
+            hidden: 3,
+            completed: 2,
+            deferred: 1,
+        }),
+        Box::new(Notice::Omitted { omitted: 4 }),
     ]
 }
 

@@ -88,7 +88,7 @@ fn test_each_error_gives_its_args_values() {
 
 #[test]
 fn test_every_error_has_a_catalog_message_with_exactly_its_args() {
-    use fluent_syntax::ast::{Entry, Expression, InlineExpression, PatternElement};
+    use fluent_syntax::ast::Entry;
 
     let ftl = crate::EN_US.1;
     let resource = fluent_syntax::parser::parse(ftl).expect("the catalog parses");
@@ -114,20 +114,38 @@ fn test_every_error_has_a_catalog_message_with_exactly_its_args() {
                 _ => None,
             })
             .unwrap_or_else(|| panic!("no message for {}", sample.code()));
-        let mut used: Vec<&str> = message
-            .value
-            .iter()
-            .flat_map(|p| &p.elements)
-            .filter_map(|el| match el {
-                PatternElement::Placeable {
-                    expression: Expression::Inline(InlineExpression::VariableReference { id }),
-                } => Some(id.name),
-                _ => None,
-            })
-            .collect();
+        let mut used: Vec<&str> = Vec::new();
+        if let Some(pattern) = &message.value {
+            variables(pattern, &mut used);
+        }
         used.sort_unstable();
+        used.dedup();
         let mut args = arg_names(&*sample);
         args.sort_unstable();
         assert_eq!(used, args, "{}", sample.code());
+    }
+}
+
+/// The variables `pattern` refers to: in its placeables, a selector, and
+/// every variant a selector picks.
+fn variables<'a>(pattern: &fluent_syntax::ast::Pattern<&'a str>, used: &mut Vec<&'a str>) {
+    use fluent_syntax::ast::{Expression, InlineExpression, PatternElement};
+
+    for element in &pattern.elements {
+        let PatternElement::Placeable { expression } = element else {
+            continue;
+        };
+        match expression {
+            Expression::Inline(InlineExpression::VariableReference { id }) => used.push(id.name),
+            Expression::Select { selector, variants } => {
+                if let InlineExpression::VariableReference { id } = selector {
+                    used.push(id.name);
+                }
+                for variant in variants {
+                    variables(&variant.value, used);
+                }
+            }
+            Expression::Inline(_) => {}
+        }
     }
 }
