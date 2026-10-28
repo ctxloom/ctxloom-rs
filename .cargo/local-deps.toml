@@ -1,0 +1,28 @@
+# Build against local sibling checkouts of annals, angzarr-cli and tagma,
+# while changing one of them and this workspace together:
+#
+#     cp .cargo/local-deps.toml .cargo/config.toml     # on
+#     rm .cargo/config.toml                            # off
+#
+# Cargo reads only .cargo/config.toml, which .gitignore keeps out of every
+# commit, so CI, a fresh clone and the pre-commit gates (whose throwaway tree
+# is a sibling of the checkout, outside it) build the pinned git revisions in
+# Cargo.toml. Paths are relative to the checkout's root and resolve from the
+# primary checkout (~/workspace/ctxloom/ctxloom-rs) and from
+# ~/workspace/worktrees/<name>.
+#
+# While it is on, Cargo.lock records these crates as path dependencies:
+# restore it (`git checkout Cargo.lock`) before committing, and once the
+# sibling's change is pushed, bump the rev in Cargo.toml instead.
+
+[patch."https://github.com/benjaminabbitt/annals"]
+annals = { path = "../../annals/crates/annals" }
+annals-diagnostic = { path = "../../annals/crates/annals-diagnostic" }
+annals-store-sql = { path = "../../annals/crates/annals-store-sql" }
+
+[patch."https://github.com/angzarr-io/angzarr-cli"]
+angzarr-build = { path = "../../angzarr/angzarr-cli/main/crates/angzarr-build" }
+
+[patch."https://github.com/benjaminabbitt/tagma"]
+tagma-core = { path = "../../kvtag/crates/tagma-core" }
+tagma-proto = { path = "../../kvtag/crates/tagma-proto" }

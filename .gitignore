@@ -1,1 +1,4 @@
 /target
+# The local-deps override (.cargo/local-deps.toml, copied here): one
+# developer's sibling checkouts, never CI's or a fresh clone's.
+/.cargo/config.toml

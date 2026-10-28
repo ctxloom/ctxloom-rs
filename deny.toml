@@ -40,8 +40,12 @@ allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = [
   # angzarr's wire contract (angzarr-proto).
   "https://github.com/angzarr-io/angzarr-project",
-  # annals (annals-diagnostic, through angzarr-build).
+  # angzarr-build: the Rust domain layer generated from protos (rust-cli).
+  "https://github.com/angzarr-io/angzarr-cli",
+  # annals: the event-sourcing kernel, its diagnostics and SQL store.
   "https://github.com/benjaminabbitt/annals",
   # harp-core: the word lists task and project ids are minted from.
   "https://github.com/benjaminabbitt/harp",
+  # tagma: the tag grammar and query engine, and its Tag message.
+  "https://github.com/benjaminabbitt/tagma",
 ]

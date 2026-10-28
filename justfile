@@ -4,16 +4,17 @@
 # gives them ctxloom-rs's parameters and keeps its own recipes (`build`,
 # `lint`, `test-pkg`).
 # cargo-deny's duplicate-version warnings stay in target/logs/lint-deps.log,
-# not silenced in deny.toml: one (annals-diagnostic) marks the local annals
-# checkout still to be pinned.
+# not silenced in deny.toml: one (annals-diagnostic) is angzarr-build's own
+# annals pin, older than this workspace's.
 
 TOP := `git rev-parse --show-toplevel`
 
 import 'gates/gates.just'
 
-# The staged tree is a sibling of the checkout, not under target/: the root
-# Cargo.toml reaches annals and angzarr-build by relative path (../../),
-# which resolves the same only from a directory at the same depth.
+# The staged tree is a sibling of the checkout, not under target/: cargo
+# reads .cargo/config.toml from every parent directory, so under the checkout
+# it would pick up a local-deps override (.cargo/local-deps.toml) and gate the
+# sibling checkouts instead of the commit's pinned dependencies.
 staged_tree := "../.{name}.staged"
 
 # No feature is turned on by what a commit changes.

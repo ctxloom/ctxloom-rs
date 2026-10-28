@@ -89,7 +89,9 @@ fn test_it_depends_on_no_crate_of_this_workspace_but_annals_diagnostic() {
     let workspace = include_str!("../../../../../Cargo.toml");
     let ours: Vec<&str> = workspace
         .lines()
-        .filter(|line| line.contains("path = \""))
+        // annals is pinned by git rather than path, but is still not
+        // presentation's to depend on (only annals-diagnostic is).
+        .filter(|line| line.contains("path = \"") || line.contains("/benjaminabbitt/annals\""))
         .filter_map(|line| line.split([' ', '=']).next())
         .filter(|name| *name != "annals-diagnostic")
         .collect();

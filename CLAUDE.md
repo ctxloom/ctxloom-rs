@@ -95,9 +95,16 @@ Any store is held to annals' store contract (`annals::store_contract!` or
 and projector tests run through annals' kernel over `InMemoryStore`, as the
 binary runs over SQLite.
 
-The path dependencies are local checkouts on their `main` (Cargo.toml says
-where): annals at `../../annals`, tagma at `../../kvtag`, both resolving
-from the primary checkout and from `~/workspace/worktrees/<name>`.
+## Co-developing annals, angzarr-cli or tagma
+
+annals, angzarr-build (angzarr-cli's `rust-cli` branch) and tagma are git
+dependencies pinned by full commit in Cargo.toml, so a fresh clone builds
+with no sibling checkouts. To change one of them and this workspace
+together, `cp .cargo/local-deps.toml .cargo/config.toml`: a gitignored
+`[patch]` onto the sibling checkouts (annals at `../../annals`, angzarr-cli
+at `../../angzarr/angzarr-cli/main`, tagma at `../../kvtag`). CI, a fresh
+clone and the pre-commit gates never read it. Restore Cargo.lock before
+committing, and land the change by pushing the sibling and bumping its rev.
 
 ## Errors are localizable: a code, args, and an en-US message
 
@@ -126,8 +133,8 @@ the gate), `just lint` (clippy, warnings denied) and `just lint-deps`
 tests' output, short clippy messages, the files rustfmt would change, deny's
 errors, the mutation verdict and survivors). Read the log for the rest;
 `VERBOSE=1 just <gate>` shows the full output. `just fmt` and `just
-fmt-check` cover this workspace's crates only, never the path dependencies
-(annals, angzarr-build).
+fmt-check` cover this workspace's crates only, never annals, angzarr-build
+or tagma, whether pinned or patched onto local checkouts.
 
 ## The pre-commit gates are in gates/; the justfile gives their parameters
 

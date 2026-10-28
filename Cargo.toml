@@ -15,13 +15,15 @@ prost = "0.14"
 prost-types = "0.14"
 angzarr-proto = { version = "0.1", git = "https://github.com/angzarr-io/angzarr-project", rev = "672ed768aa1c8a8e05818c457c757cd406105e55" }
 
-# Local checkouts while annals and the generator change together; each
-# becomes a git dependency pinned by commit once pushed.
-annals = { path = "../../annals/crates/annals" }
-annals-diagnostic = { path = "../../annals/crates/annals-diagnostic" }
-angzarr-build = { path = "../../angzarr/angzarr-cli/main/crates/angzarr-build" }
+# annals and angzarr-build (angzarr-cli's `rust-cli` branch) are pinned by
+# full commit, so a fresh clone builds with no sibling checkouts; bumps are
+# deliberate commits. To build against local checkouts while changing them
+# together, see "Co-developing annals, angzarr-cli or tagma" in CLAUDE.md.
+annals = { git = "https://github.com/benjaminabbitt/annals", rev = "4b6481362e2a20771e427528fce631cce7e281dd" }
+annals-diagnostic = { git = "https://github.com/benjaminabbitt/annals", rev = "4b6481362e2a20771e427528fce631cce7e281dd" }
+angzarr-build = { git = "https://github.com/angzarr-io/angzarr-cli", rev = "0277731bc9b5e46596633da9786fd5b5e6e993f2" }
 tasks-proto = { path = "crates/core/wire/tasks-proto" }
-annals-store-sql = { path = "../../annals/crates/annals-store-sql", features = ["sqlite"] }
+annals-store-sql = { git = "https://github.com/benjaminabbitt/annals", rev = "4b6481362e2a20771e427528fce631cce7e281dd", features = ["sqlite"] }
 tasks = { path = "crates/core/domain/tasks" }
 task-lists = { path = "crates/core/read-model/task-lists" }
 task-priority = { path = "crates/core/read-model/task-priority" }
@@ -47,10 +49,9 @@ project-cli = { path = "crates/adapters/driving/project-cli" }
 registration-cli = { path = "crates/adapters/driving/registration-cli" }
 
 # tagma: the tag grammar and query engine (tagma-core) and its Tag message
-# (tagma-proto). Local checkouts while tagma and this workspace change
-# together; each becomes a git dependency pinned by commit once pushed.
-tagma-core = { path = "../../kvtag/crates/tagma-core" }
-tagma-proto = { path = "../../kvtag/crates/tagma-proto" }
+# (tagma-proto), pinned by full commit; bumps are deliberate commits.
+tagma-core = { git = "https://github.com/benjaminabbitt/tagma", rev = "c5ecbbdfafaf2fba42357fff88875a2b47e2e149" }
+tagma-proto = { git = "https://github.com/benjaminabbitt/tagma", rev = "c5ecbbdfafaf2fba42357fff88875a2b47e2e149" }
 
 # Task and project ids: harp's word lists, as Go's harp ports them.
 harp-core = { git = "https://github.com/benjaminabbitt/harp", rev = "21648c9712ab60a84b609e1321201f158203a4bc" }

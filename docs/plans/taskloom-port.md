@@ -544,8 +544,6 @@ Loose ends outside the steps:
   both sides is re-minted, and the result says so. Not started: it needs a
   tasks use case reading one project's store into another's, beyond the
   identity ports.
-- Outside this repository: pinning annals and tagma by commit as git
-  dependencies once pushed, in place of the local path dependencies.
 
 ## Purging a stream in annals
 
