@@ -5,17 +5,17 @@ use std::path::{Path, PathBuf};
 use super::{absolute, clean, flat_name, sidecar_for, valid_harp, Sidecar};
 
 const SCRATCH: &str =
-    "/tmp/claude-1000/-home-babbitt-workspace-ctxloom-ctxloom-rs/74fb18c8-0651-4a53-83c8-19f8a2e256cc/scratchpad";
+    "/tmp/x/a-long-neutral-directory-standing-in-for-a-session-scratch/scratchpad";
 
 #[test]
 fn test_a_flat_name_is_gos() {
     assert_eq!(
         flat_name(&format!("{SCRATCH}/tmp.L0iKUu4t5Y/home/.claude.json")),
-        "ctxloom-rs__74fb18c8-0651-4a53-83c8-19f8a2e256cc__scratchpad__tmp.L0iKUu4t5Y__home__.claude.json__d07667d34aae78ed"
+        "tral-directory-standing-in-for-a-session-scratch__scratchpad__tmp.L0iKUu4t5Y__home__.claude.json__73fcba894a68ba16"
     );
     assert_eq!(
         flat_name(&format!("{SCRATCH}/tmp.qBAVn0XNgO/home/.claude.json")),
-        "ctxloom-rs__74fb18c8-0651-4a53-83c8-19f8a2e256cc__scratchpad__tmp.qBAVn0XNgO__home__.claude.json__1865b30e2a6a57b4"
+        "tral-directory-standing-in-for-a-session-scratch__scratchpad__tmp.qBAVn0XNgO__home__.claude.json__e917d95bf59fde4d"
     );
 }
 
