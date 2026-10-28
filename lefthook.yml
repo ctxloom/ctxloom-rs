@@ -1,14 +1,4 @@
-# Git hooks, managed by lefthook (`just hooks-install`). The gates are the
-# shared gates repository's lefthook.yml, reached through the `.gates` link
-# (`just gates-link`); ctxloom-rs's parameters for them are in its justfile.
+# Git hooks, managed by lefthook (`just hooks-install`). The gates are
+# gates/lefthook.yml; ctxloom-rs's parameters for them are in its justfile.
 extends:
-  - .gates/lefthook.yml
-
-pre-commit:
-  commands:
-    gates:
-      # lefthook skips an extends file it cannot read, so without this a
-      # missing link would let the commit through with no gate run. Its
-      # place in the order does not matter: whenever the link is broken it
-      # is the only command lefthook has.
-      run: just gates-check
+  - gates/lefthook.yml

@@ -1,8 +1,4 @@
-# The shared git-hook gates. A consumer's lefthook.yml extends this file
-# through its `.gates` link and adds one command of its own, `gates` (`just
-# gates-check`): lefthook skips an `extends` file it cannot read and runs the
-# rest, so without that command a missing link would let every commit
-# through ungated.
+# The git-hook gates. The repository's lefthook.yml extends this file.
 #
 # A failing hook is a finding: fix the cause and commit again; never bypass
 # with --no-verify. Red tests are not a failing hook off the default branch:
@@ -10,7 +6,7 @@
 # until they pass, and the hooks below keep them out of the default branch.
 # Every `run:` is one simple command, so it means the same
 # under whatever /bin/sh the committing machine has; anything longer is a
-# just recipe (gates.just, imported by the consumer's justfile).
+# just recipe (gates.just, imported by the repository's justfile).
 
 # Show a command's output only when it fails, then the per-command summary.
 # Each gate prints one line on a pass and the extract that matters on a
@@ -35,7 +31,7 @@ pre-commit:
       priority: 2
       run: just secrets-scan-staged
     clippy:
-      # The consumer's own `lint`.
+      # The repository's own `lint`.
       priority: 3
       run: just lint
     deps:
@@ -49,7 +45,7 @@ pre-commit:
       priority: 5
       run: just test-commit
     mutants:
-      # cargo mutants over the staged diff, judged per tier by the consumer's
+      # cargo mutants over the staged diff, judged per tier by the repository's
       # mutation_thresholds; last, because it is the slowest. A red commit's
       # mutants cannot be judged, so off the default branch it passes, saying
       # so (`just mutants-staged`).

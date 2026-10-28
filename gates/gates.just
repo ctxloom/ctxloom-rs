@@ -1,6 +1,6 @@
-# Pre-commit gates for a Rust cargo workspace, shared by every repository
-# that uses them. Each gate prints one line on a pass and, on a failure, the
-# extract worth reading plus its full log in target/logs/<gate>.log.
+# Pre-commit gates for ctxloom-rs's cargo workspace. Each gate prints one line
+# on a pass and, on a failure, the extract worth reading plus its full log in
+# target/logs/<gate>.log.
 #
 # Red tests are allowed on a branch and kept out of the default branch: a
 # commit off it may carry failing tests (`test-commit`, `mutants-staged`),
@@ -8,14 +8,11 @@
 # `push-check`, `merge-check`) keep them from reaching it. Every other gate
 # refuses on every branch.
 #
-# A consumer links its checkout to this repository's (`.gates`, gitignored,
-# made by its `gates-link` recipe from its one `gates_dir` variable) and
-# imports this file, optionally, so its bootstrap recipes still run without
-# the link:
+# The repository's justfile imports this file:
 #
-#     import? '.gates/gates.just'
+#     import 'gates/gates.just'
 #
-# and its lefthook.yml extends lefthook.yml here. The consumer defines these
+# and its lefthook.yml extends lefthook.yml here. The justfile defines these
 # variables, which parameterize every recipe below (none is optional; "" means
 # none):
 #
@@ -30,13 +27,10 @@
 #                        relative path dependency needs the same depth.
 #   feature_rules        "<package>=<feature> ...": a feature turned on whenever
 #                        that package is tested, or its sources are mutated.
-#   features_prepare     a recipe of the consumer, run first whenever a
+#   features_prepare     a recipe of the justfile's, run first whenever a
 #                        feature rule turns a feature on.
 #
-# and these recipes, which the hooks call: `lint` (clippy, through `_run`),
-# and `gates-check`, a command of the consumer's own lefthook.yml, which fails
-# when the link is missing, saying where to clone this repository. Those and
-# `gates-link` must not use anything from this file: they run without it.
+# and this recipe, which the hooks call: `lint` (clippy, through `_run`).
 #
 # Needs bash, git, jq, flock, setsid, ps and pkill (util-linux, procps),
 # cargo-nextest, cargo-deny, cargo-mutants, gitleaks and lefthook. A missing
@@ -157,7 +151,7 @@ _fmt-files +files:
     exit "$rc"
 
 # Dependency policy: licenses, sources, bans and RustSec advisories (the
-# consumer's deny.toml). Fetches the advisory database, so it needs the
+# repository's deny.toml). Fetches the advisory database, so it needs the
 # network. The inclusion graphs are hidden (VERBOSE=1 shows them). bans'
 # duplicate-version warnings do not fail the gate; they stay in the log.
 [no-exit-message]
@@ -170,7 +164,7 @@ lint-deps:
         cargo deny --color never --manifest-path '{{gates_root}}/Cargo.toml' check "${terse[@]}"
 
 # Scan the STAGED changes for secrets: lefthook's pre-commit step. Rules and
-# allowlists are the consumer's .gitleaks.toml; output is redacted. A missing
+# allowlists are the repository's .gitleaks.toml; output is redacted. A missing
 # binary fails rather than skipping: a scan that passes by not running looked
 # at nothing.
 [no-exit-message]
@@ -373,7 +367,7 @@ _require-nextest gate:
 # commit is refused with the per-tier verdict and the surviving mutants
 # listed. cargo-mutants' own output is the log, and its mutants.out is kept
 # in target/logs/mutants-staged/; its config (excludes, test_workspace) is
-# the consumer's .cargo/mutants.toml. A missing cargo-mutants (`cargo install
+# the repository's .cargo/mutants.toml. A missing cargo-mutants (`cargo install
 # cargo-mutants --locked`) fails rather than skipping: a mutation run that
 # passes by not running tested nothing.
 #
@@ -543,9 +537,9 @@ _commit-tree commit +recipe:
 # The throwaway worktree of `_staged-tree` (`source` is `staged`) and
 # `_commit-tree` (`source` is the commit). It is at `staged_tree`. Its name is
 # fixed per checkout and the run holds a lock, so builds reuse one target dir
-# (target/staged) across commits. It gets its own `.gates` link, to the same
-# gates checkout. Gate logs go to this checkout's target/logs (GATE_LOG_DIR),
-# not the throwaway tree's.
+# (target/staged) across commits. Its recipes are its own tree's, so a staged
+# change to these gates is run by the gates it stages. Gate logs go to this
+# checkout's target/logs (GATE_LOG_DIR), not the throwaway tree's.
 [positional-arguments]
 [no-exit-message]
 _scratch-tree source +recipe:
@@ -566,7 +560,6 @@ _scratch-tree source +recipe:
     flock 9
     relative='{{staged_tree}}'
     tree=$(realpath -m "$top/${relative//\{name\}/$(basename "$top")}")
-    gates=$(readlink -f "$top/.gates")
     scratch=$(mktemp -d)
     remove_tree() {
         if [ -e "$tree" ]; then
@@ -595,7 +588,6 @@ _scratch-tree source +recipe:
     if [ -s "$scratch/staged.patch" ]; then
         "${scrub[@]}" git -C "$tree" apply --index --binary --whitespace=nowarn "$scratch/staged.patch"
     fi
-    ln -sfn "$gates" "$tree/.gates"
     cd "$tree"
     "${scrub[@]}" "CARGO_TARGET_DIR=$top/target/staged" "GATE_LOG_DIR=$top/target/logs" just --justfile "$tree/justfile" "$@"
 
