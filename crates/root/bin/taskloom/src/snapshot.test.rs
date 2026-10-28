@@ -82,6 +82,10 @@ impl AsyncStore for Interleaved<'_> {
     async fn begin(&mut self) -> SqliteUnit<'_> {
         self.store.begin().await
     }
+
+    async fn commit_position(&mut self) -> Result<u64, StoreError> {
+        self.store.commit_position().await
+    }
 }
 
 impl<'e> AsyncReadStore for Interleaved<'e> {

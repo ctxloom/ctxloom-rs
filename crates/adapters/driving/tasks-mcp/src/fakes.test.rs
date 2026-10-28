@@ -125,6 +125,10 @@ impl AsyncStore for Contended {
             conflict,
         }
     }
+
+    async fn commit_position(&mut self) -> Result<u64, StoreError> {
+        self.inner.commit_position().await
+    }
 }
 
 impl AsyncEventStore for ContendedUnit<'_> {

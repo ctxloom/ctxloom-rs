@@ -247,6 +247,10 @@ impl AsyncStore for Flaky {
             fault,
         }
     }
+
+    async fn commit_position(&mut self) -> Result<u64, StoreError> {
+        self.inner.commit_position().await
+    }
 }
 
 impl AsyncEventStore for FlakyUnit<'_> {

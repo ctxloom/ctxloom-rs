@@ -51,7 +51,7 @@ name = "angzarr-build"
 version = "0.1.0"
 dependencies = [
  "angzarr-codegen",
- "angzarr-proto",
+ "angzarr-proto 0.1.0 (git+https://github.com/angzarr-io/angzarr-project?rev=672ed768aa1c8a8e05818c457c757cd406105e55)",
  "annals-diagnostic 0.1.0 (git+https://github.com/benjaminabbitt/annals?rev=8a328c8d0fd70a0b43fbfb428250e946ebd273c4)",
  "prost-build",
 ]
@@ -81,10 +81,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "angzarr-proto"
+version = "0.1.0"
+source = "git+https://github.com/angzarr-io/angzarr-project?rev=f0bf83fd476e70e42b260acb76b33fc32be9be19#f0bf83fd476e70e42b260acb76b33fc32be9be19"
+dependencies = [
+ "bytes",
+ "prost",
+ "prost-build",
+ "prost-types",
+ "uuid",
+]
+
+[[package]]
 name = "annals"
 version = "0.1.0"
 dependencies = [
- "angzarr-proto",
+ "angzarr-proto 0.1.0 (git+https://github.com/angzarr-io/angzarr-project?rev=f0bf83fd476e70e42b260acb76b33fc32be9be19)",
  "annals-diagnostic 0.1.0",
  "prost",
  "prost-types",
@@ -2561,7 +2573,7 @@ name = "tasks-proto"
 version = "0.1.0"
 dependencies = [
  "angzarr-build",
- "angzarr-proto",
+ "angzarr-proto 0.1.0 (git+https://github.com/angzarr-io/angzarr-project?rev=672ed768aa1c8a8e05818c457c757cd406105e55)",
  "prost",
  "prost-types",
  "tagma-proto",
