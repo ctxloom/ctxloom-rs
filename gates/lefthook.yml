@@ -44,13 +44,8 @@ pre-commit:
       # warning, and refused on the default branch (`just test-commit`).
       priority: 5
       run: just test-commit
-    mutants:
-      # cargo mutants over the staged diff, judged per tier by the repository's
-      # mutation_thresholds; last, because it is the slowest. A red commit's
-      # mutants cannot be judged, so off the default branch it passes, saying
-      # so (`just mutants-staged`).
-      priority: 6
-      run: just mutants-staged
+    # No mutation testing in any hook: it runs by hand while tests are
+    # written and judged (`just mutants-staged`).
 
 # Red tests never reach the default branch. A merge commit into it is tested
 # as a commit is (pre-merge-commit); a push to it is refused unless the whole

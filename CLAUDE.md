@@ -150,7 +150,9 @@ them), and again after a change to the gates names a new hook
 taskloom and annals also copied; a change here does not reach them.
 
 lefthook runs the gates one at a time, stopping at the first failure, and
-shows each gate's pass line and any failure's extract. A failing gate is a
+shows each gate's pass line and any failure's extract. Gates 1 to 5 run in
+pre-commit; mutation (6) runs in no git hook: it runs by hand while tests
+are written and judged. A failing gate is a
 finding: fix the cause and commit again; never `--no-verify`, and never
 weaken a gate to get through.
 
@@ -169,7 +171,7 @@ weaken a gate to get through.
    dependents in the staged tree (HEAD plus the staged diff, a sibling
    worktree of the checkout); a staged `workspace_wide` file tests the whole
    workspace.
-6. **mutants**: `just mutants-staged` mutation-tests the staged diff
+6. **mutants** (no hook; by hand): `just mutants-staged` mutation-tests the staged diff
    (`cargo mutants --in-diff`), holding new logic to its tier: every
    hand-written tier (domain, read models, ports, application and adapters)
    90% or more; the composition root is listed but not held (the justfile's
@@ -185,4 +187,7 @@ weaken a gate to get through.
    session of its own (`setsid`), and whatever it leaves running (a
    process a test spawned whose stop a mutant broke) is killed and named
    in the gate's log; the verdict does not change. The last run's mutants.out (each
-   mutant's log, outcomes.json) is kept in target/logs/mutants-staged/.
+   mutant's log, outcomes.json) is kept in target/logs/mutants-staged/. Red
+   tests fail it on every branch (no mutant can be judged against failing
+   tests), as does a run that found mutants and tested fewer: a mutation
+   run that judged nothing has shown nothing.

@@ -3,7 +3,7 @@
 # target/logs/<gate>.log.
 #
 # Red tests are allowed on a branch and kept out of the default branch: a
-# commit off it may carry failing tests (`test-commit`, `mutants-staged`),
+# commit off it may carry failing tests (`test-commit`),
 # and the pre-merge-commit, pre-push and post-merge hooks (`test-commit`,
 # `push-check`, `merge-check`) keep them from reaching it. Every other gate
 # refuses on every branch.
@@ -361,23 +361,19 @@ _require-nextest gate:
         exit 1
     fi
 
-# Mutation-test what the commit changes: lefthook's pre-commit step, last
-# because it is the slowest. `cargo mutants --in-diff` over the staged diff,
-# in the STAGED tree (`_staged-tree`), judged by `mutation_thresholds`; the
-# commit is refused with the per-tier verdict and the surviving mutants
-# listed. cargo-mutants' own output is the log, and its mutants.out is kept
+# Mutation-test what the commit changes, by hand while tests are written and
+# judged; no git hook runs it. `cargo mutants --in-diff` over the staged diff,
+# in the STAGED tree (`_staged-tree`), judged by `mutation_thresholds`; it
+# fails with the per-tier verdict and the surviving mutants listed. cargo-mutants' own output is the log, and its mutants.out is kept
 # in target/logs/mutants-staged/; its config (excludes, test_workspace) is
 # the repository's .cargo/mutants.toml. A missing cargo-mutants (`cargo install
 # cargo-mutants --locked`) fails rather than skipping: a mutation run that
 # passes by not running tested nothing.
 #
-# Off the default branch (`_red-allowed`), a red commit passes it: when the
-# staged tree's tests fail unmutated (cargo-mutants' baseline, exit 4), no
-# mutant can be judged, since every one would be "caught" by a test that
-# fails anyway. The commit that turns those tests green changes the code they
-# test (a red commit's stubs are what it replaces), so that code is mutated
-# then, against passing tests. Every other failure, and a red baseline on the
-# default branch, is refused.
+# Red tests fail it, on every branch: when the staged tree's tests fail
+# unmutated (cargo-mutants' baseline, exit 4), no mutant can be judged, and a
+# run that judged nothing has shown nothing; judge the commit that turns the
+# tests green.
 [no-exit-message]
 mutants-staged:
     #!/usr/bin/env bash
@@ -391,16 +387,7 @@ mutants-staged:
         echo "ok   mutants-staged (no mutants: the staged change touches no Rust source)"
         exit 0
     fi
-    rc=0
-    just --justfile '{{gates_root}}/justfile' _staged-tree _mutants-affected || rc=$?
-    [ "$rc" -eq 4 ] || exit "$rc"
-    if where=$(just --justfile '{{gates_root}}/justfile' _red-allowed); then
-        IFS=$'\t' read -r branch default <<< "$where"
-        echo "RED  mutants-staged: not judged, the tests are red; allowed on $branch, which cannot merge into $default until they pass"
-        exit 0
-    fi
-    echo "FAIL mutants-staged: red tests cannot be committed here: $where" >&2
-    exit 1
+    exec just --justfile '{{gates_root}}/justfile' _staged-tree _mutants-affected
 
 # Inside the staged tree: `_mutants-judge`, run as the gate.
 [no-exit-message]
@@ -482,18 +469,30 @@ _mutants-judge:
         4)
             verdict "the staged tree's tests fail unmutated (cargo-mutants baseline); fix them first" \
                 "baseline log: target/logs/mutants-staged/mutants.out/log/baseline.log"
-            # cargo-mutants' own code for it: `mutants-staged` allows it off
-            # the default branch.
+            # cargo-mutants' own code for it, which `mutants-staged` fails on.
             exit 4 ;;
         *)
             verdict "cargo mutants failed before a verdict (exit $rc)"
             exit 1 ;;
     esac
-    outcomes="$out/mutants.out/outcomes.json"
-    judged='[.outcomes[] | select(.scenario | type == "object") | {name: .scenario.Mutant.name, file: .scenario.Mutant.file, summary}]'
-    if [ ! -f "$outcomes" ] || [ "$(jq "$judged | length" "$outcomes")" -eq 0 ]; then
+    # Every mutant found must have been tested: a run that found some and
+    # judged fewer (its baseline failing under an exit code that did not say
+    # so, or cut short) has not shown the tests catch them, so it fails
+    # rather than passing on the ones it never ran.
+    found=0
+    [ -f "$out/mutants.out/mutants.json" ] && found=$(jq length "$out/mutants.out/mutants.json")
+    if [ "$found" -eq 0 ]; then
         echo "mutants-staged: no mutants: the staged diff changes no mutable code."
         exit 0
+    fi
+    outcomes="$out/mutants.out/outcomes.json"
+    judged='[.outcomes[] | select(.scenario | type == "object") | {name: .scenario.Mutant.name, file: .scenario.Mutant.file, summary}]'
+    tested=0
+    [ -f "$outcomes" ] && tested=$(jq "$judged | length" "$outcomes")
+    if [ "$tested" -ne "$found" ]; then
+        verdict "$found mutants found but $tested tested (cargo mutants exit $rc); nothing is judged until every one is" \
+            "run log: target/logs/mutants-staged.log"
+        exit 1
     fi
     read -ra tiers <<< "{{mutation_thresholds}}"
     # Each mutant's tier: the longest threshold prefix its file is under.
@@ -592,8 +591,8 @@ _scratch-tree source +recipe:
     "${scrub[@]}" "CARGO_TARGET_DIR=$top/target/staged" "GATE_LOG_DIR=$top/target/logs" just --justfile "$tree/justfile" "$@"
 
 # The red-on-branches rule: red tests may be committed on any branch but the
-# default one, and never reach it. `test-commit` and `mutants-staged` allow
-# them off it; `push-check` (pre-push) refuses a push to it, and
+# default one, and never reach it. `test-commit` allows them off it;
+# `push-check` (pre-push) refuses a push to it, and
 # `merge-check` (post-merge) reports a fast-forward of it, whose tests fail.
 # A merge commit into it is `test-commit`'s (pre-merge-commit).
 
