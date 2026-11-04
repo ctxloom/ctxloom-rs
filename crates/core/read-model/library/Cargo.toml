@@ -17,6 +17,8 @@ crc32fast = "1"
 flate2 = "1"
 # The digests (sha256); already in the lock, by sqlx.
 sha2 = "0.10"
+# The nearest known key to a misspelt one (already in the lock).
+strsim = "0.11"
 
 [dev-dependencies]
 # The tests hold an error's English to Go's words (english_for!).

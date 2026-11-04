@@ -1868,6 +1868,7 @@ dependencies = [
  "crc32fast",
  "flate2",
  "sha2",
+ "strsim",
 ]
 
 [[package]]
