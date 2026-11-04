@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+// A tree is the shrunk aggregate of plan 3.2 (D5 Q4): founding and limits,
+// ephemeral, and the current occupant. Routing, grants, credentials and
+// spawn refusals are not here: they are the session's and the run's.
+package ctxloom.runs.v1;
+
+import "io/angzarr/v1/options.proto";
+
+message TreeState {
+  option (io.angzarr.v1.component) = {
+    kind: COMPONENT_KIND_AGGREGATE
+    domain: "trees"
+    name: "Tree"
+  };
+
+  string owner_session = 1;
+}
+
+message FoundTree {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.runs.v1.TreeState"
+    emits: ["ctxloom.runs.v1.TreeFounded"]
+  };
+
+  string owner_session = 1;
+  bool ephemeral = 2;
+  // delegation.concurrency and delegation.depth, snapshotted at founding.
+  uint32 concurrency = 3;
+  uint32 depth = 4;
+}
+
+// Whoever holds the tree after `--session` (Q2).
+message OccupyTree {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.runs.v1.TreeState"
+    emits: ["ctxloom.runs.v1.TreeOccupied"]
+  };
+
+  string session = 1;
+}
+
+message TreeFounded {
+  option (io.angzarr.v1.event) = {component: "ctxloom.runs.v1.TreeState"};
+
+  string owner_session = 1;
+  bool ephemeral = 2;
+  uint32 concurrency = 3;
+  uint32 depth = 4;
+}
+
+message TreeOccupied {
+  option (io.angzarr.v1.event) = {component: "ctxloom.runs.v1.TreeState"};
+
+  string session = 1;
+}

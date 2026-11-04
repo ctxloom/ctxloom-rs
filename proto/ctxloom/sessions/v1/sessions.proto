@@ -256,3 +256,173 @@ message EndRecorded {
 }
 
 // endregion events
+
+// region lifeline and inbox (S5; plan 3.1)
+
+// The run LIFELINE: which incarnation the session owes, whether one is live,
+// the relaunch budget (per session, not per run) and the stop flag. The
+// inbox: queued, claimed, delivered, withdrawn, failed. Go's `run_ends[]` is
+// NOT kept here: it is the `run-ends` read model over the run streams.
+
+// The session owes its next incarnation: its first (after the mint), a
+// relaunch, or a run for mail that arrived to an ended, unstopped session.
+// Refused while an incarnation is live and, after a stop, always.
+message OweIncarnation {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.sessions.v1.SessionState"
+    emits: ["ctxloom.sessions.v1.IncarnationOwed"]
+  };
+
+  // `first`, `relaunch` or `mail`.
+  string reason = 1;
+}
+
+// Order every live run of the session to stop. `requester_depth` is STAMPED
+// from the caller's identity, never read from its payload; refused from a
+// child (Go's I2).
+message StopSession {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.sessions.v1.SessionState"
+    emits: ["ctxloom.sessions.v1.StopOrdered"]
+  };
+
+  uint32 requester_depth = 1;
+  string reason = 2;
+}
+
+// Withdraw a queued steer; refused once it was delivered.
+message WithdrawSteer {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.sessions.v1.SessionState"
+    emits: ["ctxloom.sessions.v1.SteerWithdrawn"]
+  };
+
+  string message_id = 1;
+}
+
+// A run's end, told to its session by the policy run to session (a fact).
+// `cause` is Go's `Cause*` text (`runner-exit`, `stopped`, ...). The session
+// decides BY LEVEL, following Go's gate: relaunch when mail is pending, the
+// budget allows, it is not stopped and the cause is not `stopped`;
+// otherwise it gives up and notices the parent.
+message RecordIncarnationEnded {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.sessions.v1.SessionState"
+    emits: ["ctxloom.sessions.v1.IncarnationEnded"]
+    fact: true
+  };
+
+  uint32 incarnation = 1;
+  string cause = 2;
+}
+
+// Mail arrived (a fact, from the policy that routes a send to the
+// recipient's session). external_id `arrive:<session>:<message_id>`.
+message RecordMessageArrived {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.sessions.v1.SessionState"
+    emits: ["ctxloom.sessions.v1.MessageArrived"]
+    fact: true
+  };
+
+  string message_id = 1;
+  string from = 2;
+  string kind = 3;
+  string body_ref = 4;
+}
+
+// external_id `claim:<session>:<message_id>:<claimant>`.
+message ClaimMessage {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.sessions.v1.SessionState"
+    emits: ["ctxloom.sessions.v1.MessageClaimed"]
+    fact: true
+  };
+
+  string message_id = 1;
+  string claimant = 2;
+}
+
+// external_id `deliver:<session>:<message_id>`; deduplicated by id (Go's
+// `in/delivered/`).
+message DeliverMessage {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.sessions.v1.SessionState"
+    emits: ["ctxloom.sessions.v1.MessageDelivered"]
+    fact: true
+  };
+
+  string message_id = 1;
+  uint64 at_turn = 2;
+}
+
+message FailMessage {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.sessions.v1.SessionState"
+    emits: ["ctxloom.sessions.v1.MessageFailed"]
+    fact: true
+  };
+
+  string message_id = 1;
+  string reason = 2;
+}
+
+message IncarnationOwed {
+  option (io.angzarr.v1.event) = {component: "ctxloom.sessions.v1.SessionState"};
+
+  uint32 incarnation = 1;
+  string reason = 2;
+}
+
+message IncarnationEnded {
+  option (io.angzarr.v1.event) = {component: "ctxloom.sessions.v1.SessionState"};
+
+  uint32 incarnation = 1;
+  string cause = 2;
+  // Whether the session gave up on this end: the parent is to be noticed.
+  bool notice_parent = 3;
+}
+
+message StopOrdered {
+  option (io.angzarr.v1.event) = {component: "ctxloom.sessions.v1.SessionState"};
+
+  string reason = 1;
+}
+
+message SteerWithdrawn {
+  option (io.angzarr.v1.event) = {component: "ctxloom.sessions.v1.SessionState"};
+
+  string message_id = 1;
+}
+
+message MessageArrived {
+  option (io.angzarr.v1.event) = {component: "ctxloom.sessions.v1.SessionState"};
+
+  string message_id = 1;
+  string from = 2;
+  string kind = 3;
+  string body_ref = 4;
+}
+
+message MessageClaimed {
+  option (io.angzarr.v1.event) = {component: "ctxloom.sessions.v1.SessionState"};
+
+  string message_id = 1;
+  string claimant = 2;
+}
+
+message MessageDelivered {
+  option (io.angzarr.v1.event) = {component: "ctxloom.sessions.v1.SessionState"};
+
+  string message_id = 1;
+  uint64 at_turn = 2;
+}
+
+message MessageFailed {
+  option (io.angzarr.v1.event) = {component: "ctxloom.sessions.v1.SessionState"};
+
+  string message_id = 1;
+  string reason = 2;
+}
+
+// endregion lifeline and inbox

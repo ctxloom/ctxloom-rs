@@ -1,0 +1,30 @@
+[package]
+name = "trees"
+version = "0.1.0"
+description = "The trees domain: a tree's founding, limits and occupant, decided and folded on angzarr-embedded"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-embedded.workspace = true
+angzarr-diagnostic.workspace = true
+angzarr-embedded-macros.workspace = true
+prost.workspace = true
+runs-proto.workspace = true
+uuid.workspace = true
+
+[build-dependencies]
+angzarr-build.workspace = true
+
+[dev-dependencies]
+angzarr-embedded = { workspace = true, features = ["test-support"] }
+mutants.workspace = true
+
+[features]
+# `diagnostic_samples`, for other crates' catalog tests.
+test-support = []
+
+[lints]
+workspace = true

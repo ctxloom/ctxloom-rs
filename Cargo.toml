@@ -63,6 +63,9 @@ prost = "0.14"
 prost-types = "0.14"
 
 sessions-application = { path = "crates/core/application/sessions-application" }
+runs-proto = { path = "crates/core/wire/runs-proto" }
+runs = { path = "crates/core/domain/runs" }
+trees = { path = "crates/core/domain/trees" }
 session-ports = { path = "crates/core/ports/session-ports" }
 sessions-proto = { path = "crates/core/wire/sessions-proto" }
 sessions = { path = "crates/core/domain/sessions" }

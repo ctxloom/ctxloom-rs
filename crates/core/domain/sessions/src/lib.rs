@@ -21,6 +21,8 @@ mod generated {
 }
 mod aggregate;
 mod harp;
+mod inbox;
+mod lifeline;
 mod names;
 mod rejection;
 mod state;
@@ -30,11 +32,14 @@ use angzarr_embedded::Timestamp;
 pub use aggregate::SessionAggregate;
 pub use generated::*;
 pub use harp::{validate, validate_rename, MAX_NAME_LEN};
+pub use lifeline::RELAUNCH_BUDGET;
 pub use names::{claim_root, project_namespace, NameClaimAggregate};
 #[cfg(any(test, feature = "test-support"))]
 pub use rejection::diagnostic_samples;
 pub use rejection::{SessionRejection, EN_US};
-pub use state::{NameClaimState, SessionState, NAMES_DOMAIN, SESSION_DOMAIN};
+pub use state::{
+    InboxEntry, InboxStatus, NameClaimState, SessionState, NAMES_DOMAIN, SESSION_DOMAIN,
+};
 
 /// Fold `event`, recorded at `recorded_at` (its page's
 /// `EventMeta.recorded_at`), into `state`: what the aggregate's appliers do,
@@ -96,6 +101,14 @@ pub(crate) fn apply(state: &mut SessionState, event: &SessionEvent, recorded_at:
             });
         }
         SessionEvent::EndRecorded(ended) => state.ended_at = Some(ended.at),
+        SessionEvent::IncarnationOwed(_)
+        | SessionEvent::IncarnationEnded(_)
+        | SessionEvent::StopOrdered(_) => lifeline::apply(state, event),
+        SessionEvent::MessageArrived(_)
+        | SessionEvent::MessageClaimed(_)
+        | SessionEvent::MessageDelivered(_)
+        | SessionEvent::MessageFailed(_)
+        | SessionEvent::SteerWithdrawn(_) => inbox::apply(state, event),
     }
 }
 

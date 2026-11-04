@@ -1,0 +1,237 @@
+syntax = "proto3";
+
+// A run is one runner incarnation of a session (plan 3.3, D5 Q4): the
+// owner's, a child's, or an internal one-shot's. Its root is
+// UUIDv5(session, incarnation). ONE run per incarnation, NOT per turn
+// (owner, settled): two turns of one runner are one RunEnqueued and one
+// RunEnded. It owns the credential hash, the turn gate, stop, and the
+// exactly-once end. S5 carries the in-process subset: enqueue, the runner's
+// start and attach, the turn gate, stop, and the two terminal facts. Pause,
+// resume, summaries and artifacts arrive with S6 and S10.
+package ctxloom.runs.v1;
+
+import "io/angzarr/v1/options.proto";
+
+// The run, folded from its events. The Rust state is the domain crate's; this
+// message anchors the component.
+message RunState {
+  option (io.angzarr.v1.component) = {
+    kind: COMPONENT_KIND_AGGREGATE
+    domain: "runs"
+    name: "Run"
+  };
+
+  string session = 1;
+  uint32 incarnation = 2;
+}
+
+enum RunMode {
+  RUN_MODE_UNSPECIFIED = 0;
+  RUN_MODE_INTERACTIVE = 1;
+  RUN_MODE_STRUCTURED = 2;
+  RUN_MODE_ONE_SHOT = 3;
+}
+
+// Why a run ended: Go's `Cause*` (internal/core/coord/facts.go).
+enum EndCause {
+  END_CAUSE_UNSPECIFIED = 0;
+  END_CAUSE_STOPPED = 1;
+  END_CAUSE_RUNNER_EXIT = 2;
+  END_CAUSE_RUNNER_LOSS = 3;
+  END_CAUSE_LAUNCH_FAILED = 4;
+  END_CAUSE_IDLE_REAPED = 5;
+  END_CAUSE_DRAINED = 6;
+  END_CAUSE_DRAIN_INTERRUPTED = 7;
+  END_CAUSE_FINAL_REPORTED = 8;
+}
+
+enum TurnFailureClass {
+  TURN_FAILURE_CLASS_UNSPECIFIED = 0;
+  TURN_FAILURE_CLASS_RATE_LIMITED = 1;
+  TURN_FAILURE_CLASS_CREDENTIAL_REFUSED = 2;
+  TURN_FAILURE_CLASS_ENGINE_ERROR = 3;
+  TURN_FAILURE_CLASS_INTERRUPTED = 4;
+}
+
+// region commands
+
+// Enqueue the run for `session`'s `incarnation`, with the SHA-256 of the
+// token the application minted (D29): only the hash is ever journaled. The
+// policy session to run sends it on `IncarnationOwed`.
+message EnqueueRun {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.runs.v1.RunState"
+    emits: ["ctxloom.runs.v1.RunEnqueued"]
+  };
+
+  string session = 1;
+  uint32 incarnation = 2;
+  RunMode mode = 3;
+  bytes credential_hash = 4;
+}
+
+// Queue the next turn. Refused while one is in flight and after the run's
+// end (the end fence: there is no courier, D5 Q4).
+message QueueTurn {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.runs.v1.RunState"
+    emits: ["ctxloom.runs.v1.TurnQueued"]
+  };
+
+  string prompt_ref = 1;
+  bool resume = 2;
+}
+
+// Ask the run to stop (the policy session to run, on `StopOrdered`).
+message RequestStop {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.runs.v1.RunState"
+    emits: ["ctxloom.runs.v1.StopRequested"]
+  };
+
+  string reason = 1;
+}
+
+// endregion commands
+
+// region facts (what already happened: recorded, never refused)
+
+message RunnerAttached {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.runs.v1.RunState"
+    emits: ["ctxloom.runs.v1.RunnerAttachedRecorded"]
+    fact: true
+  };
+
+  string runner_id = 1;
+  string protocol = 2;
+}
+
+// `turn` is the sequence of the TurnQueued event it answers (plan 4.3).
+message TurnStarted {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.runs.v1.RunState"
+    emits: ["ctxloom.runs.v1.TurnStartedRecorded"]
+    fact: true
+  };
+
+  uint64 turn = 1;
+}
+
+message TurnCompleted {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.runs.v1.RunState"
+    emits: ["ctxloom.runs.v1.TurnCompletedRecorded"]
+    fact: true
+  };
+
+  uint64 turn = 1;
+  string native_key = 2;
+  string answer_ref = 3;
+  int32 exit_code = 4;
+}
+
+message TurnFailed {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.runs.v1.RunState"
+    emits: ["ctxloom.runs.v1.TurnFailedRecorded"]
+    fact: true
+  };
+
+  uint64 turn = 1;
+  TurnFailureClass class = 2;
+  string detail = 3;
+}
+
+// The runner (or the launcher, on process exit) ended. The FIRST terminal
+// input ends the run; a second records nothing.
+message RunExited {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.runs.v1.RunState"
+    emits: ["ctxloom.runs.v1.RunEnded"]
+    fact: true
+  };
+
+  int32 code = 1;
+  int32 signal = 2;
+}
+
+message LaunchFailed {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.runs.v1.RunState"
+    emits: ["ctxloom.runs.v1.RunEnded"]
+    fact: true
+  };
+
+  bool deterministic = 1;
+  string detail = 2;
+}
+
+// endregion facts
+
+// region events
+
+message RunEnqueued {
+  option (io.angzarr.v1.event) = {component: "ctxloom.runs.v1.RunState"};
+
+  string session = 1;
+  uint32 incarnation = 2;
+  RunMode mode = 3;
+  bytes credential_hash = 4;
+}
+
+message RunnerAttachedRecorded {
+  option (io.angzarr.v1.event) = {component: "ctxloom.runs.v1.RunState"};
+
+  string runner_id = 1;
+  string protocol = 2;
+}
+
+message TurnQueued {
+  option (io.angzarr.v1.event) = {component: "ctxloom.runs.v1.RunState"};
+
+  string prompt_ref = 1;
+  bool resume = 2;
+}
+
+message TurnStartedRecorded {
+  option (io.angzarr.v1.event) = {component: "ctxloom.runs.v1.RunState"};
+
+  uint64 turn = 1;
+}
+
+// A turn completed; the run is idle again.
+message TurnCompletedRecorded {
+  option (io.angzarr.v1.event) = {component: "ctxloom.runs.v1.RunState"};
+
+  uint64 turn = 1;
+  string native_key = 2;
+  string answer_ref = 3;
+  int32 exit_code = 4;
+}
+
+message TurnFailedRecorded {
+  option (io.angzarr.v1.event) = {component: "ctxloom.runs.v1.RunState"};
+
+  uint64 turn = 1;
+  TurnFailureClass class = 2;
+  string detail = 3;
+}
+
+message StopRequested {
+  option (io.angzarr.v1.event) = {component: "ctxloom.runs.v1.RunState"};
+
+  string reason = 1;
+}
+
+// The exactly-once end. Folding it revokes the credential, whatever the
+// cause, the owner's token included (D29).
+message RunEnded {
+  option (io.angzarr.v1.event) = {component: "ctxloom.runs.v1.RunState"};
+
+  EndCause cause = 1;
+  optional int32 exit_code = 2;
+  string detail = 3;
+}
+
+// endregion events

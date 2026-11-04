@@ -13,15 +13,18 @@
 //! - one `#[applies]` per event, folding at its page's `recorded_at`;
 //! - no snapshot: a session's stream is short, and every load replays it.
 
-use angzarr_embedded::markup::{Context, Failed, PageContext};
-use angzarr_embedded_macros::{aggregate, applies, handles_cmd};
+use angzarr_embedded::markup::{Context, Failed, PageContext, Record};
+use angzarr_embedded_macros::{aggregate, applies, handles_cmd, handles_fact};
 
 use crate::{
-    adopted, end_recorded, engine_bound, forgotten, kept_changed, purged, renamed, session_minted,
-    AdoptRotations, BindEngineSession, EndRecorded, EngineSessionBound, ForgetSession, KeptChanged,
-    MintSession, RecordEnd, RecordPurge, RenameSession, RenamedTo, SessionAdopted, SessionCommand,
-    SessionEvent, SessionForgotten, SessionMinted, SessionPurged, SessionRejection, SessionState,
-    SetKept,
+    adopted, end_recorded, engine_bound, forgotten, inbox, kept_changed, lifeline, purged, renamed,
+    session_minted, AdoptRotations, BindEngineSession, ClaimMessage, DeliverMessage, EndRecorded,
+    EngineSessionBound, FailMessage, ForgetSession, IncarnationEnded, IncarnationOwed, KeptChanged,
+    MessageArrived, MessageClaimed, MessageDelivered, MessageFailed, MintSession, OweIncarnation,
+    RecordEnd, RecordIncarnationEnded, RecordMessageArrived, RecordPurge, RenameSession, RenamedTo,
+    SessionAdopted, SessionCommand, SessionEvent, SessionForgotten, SessionMinted, SessionPurged,
+    SessionRejection, SessionState, SetKept, SteerWithdrawn, StopOrdered, StopSession,
+    WithdrawSteer,
 };
 
 /// The session aggregate: one session, folded from its stream.
@@ -138,6 +141,74 @@ impl SessionAggregate {
         Ok(end_recorded(&self.session, &cmd)?)
     }
 
+    /// Owe the next incarnation (lifeline).
+    #[handles_cmd(OweIncarnation)]
+    fn owe_incarnation(
+        &self,
+        cmd: OweIncarnation,
+        ctx: &Context,
+    ) -> Result<IncarnationOwed, Failed<SessionRejection>> {
+        let _ = ctx;
+        Ok(lifeline::owed(&self.session, &cmd)?)
+    }
+
+    /// Order the session's runs to stop; refused from a child.
+    #[handles_cmd(StopSession)]
+    fn stop_session(
+        &self,
+        cmd: StopSession,
+        ctx: &Context,
+    ) -> Result<Option<StopOrdered>, Failed<SessionRejection>> {
+        let _ = ctx;
+        Ok(lifeline::stop_ordered(&self.session, &cmd)?)
+    }
+
+    /// Withdraw a queued steer.
+    #[handles_cmd(WithdrawSteer)]
+    fn withdraw_steer(
+        &self,
+        cmd: WithdrawSteer,
+        ctx: &Context,
+    ) -> Result<SteerWithdrawn, Failed<SessionRejection>> {
+        let _ = ctx;
+        Ok(inbox::withdrawn(&self.session, &cmd)?)
+    }
+
+    /// A run's end, told by the policy run to session (a fact).
+    #[handles_fact(RecordIncarnationEnded)]
+    fn record_incarnation_ended(
+        &self,
+        fact: RecordIncarnationEnded,
+        ctx: &Context,
+    ) -> Record<Self> {
+        let _ = ctx;
+        lifeline::ended(&self.session, &fact)
+    }
+
+    #[handles_fact(RecordMessageArrived)]
+    fn message_arrived(&self, fact: RecordMessageArrived, ctx: &Context) -> Record<Self> {
+        let _ = ctx;
+        inbox::arrived(&self.session, &fact)
+    }
+
+    #[handles_fact(ClaimMessage)]
+    fn claim_message(&self, fact: ClaimMessage, ctx: &Context) -> Record<Self> {
+        let _ = ctx;
+        inbox::claimed(&self.session, &fact)
+    }
+
+    #[handles_fact(DeliverMessage)]
+    fn deliver_message(&self, fact: DeliverMessage, ctx: &Context) -> Record<Self> {
+        let _ = ctx;
+        inbox::delivered(&self.session, &fact)
+    }
+
+    #[handles_fact(FailMessage)]
+    fn fail_message(&self, fact: FailMessage, ctx: &Context) -> Record<Self> {
+        let _ = ctx;
+        inbox::failed(&self.session, &fact)
+    }
+
     #[applies(SessionMinted)]
     fn session_minted(&mut self, event: SessionMinted, page: &PageContext) {
         fold(&mut self.session, event.into(), page);
@@ -177,8 +248,48 @@ impl SessionAggregate {
     fn end_recorded(&mut self, event: EndRecorded, page: &PageContext) {
         fold(&mut self.session, event.into(), page);
     }
+
+    #[applies(IncarnationOwed)]
+    fn incarnation_owed(&mut self, event: IncarnationOwed, page: &PageContext) {
+        fold(&mut self.session, event.into(), page);
+    }
+
+    #[applies(IncarnationEnded)]
+    fn incarnation_ended(&mut self, event: IncarnationEnded, page: &PageContext) {
+        fold(&mut self.session, event.into(), page);
+    }
+
+    #[applies(StopOrdered)]
+    fn stop_ordered(&mut self, event: StopOrdered, page: &PageContext) {
+        fold(&mut self.session, event.into(), page);
+    }
+
+    #[applies(SteerWithdrawn)]
+    fn steer_withdrawn(&mut self, event: SteerWithdrawn, page: &PageContext) {
+        fold(&mut self.session, event.into(), page);
+    }
+
+    #[applies(MessageArrived)]
+    fn message_arrived_applied(&mut self, event: MessageArrived, page: &PageContext) {
+        fold(&mut self.session, event.into(), page);
+    }
+
+    #[applies(MessageClaimed)]
+    fn message_claimed(&mut self, event: MessageClaimed, page: &PageContext) {
+        fold(&mut self.session, event.into(), page);
+    }
+
+    #[applies(MessageDelivered)]
+    fn message_delivered(&mut self, event: MessageDelivered, page: &PageContext) {
+        fold(&mut self.session, event.into(), page);
+    }
+
+    #[applies(MessageFailed)]
+    fn message_failed(&mut self, event: MessageFailed, page: &PageContext) {
+        fold(&mut self.session, event.into(), page);
+    }
 }
 
 #[cfg(test)]
 #[path = "aggregate.test.rs"]
-mod tests;
+pub(crate) mod tests;

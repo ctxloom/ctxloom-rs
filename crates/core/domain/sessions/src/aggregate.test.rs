@@ -7,9 +7,12 @@
 use std::collections::BTreeMap;
 
 use angzarr_diagnostic::{Arg, Diagnostic};
+use angzarr_embedded::markup::DomainMessage;
 use angzarr_embedded::testing::{Harness, Samples};
-use angzarr_embedded::v1::{Cover, EventPage, Uuid};
-use angzarr_embedded::{Failure, Payload, Registry, Timestamp};
+use angzarr_embedded::v1::{
+    command_page, CommandBook, CommandPage, Cover, EventPage, Fact, FactOrigin, Uuid,
+};
+use angzarr_embedded::{Any, Failure, Payload, Registry, Timestamp};
 
 use crate::{
     AdoptRotations, BindEngineSession, EndRecorded, EngineSessionBound, ForgetSession, KeptChanged,
@@ -89,6 +92,31 @@ impl Session {
             Err(Failure::Rejected(rejected)) => Err(said(&rejected)),
             Err(other) => panic!("not a rejection: {other:?}"),
         }
+    }
+
+    /// Record `fact` as the listener delivers one: a Fact body with its
+    /// derived `external_id` (S5). The events it recorded, or none for a
+    /// fact that records nothing.
+    pub(crate) fn fact(
+        &mut self,
+        fact: impl DomainMessage,
+        external_id: &str,
+    ) -> Vec<SessionEvent> {
+        let book = CommandBook {
+            cover: Some(cover()),
+            page: Some(CommandPage {
+                body: Some(command_page::Body::Fact(Fact {
+                    payload: Some(Any::from_msg(&fact.to_wire()).unwrap()),
+                })),
+                fact_origin: Some(FactOrigin {
+                    external_id: external_id.to_string(),
+                    description: String::new(),
+                }),
+                ..CommandPage::default()
+            }),
+            handling: None,
+        };
+        self.harness.when_book(book).events()
     }
 
     /// The pages stored, oldest first.

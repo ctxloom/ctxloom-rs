@@ -1,0 +1,18 @@
+[package]
+name = "runs-proto"
+version = "0.1.0"
+description = "Wire types of the runs and trees domains, generated from proto/ctxloom/runs"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+prost.workspace = true
+prost-types.workspace = true
+
+[build-dependencies]
+angzarr-build.workspace = true
+
+[lints]
+workspace = true

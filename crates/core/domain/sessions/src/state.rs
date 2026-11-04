@@ -31,6 +31,40 @@ pub struct SessionState {
     pub ended_at: Option<Timestamp>,
     pub purged_at: Option<Timestamp>,
     pub forgotten: bool,
+    /// The run lifeline (plan 3.1): the highest incarnation the session has
+    /// owed; 0 until the first.
+    pub incarnation: u32,
+    /// The incarnation owed or running and not yet ended, if any.
+    pub open_incarnation: Option<u32>,
+    /// Relaunches spent since the last mail was consumed (the budget is the
+    /// SESSION's, per harp, not per run).
+    pub relaunches: u32,
+    /// Set by a stop order; no incarnation is owed after it.
+    pub stopped: bool,
+    /// The inbox, oldest first.
+    pub inbox: Vec<InboxEntry>,
+}
+
+/// Where a message is in the session's inbox.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InboxStatus {
+    Queued,
+    Claimed,
+    Delivered,
+    Withdrawn,
+    Failed,
+}
+
+/// One message in the session's inbox (the former mailbox, D5 Q4).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InboxEntry {
+    pub message_id: String,
+    pub from: String,
+    pub kind: String,
+    pub body_ref: String,
+    pub status: InboxStatus,
+    pub claimant: String,
+    pub at_turn: Option<u64>,
 }
 
 impl From<SessionState> for sessions_proto::v1::SessionState {
@@ -96,6 +130,7 @@ impl TryFrom<sessions_proto::v1::SessionState> for SessionState {
             ended_at: value.ended_at,
             purged_at: value.purged_at,
             forgotten: value.forgotten,
+            ..SessionState::default()
         })
     }
 }
