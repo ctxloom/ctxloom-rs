@@ -158,3 +158,7 @@ pub(crate) fn materialize(w: &mut dyn Write, result: &MaterializeResult) -> io::
     }
     writeln!(w, "Status: {}", result.status)
 }
+
+#[cfg(test)]
+#[path = "text.test.rs"]
+mod tests;
