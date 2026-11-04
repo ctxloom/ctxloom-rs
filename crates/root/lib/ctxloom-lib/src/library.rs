@@ -21,9 +21,9 @@ use library_application::{Library, WritePorts};
 use crate::{LibError, Wiring};
 
 /// Where a program is on the `PATH`, by the filesystem seam.
-struct PathSearch {
-    fs: Arc<dyn Fs>,
-    dirs: Vec<PathBuf>,
+pub(crate) struct PathSearch {
+    pub(crate) fs: Arc<dyn Fs>,
+    pub(crate) dirs: Vec<PathBuf>,
 }
 
 impl Executables for PathSearch {

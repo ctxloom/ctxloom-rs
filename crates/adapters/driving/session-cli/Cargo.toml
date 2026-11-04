@@ -13,6 +13,7 @@ angzarr-presentation.workspace = true
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+reclaim-application.workspace = true
 session-index.workspace = true
 sessions-application.workspace = true
 # The runtime a command blocks on (the kernel's backoff waits on its timer).

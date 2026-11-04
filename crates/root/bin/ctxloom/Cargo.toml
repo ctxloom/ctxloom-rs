@@ -11,6 +11,7 @@ publish.workspace = true
 angzarr-diagnostic.workspace = true
 angzarr-presentation.workspace = true
 angzarr-yaml.workspace = true
+cache-files.workspace = true
 config-files.workspace = true
 content-fs.workspace = true
 editor-process.workspace = true
@@ -22,6 +23,9 @@ library.workspace = true
 library-application.workspace = true
 deps.workspace = true
 deps-application.workspace = true
+init-application.workspace = true
+reclaim-application.workspace = true
+setup-cli.workspace = true
 hook-cli.workspace = true
 session-cli.workspace = true
 session-files.workspace = true
@@ -39,6 +43,10 @@ test-support = [
     "ctxloom-store-sqlite/test-support",
     "library/test-support",
     "library-application/test-support",
+    "cache-files/test-support",
+    "init-application/test-support",
+    "reclaim-application/test-support",
+    "setup-cli/test-support",
     "deps/test-support",
     "deps-application/test-support",
     "content-fs/test-support",

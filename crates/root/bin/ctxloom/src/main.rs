@@ -23,6 +23,10 @@ fn catalog() -> Result<Catalog, angzarr_presentation::CatalogError> {
         content_fs::EN_US,
         config_files::EN_US,
         editor_process::EN_US,
+        cache_files::EN_US,
+        init_application::EN_US,
+        reclaim_application::EN_US,
+        setup_cli::EN_US,
     ]);
     Catalog::en_us(&sources)
 }
@@ -130,6 +134,10 @@ impl Services for Wired {
         all.extend(session_files::diagnostic_samples());
         all.extend(sessions_application::diagnostic_samples());
         all.extend(sessions::diagnostic_samples());
+        all.extend(cache_files::diagnostic_samples());
+        all.extend(init_application::diagnostic_samples());
+        all.extend(reclaim_application::diagnostic_samples());
+        all.extend(setup_cli::diagnostic_samples());
         all
     }
 }

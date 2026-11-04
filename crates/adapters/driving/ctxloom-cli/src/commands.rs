@@ -46,6 +46,11 @@ pub enum Verb {
     /// Browse and manage your recorded sessions
     #[command(after_help = "Examples:\n  ctxloom session list\n  ctxloom session search lockfile")]
     Session(session_cli::Session),
+    /// Generate the shell completion script
+    #[command(
+        after_help = "Examples:\n  ctxloom completion bash > /etc/bash_completion.d/ctxloom"
+    )]
+    Completion(CompletionArgs),
     /// Callbacks ctxloom installs into engines (not for people)
     #[command(hide = true)]
     Hook(hook_cli::Hook),
@@ -53,6 +58,14 @@ pub enum Verb {
     #[cfg(feature = "test-support")]
     #[command(subcommand, hide = true)]
     Test(TestVerb),
+}
+
+/// `completion`'s argument.
+#[derive(Args, Debug)]
+pub struct CompletionArgs {
+    /// The shell to generate for
+    #[arg(value_enum, value_name = "SHELL")]
+    pub shell: clap_complete::Shell,
 }
 
 #[cfg(feature = "test-support")]
@@ -155,7 +168,7 @@ pub fn command(version: &str, nouns: Vec<Command>) -> Command {
 /// The groups whose bare form runs their default verb rather than printing
 /// their usage (D28: "a bare namespace runs its default verb"; Go's
 /// `groupNodeDefault`). A group added by a later slice names itself here.
-pub const BARE_RUNS_DEFAULT: [&str; 2] = ["session", "transcript"];
+pub const BARE_RUNS_DEFAULT: [&str; 3] = ["session", "transcript", "init"];
 
 fn without_help_command(command: Command) -> Command {
     let names: Vec<String> = command

@@ -149,7 +149,13 @@ impl From<kernel_runner::Unrun> for AppError {
 pub enum Refusal {
     /// The session's lock does not prove its owner dead: held, or no lock at
     /// all (every session from before the lock existed). `reason` says which.
-    NotProvenDead { harp: String, reason: String },
+    NotProvenDead {
+        harp: String,
+        reason: String,
+        /// The command that was run, as the person spelled it (`session
+        /// remove`, `session purge`, `session transcript purge`).
+        verb: String,
+    },
     /// The session is marked keep.
     Kept { harp: String },
     /// The session ended within the transcript retention, or nothing proves
@@ -174,9 +180,10 @@ impl Diagnostic for Refusal {
 
     fn args(&self) -> Vec<(&str, Arg)> {
         match self {
-            Refusal::NotProvenDead { harp, reason } => vec![
+            Refusal::NotProvenDead { harp, reason, verb } => vec![
                 ("harp", harp.as_str().into()),
                 ("reason", reason.as_str().into()),
+                ("verb", verb.as_str().into()),
             ],
             Refusal::Kept { harp } => vec![("harp", harp.as_str().into())],
             Refusal::Retained { harp, detail } => vec![
@@ -242,6 +249,7 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(Refusal::NotProvenDead {
             harp: harp(),
             reason: "no lock file".to_string(),
+            verb: "session remove".to_string(),
         }),
         Box::new(Refusal::Kept { harp: harp() }),
         Box::new(Refusal::Retained {

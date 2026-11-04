@@ -16,6 +16,8 @@ pub enum CliFault {
     Runtime { ext_err_txt: String },
     /// The answer could not be written.
     Output { ext_err_txt: String },
+    /// A sweep that acted had actions that failed; its report says which.
+    SweepFailed { count: u64 },
 }
 
 impl CliFault {
@@ -23,7 +25,7 @@ impl CliFault {
     pub fn exit_code(&self) -> u8 {
         match self {
             CliFault::BadState { .. } | CliFault::EditNothing { .. } => 2,
-            CliFault::Runtime { .. } | CliFault::Output { .. } => 1,
+            CliFault::Runtime { .. } | CliFault::Output { .. } | CliFault::SweepFailed { .. } => 1,
         }
     }
 }
@@ -41,6 +43,7 @@ impl Diagnostic for CliFault {
             CliFault::EditNothing { .. } => code!("edit-nothing"),
             CliFault::Runtime { .. } => code!("runtime"),
             CliFault::Output { .. } => code!("output"),
+            CliFault::SweepFailed { .. } => code!("sweep-failed"),
         }
     }
 
@@ -54,6 +57,7 @@ impl Diagnostic for CliFault {
             CliFault::Runtime { ext_err_txt } | CliFault::Output { ext_err_txt } => {
                 vec![("ext_err_txt", ext_err_txt.as_str().into())]
             }
+            CliFault::SweepFailed { count } => vec![("count", (*count).into())],
         }
     }
 }
@@ -81,6 +85,7 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(CliFault::Output {
             ext_err_txt: "broken pipe".to_string(),
         }),
+        Box::new(CliFault::SweepFailed { count: 2 }),
     ]
 }
 

@@ -11,7 +11,7 @@ use serde::Serialize;
 use session_index::stamp;
 use session_index::{Captured, View};
 use sessions_application::{
-    Class, FilePlan, ImportReport, PlanItem, Removal, Renamed, TranscriptRow,
+    Class, FilePlan, ImportReport, PlanItem, Removal, Renamed, Scope, TranscriptRow,
 };
 
 /// One session as `session list` and `search` row it.
@@ -339,10 +339,14 @@ pub(crate) fn removal_text(removal: &Removal, out: &mut dyn Write) -> io::Result
             table(&["PATH", "CLASS", "ACTION", "BYTES", "REASON"], &rows)
         )?;
     }
-    if removal.index_entry_removed {
-        writeln!(out, "index entry {}: removed", removal.harp)
-    } else {
-        writeln!(out, "index entry {}: would be removed", removal.harp)
+    match (removal.scope, removal.index_entry_removed) {
+        (Scope::Remove, true) => writeln!(out, "index entry {}: removed", removal.harp),
+        (Scope::Remove, false) => writeln!(out, "index entry {}: would be removed", removal.harp),
+        _ => writeln!(
+            out,
+            "index entry {}: kept (the session stays listed)",
+            removal.harp
+        ),
     }
 }
 
@@ -491,4 +495,43 @@ pub(crate) fn import_text(report: &ImportReport, out: &mut dyn Write) -> io::Res
         writeln!(out, "left {}: {}", left.harp, left.why.code())?;
     }
     Ok(())
+}
+
+/// Go's sweep report: a line per session, the reason under it, and a count.
+pub(crate) fn sweep_text(
+    report: &reclaim_application::SweepReport,
+    out: &mut dyn Write,
+) -> io::Result<()> {
+    let purge = report
+        .purge_cutoff
+        .as_deref()
+        .map_or("not set (purges are held)".to_string(), str::to_string);
+    writeln!(out, "Session sweep: purge before {purge}.\n")?;
+    for r in &report.rows {
+        let size = if r.bytes > 0 {
+            format!("{} B", r.bytes)
+        } else {
+            String::new()
+        };
+        writeln!(
+            out,
+            "  {:<28} {:<8} {:<8} {:>10}",
+            r.harp,
+            r.action,
+            format!("{:?}", r.verdict).to_lowercase(),
+            size
+        )?;
+        if !r.reason.is_empty() {
+            writeln!(out, "  {:<28} {}", "", r.reason)?;
+        }
+        if !r.command.is_empty() {
+            writeln!(out, "  {:<28} run: {}", "", r.command)?;
+        }
+    }
+    let count = |k: &str| report.counts.get(k).copied().unwrap_or(0);
+    writeln!(
+        out,
+        "\n{} done, {} planned, {} held, {} left, {} skipped, {} failed; {} session(s) had nothing to do.",
+        count("done"), count("planned"), count("held"), count("left"), count("skipped"), count("failed"), report.untouched
+    )
 }

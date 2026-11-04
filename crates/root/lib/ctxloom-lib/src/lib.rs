@@ -13,6 +13,7 @@ mod error;
 mod library;
 #[cfg(feature = "test-support")]
 mod seed;
+mod setup;
 
 use std::io;
 use std::path::PathBuf;

@@ -19,6 +19,7 @@ use deps_files::ProjectFiles;
 use forge_github::GitHub;
 use remote_git::GitRemotes;
 
+use crate::setup::{SetupUseCases, NOUNS as SETUP_NOUNS};
 use crate::{LibError, LibraryCommands, Wiring};
 
 /// The nouns the dependency commands own outright.
@@ -56,6 +57,7 @@ pub struct Commands {
 struct Wired {
     deps: Rc<Deps>,
     library: LibraryCommands,
+    setup: SetupUseCases,
 }
 
 impl Commands {
@@ -67,12 +69,48 @@ impl Commands {
         if self.wired.is_none() {
             let deps = Rc::new(build_deps()?);
             let library = LibraryCommands::new().with_remotes(deps.clone());
-            self.wired = Some(Wired { deps, library });
+            let setup = SetupUseCases::build(deps.clone())?;
+            self.wired = Some(Wired {
+                deps,
+                library,
+                setup,
+            });
         }
         Ok(self
             .wired
             .as_mut()
             .unwrap_or_else(|| unreachable!("just built")))
+    }
+}
+
+impl Commands {
+    /// A setup command: `clean`, `doctor` or `init`.
+    fn setup(
+        &mut self,
+        noun: &str,
+        call: &Call<'_>,
+        catalog: &Catalog,
+        out: &mut dyn Write,
+        err: &mut dyn Write,
+    ) -> Result<u8, Failure> {
+        let wired = self.wired().map_err(|e| Failure {
+            cause: Box::new(e),
+            exit: 1,
+        })?;
+        let uses = setup_cli::UseCases {
+            cleaner: &wired.setup.cleaner,
+            doctor: &wired.setup.doctor,
+            init: &wired.setup.init,
+        };
+        let inner = setup_cli::Call {
+            matches: call.matches,
+            explicit_format: call.explicit_format,
+            default_format: call.default_format,
+        };
+        setup_cli::run(&uses, noun, &inner, catalog, out, err).map_err(|f| Failure {
+            cause: f.cause,
+            exit: f.exit,
+        })
     }
 }
 
@@ -90,6 +128,7 @@ impl Extension for Commands {
             })
             .collect();
         nouns.extend(deps_cli::nouns());
+        nouns.extend(setup_cli::nouns());
         nouns
     }
 
@@ -101,6 +140,9 @@ impl Extension for Commands {
         out: &mut dyn Write,
         err: &mut dyn Write,
     ) -> Result<u8, Failure> {
+        if SETUP_NOUNS.contains(&noun) {
+            return self.setup(noun, call, catalog, out, err);
+        }
         let verb = call
             .matches
             .subcommand_matches(noun)

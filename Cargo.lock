@@ -308,6 +308,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
+name = "cache-files"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "ctxloom-ports",
+ "file-system",
+ "mutants",
+ "os",
+]
+
+[[package]]
 name = "cc"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -344,6 +355,15 @@ dependencies = [
  "clap_lex",
  "strsim",
  "terminal_size",
+]
+
+[[package]]
+name = "clap_complete"
+version = "4.6.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "037e2a1a92236d0aff7e845093f64661d6df4c02c9fcc61a60e9e1d736fa392f"
+dependencies = [
+ "clap",
 ]
 
 [[package]]
@@ -517,6 +537,7 @@ dependencies = [
  "angzarr-diagnostic",
  "angzarr-presentation",
  "angzarr-yaml",
+ "cache-files",
  "config-files",
  "content-fs",
  "ctxloom-cli",
@@ -531,13 +552,16 @@ dependencies = [
  "futures",
  "harp-core",
  "hook-cli",
+ "init-application",
  "library",
  "library-application",
+ "reclaim-application",
  "serde_json",
  "session-cli",
  "session-files",
  "sessions",
  "sessions-application",
+ "setup-cli",
  "tempfile",
 ]
 
@@ -548,6 +572,7 @@ dependencies = [
  "angzarr-diagnostic",
  "angzarr-presentation",
  "clap",
+ "clap_complete",
  "hook-cli",
  "serde",
  "serde_json",
@@ -563,6 +588,7 @@ dependencies = [
  "angzarr-diagnostic",
  "angzarr-embedded",
  "angzarr-presentation",
+ "cache-files",
  "clap",
  "companion-probe",
  "config-files",
@@ -574,23 +600,27 @@ dependencies = [
  "deps-cli",
  "deps-files",
  "deps-ports",
+ "doctor-checks",
  "editor-process",
  "file-lock",
  "file-system",
  "forge-github",
  "harp-core",
  "harp-names",
+ "init-application",
  "library-application",
  "library-cli",
  "liveness",
  "os",
  "ports",
  "project-registry",
+ "reclaim-application",
  "remote-git",
  "session-files",
  "session-ports",
  "sessions",
  "sessions-application",
+ "setup-cli",
  "system",
  "tokio",
  "uuid",
@@ -818,6 +848,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.9",
+]
+
+[[package]]
+name = "doctor-checks"
+version = "0.1.0"
+dependencies = [
+ "angzarr-yaml",
+ "ctxloom-ports",
+ "mutants",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1632,6 +1673,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.9",
+]
+
+[[package]]
+name = "init-application"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "angzarr-presentation",
+ "ctxloom-ports",
+ "deps-application",
+ "mutants",
+ "serde",
 ]
 
 [[package]]
@@ -2461,6 +2514,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "reclaim-application"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "angzarr-presentation",
+ "ctxloom-ports",
+ "mutants",
+ "serde",
+ "session-index",
+ "sessions",
+ "sessions-application",
+ "time",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2814,6 +2882,7 @@ dependencies = [
  "angzarr-presentation",
  "clap",
  "mutants",
+ "reclaim-application",
  "serde",
  "serde_json",
  "session-index",
@@ -2894,6 +2963,22 @@ dependencies = [
  "angzarr-build",
  "prost",
  "prost-types",
+]
+
+[[package]]
+name = "setup-cli"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "angzarr-presentation",
+ "clap",
+ "deps-application",
+ "doctor-checks",
+ "init-application",
+ "mutants",
+ "reclaim-application",
+ "serde",
+ "sessions-application",
 ]
 
 [[package]]

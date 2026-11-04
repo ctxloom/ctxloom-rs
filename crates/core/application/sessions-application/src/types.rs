@@ -47,9 +47,35 @@ pub struct Kept {
     pub dead_letters: Vec<DeadLetter>,
 }
 
-/// Remove a session: its transcript and its index entry.
+/// What a destroyer takes of a session (Go: `session remove`, `session
+/// purge` and `session transcript purge`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Scope {
+    /// The machine-written conversation and the index entry.
+    #[default]
+    Remove,
+    /// The machine-written conversation; the session stays listed.
+    Purge,
+    /// The canonical transcripts alone; the session stays listed.
+    Transcript,
+}
+
+impl Scope {
+    /// The command that applies this scope, as the person spells it.
+    pub fn verb(self) -> &'static str {
+        match self {
+            Scope::Remove => "session remove",
+            Scope::Purge => "session purge",
+            Scope::Transcript => "session transcript purge",
+        }
+    }
+}
+
+/// Remove a session: its transcript and its index entry (or, by `scope`, one
+/// of the destroyers that leaves it listed).
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct RemoveRequest {
+    pub scope: Scope,
     pub project: Option<String>,
     pub harp: String,
     /// Apply the plan (`--yes`); without it the use case only reports.
@@ -94,6 +120,7 @@ pub struct FilePlan {
 /// entry went, and why it refused if it did.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Removal {
+    pub scope: Scope,
     pub harp: String,
     pub applied: bool,
     pub index_entry_removed: bool,
