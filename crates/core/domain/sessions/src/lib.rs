@@ -43,11 +43,11 @@ pub use state::{
 
 /// Fold `event`, recorded at `recorded_at` (its page's
 /// `EventMeta.recorded_at`), into `state`: what the aggregate's appliers do,
-/// one place. A mint's start, a purge's instant and a rotation's are
+/// one place (public, so a reader of the stream folds as the aggregate does). A mint's start, a purge's instant and a rotation's are
 /// `recorded_at`, or the instant the event carries (an imported or adopted
 /// one), read in preference. Pure: the same state, event and instant always
 /// give the same result.
-pub(crate) fn apply(state: &mut SessionState, event: &SessionEvent, recorded_at: Timestamp) {
+pub fn apply(state: &mut SessionState, event: &SessionEvent, recorded_at: Timestamp) {
     match event {
         SessionEvent::SessionMinted(minted) => {
             state.harp = minted.harp.clone();

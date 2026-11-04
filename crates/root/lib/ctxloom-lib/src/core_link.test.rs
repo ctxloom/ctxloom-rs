@@ -181,7 +181,10 @@ async fn a_fact_at_the_race_cap_is_parked_over_app_serve_in() {
         .await
         .unwrap()
         .len();
-    world.store.fail(std::iter::repeat_n(Fault::Conflict, 64));
+    world.store.fail(std::iter::repeat_n(
+        Fault::Conflict,
+        crate::core_link::RACE_RUNS as usize,
+    ));
     assert_eq!(
         facts.record(&world.identity, exited()).await,
         Ok(Recorded::Parked)

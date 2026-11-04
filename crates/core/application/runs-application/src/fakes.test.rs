@@ -28,6 +28,13 @@ use sha2::{Digest, Sha256};
 
 use crate::{Credential, Identity, Principal};
 
+/// The kernel's race re-run cap in these tests, and so how many lost races
+/// `lose_every_race` scripts: the kernel parks a fact at the cap by writing its
+/// dead letter, and that write is a store write too, so it must find the
+/// script spent (a script longer than the cap fails the letter's write, and the
+/// fact is then an error, not parked). No backoff: nothing here waits.
+const RACE_RUNS: u32 = 3;
+
 /// How far a domain is exposed (the host's `Expose`); absent is none.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Reach {
@@ -73,7 +80,8 @@ impl KernelEdge {
 
     /// Every write from now on loses its race to another writer.
     pub(crate) fn lose_every_race(&self) {
-        self.store.fail(std::iter::repeat_n(Fault::Conflict, 64));
+        self.store
+            .fail(std::iter::repeat_n(Fault::Conflict, RACE_RUNS as usize));
     }
 
     /// How many requests reached the exposure seam.
@@ -109,6 +117,9 @@ impl KernelEdge {
         let sampled = self.sample();
         let kernel = Kernel::new(&self.registry).on_retryable(OnRetryable {
             max_retries: 0,
+            max_race_runs: RACE_RUNS,
+            initial_backoff: std::time::Duration::ZERO,
+            max_backoff: std::time::Duration::ZERO,
             ..OnRetryable::default()
         });
         let cover = book.cover.clone();

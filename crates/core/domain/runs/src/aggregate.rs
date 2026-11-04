@@ -9,9 +9,9 @@ use angzarr_embedded::markup::{Context, Failed, PageContext, Record};
 use angzarr_embedded_macros::{aggregate, applies, handles_cmd, handles_fact};
 
 use crate::{
-    run_root, EndCause, EnqueueRun, FinalReported, FinalReportedRecorded, LaunchFailed, QueueTurn,
-    RequestStop, RunCommand, RunEnded, RunEnqueued, RunEvent, RunExited, RunRejection, RunState,
-    RunnerAttached, RunnerAttachedRecorded, StopRequested, SummaryReported,
+    apply, run_root, EndCause, EnqueueRun, FinalReported, FinalReportedRecorded, LaunchFailed,
+    QueueTurn, RequestStop, RunCommand, RunEnded, RunEnqueued, RunEvent, RunExited, RunRejection,
+    RunState, RunnerAttached, RunnerAttachedRecorded, StopRequested, SummaryReported,
     SummaryReportedRecorded, TurnCompleted, TurnCompletedRecorded, TurnFailed, TurnFailedRecorded,
     TurnQueued, TurnStarted, TurnStartedRecorded,
 };
@@ -205,78 +205,52 @@ impl RunAggregate {
 
     #[applies(RunEnqueued)]
     fn run_enqueued(&mut self, event: RunEnqueued, page: &PageContext) {
-        let _ = page;
-        self.run.session = event.session;
-        self.run.incarnation = event.incarnation;
-        self.run.mode = Some(event.mode);
-        self.run.runner_credential_hash = event.runner_credential_hash;
-        self.run.model_credential_hash = event.model_credential_hash;
+        apply(&mut self.run, &event.into(), page.sequence);
     }
 
     #[applies(RunnerAttachedRecorded)]
     fn runner_attached_recorded(&mut self, event: RunnerAttachedRecorded, page: &PageContext) {
-        let _ = (event, page);
-        self.run.runner_attached = true;
+        apply(&mut self.run, &event.into(), page.sequence);
     }
 
-    /// The turn in flight is the sequence of its `TurnQueued` event (plan 4.3).
     #[applies(TurnQueued)]
     fn turn_queued(&mut self, event: TurnQueued, page: &PageContext) {
-        let _ = event;
-        self.run.turn_in_flight = Some(page.sequence);
+        apply(&mut self.run, &event.into(), page.sequence);
     }
 
     #[applies(TurnStartedRecorded)]
     fn turn_started_recorded(&mut self, event: TurnStartedRecorded, page: &PageContext) {
-        let _ = (event, page);
+        apply(&mut self.run, &event.into(), page.sequence);
     }
 
     #[applies(TurnCompletedRecorded)]
     fn turn_completed_recorded(&mut self, event: TurnCompletedRecorded, page: &PageContext) {
-        let _ = page;
-        self.free_the_gate(event.turn);
+        apply(&mut self.run, &event.into(), page.sequence);
     }
 
     #[applies(TurnFailedRecorded)]
     fn turn_failed_recorded(&mut self, event: TurnFailedRecorded, page: &PageContext) {
-        let _ = page;
-        self.free_the_gate(event.turn);
+        apply(&mut self.run, &event.into(), page.sequence);
     }
 
     #[applies(StopRequested)]
     fn stop_requested(&mut self, event: StopRequested, page: &PageContext) {
-        let _ = (event, page);
-        self.run.stop_requested = true;
+        apply(&mut self.run, &event.into(), page.sequence);
     }
 
     #[applies(SummaryReportedRecorded)]
     fn summary_reported_recorded(&mut self, event: SummaryReportedRecorded, page: &PageContext) {
-        let _ = (event, page);
-        self.run.summaries += 1;
+        apply(&mut self.run, &event.into(), page.sequence);
     }
 
     #[applies(FinalReportedRecorded)]
     fn final_reported_recorded(&mut self, event: FinalReportedRecorded, page: &PageContext) {
-        let _ = page;
-        self.run.final_reported = Some(event.turn);
+        apply(&mut self.run, &event.into(), page.sequence);
     }
 
-    /// The end revokes every credential, the owner's included, whatever the
-    /// cause (D29).
     #[applies(RunEnded)]
     fn run_ended(&mut self, event: RunEnded, page: &PageContext) {
-        let _ = page;
-        self.run.ended = Some(event.cause);
-        self.run.credential_revoked = true;
-    }
-}
-
-impl RunAggregate {
-    /// A turn that completed or failed frees the gate, if it is the one in flight.
-    fn free_the_gate(&mut self, turn: u64) {
-        if self.run.turn_in_flight == Some(turn) {
-            self.run.turn_in_flight = None;
-        }
+        apply(&mut self.run, &event.into(), page.sequence);
     }
 }
 

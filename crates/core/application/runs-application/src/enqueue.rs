@@ -1,10 +1,11 @@
 //! The run's enqueue, which mints its two credentials (D29; owner ruling
 //! 2026-11-04, item 16): each token is returned once, only its SHA-256 is
-//! journaled. STUBS (S5 red).
+//! journaled.
 
 use std::sync::Arc;
 
-use angzarr_embedded::v1::Uuid;
+use angzarr_embedded::v1::{CommandBook, Cover, Uuid};
+use angzarr_embedded::CommandBookExt;
 use run_ports::{Edge, Token, TokenSource};
 
 use crate::error::AppError;
@@ -39,8 +40,32 @@ impl<E: Edge, T: TokenSource> Enqueuer<E, T> {
     }
 
     pub async fn enqueue(&self, request: EnqueueRequest) -> Result<Enqueued, AppError> {
-        let _ = (&self.edge, &self.source, request);
-        todo!("S5 stub")
+        let runner_token = self.source.mint();
+        let model_token = self.source.mint();
+        let run = runs::run_root(&request.session, request.incarnation);
+        let cover = Cover {
+            domain: runs::RUN_DOMAIN.to_string(),
+            root: Some(run.clone()),
+            edition: None,
+        };
+        // Only the digests are journaled (D29); the run refuses equal ones.
+        let enqueue = runs::EnqueueRun {
+            session: request.session,
+            incarnation: request.incarnation,
+            mode: request.mode,
+            runner_credential_hash: runner_token.hash().as_bytes().to_vec(),
+            model_credential_hash: model_token.hash().as_bytes().to_vec(),
+        };
+        let book = CommandBook::command_of(cover, &runs::RunCommand::from(enqueue));
+        self.edge
+            .handle(book)
+            .await
+            .map_err(AppError::from_failure)?;
+        Ok(Enqueued {
+            run,
+            runner_token,
+            model_token,
+        })
     }
 }
 

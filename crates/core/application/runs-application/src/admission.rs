@@ -7,13 +7,13 @@
 
 use std::sync::Arc;
 
-use angzarr_embedded::v1::CommandBook;
+use angzarr_embedded::v1::{command_page, CommandBook};
 use angzarr_embedded::Answered;
-use run_ports::{Arrival, Edge};
+use run_ports::{Arrival, Edge, Unserved};
 
 use crate::error::AppError;
-use crate::gate::{Credential, RunsGate};
-use crate::requests::{AgentRequest, Requested};
+use crate::gate::{Credential, Gate, RunsGate};
+use crate::requests::{AgentRequest, AgentRequests, Requested};
 
 pub struct Admission<E: Edge> {
     edge: Arc<E>,
@@ -33,8 +33,30 @@ impl<E: Edge> Admission<E> {
         credential: &Credential,
         book: CommandBook,
     ) -> Result<Answered, AppError> {
-        let _ = (&self.edge, &self.gate, arrival, credential, book);
-        todo!("S5 stub")
+        // Authentication first: a credential that does not identify learns
+        // nothing of which types or domains exist.
+        let who = self.gate.identify(credential).await?;
+        // A fact only: a Command envelope of any type is hidden, and so is a
+        // fact of a type this principal does not author.
+        let permitted = match book.page.as_ref().and_then(|page| page.body.as_ref()) {
+            Some(command_page::Body::Fact(fact)) => fact
+                .payload
+                .as_ref()
+                .is_some_and(|any| self.gate.allowlist(&who).permits_fact(&any.type_url)),
+            _ => false,
+        };
+        let owned = book
+            .cover
+            .as_ref()
+            .is_some_and(|cover| self.gate.owns(&who, cover));
+        if !permitted || !owned {
+            let domain = book.cover.map(|c| c.domain).unwrap_or_default();
+            return Err(AppError::Denied(Unserved::Hidden { domain }));
+        }
+        self.edge
+            .serve(book, arrival)
+            .await
+            .map_err(AppError::from_unserved)
     }
 
     /// One ask from the closed AgentRequests service: identify, then the request
@@ -45,8 +67,11 @@ impl<E: Edge> Admission<E> {
         credential: &Credential,
         request: AgentRequest,
     ) -> Result<Requested, AppError> {
-        let _ = (arrival, credential, request);
-        todo!("S5 stub")
+        let _ = arrival;
+        let who = self.gate.identify(credential).await?;
+        AgentRequests::new(Arc::clone(&self.edge))
+            .request(&who, request)
+            .await
     }
 }
 

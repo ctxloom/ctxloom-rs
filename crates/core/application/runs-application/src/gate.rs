@@ -1,13 +1,15 @@
 //! The LOCAL shape of the upstream gate (embedded-listener.plan.md section 4):
 //! `identify`, the allowlist, `owns`. When angzarr-coordinator
 //! provides its `Gate`, this implements that and the local trait goes
-//! (review question 7). STUBS (S5 red).
+//! (review question 7).
 
 use std::future::Future;
 use std::sync::Arc;
 
-use angzarr_embedded::v1::{Cover, Uuid};
-use run_ports::{Edge, Token};
+use angzarr_embedded::markup::DomainMessage;
+use angzarr_embedded::v1::{Cover, EventPage, Uuid};
+use angzarr_embedded::{Payload, StoreError};
+use run_ports::{Edge, Token, TokenHash};
 
 use crate::error::{AppError, Why};
 use crate::identity::{Identity, Principal};
@@ -22,7 +24,24 @@ pub struct Credential {
     pub run: Uuid,
 }
 
-/// The closed set of what ONE principal may SEND as a fact: the `AgentFact`
+/// The type URL of a domain message's wire form.
+fn url<M: DomainMessage>() -> String {
+    <M::Wire as prost::Name>::type_url()
+}
+
+/// A page's event as `E`, if it is one.
+fn decode<E: Payload>(page: &EventPage) -> Option<E> {
+    E::from_any(page.payload.as_ref()?).ok()
+}
+
+/// A store that could not be read.
+pub(crate) fn failed(error: StoreError) -> AppError {
+    AppError::Failed {
+        reason: error.to_string(),
+    }
+}
+
+/// The closed set of what ONE principal may SEND as a fact: the fact
 /// type URLs it authors and nothing else. The two principals' lists are
 /// disjoint (owner ruling 2026-11-04, item 16). Commands have no entry: the agent listener accepts no
 /// generic Command envelope of any type (owner ruling 2026-11-04, S5 review Q3);
@@ -35,12 +54,26 @@ pub struct Allowlist {
 impl Allowlist {
     /// What the RUNNER may send: the observation facts.
     pub fn runner() -> Allowlist {
-        todo!("S5 stub")
+        Allowlist {
+            facts: vec![
+                url::<runs::RunnerAttached>(),
+                url::<runs::TurnStarted>(),
+                url::<runs::TurnCompleted>(),
+                url::<runs::TurnFailed>(),
+                url::<runs::RunExited>(),
+                url::<sessions::ClaimMessage>(),
+                url::<sessions::DeliverMessage>(),
+                url::<sessions::FailMessage>(),
+                url::<sessions::BindEngineSession>(),
+            ],
+        }
     }
 
     /// What the MODEL may send: the claim facts, and none of the runner's.
     pub fn model() -> Allowlist {
-        todo!("S5 stub")
+        Allowlist {
+            facts: vec![url::<runs::SummaryReported>(), url::<runs::FinalReported>()],
+        }
     }
 
     /// The list of `principal`.
@@ -52,21 +85,19 @@ impl Allowlist {
     }
 
     pub fn permits_fact(&self, type_url: &str) -> bool {
-        let _ = (&self.facts, type_url);
-        todo!("S5 stub")
+        self.facts.iter().any(|permitted| permitted == type_url)
     }
 
     /// Every URL permitted as a fact.
     pub fn facts(&self) -> Vec<String> {
-        todo!("S5 stub")
+        self.facts.clone()
     }
 }
 
 /// Whether `identity` owns the stream `cover` names: its own run, its own
 /// session (inbox included). A pure predicate (listener plan 4.5).
 pub fn owns(identity: &Identity, cover: &Cover) -> bool {
-    let _ = (identity, cover);
-    todo!("S5 stub")
+    *cover == identity.run_cover() || *cover == identity.session_cover()
 }
 
 /// The duties of the gate (listener plan 4.1) that remain on the fact path,
@@ -99,8 +130,65 @@ impl<E: Edge> RunsGate<E> {
 
 impl<E: Edge> Gate for RunsGate<E> {
     async fn identify(&self, credential: &Credential) -> Result<Identity, AppError> {
-        let _ = (&self.edge, credential, Why::Mismatch);
-        todo!("S5 stub")
+        // The run: its stream, folded as the aggregate folds it.
+        let run_cover = Cover {
+            domain: runs::RUN_DOMAIN.to_string(),
+            root: Some(credential.run.clone()),
+            edition: None,
+        };
+        let pages = self.edge.events(&run_cover, 0).await.map_err(failed)?;
+        let mut run = runs::RunState::default();
+        for page in &pages {
+            if let Some(event) = decode::<runs::RunEvent>(page) {
+                runs::apply(&mut run, &event, page.sequence);
+            }
+        }
+        if run.mode.is_none() {
+            return Err(AppError::Unauthenticated(Why::UnknownRun));
+        }
+        // The principal is the one whose journaled hash the token matches;
+        // checked before the end, so a wrong token learns nothing of it.
+        let principal = [
+            (&run.runner_credential_hash, Principal::Runner),
+            (&run.model_credential_hash, Principal::Model),
+        ]
+        .into_iter()
+        .find(|(hash, _)| {
+            TokenHash::from_slice(hash).is_some_and(|hash| hash.matches(&credential.token))
+        })
+        .map(|(_, principal)| principal)
+        .ok_or(AppError::Unauthenticated(Why::Mismatch))?;
+        if run.credential_revoked {
+            return Err(AppError::Unauthenticated(Why::Revoked));
+        }
+        // The lineage: the session's, folded as its aggregate folds it.
+        let session = uuid::Uuid::parse_str(&run.session)
+            .map(|id| Uuid::from_bytes(*id.as_bytes()))
+            .map_err(|_| AppError::Unauthenticated(Why::UnknownRun))?;
+        let session_cover = Cover {
+            domain: sessions::SESSION_DOMAIN.to_string(),
+            root: Some(session.clone()),
+            edition: None,
+        };
+        let pages = self.edge.events(&session_cover, 0).await.map_err(failed)?;
+        let mut held = sessions::SessionState::default();
+        for page in &pages {
+            if let Some(event) = decode::<sessions::SessionEvent>(page) {
+                let at = page.meta.as_ref().and_then(|meta| meta.recorded_at);
+                sessions::apply(&mut held, &event, at.unwrap_or_default());
+            }
+        }
+        if held.harp.is_empty() {
+            return Err(AppError::Unauthenticated(Why::UnknownRun));
+        }
+        Ok(Identity {
+            run: credential.run.clone(),
+            session,
+            incarnation: run.incarnation,
+            harp: held.harp,
+            depth: held.depth,
+            principal,
+        })
     }
 
     fn allowlist(&self, identity: &Identity) -> Allowlist {

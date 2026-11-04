@@ -19,6 +19,13 @@ use runs::RunAggregate;
 use sessions::{NameClaimAggregate, SessionAggregate};
 use trees::TreeAggregate;
 
+/// How many times the kernel runs a fact that keeps losing its race before it
+/// parks it. In process nothing is far away, so no backoff separates the runs.
+/// Parking writes the fact's dead letter, itself a store write: a store that
+/// refuses every write parks nothing (the write of the letter fails too), and a
+/// test that scripts losses scripts exactly this many.
+pub(crate) const RACE_RUNS: u32 = 3;
+
 /// The instant and the fresh command id each call is handled at: this is the
 /// composition root, where the clock and the ids live.
 fn sample() -> Sampled {
@@ -73,11 +80,11 @@ where
         ]);
         let retries = OnRetryable {
             max_retries: 0,
+            max_race_runs: RACE_RUNS,
             initial_backoff: Duration::ZERO,
             multiplier: 1.0,
             max_backoff: Duration::ZERO,
             jitter: 0.0,
-            ..OnRetryable::default()
         };
         let app = App::builder(OneStore::new(store), registry)
             .exposed(exposed)

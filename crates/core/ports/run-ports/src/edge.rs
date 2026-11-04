@@ -3,7 +3,7 @@
 use std::future::Future;
 
 use angzarr_embedded::v1::{CommandBook, Cover, EventPage};
-use angzarr_embedded::{Answered, Failure, Rejected, StoreError};
+use angzarr_embedded::{Answered, Failure, KernelError, Malformed, Rejected, StoreError};
 
 /// Where a request arrived from (angzarr-embedded-host's `Arrival`, here as
 /// the core's own): the host listener's loopback or the network (the
@@ -29,7 +29,14 @@ impl Unserved {
     /// What the CALLER is answered: for a hidden domain, the kernel's
     /// unknown-domain refusal, the same a missing domain gets.
     pub fn answer(&self) -> Failure<Rejected> {
-        todo!("S5 stub")
+        match self {
+            Unserved::Hidden { domain } => {
+                Failure::Kernel(KernelError::Malformed(Malformed::UnknownDomain {
+                    domain: domain.clone(),
+                }))
+            }
+            Unserved::Failed(failure) => failure.clone(),
+        }
     }
 }
 
