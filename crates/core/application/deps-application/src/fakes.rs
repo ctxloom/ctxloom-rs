@@ -6,7 +6,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use ctxloom_ports::{Change, ContentRepo, Failure, TreeFiles};
-use deps_ports::{CopyOutcome, DepsFiles, Remotes, RepoFile, RepoTree, Why};
+use deps_ports::{
+    CopyOutcome, DepsFiles, Endpoint, Forge, ForgeRepo, Opened, PullRequest, Remotes, RepoFile,
+    RepoTree, Why,
+};
 
 use crate::Deps;
 
@@ -642,11 +645,93 @@ impl ContentRepo for FakeContent {
     }
 }
 
+/// A forge's API: the repositories it serves, and a record of what it was
+/// asked.
+#[derive(Default)]
+pub struct FakeForge {
+    state: Mutex<ForgeState>,
+}
+
+#[derive(Default)]
+struct ForgeState {
+    repos: Vec<ForgeRepo>,
+    search_error: Option<String>,
+    pull_request_error: Option<String>,
+    searches: Vec<(Endpoint, String, usize)>,
+    opened: Vec<(Endpoint, PullRequest)>,
+}
+
+impl FakeForge {
+    fn state(&self) -> MutexGuard<'_, ForgeState> {
+        self.state.lock().expect("the forge's state")
+    }
+
+    /// The repositories every search finds.
+    pub fn serves(&self, repos: Vec<ForgeRepo>) {
+        self.state().repos = repos;
+    }
+
+    /// Make every search fail with `why`.
+    pub fn fail_search(&self, why: &str) {
+        self.state().search_error = Some(why.to_string());
+    }
+
+    /// Make every pull request fail with `why`.
+    pub fn fail_pull_requests(&self, why: &str) {
+        self.state().pull_request_error = Some(why.to_string());
+    }
+
+    /// Every search asked: endpoint, query, limit.
+    pub fn searches(&self) -> Vec<(Endpoint, String, usize)> {
+        self.state().searches.clone()
+    }
+
+    /// Every pull request opened, with the endpoint it went to.
+    pub fn opened(&self) -> Vec<(Endpoint, PullRequest)> {
+        self.state().opened.clone()
+    }
+}
+
+impl Forge for FakeForge {
+    fn search_repositories(
+        &self,
+        endpoint: &Endpoint,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<ForgeRepo>, Why> {
+        let mut state = self.state();
+        state
+            .searches
+            .push((endpoint.clone(), query.to_string(), limit));
+        match &state.search_error {
+            Some(why) => Err(why.clone()),
+            None => Ok(state.repos.iter().take(limit).cloned().collect()),
+        }
+    }
+
+    fn open_pull_request(&self, endpoint: &Endpoint, request: &PullRequest) -> Result<Opened, Why> {
+        let mut state = self.state();
+        if let Some(why) = &state.pull_request_error {
+            return Err(why.clone());
+        }
+        state.opened.push((endpoint.clone(), request.clone()));
+        Ok(Opened {
+            url: format!(
+                "https://github.com/{}/{}/pull/7",
+                request.owner, request.repo
+            ),
+            commit: "c0ffee".repeat(6) + "c0ff",
+            branch: format!("{}-1700000000", request.branch),
+        })
+    }
+}
+
 /// The use cases over the fakes, and the fakes themselves.
 pub struct Fixture {
     pub remotes: Arc<FakeRemotes>,
     pub files: Arc<FakeFiles>,
     pub content: Arc<FakeContent>,
+    pub forge: Arc<FakeForge>,
     pub deps: Deps,
 }
 
@@ -658,11 +743,14 @@ impl Fixture {
         let remotes = Arc::new(FakeRemotes::default());
         let files = Arc::new(FakeFiles::default());
         let content = Arc::new(FakeContent::default());
-        let deps = Deps::new(remotes.clone(), files.clone(), content.clone());
+        let forge = Arc::new(FakeForge::default());
+        let deps =
+            Deps::new(remotes.clone(), files.clone(), content.clone()).with_forge(forge.clone());
         Fixture {
             remotes,
             files,
             content,
+            forge,
             deps,
         }
     }
@@ -679,13 +767,18 @@ impl Fixture {
 
     /// Register `name` at `url` as the registry file says it.
     pub fn register(&self, name: &str, url: &str) {
+        self.register_on(name, url, "git");
+    }
+
+    /// Register `name` at `url`, bound to the forge `forge`.
+    pub fn register_on(&self, name: &str, url: &str, forge: &str) {
         let mut registry = match self.files.registry_text() {
             Some(text) => {
                 deps::registry::Registry::decode(&text, "remotes.yaml").expect("a registry")
             }
             None => deps::registry::Registry::empty(),
         };
-        registry.add(name, url, "git").expect("registers");
+        registry.add(name, url, forge).expect("registers");
         self.files.set_registry(&registry.encode());
     }
 

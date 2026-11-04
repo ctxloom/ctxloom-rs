@@ -1,6 +1,8 @@
 //! The remote halves of Go's `search.feature` (the two `@remote` outlines) and
 //! `bundle.feature` (push, move, and holding a local bundle), ported.
 
+use forge_github::stub::Stub;
+
 use super::super::library::{entries, reports_as};
 use super::{tree_bundle, World};
 
@@ -227,43 +229,237 @@ fn test_holding_a_name_that_is_nothing_is_refused() {
 // not implement them (they are `#[ignore]`d so the gates stay green; each says
 // what is missing). They are listed in the slice report.
 
-// A semver range in a profile reference resolves to the newest matching tag.
-// Needs the `semver` crate (not yet admitted).
+// Owner ruling, 2026-11-04 (plan 8.2 `deps`): a semver range in a profile
+// reference resolves to the newest matching tag, by the semver spec.
 #[test]
-#[ignore = "withheld red: semver ranges need the semver crate"]
 fn test_a_range_constraint_pulls_the_newest_matching_tag() {
     let mut world = World::initialized();
     world.git_remote("origin");
+    world.tag_remote("origin", "v1.0.0");
+    world.changes_fragment(
+        "origin",
+        "demo-frag",
+        "Demo fragment content, one point one.",
+    );
+    world.tag_remote("origin", "v1.1.0");
+    world.advances("origin");
+    world.tag_remote("origin", "v2.0.0");
     let ranged = format!("{}@^1.0", world.reference("origin", "demo"));
     world.write_profile("dev", &[ranged]);
     world.run(&["deps", "pull"]).succeeds();
+    let lock = world.lock();
+    assert!(lock.contains("v1.1.0"), "{lock}");
+    assert!(!lock.contains("v2.0.0"), "{lock}");
     world
         .run(&["deps", "list", "--format", "text"])
         .succeeds()
         .contains("^1.0");
 }
 
-// `bundle push --pr` opens a pull request through the remote's forge.
-// Needs forge-github and an HTTP client (not yet admitted).
+// Owner ruling, 2026-11-04: the `deps upgrade` disclosure classifies a pin
+// change as breaking, compatible or unknown; it never refuses for a version
+// that is not semver.
 #[test]
-#[ignore = "withheld red: --pr needs forge-github and an HTTP client"]
+fn test_an_upgrade_across_a_major_is_disclosed_as_breaking() {
+    let mut world = World::initialized();
+    world.git_remote("origin");
+    world.tag_remote("origin", "v1.0.0");
+    let ranged = format!("{}@>=1.0", world.reference("origin", "demo"));
+    world.write_profile("dev", &[ranged]);
+    world.run(&["deps", "pull"]).succeeds();
+    world.advances("origin");
+    world.tag_remote("origin", "v2.0.0");
+    world
+        .run(&["deps", "upgrade", "--format", "text"])
+        .succeeds()
+        .contains("v1.0.0 -> v2.0.0")
+        .contains("[breaking]");
+}
+
+#[test]
+fn test_an_upgrade_of_a_branch_with_no_semver_anywhere_is_disclosed_as_unknown() {
+    let mut world = World::pulled_dev();
+    let files = super::demo_tree("nightly", "Demo bundle", "demo-frag", "Changed.", true);
+    world.advance_with("origin", &files);
+    world
+        .run(&["deps", "upgrade", "--format", "text"])
+        .succeeds()
+        .contains("[unknown]");
+}
+
+// ---- The forge: a GitHub on a local port (forge-github's stub), so no test
+// reaches the network. The registry binds the built-in `github` forge and a
+// `stub` forge to it, with the token in STUB_TOKEN.
+
+const TOKEN: &str = "stub-token-0123456789";
+
+fn forge_registry(api: &str, remotes: &str) -> String {
+    format!(
+        "schema_version: 1\nforges:\n  github:\n    type: github\n    api_url: {api}\n    token_env: STUB_TOKEN\n  stub:\n    type: github\n    api_url: {api}\n    token_env: STUB_TOKEN\n{remotes}"
+    )
+}
+
+// remote.feature `discover`, plan 8.2: `remote discover` uses the GitHub API.
+#[test]
+fn test_discover_lists_repositories_from_a_forge() {
+    let stub = Stub::github(None, "");
+    let world = World::initialized();
+    world
+        .project
+        .write(".ctxloom/remotes.yaml", &forge_registry(&stub.url(), ""));
+    let ran = world.run(&["remote", "discover", "ctxloom", "--source", "github"]);
+    ran.succeeds();
+    let doc = ran.json();
+    assert_eq!(reports_as(&doc, "count"), "2");
+    assert_eq!(
+        reports_as(&doc, "repositories[name=ctxloom-golang].add_command"),
+        "ctxloom remote create ctxloom-golang bob/ctxloom-golang"
+    );
+    assert_eq!(
+        reports_as(&doc, "repositories[name=ctxloom].url"),
+        "https://github.com/alice/ctxloom"
+    );
+    let ask = stub.requests().remove(0);
+    assert_eq!(ask.line(), "GET /search/repositories");
+    assert_eq!(ask.param("q").as_deref(), Some("ctxloom ctxloom in:name"));
+    let text = world.run(&["remote", "discover", "--format", "text"]);
+    text.succeeds()
+        .contains("bob/ctxloom-golang")
+        .contains("alice/ctxloom")
+        .lacks("dotfiles");
+}
+
+#[test]
+fn test_discover_refuses_a_source_that_cannot_be_searched() {
+    let world = World::initialized();
+    world
+        .run(&[
+            "remote", "discover", "--source", "gitlab", "--format", "text",
+        ])
+        .fails()
+        .contains("only \"github\" is searchable");
+}
+
+// Owner rule (2026-11-04): the token is read from the environment (the forge's
+// token_env), is sent to the forge, and is never said back.
+#[test]
+fn test_the_forge_s_token_is_read_from_the_environment_and_never_said_back() {
+    let stub = Stub::github(None, "");
+    let world = World::initialized();
+    world
+        .project
+        .write(".ctxloom/remotes.yaml", &forge_registry(&stub.url(), ""));
+    let ran = world.run_with(&[("STUB_TOKEN", TOKEN)], &["remote", "discover"]);
+    ran.succeeds();
+    assert_eq!(
+        stub.requests()[0].header("authorization"),
+        Some(format!("Bearer {TOKEN}").as_str())
+    );
+    assert!(!ran.stdout.contains(TOKEN) && !ran.stderr.contains(TOKEN));
+    let bare = world.run(&["remote", "discover"]);
+    bare.succeeds();
+    assert_eq!(stub.requests()[1].header("authorization"), None);
+}
+
+#[test]
+fn test_a_search_the_forge_refused_fails_with_the_reason_and_not_the_token() {
+    let stub = Stub::replying(403, r#"{"message":"API rate limit exceeded"}"#);
+    let world = World::initialized();
+    world
+        .project
+        .write(".ctxloom/remotes.yaml", &forge_registry(&stub.url(), ""));
+    let ran = world.run_with(&[("STUB_TOKEN", TOKEN)], &["remote", "discover"]);
+    ran.fails().contains("API rate limit exceeded");
+    assert!(!ran.stdout.contains(TOKEN) && !ran.stderr.contains(TOKEN));
+}
+
+// bundle.feature `push --pr`, plan 8.2: `bundle push --pr` via Forge.
+#[test]
 fn test_push_with_pr_opens_a_pull_request() {
+    let stub = Stub::github(Some(TOKEN), "");
+    let world = World::initialized();
+    world.project.write(
+        ".ctxloom/remotes.yaml",
+        &forge_registry(
+            &stub.url(),
+            "remotes:\n  hub:\n    url: https://github.com/acme/hub\n    forge: stub\ndefault: hub\n",
+        ),
+    );
+    world.project.bundle("notes");
+    let ran = world.run_with(
+        &[("STUB_TOKEN", TOKEN)],
+        &["bundle", "push", "notes", "hub", "--pr", "--format", "text"],
+    );
+    ran.succeeds()
+        .contains("Created pull request: https://github.com/acme/hub/pull/7");
+    assert!(!ran.stdout.contains(TOKEN) && !ran.stderr.contains(TOKEN));
+    let lines = stub.lines();
+    assert_eq!(
+        lines.first().map(String::as_str),
+        Some("GET /repos/acme/hub")
+    );
+    assert_eq!(
+        lines.last().map(String::as_str),
+        Some("POST /repos/acme/hub/pulls")
+    );
+    let pull = stub.requests().pop().expect("the pull").json();
+    assert_eq!(pull["title"], "Update bundle: notes");
+    assert_eq!(pull["base"], "main");
+    assert!(
+        pull["head"]
+            .as_str()
+            .is_some_and(|head| head.starts_with("ctxloom/bundle/notes-")),
+        "{pull}"
+    );
+    let blobs = stub
+        .requests()
+        .iter()
+        .filter(|r| r.path.ends_with("/git/blobs"))
+        .count();
+    assert_eq!(blobs, 3, "bundle.yaml, a fragment and a prompt");
+    let json = world
+        .run_with(
+            &[("STUB_TOKEN", TOKEN)],
+            &["bundle", "push", "notes", "hub", "--pr"],
+        )
+        .json();
+    assert_eq!(reports_as(&json, "status"), "pr-created");
+    assert_eq!(
+        reports_as(&json, "pr_url"),
+        "https://github.com/acme/hub/pull/7"
+    );
+}
+
+// publish.go pullRequestSupport: plain git has no API to open one through.
+#[test]
+fn test_push_with_pr_to_a_plain_git_remote_is_refused_and_says_how() {
     let mut world = World::initialized();
     world.git_remote("origin");
     world.project.bundle("notes");
     world
-        .run(&["bundle", "push", "notes", "origin", "--pr"])
-        .succeeds()
-        .contains("pull request");
+        .run(&[
+            "bundle", "push", "notes", "origin", "--pr", "--format", "text",
+        ])
+        .fails()
+        .contains("no API to open a pull request through")
+        .contains("ctxloom remote edit origin --forge github");
 }
 
-// `remote discover` lists public repositories of a forge.
-// Needs forge-github and an HTTP client (not yet admitted).
 #[test]
-#[ignore = "withheld red: discover needs forge-github and an HTTP client"]
-fn test_discover_lists_repositories_from_a_forge() {
+fn test_push_with_pr_without_a_token_says_which_variable_to_set_and_asks_nothing() {
+    let stub = Stub::github(Some(TOKEN), "");
     let world = World::initialized();
+    world.project.write(
+        ".ctxloom/remotes.yaml",
+        &forge_registry(
+            &stub.url(),
+            "remotes:\n  hub:\n    url: https://github.com/acme/hub\n    forge: stub\n",
+        ),
+    );
+    world.project.bundle("notes");
     world
-        .run(&["remote", "discover", "ctxloom", "--source", "github"])
-        .succeeds();
+        .run(&["bundle", "push", "notes", "hub", "--pr"])
+        .fails()
+        .contains("set STUB_TOKEN to open a pull request");
+    assert!(stub.requests().is_empty());
 }

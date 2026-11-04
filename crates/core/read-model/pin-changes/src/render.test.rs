@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use super::*;
 use crate::{Change, ExecDelta, ExecSpec, FileChange, ItemChange};
+use deps::version::Compat;
 
 const IDENTITY: &str = "ctxloom+git://h/r//bundles/demo";
 
@@ -13,6 +14,7 @@ fn change(from_sha: &str, to_sha: &str) -> PinChange {
         to_sha: to_sha.to_string(),
         from_version: String::new(),
         to_version: String::new(),
+        compat: None,
         items: Vec::new(),
         files: Vec::new(),
     }
@@ -228,4 +230,35 @@ fn test_a_removed_server_lists_its_env_plainly() {
         "{text}"
     );
     assert!(!text.contains("- API_KEY"), "{text}");
+}
+
+// Owner ruling, 2026-11-04: a pin change is disclosed as breaking, compatible
+// or unknown.
+#[test]
+fn test_a_move_is_headed_with_what_it_is_worth() {
+    for (compat, word) in [
+        (Compat::Breaking, "breaking"),
+        (Compat::Compatible, "compatible"),
+        (Compat::Unknown, "unknown"),
+    ] {
+        let mut moved = change(
+            "1111111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "2222222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        );
+        moved.from_version = "v1.0.0".to_string();
+        moved.to_version = "v2.0.0".to_string();
+        moved.compat = Some(compat);
+        assert_eq!(
+            pin_changes_text(&[moved]),
+            format!("{IDENTITY}  v1.0.0 -> v2.0.0  (1111111 -> 2222222)  [{word}]\n"),
+            "{word}"
+        );
+    }
+}
+
+#[test]
+fn test_a_first_pin_is_not_classified() {
+    let first = change("", "0379964abcdef0123456789abcdef0123456789a");
+    assert_eq!(first.compat, None);
+    assert!(!pin_changes_text(&[first]).contains('['));
 }

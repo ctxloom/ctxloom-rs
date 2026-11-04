@@ -13,6 +13,8 @@ angzarr-yaml.workspace = true
 # The reference grammar: a bundle's address, its repository's identity.
 library.workspace = true
 serde.workspace = true
+# Ranges and the breaking-change rule (owner, 2026-11-04).
+semver.workspace = true
 
 [dev-dependencies]
 angzarr-presentation = { workspace = true, features = ["test-support"] }

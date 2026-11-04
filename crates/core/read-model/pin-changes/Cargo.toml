@@ -8,6 +8,8 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+# What a move between two versions is worth.
+deps.workspace = true
 # The tree reader, and the digest an env value is fingerprinted with.
 library.workspace = true
 serde.workspace = true

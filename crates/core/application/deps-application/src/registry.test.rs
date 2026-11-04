@@ -298,12 +298,3 @@ fn test_a_remote_that_cannot_be_browsed_is_not_an_empty_one() {
         other => panic!("{other:?}"),
     }
 }
-
-// remote.go: discover searches GitHub through its API
-#[test]
-fn test_discover_is_refused_without_a_forge_api() {
-    let fx = Fixture::new();
-    let refused = err(fx.deps.remote_discover());
-    assert!(matches!(refused, AppError::DiscoverNeedsForge));
-    assert_eq!(refused.exit_code(), 2);
-}

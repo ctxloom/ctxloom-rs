@@ -46,10 +46,15 @@ pub enum AppError {
     DestinationItself { dest: String },
     /// A publish that did not land.
     Publish { remote: String, detail: String },
-    /// A pull request, which needs a forge's API.
-    PullRequestNeedsForge,
-    /// `remote discover`, which needs a forge's API.
-    DiscoverNeedsForge,
+    /// A pull request, which needs a forge with an API (GitHub's).
+    PullRequestNeedsForge { remote: String, forge: String },
+    /// `remote discover` of a source that cannot be searched.
+    DiscoverSource { source: String },
+    /// `remote discover` whose search failed; the warnings say why.
+    DiscoverFailed,
+    /// A file with nothing in it, which would replace the remote's with
+    /// nothing.
+    EmptyFile { path: String },
     /// A single-reference check whose repository could not be fetched.
     CloneNotRefreshed { url: String, detail: String },
     /// A reference that does not name a remote bundle.
@@ -69,8 +74,8 @@ impl AppError {
         match self {
             AppError::Required { .. }
             | AppError::DefaultNeedsName
-            | AppError::PullRequestNeedsForge
-            | AppError::DiscoverNeedsForge => 2,
+            | AppError::PullRequestNeedsForge { .. }
+            | AppError::DiscoverSource { .. } => 2,
             _ => 1,
         }
     }
@@ -102,8 +107,10 @@ impl Diagnostic for AppError {
             AppError::DestinationExists { .. } => code!("destination-exists"),
             AppError::DestinationItself { .. } => code!("destination-itself"),
             AppError::Publish { .. } => code!("publish"),
-            AppError::PullRequestNeedsForge => code!("pull-request-needs-forge"),
-            AppError::DiscoverNeedsForge => code!("discover-needs-forge"),
+            AppError::PullRequestNeedsForge { .. } => code!("pull-request-needs-forge"),
+            AppError::DiscoverSource { .. } => code!("discover-source"),
+            AppError::DiscoverFailed => code!("discover-failed"),
+            AppError::EmptyFile { .. } => code!("empty-file"),
             AppError::CloneNotRefreshed { .. } => code!("clone-not-refreshed"),
             AppError::NotRemoteReference { .. } => code!("not-remote-reference"),
             AppError::Unreadable { .. } => code!("unreadable"),
@@ -130,9 +137,13 @@ impl Diagnostic for AppError {
             AppError::NoRemoteNamed { name } | AppError::BundleNotFound { name } => {
                 vec![("name", name.as_str().into())]
             }
-            AppError::DefaultNeedsName
-            | AppError::PullRequestNeedsForge
-            | AppError::DiscoverNeedsForge => Vec::new(),
+            AppError::DefaultNeedsName | AppError::DiscoverFailed => Vec::new(),
+            AppError::PullRequestNeedsForge { remote, forge } => vec![
+                ("remote", remote.as_str().into()),
+                ("forge", forge.as_str().into()),
+            ],
+            AppError::DiscoverSource { source } => vec![("source", source.as_str().into())],
+            AppError::EmptyFile { path } => vec![("path", path.as_str().into())],
             AppError::NothingToHold { name, verb } => vec![
                 ("name", name.as_str().into()),
                 ("verb", verb.as_str().into()),
@@ -286,8 +297,17 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
             remote: s("origin"),
             detail: s("rejected"),
         }),
-        Box::new(AppError::PullRequestNeedsForge),
-        Box::new(AppError::DiscoverNeedsForge),
+        Box::new(AppError::PullRequestNeedsForge {
+            remote: s("team"),
+            forge: s("git"),
+        }),
+        Box::new(AppError::DiscoverSource {
+            source: s("gitlab"),
+        }),
+        Box::new(AppError::DiscoverFailed),
+        Box::new(AppError::EmptyFile {
+            path: s("fragments/empty.md"),
+        }),
         Box::new(AppError::CloneNotRefreshed {
             url: s("file:///srv/r.git"),
             detail: s("unreachable"),

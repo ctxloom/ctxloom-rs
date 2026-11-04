@@ -280,6 +280,30 @@ pub struct Pushed {
     pub create_pr: bool,
     pub size_bytes: u64,
     pub commit_sha: String,
+    /// The pull request's page, when `--pr` opened one.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub pr_url: String,
+}
+
+/// A repository `remote discover` found.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize)]
+pub struct DiscoveredRepo {
+    pub owner: String,
+    pub name: String,
+    pub description: String,
+    pub stars: u64,
+    pub url: String,
+    pub forge: &'static str,
+    /// The command that registers it.
+    pub add_command: String,
+}
+
+/// `remote discover`.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize)]
+pub struct Discovered {
+    pub repositories: Vec<DiscoveredRepo>,
+    pub count: u64,
+    pub errors: Vec<String>,
 }
 
 /// `bundle move`.

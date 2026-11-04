@@ -11,6 +11,18 @@ struct Repo {
 }
 
 impl Repo {
+    /// A repository whose tags are `names` (each at a commit made of its
+    /// position's digit), and whose branches are `main` and `dev`.
+    fn tagged(names: &[&'static str]) -> Repo {
+        let mut repo = Repo::new();
+        repo.tags = names
+            .iter()
+            .enumerate()
+            .map(|(i, name)| (*name, SHAS[i]))
+            .collect();
+        repo
+    }
+
     fn new() -> Repo {
         Repo {
             tags: BTreeMap::from([
@@ -28,6 +40,16 @@ impl Repo {
         }
     }
 }
+
+/// A commit name of forty copies of the digit `i + 1`.
+const SHAS: [&str; 6] = [
+    "1111111111111111111111111111111111111111",
+    "2222222222222222222222222222222222222222",
+    "3333333333333333333333333333333333333333",
+    "4444444444444444444444444444444444444444",
+    "5555555555555555555555555555555555555555",
+    "6666666666666666666666666666666666666666",
+];
 
 impl RepoVersions for Repo {
     fn tags(&self) -> Result<Vec<String>, String> {
@@ -99,6 +121,8 @@ fn test_a_kind_is_inferred_from_the_shape_of_the_expression() {
         ("main", None),
         ("release", None),
         ("feature/x", None),
+        ("2024-05-01", None),
+        ("1.x.y", None),
     ] {
         assert_eq!(infer_kind(expr), kind, "{expr:?}");
     }
@@ -221,16 +245,106 @@ fn test_an_exact_version_resolves_to_its_tag() {
     );
 }
 
+// version_constraint_test.go: TestResolveConstraint_SemverRangePicksHighest
+// (owner, 2026-11-04: ranges are semver ranges, the Cargo spelling).
 #[test]
-fn test_a_version_range_is_refused_with_the_reason() {
-    let refused = resolve("^1.0", &Repo::new()).expect_err("a range");
+fn test_a_version_range_resolves_to_the_newest_tag_it_allows() {
+    let repo = Repo::tagged(&["v1.0.0", "v1.2.0", "v1.3.0", "v2.0.0"]);
+    for (expr, tag, sha) in [
+        ("^1.2", "v1.3.0", "3"),
+        ("^1", "v1.3.0", "3"),
+        ("~1.2", "v1.2.0", "2"),
+        (">=1.0, <2", "v1.3.0", "3"),
+        (">=1.0.0", "v2.0.0", "4"),
+        ("*", "v2.0.0", "4"),
+        ("1.x", "v1.3.0", "3"),
+        ("version:^1.2", "v1.3.0", "3"),
+    ] {
+        let got = resolve(expr, &repo).unwrap_or_else(|e| panic!("{expr}: {e}"));
+        assert_eq!(got.version, tag, "{expr}");
+        assert_eq!(got.sha, sha.repeat(40), "{expr}");
+        assert_eq!(got.kind, Kind::Version, "{expr}");
+    }
+}
+
+// version_constraint_test.go: TestResolveConstraint_SemverNoMatch
+#[test]
+fn test_a_range_no_tag_satisfies_is_refused_with_the_constraint() {
+    let repo = Repo::tagged(&["v1.0.0", "v1.5.0"]);
     assert_eq!(
-        refused,
-        ResolveError::Range {
-            expr: "^1.0".to_string()
-        }
+        resolve("^2", &repo),
+        Err(ResolveError::NoTag {
+            expr: "^2".to_string()
+        })
     );
-    assert!(refused.to_string().contains("^1.0"), "{refused}");
+}
+
+// version_constraint_test.go: TestResolveConstraint_SemverIgnoresNonSemverTags
+#[test]
+fn test_a_range_ignores_tags_that_are_not_semver() {
+    let repo = Repo::tagged(&["nightly", "latest", "v1.2.0", "release", "v1.3.0"]);
+    assert_eq!(resolve("^1", &repo).expect("^1").version, "v1.3.0");
+}
+
+// Owner ruling, 2026-11-04: for 0.y.z a minor bump is the breaking one, so
+// ^0.3 does not reach 0.4.
+#[test]
+fn test_a_range_below_one_point_zero_stays_inside_its_minor() {
+    let repo = Repo::tagged(&["v0.3.1", "v0.3.9", "v0.4.0"]);
+    for expr in ["^0.3", "^0.3.1", "0.3"] {
+        assert_eq!(
+            resolve(expr, &repo).expect(expr).version,
+            "v0.3.9",
+            "{expr}"
+        );
+    }
+}
+
+// An exact version is a pin, even where a newer tag exists: pins move only on
+// `deps upgrade --yes` (plan over Cargo's implicit caret on a bare version).
+#[test]
+fn test_a_full_version_is_exact_even_where_newer_tags_exist() {
+    let repo = Repo::tagged(&["v1.0.0", "v1.2.0", "v1.3.0"]);
+    for expr in ["1.0.0", "v1.0.0", "=1.0.0"] {
+        let got = resolve(expr, &repo).unwrap_or_else(|e| panic!("{expr}: {e}"));
+        assert_eq!(got.version, "v1.0.0", "{expr}");
+        assert_eq!(got.sha, "1".repeat(40), "{expr}");
+    }
+}
+
+// Owner ruling, 2026-11-04: nothing is refused for its version not being
+// semver. A name that only looks like a version is a tag if the repository
+// has it, else a branch.
+#[test]
+fn test_an_expression_that_looks_like_a_version_but_is_not_one_is_a_name() {
+    let mut repo = Repo::new();
+    repo.tags
+        .insert("2024-05-01", "7777777777777777777777777777777777777777");
+    repo.branches
+        .insert("2024-06-01", "8888888888888888888888888888888888888888");
+    let tag = resolve("2024-05-01", &repo).expect("a tag named so");
+    assert_eq!(
+        (tag.kind, tag.version.as_str(), tag.sha.as_str()),
+        (Kind::Tag, "2024-05-01", "7".repeat(40).as_str())
+    );
+    let branch = resolve("2024-06-01", &repo).expect("a branch named so");
+    assert_eq!(
+        (branch.kind, branch.version.as_str(), branch.sha.as_str()),
+        (Kind::Branch, "", "8".repeat(40).as_str())
+    );
+}
+
+// version_constraint_test.go: TestResolveConstraint_ForcedVersionRejectsUnparseableExpr
+#[test]
+fn test_a_forced_version_that_is_not_a_range_is_refused_with_the_expression() {
+    for expr in ["version:nightly", "version:", "version:1.x.y"] {
+        let refused = resolve(expr, &Repo::new()).expect_err(expr);
+        let ResolveError::Range { expr: shown } = &refused else {
+            panic!("{expr}: {refused:?}");
+        };
+        assert_eq!(shown, expr.strip_prefix("version:").expect("a prefix"));
+        assert!(refused.to_string().contains("version"), "{refused}");
+    }
 }
 
 #[test]
@@ -253,24 +367,18 @@ fn test_every_resolve_error_says_what_it_is() {
         assert_eq!(error.to_string(), text);
     }
     let range = ResolveError::Range {
-        expr: "^1".to_string(),
+        expr: "nightly".to_string(),
     }
     .to_string();
-    assert!(range.contains("range") && range.contains("^1"), "{range}");
+    assert_eq!(range, "\"nightly\" is not a version or a version range");
 }
 
+// A version short of its minor or patch is a range, as Cargo reads it (plan
+// supersedes Go's Masterminds, where 1.2 is 1.2.x): ^1, ^1.2.
 #[test]
-fn test_a_short_version_is_the_version_with_zeros() {
-    let repo = Repo::new();
-    assert_eq!(resolve("1", &repo).expect("1").version, "v1.0.0");
-    assert_eq!(resolve("1.2", &repo).expect("1.2").version, "v1.2.0");
-}
-
-#[test]
-fn test_anything_but_digits_between_dots_is_not_a_version() {
-    for expr in ["+1", "1.+2.0", "1.2.3.4", "1..2", "1.a", ""] {
-        assert_eq!(exact_version(expr), None, "{expr}");
-    }
-    assert_eq!(exact_version("v1.2"), Some((1, 2, 0)));
-    assert_eq!(exact_version(" =V3 "), Some((3, 0, 0)));
+fn test_a_short_version_is_a_caret_range() {
+    let repo = Repo::tagged(&["v1.0.0", "v1.2.0", "v1.3.0", "v2.0.0"]);
+    assert_eq!(resolve("1", &repo).expect("1").version, "v1.3.0");
+    assert_eq!(resolve("1.2", &repo).expect("1.2").version, "v1.3.0");
+    assert_eq!(resolve("v1.2", &repo).expect("v1.2").version, "v1.3.0");
 }

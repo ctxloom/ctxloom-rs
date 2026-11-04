@@ -7,7 +7,7 @@
 
 use std::collections::BTreeMap;
 
-use deps_ports::CopyOutcome;
+use deps_ports::{CopyOutcome, Endpoint, PullRequest};
 
 use crate::views::{Moved, Pushed};
 use crate::{AppError, Deps, Outcome};
@@ -48,9 +48,6 @@ impl Deps {
     }
 
     fn pushing(&self, request: &PushRequest) -> Result<Pushed, AppError> {
-        if request.pr {
-            return Err(AppError::PullRequestNeedsForge);
-        }
         let registry = self.registry()?;
         let name = if request.remote.is_empty() {
             registry.default_name()
@@ -68,33 +65,79 @@ impl Deps {
             .get(&name)
             .ok_or_else(|| AppError::cause(deps::DepsError::RemoteNotFound { name }))?;
         let (path, files) = self.authored(&request.bundle)?;
+        if let Some((empty, _)) = files.iter().find(|(_, data)| data.is_empty()) {
+            return Err(AppError::EmptyFile {
+                path: empty.clone(),
+            });
+        }
         let target = format!("{BUNDLES_IN_REPOSITORY}/{}", request.bundle);
-        let title = if request.message.is_empty() {
+        let (title, body) = split_message(&request.message);
+        let title = if title.is_empty() {
             format!("Update bundle: {}", request.bundle)
         } else {
-            request.message.clone()
+            title
         };
+        let message = commit_message(&title, &body);
         let size: usize = files.values().map(Vec::len).sum();
         let in_repository: BTreeMap<String, Vec<u8>> = files
             .into_iter()
             .map(|(rel, data)| (format!("{target}/{rel}"), data))
             .collect();
-        let commit = self
-            .remotes
-            .publish(&remote.url, &in_repository, &title)
-            .map_err(|detail| AppError::Publish {
-                remote: remote.name.clone(),
-                detail,
+        let published = |detail| AppError::Publish {
+            remote: remote.name.clone(),
+            detail,
+        };
+        let (status, commit, pr_url) = if request.pr {
+            let forge = deps::forge::resolve(&remote.url, &remote.forge, &registry);
+            if forge.kind != deps::forge::Kind::Github {
+                return Err(AppError::PullRequestNeedsForge {
+                    remote: remote.name,
+                    forge: forge.kind.name().to_string(),
+                });
+            }
+            let (owner, repo) = deps::address::owner_repo(&remote.url).ok_or_else(|| {
+                published(format!(
+                    "{} names no owner and repository for the forge's API",
+                    remote.url
+                ))
             })?;
+            let (fitted, overflow) = fit_title(&title);
+            let opened = self
+                .forge
+                .open_pull_request(
+                    &Endpoint {
+                        api_url: forge.api(),
+                        token_vars: forge.token_vars(),
+                    },
+                    &PullRequest {
+                        owner,
+                        repo,
+                        branch: format!("ctxloom/bundle/{}", request.bundle),
+                        message,
+                        title: fitted,
+                        body: pull_request_body(&body, &overflow, &request.bundle, &target),
+                        files: in_repository,
+                    },
+                )
+                .map_err(published)?;
+            ("pr-created", opened.commit, opened.url)
+        } else {
+            let commit = self
+                .remotes
+                .publish(&remote.url, &in_repository, &message)
+                .map_err(published)?;
+            ("pushed", commit, String::new())
+        };
         Ok(Pushed {
-            status: "pushed",
+            status,
             path,
             remote: remote.name,
             target_path: target,
             title,
-            create_pr: false,
+            create_pr: request.pr,
             size_bytes: size as u64,
             commit_sha: commit,
+            pr_url,
         })
     }
 
@@ -192,6 +235,59 @@ impl Deps {
             known,
         }
     }
+}
+
+/// The longest a pull request's title is left (Go's `maxPRTitleRunes`).
+const TITLE_LIMIT: usize = 72;
+
+/// A message's title and body: the first line is the title, the rest the body,
+/// both trimmed (Go's `SplitTitleBody`).
+fn split_message(message: &str) -> (String, String) {
+    let message = message.trim();
+    match message.split_once('\n') {
+        Some((title, body)) => (title.trim().to_string(), body.trim().to_string()),
+        None => (message.to_string(), String::new()),
+    }
+}
+
+/// A commit's message: the title, a blank line, the body.
+fn commit_message(title: &str, body: &str) -> String {
+    if body.is_empty() {
+        title.to_string()
+    } else {
+        format!("{title}\n\n{body}")
+    }
+}
+
+/// `title` as a pull request's, cut at a word within the limit; and, where it
+/// was cut, the whole of it for the body (Go's `fitPRTitle`).
+fn fit_title(title: &str) -> (String, String) {
+    let title = title.trim();
+    if title.chars().count() <= TITLE_LIMIT {
+        return (title.to_string(), String::new());
+    }
+    let window: String = title.chars().take(TITLE_LIMIT).collect();
+    let cut = match window.rfind(' ') {
+        Some(at) if at > 0 => &window[..at],
+        _ => &window,
+    };
+    (format!("{cut}\u{2026}"), title.to_string())
+}
+
+/// A pull request's description: the full title where it was cut, the body,
+/// and where it came from, under rules (Go's `buildPRBody`).
+fn pull_request_body(body: &str, overflow: &str, bundle: &str, target: &str) -> String {
+    let mut sections = Vec::new();
+    if !overflow.is_empty() {
+        sections.push(format!("**Full title:** {overflow}"));
+    }
+    if !body.is_empty() {
+        sections.push(body.to_string());
+    }
+    sections.push(format!(
+        "Publishing bundle `{bundle}` from local repository.\n\nPath: `{target}`"
+    ));
+    sections.join("\n\n---\n\n")
 }
 
 #[cfg(test)]

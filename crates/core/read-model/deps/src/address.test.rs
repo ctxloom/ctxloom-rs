@@ -189,3 +189,36 @@ fn test_a_path_on_this_machine_is_recognised() {
         assert!(!is_local_path(raw), "{raw}");
     }
 }
+
+// Go's ParseOwnerRepo: a forge API's path segments.
+#[test]
+fn test_an_http_address_names_an_owner_and_a_repository() {
+    for (url, want) in [
+        ("https://github.com/acme/hub", ("acme", "hub")),
+        ("https://github.com/acme/hub.git", ("acme", "hub")),
+        ("https://github.com/acme/hub/", ("acme", "hub")),
+        ("http://ghe.corp.test:8080/acme/hub.git", ("acme", "hub")),
+    ] {
+        assert_eq!(
+            owner_repo(url),
+            Some((want.0.to_string(), want.1.to_string())),
+            "{url}"
+        );
+    }
+}
+
+#[test]
+fn test_an_address_that_is_not_an_owner_and_a_repository_names_none() {
+    for url in [
+        "https://github.com/acme",
+        "https://github.com/acme/hub/extra",
+        "https://github.com/",
+        "https://github.com",
+        "file:///srv/acme/hub.git",
+        "ssh://git@github.com/acme/hub",
+        "acme/hub",
+        "",
+    ] {
+        assert_eq!(owner_repo(url), None, "{url}");
+    }
+}

@@ -19,7 +19,9 @@ use angzarr_diagnostic::Diagnostic;
 use angzarr_presentation::{write_json, Catalog, Format};
 use clap::ArgMatches;
 use deps::registry::Edit;
-use deps_application::{AppError, CreateRequest, Deps, MoveRequest, Notice, Outcome, PushRequest};
+use deps_application::{
+    AppError, CreateRequest, Deps, DiscoverRequest, MoveRequest, Notice, Outcome, PushRequest,
+};
 use serde::Serialize;
 
 pub use commands::{bundle_verbs, is_bundle_verb, nouns};
@@ -219,11 +221,39 @@ fn remote(
                 None => writeln!(out, "Cleared default remote."),
             })?;
         }
-        _ => {
-            answer(cx, deps.remote_discover(), err)?;
-        }
+        _ => discover(cx, args, out, err)?,
     }
     Ok(0)
+}
+
+/// `remote discover`: the progress line is the stream's, closed before a
+/// warning or an error is said after it.
+fn discover(
+    cx: &Context<'_>,
+    args: &ArgMatches,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<(), Failure> {
+    let query = args
+        .get_many::<String>("query")
+        .map(|words| words.cloned().collect::<Vec<_>>().join(" "))
+        .unwrap_or_default();
+    let request = DiscoverRequest {
+        query: query.clone(),
+        source: text_arg(args, "source"),
+        limit: args.get_one::<usize>("limit").copied().unwrap_or(30),
+        min_stars: args.get_one::<u64>("stars").copied().unwrap_or(0),
+    };
+    let _ = write!(err, "Searching repositories...");
+    let outcome = cx.deps.remote_discover(&request);
+    let _ = match &outcome.result {
+        Ok(found) => writeln!(err, " found {}", found.count),
+        Err(_) => writeln!(err),
+    };
+    let found = answer(cx, outcome, err)?;
+    emit(cx.format, out, &found, |out| {
+        text::discovered(out, &found, &query)
+    })
 }
 
 fn dependencies(

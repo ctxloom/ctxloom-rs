@@ -213,11 +213,6 @@ impl Deps {
             warnings: Vec::new(),
         })
     }
-
-    /// `remote discover`: a search of GitHub, which needs its API.
-    pub fn remote_discover(&self) -> Outcome<()> {
-        done(Err(AppError::DiscoverNeedsForge), Vec::new())
-    }
 }
 
 fn state(remote: &Remote) -> RemoteState {

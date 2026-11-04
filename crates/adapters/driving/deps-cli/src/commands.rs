@@ -139,12 +139,14 @@ fn remote_discover() -> Command {
             Arg::new("limit")
                 .short('n')
                 .long("limit")
+                .value_parser(clap::value_parser!(usize))
                 .default_value("30")
                 .help("Maximum results"),
         )
         .arg(
             Arg::new("stars")
                 .long("stars")
+                .value_parser(clap::value_parser!(u64))
                 .default_value("0")
                 .help("Minimum star count"),
         )

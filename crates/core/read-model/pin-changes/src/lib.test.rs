@@ -1,3 +1,5 @@
+use deps::version::Compat;
+
 use super::*;
 
 const A_SHA: &str = "1111111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -257,4 +259,119 @@ fn test_the_change_serializes_as_gos_does() {
     );
     assert_eq!(json["files"][0]["path"], "bundle.yaml");
     assert!(json["files"][0].get("diff").is_none());
+}
+
+fn moved(from: (&str, &str), to: (&str, &str)) -> Option<Compat> {
+    let manifest = |version: &str| {
+        let text = if version.is_empty() {
+            "schema_version: 4\n".to_string()
+        } else {
+            format!("schema_version: 4\nversion: {version}\n")
+        };
+        tree(&[("bundle.yaml", &text, false)])
+    };
+    let (from_tree, to_tree) = (manifest(from.1), manifest(to.1));
+    diff_pin(
+        "i",
+        "u",
+        Some(Side {
+            sha: A_SHA,
+            version: from.0,
+            tree: &from_tree,
+        }),
+        Side {
+            sha: B_SHA,
+            version: to.0,
+            tree: &to_tree,
+        },
+    )
+    .0
+    .compat
+}
+
+// Owner ruling, 2026-11-04: a pin change is classified by semver where the
+// versions parse as it.
+#[test]
+fn test_a_move_between_two_tags_is_classified_by_semver() {
+    assert_eq!(
+        moved(("v1.0.0", ""), ("v2.0.0", "")),
+        Some(Compat::Breaking)
+    );
+    assert_eq!(
+        moved(("v1.0.0", ""), ("v1.1.0", "")),
+        Some(Compat::Compatible)
+    );
+    assert_eq!(
+        moved(("v0.3.0", ""), ("v0.4.0", "")),
+        Some(Compat::Breaking)
+    );
+}
+
+// A tag that is not semver is evidence of a possible break, never a refusal.
+#[test]
+fn test_a_move_between_tags_that_are_not_semver_is_unknown() {
+    assert_eq!(moved(("main", ""), ("dev", "")), Some(Compat::Unknown));
+    assert_eq!(moved(("stable", ""), ("v2.0.0", "")), Some(Compat::Unknown));
+}
+
+// Tracking a branch leaves no tag; the bundle's own declared version is what
+// is left to read.
+#[test]
+fn test_a_move_with_no_tags_is_read_from_the_manifest_versions() {
+    assert_eq!(moved(("", "1.0.0"), ("", "2.0.0")), Some(Compat::Breaking));
+    assert_eq!(
+        moved(("", "1.0.0"), ("", "1.1.0")),
+        Some(Compat::Compatible)
+    );
+    assert_eq!(moved(("", "1.0.0"), ("", "1.0.0")), Some(Compat::Unknown));
+    assert_eq!(moved(("", ""), ("", "")), Some(Compat::Unknown));
+    assert_eq!(moved(("", "1.0.0"), ("", "")), Some(Compat::Unknown));
+}
+
+// Both tags speak before the manifests do.
+#[test]
+fn test_the_tags_are_read_before_the_manifests() {
+    assert_eq!(
+        moved(("v1.0.0", "9.0.0"), ("v1.1.0", "1.0.0")),
+        Some(Compat::Compatible)
+    );
+}
+
+#[test]
+fn test_a_first_pin_has_no_classification() {
+    let to = tree(&[("bundle.yaml", ENVELOPE, false)]);
+    let (change, _) = diff_pin(
+        "i",
+        "u",
+        None,
+        Side {
+            sha: A_SHA,
+            version: "v1.0.0",
+            tree: &to,
+        },
+    );
+    assert_eq!(change.compat, None);
+    let json = serde_json::to_string(&change).expect("json");
+    assert!(!json.contains("compat"), "{json}");
+}
+
+#[test]
+fn test_a_classified_move_serializes_its_word() {
+    let from = tree(&[("bundle.yaml", ENVELOPE, false)]);
+    let (change, _) = diff_pin(
+        "i",
+        "u",
+        Some(Side {
+            sha: A_SHA,
+            version: "v1.0.0",
+            tree: &from,
+        }),
+        Side {
+            sha: B_SHA,
+            version: "v2.0.0",
+            tree: &from,
+        },
+    );
+    let json = serde_json::to_value(&change).expect("json");
+    assert_eq!(json["compat"], "breaking");
 }

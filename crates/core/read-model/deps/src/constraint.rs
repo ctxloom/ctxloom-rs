@@ -6,11 +6,16 @@
 //! against tags) and TRACK (a branch tip; empty is the default branch). The
 //! lock records the precise kind so "outdated" is declarative.
 //!
-//! Range matching needs a semver comparison this build does not carry (the
-//! `semver` crate is not in the lock): an exact version (`1.2.3`, `v1.2.3`,
-//! `=1.2.3`) resolves to its tag; any other range is refused, said so.
+//! A VERSION selector is a semver range as Cargo reads it, matched against the
+//! tags that are semver and resolved to the newest (see [`crate::version`]); a
+//! full version (`1.2.3`, `v1.2.3`, `=1.2.3`) is exactly that tag, so a pin
+//! stays where it was put. What only looks like a version (`2024-05-01`) is a
+//! name, a tag or a branch: nothing is refused for its version not being
+//! semver, except an explicit `version:` prefix on what is not a range.
 
 use std::fmt;
+
+use crate::version;
 
 /// How a selector resolves, and whether it ever moves.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -57,27 +62,19 @@ pub fn looks_like_commit(s: &str) -> bool {
 }
 
 /// The kind an expression has by its shape alone: an empty one tracks the
-/// default branch, a commit name is a commit, a version-shaped one a version;
-/// a bare name (`main`, `release`) is a tag or a branch only the repository
-/// can tell (None).
+/// default branch, a commit name is a commit, one that is a semver range a
+/// version; a bare name (`main`, `release`, `2024-05-01`) is a tag or a branch
+/// only the repository can tell (None).
 pub fn infer_kind(bare: &str) -> Option<Kind> {
     if bare.is_empty() {
         Some(Kind::Branch)
     } else if looks_like_commit(bare) {
         Some(Kind::Sha)
-    } else if looks_like_version(bare) {
+    } else if version::range(bare).is_some() {
         Some(Kind::Version)
     } else {
         None
     }
-}
-
-/// Whether `s` reads as a semver version or range: after any comparison
-/// operators and a `v`, it starts with a digit or a wildcard.
-fn looks_like_version(s: &str) -> bool {
-    let s = s.trim_start_matches(['^', '~', '<', '>', '=', '!', ' ']);
-    let s = s.strip_prefix(['v', 'V']).unwrap_or(s);
-    s.starts_with(|c: char| c.is_ascii_digit() || c == '*')
 }
 
 /// An explicit `sha:`, `tag:`, `version:` or `branch:` prefix, which overrides
@@ -132,7 +129,7 @@ pub struct Resolution {
 pub enum ResolveError {
     /// The repository could not answer; what it said.
     Repository { what: String, cause: String },
-    /// A version range this build cannot match against tags.
+    /// An expression forced to be a version (`version:`) that is not a range.
     Range { expr: String },
     /// No tag is that version.
     NoTag { expr: String },
@@ -142,10 +139,9 @@ impl fmt::Display for ResolveError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ResolveError::Repository { what, cause } => write!(f, "{what}: {cause}"),
-            ResolveError::Range { expr } => write!(
-                f,
-                "version range \"{expr}\" cannot be matched against tags in this build (only an exact version, such as 1.2.3, can)"
-            ),
+            ResolveError::Range { expr } => {
+                write!(f, "\"{expr}\" is not a version or a version range")
+            }
             ResolveError::NoTag { expr } => {
                 write!(f, "no tag satisfies version constraint \"{expr}\"")
             }
@@ -223,18 +219,16 @@ fn resolve_name(name: &str, repo: &dyn RepoVersions) -> Result<Resolution, Resol
     }
 }
 
-/// An exact version (`1.2.3`, `v1.2.3`, `=1.2.3`) as the tag that names it.
+/// A version range as the newest tag that satisfies it; what is not a range
+/// is refused, and a range no tag satisfies finds none.
 fn resolve_version(expr: &str, repo: &dyn RepoVersions) -> Result<Resolution, ResolveError> {
-    let wanted = exact_version(expr).ok_or_else(|| ResolveError::Range {
+    let range = version::range(expr).ok_or_else(|| ResolveError::Range {
         expr: expr.to_string(),
     })?;
     let tags = repo.tags().map_err(failed("list tags".to_string()))?;
-    let tag = tags
-        .into_iter()
-        .find(|tag| exact_version(tag) == Some(wanted))
-        .ok_or_else(|| ResolveError::NoTag {
-            expr: expr.to_string(),
-        })?;
+    let tag = version::newest_matching(&range, &tags).ok_or_else(|| ResolveError::NoTag {
+        expr: expr.to_string(),
+    })?;
     let sha = repo
         .resolve_tag(&tag)
         .map_err(failed(format!("resolve matched tag \"{tag}\"")))?;
@@ -243,27 +237,6 @@ fn resolve_version(expr: &str, repo: &dyn RepoVersions) -> Result<Resolution, Re
         version: tag,
         kind: Kind::Version,
     })
-}
-
-/// `major.minor.patch` of an expression that is exactly one version.
-fn exact_version(expr: &str) -> Option<(u64, u64, u64)> {
-    let s = expr.trim().trim_start_matches('=').trim();
-    let s = s.strip_prefix(['v', 'V']).unwrap_or(s);
-    let numbers: Option<Vec<u64>> = s
-        .split('.')
-        .map(|part| {
-            if part.is_empty() || !part.bytes().all(|b| b.is_ascii_digit()) {
-                return None;
-            }
-            part.parse().ok()
-        })
-        .collect();
-    match numbers?.as_slice() {
-        [major] => Some((*major, 0, 0)),
-        [major, minor] => Some((*major, *minor, 0)),
-        [major, minor, patch] => Some((*major, *minor, *patch)),
-        _ => None,
-    }
 }
 
 #[cfg(test)]

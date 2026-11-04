@@ -18,8 +18,11 @@ pub fn pin_changes_text(changes: &[PinChange]) -> String {
         } else {
             (version_label(&change.from_version), short(&change.from_sha))
         };
+        let worth = change
+            .compat
+            .map_or(String::new(), |compat| format!("  [{}]", compat.name()));
         out.push_str(&format!(
-            "{}  {from} -> {}  ({from_sha} -> {})\n",
+            "{}  {from} -> {}  ({from_sha} -> {}){worth}\n",
             change.identity,
             version_label(&change.to_version),
             short(&change.to_sha)

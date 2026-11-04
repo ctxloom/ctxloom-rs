@@ -5,8 +5,8 @@
 use std::io::{self, Write};
 
 use deps_application::{
-    Browsed, CheckReport, CheckedRef, DepsListing, EditedRemote, HoldResult, Moved, PullReport,
-    Pushed, RemoteListing, RemoveResult, UpgradeReport,
+    Browsed, CheckReport, CheckedRef, DepsListing, Discovered, EditedRemote, HoldResult, Moved,
+    PullReport, Pushed, RemoteListing, RemoveResult, UpgradeReport,
 };
 use pin_changes::{new_pins_text, pin_changes_text};
 
@@ -473,8 +473,76 @@ pub fn hold(out: &mut dyn Write, held: &HoldResult) -> io::Result<()> {
     }
 }
 
+/// `remote discover`: the repositories as a table, and how to register one.
+pub fn discovered(out: &mut dyn Write, found: &Discovered, query: &str) -> io::Result<()> {
+    if found.count == 0 {
+        writeln!(out, "No ctxloom repositories found.")?;
+        if !query.is_empty() {
+            writeln!(out, "Try a different search term or remove the filter.")?;
+        }
+        return Ok(());
+    }
+    let names: Vec<String> = found
+        .repositories
+        .iter()
+        .map(|repo| field(&format!("{}/{}", repo.owner, repo.name)))
+        .collect();
+    let width = names
+        .iter()
+        .map(|name| name.chars().count())
+        .fold("Repository".len(), usize::max);
+    let rule = |n: usize| "\u{2500}".repeat(n);
+    writeln!(
+        out,
+        "  # \u{2502} Forge  \u{2502} {:<width$} \u{2502} Stars \u{2502} Description",
+        "Repository"
+    )?;
+    writeln!(
+        out,
+        "{}\u{253c}{}\u{253c}{}\u{253c}{}\u{253c}{}",
+        rule(4),
+        rule(8),
+        rule(width + 2),
+        rule(7),
+        rule(DESCRIPTION_CAP + 2)
+    )?;
+    for (at, (repo, name)) in found.repositories.iter().zip(&names).enumerate() {
+        writeln!(
+            out,
+            "{:>3} \u{2502} {:<6} \u{2502} {:<width$} \u{2502} {:>5} \u{2502} {}",
+            at + 1,
+            "GitHub",
+            name,
+            repo.stars,
+            field(&ellipsize(&repo.description, DESCRIPTION_CAP))
+        )?;
+    }
+    writeln!(out)?;
+    writeln!(out, "Add one with: ctxloom remote create <name> <url>")
+}
+
+/// The most bytes of a description the table shows.
+const DESCRIPTION_CAP: usize = 35;
+
+/// `text` within `max` bytes: cut at a character, with an ellipsis, where it
+/// is longer (Go's `textutil.Ellipsize`).
+fn ellipsize(text: &str, max: usize) -> String {
+    const MARK: &str = "\u{2026}";
+    if text.len() <= max {
+        return text.to_string();
+    }
+    let mut end = max - MARK.len();
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{MARK}", &text[..end])
+}
+
 /// `bundle push`.
 pub fn pushed(out: &mut dyn Write, pushed: &Pushed) -> io::Result<()> {
+    if !pushed.pr_url.is_empty() {
+        return writeln!(out, "Created pull request: {}", field(&pushed.pr_url));
+    }
     writeln!(out, "Pushed {} to {}", pushed.target_path, pushed.remote)?;
     writeln!(out, "Commit: {}", short(&pushed.commit_sha))
 }

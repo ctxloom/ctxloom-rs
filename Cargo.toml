@@ -88,8 +88,14 @@ deps-application = { path = "crates/core/application/deps-application" }
 remote-git = { path = "crates/adapters/driven/remote-git" }
 deps-files = { path = "crates/adapters/driven/deps-files" }
 deps-cli = { path = "crates/adapters/driving/deps-cli" }
+forge-github = { path = "crates/adapters/driven/forge-github" }
 ctxloom-store-sqlite = { path = "crates/adapters/driven/ctxloom-store-sqlite" }
 
+# HTTP for forge-github (owner, 2026-11-04): the blocking client, so the
+# synchronous CLI holds no runtime of its own, and the TLS stack chosen below.
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "native-tls"] }
+# Version ranges and the breaking-change rule (owner, 2026-11-04).
+semver = "1"
 clap = { version = "4.5", features = ["derive", "string"] }
 # `#[mutants::skip]`, for a mutant judged equivalent: a dev-dependency, behind
 # `cfg_attr(test, ...)`, so it links nothing in a build.

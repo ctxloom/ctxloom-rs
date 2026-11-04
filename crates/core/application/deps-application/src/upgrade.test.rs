@@ -3,6 +3,8 @@
 
 use angzarr_diagnostic::Diagnostic;
 
+use deps::version::Compat;
+
 use crate::fakes::{demo, Fixture, BUNDLES};
 use crate::{AppError, Notice, Outcome};
 
@@ -336,4 +338,97 @@ fn test_a_complete_closure_says_nothing_of_preserving_entries() {
         "{:?}",
         outcome.notices
     );
+}
+
+/// A pulled `demo` whose profile asks for `selector`, the first commit tagged
+/// `v1.0.0`.
+fn pulled_at(selector: &str) -> (Fixture, String) {
+    let fx = Fixture::new();
+    let sha = fx.origin("origin", URL);
+    fx.remotes.tag(URL, "v1.0.0", &sha);
+    fx.profile("dev", &[&format!("{}@{selector}", demo_ref())]);
+    ok(fx.deps.pull(false, true));
+    (fx, sha)
+}
+
+// Owner ruling, 2026-11-04: a semver range pulls the newest matching tag, and
+// an upgrade moves to the newest its range allows, never past it.
+#[test]
+fn test_a_ranged_dependency_upgrades_to_the_newest_tag_its_range_allows() {
+    let (fx, sha) = pulled_at("^1.0");
+    assert!(fx.files.lock_text().expect("a lock").contains("v1.0.0"));
+    let minor = commit(&fx, &mcp("1.1.0", "fixture-mcp-one", "ONE"));
+    fx.remotes.tag(URL, "v1.1.0", &minor);
+    let major = commit(&fx, &mcp("2.0.0", "fixture-mcp-one", "ONE"));
+    fx.remotes.tag(URL, "v2.0.0", &major);
+    let report = ok(fx.deps.upgrade(true));
+    assert_eq!(report.changes.len(), 1);
+    let change = &report.changes[0];
+    assert_eq!(
+        (change.from_version.as_str(), change.to_version.as_str()),
+        ("v1.0.0", "v1.1.0")
+    );
+    assert_eq!(
+        (change.from_sha.as_str(), change.to_sha.as_str()),
+        (sha.as_str(), minor.as_str())
+    );
+    assert!(fx.files.lock_text().expect("a lock").contains(&minor));
+}
+
+// Owner ruling, 2026-11-04: the disclosure classifies a pin change as
+// breaking, compatible or unknown, by the semver spec.
+#[test]
+fn test_an_upgrade_discloses_a_move_within_a_line_as_compatible() {
+    let (fx, _) = pulled_at("^1.0");
+    let minor = commit(&fx, &mcp("1.1.0", "fixture-mcp-one", "ONE"));
+    fx.remotes.tag(URL, "v1.1.0", &minor);
+    let report = ok(fx.deps.upgrade(false));
+    assert_eq!(report.changes[0].compat, Some(Compat::Compatible));
+    let json = serde_json::to_value(&report).expect("json");
+    assert_eq!(json["changes"][0]["compat"], "compatible");
+}
+
+#[test]
+fn test_an_upgrade_discloses_a_move_across_a_major_as_breaking() {
+    let (fx, _) = pulled_at(">=1.0");
+    let major = commit(&fx, &mcp("2.0.0", "fixture-mcp-one", "ONE"));
+    fx.remotes.tag(URL, "v2.0.0", &major);
+    let report = ok(fx.deps.upgrade(false));
+    assert_eq!(report.changes[0].to_version, "v2.0.0");
+    assert_eq!(report.changes[0].compat, Some(Compat::Breaking));
+}
+
+// Below 1.0.0 the minor is the breaking one.
+#[test]
+fn test_an_upgrade_discloses_a_zero_point_minor_bump_as_breaking() {
+    let fx = Fixture::new();
+    let sha = fx.origin("origin", URL);
+    fx.remotes.tag(URL, "v0.3.0", &sha);
+    fx.profile("dev", &[&format!("{}@>=0.3", demo_ref())]);
+    ok(fx.deps.pull(false, true));
+    let later = commit(&fx, &mcp("0.4.0", "fixture-mcp-one", "ONE"));
+    fx.remotes.tag(URL, "v0.4.0", &later);
+    let report = ok(fx.deps.upgrade(false));
+    assert_eq!(report.changes[0].compat, Some(Compat::Breaking));
+}
+
+// A dependency that follows a branch has no tag; the bundle's own version is
+// what says.
+#[test]
+fn test_a_branch_tracked_move_is_classified_by_the_bundle_s_own_version() {
+    let (fx, _) = pulled();
+    commit(&fx, &mcp("1.1.0", "fixture-mcp-one", "ONE"));
+    let report = ok(fx.deps.upgrade(false));
+    assert_eq!(report.changes[0].compat, Some(Compat::Compatible));
+}
+
+// Owner ruling, 2026-11-04: where a version says nothing, a change is
+// evidence of a possible break; the move is still shown, never refused.
+#[test]
+fn test_a_move_that_leaves_the_version_alone_is_unknown() {
+    let (fx, _) = pulled();
+    commit(&fx, &mcp("1.0.0", "fixture-mcp-two", "TWO"));
+    let report = ok(fx.deps.upgrade(false));
+    assert_eq!(report.changes.len(), 1);
+    assert_eq!(report.changes[0].compat, Some(Compat::Unknown));
 }

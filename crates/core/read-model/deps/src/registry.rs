@@ -54,6 +54,21 @@ pub struct Edited {
     pub default_followed: bool,
 }
 
+/// One forge: how a remote bound to it is reached (Go's `ForgeConfig`).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ForgeEntry {
+    pub label: String,
+    /// `github` or `git`; a configured forge that names no type is `git`.
+    pub kind: String,
+    /// The server it serves, by which a remote with no forge is matched.
+    pub base_url: String,
+    /// An explicit GitHub REST API endpoint (Enterprise); empty is the public
+    /// one.
+    pub api_url: String,
+    /// The environment variable its token is read from; never the token.
+    pub token_env: String,
+}
+
 /// The registry: the document as read, so what is not ctxloom's survives.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Registry {
@@ -192,6 +207,50 @@ impl Registry {
         }
         labels.sort();
         labels
+    }
+
+    /// Every forge there is, by label: the built-in ones, and the configured
+    /// ones, which replace a built-in of the same label whole.
+    pub fn forges(&self) -> Vec<ForgeEntry> {
+        let configured = self
+            .doc
+            .get("forges")
+            .and_then(Value::as_map)
+            .unwrap_or_default();
+        let text = |entry: &Value, key: &str| {
+            entry
+                .get(key)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        };
+        let mut all: Vec<ForgeEntry> = BUILT_IN_FORGES
+            .iter()
+            .filter(|label| !configured.iter().any(|(key, _)| key == *label))
+            .map(|label| ForgeEntry {
+                label: label.to_string(),
+                kind: label.to_string(),
+                base_url: String::new(),
+                api_url: String::new(),
+                token_env: String::new(),
+            })
+            .collect();
+        for (label, entry) in configured {
+            let kind = text(entry, "type");
+            all.push(ForgeEntry {
+                label: label.clone(),
+                kind: if kind.is_empty() {
+                    "git".to_string()
+                } else {
+                    kind
+                },
+                base_url: text(entry, "base_url"),
+                api_url: text(entry, "api_url"),
+                token_env: text(entry, "token_env"),
+            });
+        }
+        all.sort_by(|a, b| a.label.cmp(&b.label));
+        all
     }
 
     /// Register `name` at `url` (as the caller resolved it), bound to

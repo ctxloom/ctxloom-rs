@@ -16,6 +16,7 @@ mod render;
 
 use std::collections::BTreeMap;
 
+use deps::version::{classify, Compat};
 use library::model::Bundle;
 use library::tree::{read_tree, Files};
 use library::BundleError;
@@ -104,6 +105,12 @@ pub struct PinChange {
     pub to_sha: String,
     pub from_version: String,
     pub to_version: String,
+    /// What the move is worth to whoever depends on the bundle, by semver
+    /// where the versions parse as it: from the tags both sides chose, else
+    /// (a dependency that follows a branch has no tag) from the versions the
+    /// two bundles declare. None for a first pin.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compat: Option<Compat>,
     pub items: Vec<ItemChange>,
     pub files: Vec<FileChange>,
 }
@@ -153,6 +160,13 @@ pub fn diff_pin(
     };
     let from_bundle = from.as_ref().map(&mut bundle_of).unwrap_or_default();
     let to_bundle = bundle_of(&to);
+    let compat = from.as_ref().map(|side| {
+        if !side.version.is_empty() && !to.version.is_empty() {
+            classify(side.version, to.version)
+        } else {
+            classify(&from_bundle.version, &to_bundle.version)
+        }
+    });
     let empty = Tree::new();
     let from_tree = from.as_ref().map_or(&empty, |side| side.tree);
     let change = PinChange {
@@ -165,6 +179,7 @@ pub fn diff_pin(
             .map(|s| s.version.to_string())
             .unwrap_or_default(),
         to_version: to.version.to_string(),
+        compat,
         items: diff_items(&from_bundle, &to_bundle),
         files: diff_files(from_tree, to.tree),
     };

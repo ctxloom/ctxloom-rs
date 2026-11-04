@@ -341,6 +341,11 @@ impl World {
         self.bare.insert(name.to_string(), broken);
     }
 
+    /// Tag the remote's default branch tip `tag`.
+    pub(crate) fn tag_remote(&self, name: &str, tag: &str) {
+        git_in(&self.bare[name], &["tag", tag, "HEAD"]);
+    }
+
     /// Go's `RemoteFile`: `path` as the remote's default branch holds it.
     pub(crate) fn remote_file(&self, name: &str, path: &str) -> String {
         git_in(&self.bare[name], &["show", &format!("HEAD:{path}")])

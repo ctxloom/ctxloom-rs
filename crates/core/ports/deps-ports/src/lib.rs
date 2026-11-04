@@ -2,6 +2,9 @@
 //!
 //! - [`Remotes`]: the repositories content comes from, over git: clone,
 //!   fetch, resolve a version to a commit, read a tree at a commit, publish.
+//! - [`Forge`]: a forge's API (GitHub's): search its repositories, and open a
+//!   bundle as a pull request. The credential is the forge's own, read from the
+//!   environment by the adapter; it is never a value of this port.
 //! - [`DepsFiles`]: the project's `remotes.yaml` and `lock.yaml`, the trees
 //!   installed from remotes (the derived cache), and the bundles it authors.
 //! - [`RemoteLibrary`]: what the library reads of all that: the installed
@@ -87,6 +90,70 @@ pub trait Remotes {
         files: &BTreeMap<String, Vec<u8>>,
         message: &str,
     ) -> Result<String, Why>;
+}
+
+/// Where a forge's API is and which environment variables its token may be in.
+/// The token itself is never here: the adapter reads the environment.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Endpoint {
+    /// The REST API's base, such as `https://api.github.com`.
+    pub api_url: String,
+    /// The variables the token is read from, the first one set winning; none
+    /// set sends the request unauthenticated.
+    pub token_vars: Vec<String>,
+}
+
+/// A repository a forge's search found.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ForgeRepo {
+    pub owner: String,
+    pub name: String,
+    pub description: String,
+    pub stars: u64,
+    pub url: String,
+}
+
+/// A bundle to open as a pull request: one commit with every file, on a new
+/// branch of the repository, into its default branch.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct PullRequest {
+    pub owner: String,
+    pub repo: String,
+    /// The new branch's name before the adapter makes it unique.
+    pub branch: String,
+    /// The commit message.
+    pub message: String,
+    pub title: String,
+    pub body: String,
+    /// Paths in the repository, with their bytes.
+    pub files: BTreeMap<String, Vec<u8>>,
+}
+
+/// What opening a pull request did.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Opened {
+    /// The pull request's page.
+    pub url: String,
+    /// The commit on the new branch.
+    pub commit: String,
+    /// The branch it was made on.
+    pub branch: String,
+}
+
+/// A forge's API.
+pub trait Forge {
+    /// The repositories named `ctxloom` or `ctxloom-*` that match `query`
+    /// (none for all), most starred first, at most `limit`.
+    fn search_repositories(
+        &self,
+        endpoint: &Endpoint,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<ForgeRepo>, Why>;
+
+    /// Put `request`'s files on a new branch as one commit and open a pull
+    /// request from it into the repository's default branch.
+    fn open_pull_request(&self, endpoint: &Endpoint, request: &PullRequest) -> Result<Opened, Why>;
 }
 
 /// The project's files this feature owns.

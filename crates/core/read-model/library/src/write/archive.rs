@@ -7,20 +7,12 @@
 //! [`unpack`] is the one door every byte passes through, and it refuses before
 //! it returns a single file: an absolute path, a `..` segment, a backslash, a
 //! link, a device or other special file, a second top-level name, a path
-//! twice (or one entry's bytes under two names), more entries than [`Limits::max_entries`], more bytes than
+//! twice, more entries than [`Limits::max_entries`], more bytes than
 //! [`Limits::max_total_bytes`] (counted as they are decompressed: the sizes an
 //! archive declares are never trusted), a checksum that does not match, and
-//! what is not a zip, an encrypted entry, and a method other than stored or
-//! deflate. An entry's mode gives one bit of what it carries, whether it is
-//! executable; setuid, setgid, sticky and write bits are dropped. zip64 is
-//! read like any other zip: the limits, not the container's width, are the
-//! defence. This build reads zips only (not Go's liberal tar.gz, which Go's
-//! feature files do not document).
-//!
-//! The container is the `zip` crate (deflate only); this module is the policy
-//! over it: the checks above, the entry sizes and checksum counted here rather
-//! than trusted, and every name checked as the library reports it (an Info-ZIP
-//! Unicode-path extra field may replace the header's, and is checked the same).
+//! what is not a zip. An entry's mode gives one bit of what it carries, whether
+//! it is executable; setuid, setgid, sticky and write bits are dropped.
+//! This build reads zips only (not Go's liberal tar.gz).
 
 use std::fmt;
 
@@ -69,10 +61,8 @@ pub enum ArchiveError {
     Unrecognized,
     /// A zip that does not read.
     Invalid { detail: String },
-    /// The central directory names one entry twice.
-    Repeated,
-    /// Two entries share bytes of the archive.
-    Overlap,
+    /// A zip64 archive (this build does not read them).
+    Zip64,
     /// An encrypted entry.
     Encrypted { name: String },
     /// An entry compressed some way other than stored or deflated.
@@ -117,8 +107,7 @@ impl Diagnostic for ArchiveError {
             ArchiveError::NothingToPack { .. } => code!("archive-nothing-to-pack"),
             ArchiveError::Unrecognized => code!("archive-unrecognized"),
             ArchiveError::Invalid { .. } => code!("archive-invalid"),
-            ArchiveError::Repeated => code!("archive-repeated"),
-            ArchiveError::Overlap => code!("archive-overlap"),
+            ArchiveError::Zip64 => code!("archive-zip64"),
             ArchiveError::Encrypted { .. } => code!("archive-encrypted"),
             ArchiveError::Method { .. } => code!("archive-method"),
             ArchiveError::TooManyEntries { .. } => code!("archive-too-many-entries"),
@@ -158,32 +147,57 @@ impl Diagnostic for ArchiveError {
                 vec![("name", name.as_str().into()), ("top", top.as_str().into())]
             }
             ArchiveError::NoFiles { top } => vec![("top", top.as_str().into())],
-            ArchiveError::Unrecognized
-            | ArchiveError::Repeated
-            | ArchiveError::Overlap
-            | ArchiveError::Empty => Vec::new(),
+            ArchiveError::Unrecognized | ArchiveError::Zip64 | ArchiveError::Empty => Vec::new(),
         }
     }
 }
 
+const LOCAL: u32 = 0x0403_4b50;
+const CENTRAL: u32 = 0x0201_4b50;
+const END: u32 = 0x0605_4b50;
+const UTF8_NAMES: u16 = 0x0800;
+const ENCRYPTED: u16 = 1;
+/// 1980-01-01, the zip epoch: every entry carries it, so a package packs to
+/// the same bytes whenever it is packed.
+const DOS_DATE: u16 = 0x0021;
+/// Unix, zip specification 2.0.
+const MADE_BY_UNIX: u16 = (3 << 8) | 20;
+const STORED: u16 = 0;
+const DEFLATED: u16 = 8;
 const FILE_TYPE: u32 = 0o170_000;
 const REGULAR: u32 = 0o100_000;
 const DIRECTORY: u32 = 0o040_000;
 const SYMLINK: u32 = 0o120_000;
 
-fn invalid(detail: impl ToString) -> ArchiveError {
+fn invalid(detail: &str) -> ArchiveError {
     ArchiveError::Invalid {
         detail: detail.to_string(),
     }
 }
 
+/// A length that fits a classic (non-zip64) header field.
+fn small(len: usize, what: &str) -> Result<u32, ArchiveError> {
+    u32::try_from(len)
+        .ok()
+        .filter(|n| *n != u32::MAX)
+        .ok_or_else(|| invalid(&format!("{what} is too large for a zip that is not zip64")))
+}
+
+fn deflated(bytes: &[u8]) -> Result<Vec<u8>, ArchiveError> {
+    use std::io::Write;
+    let mut encoder =
+        flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder
+        .write_all(bytes)
+        .and_then(|()| encoder.finish())
+        .map_err(|e| invalid(&e.to_string()))
+}
+
 /// Pack `entries` as the package `name`: one top-level directory `name`, the
 /// files below it in path order, deflated; modes 0755 for an executable file
-/// and 0644 for the rest; a fixed modification time (the zip epoch, 1980-01-01),
-/// so the same package packs to the same bytes.
+/// and 0644 for the rest; a fixed modification time, so the same package packs
+/// to the same bytes.
 pub fn pack(name: &str, entries: &[Entry]) -> Result<Vec<u8>, ArchiveError> {
-    use std::io::Write;
-    use zip::write::SimpleFileOptions;
     if entries.is_empty() {
         return Err(ArchiveError::NothingToPack {
             name: name.to_string(),
@@ -191,19 +205,163 @@ pub fn pack(name: &str, entries: &[Entry]) -> Result<Vec<u8>, ArchiveError> {
     }
     let mut sorted: Vec<&Entry> = entries.iter().collect();
     sorted.sort_by(|a, b| a.path.cmp(&b.path));
-    let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let count = u16::try_from(sorted.len())
+        .ok()
+        .filter(|n| *n != u16::MAX)
+        .ok_or_else(|| invalid("too many entries for a zip that is not zip64"))?;
+    let mut out: Vec<u8> = Vec::new();
+    let mut central: Vec<u8> = Vec::new();
     for entry in sorted {
-        let options = SimpleFileOptions::default()
-            .compression_method(zip::CompressionMethod::Deflated)
-            .last_modified_time(zip::DateTime::default())
-            .unix_permissions(if entry.executable { 0o755 } else { 0o644 })
-            .large_file(entry.bytes.len() as u64 >= u64::from(u32::MAX));
-        writer
-            .start_file(format!("{name}/{}", entry.path), options)
-            .map_err(invalid)?;
-        writer.write_all(&entry.bytes).map_err(invalid)?;
+        let full = format!("{name}/{}", entry.path);
+        let (method, data) = if entry.bytes.is_empty() {
+            (STORED, Vec::new())
+        } else {
+            (DEFLATED, deflated(&entry.bytes)?)
+        };
+        let crc = crc32fast::hash(&entry.bytes);
+        let (csize, usize_) = (small(data.len(), &full)?, small(entry.bytes.len(), &full)?);
+        let name_len = u16::try_from(full.len()).map_err(|_| invalid("a name is too long"))?;
+        let offset = small(out.len(), "the archive")?;
+        out.extend(LOCAL.to_le_bytes());
+        out.extend(20u16.to_le_bytes());
+        out.extend(UTF8_NAMES.to_le_bytes());
+        out.extend(method.to_le_bytes());
+        out.extend(0u16.to_le_bytes());
+        out.extend(DOS_DATE.to_le_bytes());
+        out.extend(crc.to_le_bytes());
+        out.extend(csize.to_le_bytes());
+        out.extend(usize_.to_le_bytes());
+        out.extend(name_len.to_le_bytes());
+        out.extend(0u16.to_le_bytes());
+        out.extend(full.as_bytes());
+        out.extend(&data);
+        let mode = REGULAR | if entry.executable { 0o755 } else { 0o644 };
+        central.extend(CENTRAL.to_le_bytes());
+        central.extend(MADE_BY_UNIX.to_le_bytes());
+        central.extend(20u16.to_le_bytes());
+        central.extend(UTF8_NAMES.to_le_bytes());
+        central.extend(method.to_le_bytes());
+        central.extend(0u16.to_le_bytes());
+        central.extend(DOS_DATE.to_le_bytes());
+        central.extend(crc.to_le_bytes());
+        central.extend(csize.to_le_bytes());
+        central.extend(usize_.to_le_bytes());
+        central.extend(name_len.to_le_bytes());
+        central.extend([0u8; 8]);
+        central.extend((mode << 16).to_le_bytes());
+        central.extend(offset.to_le_bytes());
+        central.extend(full.as_bytes());
     }
-    Ok(writer.finish().map_err(invalid)?.into_inner())
+    let start = small(out.len(), "the archive")?;
+    let size = small(central.len(), "the central directory")?;
+    out.extend(&central);
+    out.extend(END.to_le_bytes());
+    out.extend([0u8; 4]);
+    out.extend(count.to_le_bytes());
+    out.extend(count.to_le_bytes());
+    out.extend(size.to_le_bytes());
+    out.extend(start.to_le_bytes());
+    out.extend(0u16.to_le_bytes());
+    Ok(out)
+}
+
+/// A reader of little-endian fields that refuses to run past the archive.
+struct Bytes<'a>(&'a [u8]);
+
+impl Bytes<'_> {
+    fn get(&self, at: usize, len: usize) -> Result<&[u8], ArchiveError> {
+        at.checked_add(len)
+            .and_then(|end| self.0.get(at..end))
+            .ok_or_else(|| invalid("an entry runs past the end of the archive"))
+    }
+
+    fn u16(&self, at: usize) -> Result<u16, ArchiveError> {
+        Ok(u16::from_le_bytes([
+            self.get(at, 2)?[0],
+            self.get(at, 2)?[1],
+        ]))
+    }
+
+    fn u32(&self, at: usize) -> Result<u32, ArchiveError> {
+        let b = self.get(at, 4)?;
+        Ok(u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+    }
+}
+
+/// What the central directory says of one entry.
+struct Central {
+    name: String,
+    flags: u16,
+    method: u16,
+    crc: u32,
+    compressed: usize,
+    unix_mode: Option<u32>,
+    offset: usize,
+}
+
+/// The end-of-central-directory record: the last 22 bytes, or the last place
+/// the signature is within a comment's reach.
+fn end_record(bytes: &Bytes<'_>) -> Result<usize, ArchiveError> {
+    let len = bytes.0.len();
+    let last = len
+        .checked_sub(22)
+        .ok_or_else(|| invalid("no end of central directory"))?;
+    let first = last.saturating_sub(usize::from(u16::MAX));
+    (first..=last)
+        .rev()
+        .find(|at| bytes.u32(*at).is_ok_and(|sig| sig == END))
+        .ok_or_else(|| invalid("no end of central directory"))
+}
+
+fn central_entries(bytes: &Bytes<'_>, limits: &Limits) -> Result<Vec<Central>, ArchiveError> {
+    let end = end_record(bytes)?;
+    let total = bytes.u16(end + 10)?;
+    let size = bytes.u32(end + 12)?;
+    let start = bytes.u32(end + 16)?;
+    if total == u16::MAX || size == u32::MAX || start == u32::MAX {
+        return Err(ArchiveError::Zip64);
+    }
+    if usize::from(total) > limits.max_entries {
+        return Err(ArchiveError::TooManyEntries {
+            max: limits.max_entries,
+        });
+    }
+    let mut at = start as usize;
+    let mut out = Vec::with_capacity(usize::from(total));
+    for _ in 0..total {
+        if bytes.u32(at)? != CENTRAL {
+            return Err(invalid("a central directory entry is damaged"));
+        }
+        let made_by = bytes.u16(at + 4)?;
+        let flags = bytes.u16(at + 8)?;
+        let method = bytes.u16(at + 10)?;
+        let crc = bytes.u32(at + 16)?;
+        let compressed = bytes.u32(at + 20)?;
+        let uncompressed = bytes.u32(at + 24)?;
+        let name_len = usize::from(bytes.u16(at + 28)?);
+        let extra_len = usize::from(bytes.u16(at + 30)?);
+        let comment_len = usize::from(bytes.u16(at + 32)?);
+        let attrs = bytes.u32(at + 38)?;
+        let offset = bytes.u32(at + 42)?;
+        let raw = bytes.get(at + 46, name_len)?;
+        let name = String::from_utf8(raw.to_vec()).map_err(|_| ArchiveError::BadName {
+            name: String::from_utf8_lossy(raw).into_owned(),
+        })?;
+        if compressed == u32::MAX || uncompressed == u32::MAX || offset == u32::MAX {
+            return Err(ArchiveError::Zip64);
+        }
+        out.push(Central {
+            name,
+            flags,
+            method,
+            crc,
+            compressed: compressed as usize,
+            unix_mode: (made_by >> 8 == 3).then_some(attrs >> 16),
+            offset: offset as usize,
+        });
+        at += 46 + name_len + extra_len + comment_len;
+    }
+    Ok(out)
 }
 
 #[derive(PartialEq, Eq)]
@@ -212,19 +370,19 @@ enum Kind {
     Dir,
 }
 
-fn kind_of(name: &str, unix_mode: Option<u32>) -> Result<Kind, ArchiveError> {
-    let named_dir = name.ends_with('/');
-    let Some(mode) = unix_mode else {
+fn kind_of(entry: &Central) -> Result<Kind, ArchiveError> {
+    let named_dir = entry.name.ends_with('/');
+    let Some(mode) = entry.unix_mode else {
         return Ok(if named_dir { Kind::Dir } else { Kind::File });
     };
     match mode & FILE_TYPE {
         SYMLINK => Err(ArchiveError::Link {
-            name: name.to_string(),
+            name: entry.name.clone(),
         }),
         DIRECTORY => Ok(Kind::Dir),
         REGULAR | 0 => Ok(if named_dir { Kind::Dir } else { Kind::File }),
         _ => Err(ArchiveError::Special {
-            name: name.to_string(),
+            name: entry.name.clone(),
         }),
     }
 }
@@ -262,87 +420,40 @@ fn segments(name: &str, dir: bool) -> Result<Vec<&str>, ArchiveError> {
     Ok(parts)
 }
 
-/// What the central directory says of one entry, taken before any of its bytes
-/// are read.
-struct Meta {
-    name: String,
-    encrypted: bool,
-    method: zip::CompressionMethod,
-    unix_mode: Option<u32>,
-    declared: u64,
-    crc: u32,
-}
-
-fn meta_of(
-    archive: &zip::ZipArchive<std::io::Cursor<&[u8]>>,
-    index: usize,
-) -> Result<Meta, ArchiveError> {
-    let entry = archive.by_index_data(index).map_err(invalid)?;
-    let raw = entry.name_raw();
-    let name = String::from_utf8(raw.to_vec()).map_err(|_| ArchiveError::BadName {
-        name: String::from_utf8_lossy(raw).into_owned(),
-    })?;
-    Ok(Meta {
-        name,
-        encrypted: entry.encrypted(),
-        method: entry.compression(),
-        unix_mode: entry.unix_mode(),
-        declared: entry.size(),
-        crc: entry.crc32(),
-    })
-}
-
-/// The method's number, for a refusal that names it.
-#[allow(deprecated)]
-fn method_number(method: zip::CompressionMethod) -> u16 {
-    match method {
-        zip::CompressionMethod::Unsupported(n) => n,
-        // Compiled out: only stored and deflate are, so what else arrives
-        // here is a method this build never reads.
-        _ => u16::MAX,
-    }
-}
-
-/// How a library failure to open an archive reads here: two of the library's
-/// refusals have their own words.
-fn opened(error: &zip::result::ZipError) -> ArchiveError {
-    let text = error.to_string();
-    if text.contains("duplicate file names") {
-        ArchiveError::Repeated
-    } else if text.contains("overlapping entries") {
-        ArchiveError::Overlap
-    } else {
-        invalid(text)
-    }
-}
-
 /// The bytes of one entry, at most `budget` of them once decompressed.
 fn contents(
-    archive: &mut zip::ZipArchive<std::io::Cursor<&[u8]>>,
-    index: usize,
-    meta: &Meta,
+    bytes: &Bytes<'_>,
+    entry: &Central,
     budget: u64,
     max: u64,
 ) -> Result<Vec<u8>, ArchiveError> {
     use std::io::Read;
+    if bytes.u32(entry.offset)? != LOCAL {
+        return Err(invalid("a local file header is damaged"));
+    }
+    let name_len = usize::from(bytes.u16(entry.offset + 26)?);
+    let extra_len = usize::from(bytes.u16(entry.offset + 28)?);
+    let data = bytes.get(entry.offset + 30 + name_len + extra_len, entry.compressed)?;
     let too_big = || ArchiveError::TooBig { max };
-    if meta.declared > budget {
-        return Err(too_big());
-    }
-    let options = zip::read::ZipReadOptions::new().ignore_crc32(true);
-    let file = archive
-        .by_index_with_options(index, options)
-        .map_err(invalid)?;
-    let mut out = Vec::new();
-    file.take(budget.saturating_add(1))
-        .read_to_end(&mut out)
-        .map_err(invalid)?;
-    if out.len() as u64 > budget {
-        return Err(too_big());
-    }
-    if crc32fast::hash(&out) != meta.crc {
+    let out = if entry.method == STORED {
+        if data.len() as u64 > budget {
+            return Err(too_big());
+        }
+        data.to_vec()
+    } else {
+        let mut out = Vec::new();
+        flate2::read::DeflateDecoder::new(data)
+            .take(budget.saturating_add(1))
+            .read_to_end(&mut out)
+            .map_err(|e| invalid(&e.to_string()))?;
+        if out.len() as u64 > budget {
+            return Err(too_big());
+        }
+        out
+    };
+    if crc32fast::hash(&out) != entry.crc {
         return Err(ArchiveError::Checksum {
-            name: meta.name.clone(),
+            name: entry.name.clone(),
         });
     }
     Ok(out)
@@ -350,42 +461,35 @@ fn contents(
 
 /// Take the package out of `archive`, or refuse it (see the module's rules).
 pub fn unpack(archive: &[u8], limits: &Limits) -> Result<Unpacked, ArchiveError> {
+    let bytes = Bytes(archive);
     let magic = archive.get(..4).unwrap_or_default();
     if !matches!(magic, b"PK\x03\x04" | b"PK\x05\x06" | b"PK\x07\x08") {
         return Err(ArchiveError::Unrecognized);
     }
-    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(archive)).map_err(|e| opened(&e))?;
-    if zip.len() > limits.max_entries {
-        return Err(ArchiveError::TooManyEntries {
-            max: limits.max_entries,
-        });
-    }
-    zip.validate_header_consistency().map_err(|e| opened(&e))?;
+    let central = central_entries(&bytes, limits)?;
     let mut top: Option<String> = None;
     let mut files: Vec<Entry> = Vec::new();
     let mut total: u64 = 0;
-    for index in 0..zip.len() {
-        let meta = meta_of(&zip, index)?;
-        if meta.encrypted {
-            return Err(ArchiveError::Encrypted { name: meta.name });
-        }
-        if !matches!(
-            meta.method,
-            zip::CompressionMethod::Stored | zip::CompressionMethod::Deflated
-        ) {
-            return Err(ArchiveError::Method {
-                name: meta.name,
-                method: method_number(meta.method),
+    for entry in &central {
+        if entry.flags & ENCRYPTED != 0 {
+            return Err(ArchiveError::Encrypted {
+                name: entry.name.clone(),
             });
         }
-        let kind = kind_of(&meta.name, meta.unix_mode)?;
-        let parts = segments(&meta.name, kind == Kind::Dir)?;
+        if entry.method != STORED && entry.method != DEFLATED {
+            return Err(ArchiveError::Method {
+                name: entry.name.clone(),
+                method: entry.method,
+            });
+        }
+        let kind = kind_of(entry)?;
+        let parts = segments(&entry.name, kind == Kind::Dir)?;
         let first = parts[0];
         match &top {
             None => top = Some(first.to_string()),
             Some(t) if t != first => {
                 return Err(ArchiveError::ForeignTop {
-                    name: meta.name.clone(),
+                    name: entry.name.clone(),
                     top: t.clone(),
                 })
             }
@@ -395,21 +499,22 @@ pub fn unpack(archive: &[u8], limits: &Limits) -> Result<Unpacked, ArchiveError>
             continue;
         }
         let data = contents(
-            &mut zip,
-            index,
-            &meta,
+            &bytes,
+            entry,
             limits.max_total_bytes - total,
             limits.max_total_bytes,
         )?;
         total += data.len() as u64;
         let path = parts[1..].join("/");
         if files.iter().any(|f| f.path == path) {
-            return Err(ArchiveError::Duplicate { name: meta.name });
+            return Err(ArchiveError::Duplicate {
+                name: entry.name.clone(),
+            });
         }
         files.push(Entry {
             path,
             bytes: data,
-            executable: meta.unix_mode.is_some_and(|m| m & 0o111 != 0),
+            executable: entry.unix_mode.is_some_and(|m| m & 0o111 != 0),
         });
     }
     let top = top.ok_or(ArchiveError::Empty)?;
@@ -444,8 +549,7 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(ArchiveError::Invalid {
             detail: "truncated".to_string(),
         }),
-        Box::new(ArchiveError::Repeated),
-        Box::new(ArchiveError::Overlap),
+        Box::new(ArchiveError::Zip64),
         Box::new(ArchiveError::Encrypted { name: name() }),
         Box::new(ArchiveError::Method {
             name: name(),

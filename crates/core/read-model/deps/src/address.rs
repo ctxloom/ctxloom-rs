@@ -85,6 +85,24 @@ pub fn cache_segments(url: &str) -> Option<Vec<String>> {
     (!segments.is_empty()).then_some(segments)
 }
 
+/// The owner and repository an http(s) address names (`https://host/owner/
+/// repo`, with or without `.git` or a trailing slash): a forge API's path
+/// segments. None for any other address, or a path of other than two segments.
+pub fn owner_repo(url: &str) -> Option<(String, String)> {
+    let rest = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))?;
+    let (_, path) = rest.split_once('/')?;
+    let path = path.trim_end_matches('/');
+    let path = path.strip_suffix(".git").unwrap_or(path);
+    let mut segments = path.split('/');
+    let (owner, repo) = (segments.next()?, segments.next()?);
+    if segments.next().is_some() || owner.is_empty() || repo.is_empty() {
+        return None;
+    }
+    Some((owner.to_string(), repo.to_string()))
+}
+
 /// The version-less reference to the bundle `bundle` of the repository at
 /// `url`: the key a lock entry is under.
 pub fn canonical_ref(url: &str, bundle: &str) -> Option<String> {

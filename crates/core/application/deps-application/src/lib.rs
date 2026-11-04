@@ -15,6 +15,7 @@
 
 mod check;
 mod closure;
+mod discover;
 mod error;
 /// In-memory ports, for this crate's tests and a driving adapter's.
 #[cfg(any(test, feature = "test-support"))]
@@ -32,8 +33,9 @@ use std::sync::Arc;
 use ctxloom_ports::ContentRepo;
 use deps::lock::{self, Lock};
 use deps::registry::Registry;
-use deps_ports::{DepsFiles, Remotes};
+use deps_ports::{DepsFiles, Endpoint, Forge, Opened, PullRequest, Remotes, Why};
 
+pub use discover::DiscoverRequest;
 #[cfg(any(test, feature = "test-support"))]
 pub use error::diagnostic_samples;
 pub use error::{AppError, Notice, EN_US};
@@ -52,6 +54,26 @@ pub struct Deps {
     remotes: Arc<dyn Remotes>,
     files: Arc<dyn DepsFiles>,
     content: Arc<dyn ContentRepo>,
+    forge: Arc<dyn Forge>,
+}
+
+/// The forge of a build that wired none: it finds nothing and opens nothing,
+/// and says so.
+struct NoForge;
+
+impl Forge for NoForge {
+    fn search_repositories(
+        &self,
+        _: &Endpoint,
+        _: &str,
+        _: usize,
+    ) -> Result<Vec<deps_ports::ForgeRepo>, Why> {
+        Err("this build has no forge adapter".to_string())
+    }
+
+    fn open_pull_request(&self, _: &Endpoint, _: &PullRequest) -> Result<Opened, Why> {
+        Err("this build has no forge adapter".to_string())
+    }
 }
 
 impl Deps {
@@ -64,7 +86,15 @@ impl Deps {
             remotes,
             files,
             content,
+            forge: Arc::new(NoForge),
         }
+    }
+
+    /// The same, with a forge's API behind `remote discover` and `bundle push
+    /// --pr`.
+    pub fn with_forge(mut self, forge: Arc<dyn Forge>) -> Deps {
+        self.forge = forge;
+        self
     }
 
     /// The registry; none written yet is an empty one.

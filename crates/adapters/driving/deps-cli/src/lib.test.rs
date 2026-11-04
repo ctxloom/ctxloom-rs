@@ -302,17 +302,144 @@ fn test_remote_show_lists_what_is_published_and_what_is_not() {
     );
 }
 
-#[test]
-fn test_remote_discover_is_refused_without_a_forge_api() {
+fn forge_repo(owner: &str, name: &str, stars: u64, description: &str) -> deps_ports::ForgeRepo {
+    deps_ports::ForgeRepo {
+        owner: owner.to_string(),
+        name: name.to_string(),
+        description: description.to_string(),
+        stars,
+        url: format!("https://github.com/{owner}/{name}"),
+    }
+}
+
+fn two_repositories() -> Fixture {
     let fx = Fixture::new();
-    let ran = go(
+    fx.forge.serves(vec![
+        forge_repo("bob", "ctxloom-golang", 10, "bob's context"),
+        forge_repo("alice", "ctxloom", 3, "alice's context"),
+    ]);
+    fx
+}
+
+// remote_discover.go: the table, under the progress line the stream carries.
+#[test]
+fn test_remote_discover_prints_the_repositories_as_a_table_and_how_to_add_one() {
+    let fx = two_repositories();
+    let ran = go(&fx, &["remote", "discover"], TEXT);
+    let (bar, rule, cross) = ("\u{2502}", "\u{2500}", "\u{253c}");
+    let long = rule.repeat(20);
+    let tail = rule.repeat(37);
+    assert_eq!(
+        ran.ok().out,
+        format!(
+            "  # {bar} Forge  {bar} Repository         {bar} Stars {bar} Description\n\
+             {r4}{cross}{r8}{cross}{long}{cross}{r7}{cross}{tail}\n\
+             \x20 1 {bar} GitHub {bar} bob/ctxloom-golang {bar}    10 {bar} bob's context\n\
+             \x20 2 {bar} GitHub {bar} alice/ctxloom      {bar}     3 {bar} alice's context\n\
+             \n\
+             Add one with: ctxloom remote create <name> <url>\n",
+            r4 = rule.repeat(4),
+            r8 = rule.repeat(8),
+            r7 = rule.repeat(7),
+        )
+    );
+    assert_eq!(ran.err, "Searching repositories... found 2\n");
+}
+
+// remote_discover.go renderDiscoveredRepos: the Repository column is as wide as
+// its widest name, only the Description is cut, and what a stranger wrote
+// cannot drive the terminal.
+#[test]
+fn test_the_table_cuts_a_long_description_and_never_a_name_and_escapes_the_rest() {
+    let fx = Fixture::new();
+    fx.forge.serves(vec![
+        forge_repo(
+            "a",
+            "ctxloom",
+            1,
+            "a description far longer than thirty-five bytes",
+        ),
+        forge_repo("b", "ctxloom-esc", 2, "\u{1b}[31mred"),
+    ]);
+    let ran = go(&fx, &["remote", "discover"], TEXT);
+    let out = ran.ok().out.clone();
+    assert!(
+        out.contains("a description far longer than th\u{2026}\n"),
+        "{out}"
+    );
+    assert!(out.contains("\\u{1b}[31mred"), "{out}");
+    assert!(!out.contains('\u{1b}'), "{out:?}");
+}
+
+#[test]
+fn test_remote_discover_json_is_the_repositories_the_count_and_the_errors() {
+    let fx = two_repositories();
+    let ran = go(&fx, &["remote", "discover", "--stars", "5"], JSON);
+    assert_eq!(
+        ran.ok().json(),
+        serde_json::json!({
+            "repositories": [{
+                "owner": "bob",
+                "name": "ctxloom-golang",
+                "description": "bob's context",
+                "stars": 10,
+                "url": "https://github.com/bob/ctxloom-golang",
+                "forge": "github",
+                "add_command": "ctxloom remote create ctxloom-golang bob/ctxloom-golang",
+            }],
+            "count": 1,
+            "errors": [],
+        })
+    );
+}
+
+#[test]
+fn test_remote_discover_says_when_nothing_matches_and_how_to_widen_the_search() {
+    let fx = Fixture::new();
+    assert_eq!(
+        go(&fx, &["remote", "discover"], TEXT).ok().out,
+        "No ctxloom repositories found.\n"
+    );
+    assert_eq!(
+        go(&fx, &["remote", "discover", "golang", "tools"], TEXT)
+            .ok()
+            .out,
+        "No ctxloom repositories found.\nTry a different search term or remove the filter.\n"
+    );
+}
+
+#[test]
+fn test_remote_discover_hands_its_words_flags_and_source_to_the_search() {
+    let fx = two_repositories();
+    go(
         &fx,
         &[
-            "remote", "discover", "golang", "--stars", "10", "-n", "5", "-s", "github",
+            "remote", "discover", "golang", "tools", "--stars", "4", "-n", "5", "-s", "github",
         ],
         TEXT,
+    )
+    .ok();
+    let (_, query, limit) = fx.forge.searches().remove(0);
+    assert_eq!((query.as_str(), limit), ("golang tools", 5));
+    assert_eq!(
+        go(&fx, &["remote", "discover", "-s", "gitlab"], TEXT).refused(),
+        ("deps-application-discover-source", 2)
     );
-    assert_eq!(ran.refused(), ("deps-application-discover-needs-forge", 2));
+}
+
+// A search that failed closes the progress line, warns why, and fails.
+#[test]
+fn test_a_remote_discover_that_failed_closes_the_progress_line_and_warns_why() {
+    let fx = two_repositories();
+    fx.forge
+        .fail_search("search failed: HTTP 403: rate limit exceeded");
+    let ran = go(&fx, &["remote", "discover"], TEXT);
+    assert_eq!(ran.refused(), ("deps-application-discover-failed", 1));
+    assert_eq!(
+        ran.err,
+        "Searching repositories...\nctxloom: warning: github: search failed: HTTP 403: rate limit exceeded\n"
+    );
+    assert_eq!(ran.out, "");
 }
 
 // ------------------------------------------------------------------ deps
@@ -630,7 +757,7 @@ fn test_deps_upgrade_previews_applies_and_says_when_there_is_nothing() {
     let preview = go(&fx, &["deps", "upgrade"], TEXT);
     assert_eq!(
         preview.ok().out,
-        format!("{}  unversioned -> unversioned  ({} -> {})\n  ~ fragment demo-frag\n  ~ file bundle.yaml\n  ~ file fragments/demo-frag.md\n1 pin(s) would move. Re-run with --yes to apply.\n", demo_ref(), &sha[..7], &later[..7])
+        format!("{}  unversioned -> unversioned  ({} -> {})  [compatible]\n  ~ fragment demo-frag\n  ~ file bundle.yaml\n  ~ file fragments/demo-frag.md\n1 pin(s) would move. Re-run with --yes to apply.\n", demo_ref(), &sha[..7], &later[..7])
     );
     let applied = go(&fx, &["deps", "upgrade", "--yes"], TEXT);
     assert!(
@@ -730,6 +857,16 @@ fn test_bundle_push_and_move_say_where_the_bundle_went() {
         go(&fx, &["bundle", "push", "authored", "team", "--pr"], TEXT).refused(),
         ("deps-application-pull-request-needs-forge", 2)
     );
+    fx.register_on("hub", "https://github.com/acme/hub", "github");
+    let opened = go(&fx, &["bundle", "push", "authored", "hub", "--pr"], TEXT);
+    assert_eq!(
+        opened.ok().out,
+        "Created pull request: https://github.com/acme/hub/pull/7\n"
+    );
+    let json = go(&fx, &["bundle", "push", "authored", "hub", "--pr"], JSON).json();
+    assert_eq!(json["status"], "pr-created");
+    assert_eq!(json["pr_url"], "https://github.com/acme/hub/pull/7");
+    assert_eq!(json["create_pr"], true);
     fx.files.directory("other-project");
     let moved = go(
         &fx,

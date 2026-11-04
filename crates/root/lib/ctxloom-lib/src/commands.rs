@@ -16,6 +16,7 @@ use content_fs::ContentFs;
 use ctxloom_cli::{Call, Extension, Failure};
 use deps_application::Deps;
 use deps_files::ProjectFiles;
+use forge_github::GitHub;
 use remote_git::GitRemotes;
 
 use crate::{LibError, LibraryCommands, Wiring};
@@ -42,7 +43,8 @@ fn build_deps() -> Result<Deps, LibError> {
         )),
         Arc::new(ProjectFiles::new(Arc::clone(&fs), app.path.clone())),
         Arc::new(ContentFs::new(fs, &app.path)),
-    ))
+    )
+    .with_forge(Arc::new(GitHub::from_process())))
 }
 
 /// Every command of the program, wired when one first needs the home.
