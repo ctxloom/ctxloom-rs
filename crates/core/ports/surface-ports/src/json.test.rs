@@ -162,3 +162,28 @@ fn test_an_object_with_the_reader_s_number_key_is_still_an_object() {
         Json::object([("$serde_json::private::Number", Json::Number("1".into()))])
     );
 }
+
+#[test]
+fn test_an_object_of_one_string_member_is_an_object_not_a_number() {
+    let doc = Json::parse(r#"{"a": "12"}"#).unwrap();
+    assert_eq!(doc, Json::object([("a", Json::text("12"))]));
+}
+
+#[test]
+fn test_only_an_array_has_elements() {
+    let doc = Json::parse(r#"[1, "a"]"#).unwrap();
+    assert_eq!(
+        doc.as_array(),
+        Some(&vec![Json::Number("1".into()), Json::text("a")])
+    );
+    assert_eq!(Json::parse("{}").unwrap().as_array(), None);
+    assert_eq!(Json::parse("[]").unwrap().as_array(), Some(&vec![]));
+}
+
+#[test]
+fn test_a_value_json_cannot_hold_says_what_it_expected() {
+    use serde::de::value::{BytesDeserializer, Error};
+    use serde::Deserialize;
+    let err = Json::deserialize(BytesDeserializer::<Error>::new(b"x")).unwrap_err();
+    assert!(err.to_string().contains("expected a JSON value"), "{err}");
+}
