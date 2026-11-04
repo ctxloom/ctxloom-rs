@@ -1,9 +1,20 @@
 //! The credential: a 256-bit token, and its SHA-256 digest (D29). Only the
-//! digest is ever journaled. STUBS (S5 red).
+//! digest is ever journaled.
 
 use std::fmt;
 
 use angzarr_diagnostic::{code, Arg, Diagnostic};
+use sha2::{Digest, Sha256};
+use subtle::ConstantTimeEq;
+
+/// The value of one lowercase hexadecimal digit.
+fn hex_digit(digit: u8) -> Option<u8> {
+    match digit {
+        b'0'..=b'9' => Some(digit - b'0'),
+        b'a'..=b'f' => Some(digit - b'a' + 10),
+        _ => None,
+    }
+}
 
 /// A run's bearer token: 256 random bits, shown to nobody. Its `Debug` is
 /// redacted.
@@ -21,25 +32,36 @@ impl Token {
 
     /// As 64 lowercase hexadecimal characters: how the 0600 token file holds it.
     pub fn to_text(&self) -> String {
-        todo!("S5 stub")
+        self.0.iter().map(|b| format!("{b:02x}")).collect()
     }
 
     /// The token a text holds, or why it holds none.
     pub fn from_text(text: &str) -> Result<Token, TokenError> {
-        let _ = text;
-        todo!("S5 stub")
+        let malformed = || TokenError::Malformed {
+            length: text.len() as u64,
+        };
+        let digits = text.as_bytes();
+        if digits.len() != 64 {
+            return Err(malformed());
+        }
+        let mut bytes = [0u8; 32];
+        for (byte, pair) in bytes.iter_mut().zip(digits.chunks(2)) {
+            let high = hex_digit(pair[0]).ok_or_else(malformed)?;
+            let low = hex_digit(pair[1]).ok_or_else(malformed)?;
+            *byte = high << 4 | low;
+        }
+        Ok(Token(bytes))
     }
 
     /// The digest the event holds.
     pub fn hash(&self) -> TokenHash {
-        todo!("S5 stub")
+        TokenHash(Sha256::digest(self.0).into())
     }
 }
 
 impl fmt::Debug for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let _ = f;
-        todo!("S5 stub: redacted")
+        f.write_str("Token(redacted)")
     }
 }
 
@@ -50,8 +72,7 @@ pub struct TokenHash([u8; 32]);
 impl TokenHash {
     /// The digest an event holds, if it holds 32 bytes.
     pub fn from_slice(bytes: &[u8]) -> Option<TokenHash> {
-        let _ = bytes;
-        todo!("S5 stub")
+        <[u8; 32]>::try_from(bytes).ok().map(TokenHash)
     }
 
     pub fn as_bytes(&self) -> &[u8; 32] {
@@ -60,8 +81,7 @@ impl TokenHash {
 
     /// Whether `token` hashes to this, compared in constant time.
     pub fn matches(&self, token: &Token) -> bool {
-        let _ = token;
-        todo!("S5 stub")
+        self.0.ct_eq(&token.hash().0).into()
     }
 }
 
