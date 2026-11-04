@@ -635,6 +635,7 @@ dependencies = [
  "library-application",
  "library-cli",
  "liveness",
+ "mutants",
  "os",
  "ports",
  "project-registry",

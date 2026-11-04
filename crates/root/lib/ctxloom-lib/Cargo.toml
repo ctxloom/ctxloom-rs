@@ -59,6 +59,8 @@ session-ports = { workspace = true, optional = true }
 
 [dev-dependencies]
 harp-core.workspace = true
+deps-application = { workspace = true, features = ["test-support"] }
+mutants.workspace = true
 
 [features]
 # `diagnostic_samples`, for other crates' catalog tests, and the seed the
