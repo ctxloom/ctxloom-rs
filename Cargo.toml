@@ -101,6 +101,7 @@ reclaim-application = { path = "crates/core/application/reclaim-application" }
 doctor-checks = { path = "crates/core/application/doctor-checks" }
 init-application = { path = "crates/core/application/init-application" }
 setup-cli = { path = "crates/adapters/driving/setup-cli" }
+cli-support = { path = "crates/adapters/driving/cli-support" }
 
 # HTTP for forge-github (owner, 2026-11-04): the blocking client, so the
 # synchronous CLI holds no runtime of its own, and the TLS stack chosen below.
