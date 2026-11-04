@@ -250,7 +250,11 @@ taskloom and annals also copied; a change here does not reach them.
 lefthook runs the gates one at a time, stopping at the first failure, and
 shows each gate's pass line and any failure's extract. Gates 1 to 5 run in
 pre-commit; mutation (6) runs in no git hook: it runs by hand while tests
-are written and judged. A failing gate is a
+are written and judged, and is a REQUIRED close-out step: before a batch
+of work reaches the default branch, `just mutants-staged` runs over the whole
+batch's diff (staged against the batch's base) and passes. No hook enforces it
+(a fast-forward of `main` runs none), so merging without it is how 280
+survivors reached `main` once (2026-11-04). A failing gate is a
 finding: fix the cause and commit again; never `--no-verify`, and never
 weaken a gate to get through.
 
