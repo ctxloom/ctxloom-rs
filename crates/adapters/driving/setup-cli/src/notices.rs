@@ -19,3 +19,7 @@ pub fn say_warning(
         Format::Text => writeln!(err, "{PROG}: {}", catalog.message(notice)),
     };
 }
+
+#[cfg(test)]
+#[path = "notices.test.rs"]
+mod tests;

@@ -72,3 +72,7 @@ fn init() -> Command {
                 .about("Print ctxloom's setup prompt (companions, profiles, agents) for the LLM to follow"),
         )
 }
+
+#[cfg(test)]
+#[path = "commands.test.rs"]
+mod tests;

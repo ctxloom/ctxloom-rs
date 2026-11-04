@@ -130,6 +130,9 @@ fn clean(
     Ok(0)
 }
 
+// No check can fail today, so the 0 this ends with is also what `Ok(0)` says;
+// `exit_of` carries the status itself and has its own test.
+#[cfg_attr(test, mutants::skip)]
 fn doctor(
     uses: &UseCases<'_>,
     sub: &ArgMatches,
@@ -158,7 +161,16 @@ fn doctor(
     .map_err(output)?;
     // A failing row ends the run with run's own status for a fatal finding,
     // after the whole report is written.
-    Ok(if report.failed() { 3 } else { 0 })
+    Ok(exit_of(&report))
+}
+
+/// The exit status a report ends the run with.
+fn exit_of(report: &doctor_checks::Report) -> u8 {
+    if report.failed() {
+        3
+    } else {
+        0
+    }
 }
 
 fn init(
@@ -194,3 +206,7 @@ fn init(
 #[cfg(test)]
 #[path = "text.test.rs"]
 mod text_tests;
+
+#[cfg(test)]
+#[path = "lib.test.rs"]
+mod tests;

@@ -98,7 +98,7 @@ pub fn run(
     match noun {
         "manage" => manage(&cx, sub, out, err),
         "materialize" => materialize(&cx, sub, out, err),
-        _ => util(&cx, sub, out),
+        _ => util(&cx, sub, &mut io::stdin(), out),
     }
 }
 
@@ -266,12 +266,19 @@ fn materialize(
     }
 }
 
-fn util(cx: &Context<'_>, sub: &ArgMatches, out: &mut dyn Write) -> Result<u8, Failure> {
+/// `util config-write`: the patch is read from `input` (stdin), and only when
+/// the verb is there.
+fn util(
+    cx: &Context<'_>,
+    sub: &ArgMatches,
+    input: &mut dyn Read,
+    out: &mut dyn Write,
+) -> Result<u8, Failure> {
     let Some(("config-write", args)) = sub.subcommand() else {
         return Ok(0);
     };
     let mut patch = String::new();
-    io::stdin().read_to_string(&mut patch).map_err(|e| {
+    input.read_to_string(&mut patch).map_err(|e| {
         Failure::from(SetupError::ConfigWrite {
             detail: format!("read patch from stdin: {e}"),
         })
@@ -295,3 +302,7 @@ fn util(cx: &Context<'_>, sub: &ArgMatches, out: &mut dyn Write) -> Result<u8, F
 #[cfg(test)]
 #[path = "lib.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "world.test.rs"]
+mod world;

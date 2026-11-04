@@ -76,3 +76,7 @@ pub fn say(
         };
     }
 }
+
+#[cfg(test)]
+#[path = "notices.test.rs"]
+mod tests;

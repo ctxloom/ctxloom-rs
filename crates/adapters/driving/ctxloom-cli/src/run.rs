@@ -106,7 +106,12 @@ pub fn run(
             clap_complete::generate(args.shell, &mut command, PROG, out);
             Ok(())
         }
-        Some(Verb::Hook(hook)) => hook_verb(&hook, format, services, catalog, out, err),
+        Some(Verb::Hook(hook)) => {
+            // Some engines report a failed hook if stdin is closed before the
+            // payload is read, so it is read to the end first.
+            let input = std::io::read_to_string(std::io::stdin()).unwrap_or_default();
+            hook_verb(&hook, &input, format, services, catalog, out, err)
+        }
         #[cfg(feature = "test-support")]
         Some(Verb::Test(verb)) => crate::test_commands::run(verb, format, catalog, services, out),
         None => Ok(()),
@@ -237,22 +242,20 @@ impl<S: Services> hook_cli::Binding for Bind<'_, S> {
 /// channel and still succeeds.
 fn hook_verb<S: Services>(
     hook: &hook_cli::Hook,
+    input: &str,
     format: Format,
     services: &mut S,
     catalog: &Catalog,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> Result<(), CliError> {
-    // Some engines report a failed hook if stdin is closed before the payload
-    // is read, so it is read to the end first.
-    let input = std::io::read_to_string(std::io::stdin()).unwrap_or_default();
     let harp = std::env::var("CTXLOOM_SESSION_HARP").unwrap_or_default();
     let written = match hook.verb {
-        hook_cli::HookVerb::Hud => out.write_all(hook_cli::hud(&input, &harp, 0).as_bytes()),
+        hook_cli::HookVerb::Hud => out.write_all(hook_cli::hud(input, &harp, 0).as_bytes()),
         hook_cli::HookVerb::SessionBind => {
             let outcome = hook_cli::session_bind(
                 hook.engine.as_deref(),
-                &input,
+                input,
                 &harp,
                 &mut Bind { services },
             )
@@ -270,9 +273,9 @@ fn hook_verb<S: Services>(
             let answer = match (&hook.verb, hooks) {
                 (_, None) => Ok(String::new()),
                 (hook_cli::HookVerb::SessionStart, Some(hooks)) => {
-                    hooks.session_start(engine, &input)
+                    hooks.session_start(engine, input)
                 }
-                (_, Some(hooks)) => hooks.skill_mates(engine, &input),
+                (_, Some(hooks)) => hooks.skill_mates(engine, input),
             }
             .map_err(|error| CliError::Command { error, exit: 1 })?;
             out.write_all(answer.as_bytes())
@@ -447,3 +450,7 @@ fn text_error(error: &CliError, catalog: &Catalog, err: &mut dyn Write) -> std::
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "hook.test.rs"]
+mod hook_tests;
