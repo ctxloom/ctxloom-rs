@@ -1862,6 +1862,7 @@ dependencies = [
  "angzarr-yaml",
  "crc32fast",
  "flate2",
+ "sha2",
 ]
 
 [[package]]
