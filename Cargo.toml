@@ -101,6 +101,12 @@ reclaim-application = { path = "crates/core/application/reclaim-application" }
 doctor-checks = { path = "crates/core/application/doctor-checks" }
 init-application = { path = "crates/core/application/init-application" }
 setup-cli = { path = "crates/adapters/driving/setup-cli" }
+isolation-ports = { path = "crates/core/ports/isolation-ports" }
+isolation = { path = "crates/core/read-model/isolation" }
+isolation-application = { path = "crates/core/application/isolation-application" }
+worktree-git = { path = "crates/adapters/driven/worktree-git" }
+container-runtime = { path = "crates/adapters/driven/container-runtime" }
+container-cli = { path = "crates/adapters/driving/container-cli" }
 
 # HTTP for forge-github (owner, 2026-11-04): the blocking client, so the
 # synchronous CLI holds no runtime of its own, and the TLS stack chosen below.

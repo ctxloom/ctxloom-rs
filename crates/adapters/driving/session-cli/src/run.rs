@@ -6,6 +6,7 @@ use angzarr_diagnostic::Diagnostic;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use angzarr_presentation::{write_json, Format};
+use isolation_application::{IsolationError, WorktreeUse};
 use reclaim_application::{parse_age, ReclaimError, SweepRequest};
 use session_index::View;
 use sessions_application::{
@@ -16,11 +17,12 @@ use sessions_application::{
 
 use crate::render::{
     conversation_text, import_text, removal_text, rows_text, show_text, sweep_text,
-    transcripts_text, EditDoc, ImportDoc, KeepDoc, RemovalDoc, Row, ShowDoc, TranscriptsDoc,
+    transcripts_text, worktrees_text, EditDoc, ImportDoc, KeepDoc, RemovalDoc, Row, ShowDoc,
+    TranscriptsDoc,
 };
 use crate::{
     CliFault, EditArgs, ListArgs, RemoveArgs, Session, SessionVerb, SweepArgs, Transcript,
-    TranscriptListArgs, TranscriptVerb,
+    TranscriptListArgs, TranscriptVerb, Worktrees, WorktreesVerb,
 };
 
 /// A command that completed: what it says on the diagnostic channel besides
@@ -44,7 +46,7 @@ pub struct Failure {
 }
 
 /// Run `session`'s command on `service`, writing its answer to `out`.
-pub fn run<S: SessionService + ImportService>(
+pub fn run<S: SessionService + ImportService + WorktreeUse>(
     session: &Session,
     service: &mut S,
     format: Format,
@@ -128,7 +130,7 @@ fn rows(views: &[View], format: Format, out: &mut dyn Write) -> Result<Done, Fai
     Ok(Done::default())
 }
 
-async fn execute<S: SessionService + ImportService>(
+async fn execute<S: SessionService + ImportService + WorktreeUse>(
     session: &Session,
     service: &mut S,
     format: Format,
@@ -208,7 +210,36 @@ async fn execute<S: SessionService + ImportService>(
         Some(SessionVerb::Transcript(transcript)) => {
             transcripts(service, transcript, format, out).await
         }
+        Some(SessionVerb::Worktrees(worktrees)) => worktree_verb(service, worktrees, format, out),
     }
+}
+
+/// An isolation use case's failure: its diagnostic and exit code.
+fn isolation_failure(error: IsolationError) -> Failure {
+    Failure {
+        exit: error.exit_code(),
+        error: Box::new(error),
+        lines: Vec::new(),
+    }
+}
+
+/// `session worktrees ...`: the scratch checkouts, listed or purged.
+fn worktree_verb<S: WorktreeUse>(
+    service: &mut S,
+    worktrees: &Worktrees,
+    format: Format,
+    out: &mut dyn Write,
+) -> Result<Done, Failure> {
+    let _ = (
+        service,
+        worktrees,
+        format,
+        out,
+        isolation_failure,
+        worktrees_text,
+        WorktreesVerb::List,
+    );
+    todo!("S11 green")
 }
 
 async fn list<S: SessionService>(
@@ -298,7 +329,7 @@ async fn remove<S: SessionService>(
 
 /// `session sweep`: report every session's fate, and with `--yes` act on
 /// exactly that.
-async fn sweep<S: SessionService>(
+async fn sweep<S: SessionService + WorktreeUse>(
     service: &mut S,
     args: &SweepArgs,
     format: Format,

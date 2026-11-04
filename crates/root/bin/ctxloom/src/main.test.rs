@@ -263,3 +263,6 @@ mod version;
 
 #[path = "workspace.test.rs"]
 mod workspace;
+
+#[path = "gherkin_isolation.test.rs"]
+mod gherkin_isolation;

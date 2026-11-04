@@ -1,7 +1,8 @@
 # Ported from Go ctxloom's journeys/j001300_closeout.feature (revision
-# f36e8dfb21, release/0.7): the sweep scenarios, minus their worktree rows
-# (S11 ports those). Nothing else of the journey is S12's.
-Feature: closeout — the sweep (worktree rows are S11's)
+# f36e8dfb21, release/0.7): the sweep scenarios, worktree rows included
+# (S11). The journey's worktree-leaf scenarios are in
+# cli/session_worktrees.feature; its doctor scenarios are S12's.
+Feature: closeout — the sweep
 
   Background:
     Given an initialized ctxloom project
@@ -41,12 +42,19 @@ Feature: closeout — the sweep (worktree rows are S11's)
     Given a finished session "amber-quiet-heron" whose transcript retention has passed
     And a finished session "brisk-copper-moth" marked keep
     And an internal one-shot session "gray-oneshot-wisp" that finished an hour ago
+    And a finished session "olive-dirty-finch" whose transcript retention has passed
+    And session "olive-dirty-finch" left a clean scratch worktree
+    And session "olive-dirty-finch" left a scratch worktree holding uncommitted work
     And a session "teal-running-wren" that is still running
+    And session "teal-running-wren" left a scratch worktree of its own
     And a session "slate-unproven-vole" nothing can prove the liveness of
+    And session "slate-unproven-vole" left a scratch worktree of its own
     And every session has been idle for 120 days
     When I run "ctxloom session sweep --purge-older-than 90d --yes"
     Then the sweep skipped "teal-running-wren" and "slate-unproven-vole" without touching either
+    And only the clean, provably-orphaned worktree is gone from disk
+    And the uncommitted work is still there, spared in place
+    And the report says why each spared worktree was left alone
     And the machine-written bulk of "amber-quiet-heron" is gone
     And the machine-written bulk of "gray-oneshot-wisp" is gone
     And the sweep kept the transcript of "brisk-copper-moth" and named "ctxloom session keep brisk-copper-moth --undo"
-    # Without the worktree rows (S11) olive-dirty-finch is an ordinary old session.

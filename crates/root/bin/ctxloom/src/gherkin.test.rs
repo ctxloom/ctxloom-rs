@@ -19,6 +19,9 @@ use super::Ran;
 
 const DAY: u64 = 86_400;
 
+/// The uncommitted work a reaper must never destroy (Go: `j001300WIPMarker`).
+const WIP_MARKER: &str = "J001300-WIP-MARKER-5b8e21";
+
 /// How a session is to be seeded, decided when the first command runs (a
 /// step such as "every session has been idle for 120 days" comes after the
 /// sessions it dates).
@@ -45,6 +48,17 @@ struct World {
     /// The locks of the sessions that are running, held until the scenario
     /// ends.
     held: Vec<File>,
+    /// Scratch worktrees the steps left in sessions: the session, the
+    /// checkout's suffix and whether it holds uncommitted work.
+    scratch: Vec<(String, String, bool)>,
+    /// A worktree of Alice's own, outside the sessions root: its branch and
+    /// directory.
+    foreign: Vec<(String, PathBuf)>,
+    /// What `seed_scratch` planted, for the assertions.
+    planted_scratch: Vec<(String, String, bool)>,
+    planted_foreign: Vec<PathBuf>,
+    /// The sessions planted with a free lock that is not held.
+    lock_free_dead: Vec<String>,
 }
 
 impl fmt::Debug for World {
@@ -63,6 +77,11 @@ impl World {
             idle_days: None,
             ran: None,
             held: Vec::new(),
+            scratch: Vec::new(),
+            foreign: Vec::new(),
+            planted_scratch: Vec::new(),
+            planted_foreign: Vec::new(),
+            lock_free_dead: Vec::new(),
         }
     }
 
@@ -114,6 +133,9 @@ impl World {
             }
             let ran = self.project.run(&flags);
             assert_eq!(ran.code, 0, "seeding {}: {}", session.harp, ran.said());
+            if session.kind != "running" && !session.no_lock {
+                self.lock_free_dead.push(session.harp.clone());
+            }
             if session.summary {
                 let dir = self.output_dir(&session.harp);
                 std::fs::create_dir_all(&dir).expect("the output dir");
@@ -134,8 +156,113 @@ impl World {
         }
     }
 
+    /// The project's git, with a clean identity and none of this process's
+    /// environment.
+    fn git(&self, dir: &Path, args: &[&str]) -> String {
+        let output = std::process::Command::new("git")
+            .args([
+                "-c",
+                "user.name=Alice",
+                "-c",
+                "user.email=alice@example.com",
+            ])
+            .args([
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                "init.defaultBranch=main",
+            ])
+            .args(args)
+            .current_dir(dir)
+            .env_clear()
+            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .env("HOME", self.project.home())
+            .output()
+            .expect("git runs");
+        assert!(
+            output.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8_lossy(&output.stdout).into_owned()
+    }
+
+    /// Make the project a git repository, once, with one commit.
+    fn git_backed(&self) {
+        let project = self.project.dir();
+        if project.join(".git").exists() {
+            return;
+        }
+        self.git(project, &["init", "-q"]);
+        std::fs::write(project.join("README.md"), "hello\n").expect("a file");
+        self.git(project, &["add", "README.md"]);
+        self.git(project, &["commit", "-q", "-m", "initial"]);
+    }
+
+    /// Whether `harp`'s owner is provably dead: it was planted with a free
+    /// lock and is not running.
+    fn reapable(&self, harp: &str) -> bool {
+        self.lock_free_dead.iter().any(|h| h == harp)
+    }
+
+    fn scratch_dir(&self, harp: &str, name: &str) -> PathBuf {
+        self.session_dir(harp)
+            .join("work")
+            .join(format!("ctxloom-wt-{name}"))
+    }
+
+    /// Plant the scratch worktrees the steps described: genuine `git
+    /// worktree add` checkouts in the sessions' work directories, and the
+    /// uncommitted work that no reaper may ever destroy.
+    fn seed_scratch(&mut self) {
+        if self.scratch.is_empty() && self.foreign.is_empty() {
+            return;
+        }
+        self.git_backed();
+        for (harp, name, dirty) in std::mem::take(&mut self.scratch) {
+            let dir = self.scratch_dir(&harp, &name);
+            let branch = format!("wt-{harp}-{name}");
+            self.git(
+                self.project.dir(),
+                &[
+                    "worktree",
+                    "add",
+                    "-q",
+                    "-b",
+                    &branch,
+                    &dir.display().to_string(),
+                ],
+            );
+            if dirty {
+                std::fs::write(dir.join("in-flight.go"), format!("// {WIP_MARKER}\n"))
+                    .expect("uncommitted work");
+            }
+            self.planted_scratch.push((harp, name, dirty));
+        }
+        for (branch, dir) in std::mem::take(&mut self.foreign) {
+            std::fs::create_dir_all(dir.parent().expect("a parent")).expect("a parent");
+            self.git(
+                self.project.dir(),
+                &[
+                    "worktree",
+                    "add",
+                    "-q",
+                    "-b",
+                    &branch,
+                    &dir.display().to_string(),
+                ],
+            );
+            std::fs::write(dir.join("feature.txt"), "unmerged work\n").expect("a file");
+            self.git(&dir, &["add", "-A"]);
+            self.git(&dir, &["commit", "-q", "-m", "unmerged feature work"]);
+            std::fs::write(dir.join("uncommitted.txt"), format!("{WIP_MARKER}\n")).expect("a file");
+            self.planted_foreign.push(dir);
+        }
+    }
+
     fn run(&mut self, line: &str) {
         self.seed();
+        self.seed_scratch();
         let words = split(line);
         assert_eq!(words.first().map(String::as_str), Some("ctxloom"), "{line}");
         let args: Vec<&str> = words[1..].iter().map(String::as_str).collect();
@@ -298,6 +425,38 @@ fn oneshot(w: &mut World, harp: String) {
     w.plant(&harp, "oneshot");
 }
 
+#[given("the feature shipped on Friday and Alice is closing the workstream out")]
+fn closing_out(w: &mut World) {
+    w.project = Project::initialized();
+}
+
+#[given(expr = "session {string} left a clean scratch worktree")]
+fn left_clean(w: &mut World, harp: String) {
+    w.scratch.push((harp, "clean".to_string(), false));
+}
+
+#[given(expr = "session {string} left a scratch worktree holding uncommitted work")]
+fn left_dirty(w: &mut World, harp: String) {
+    w.scratch.push((harp, "wip".to_string(), true));
+}
+
+#[given(expr = "session {string} left a scratch worktree of its own")]
+fn left_own(w: &mut World, harp: String) {
+    w.scratch.push((harp, "own".to_string(), false));
+}
+
+#[given(
+    expr = "a long-lived worktree {string} of her own, outside the sessions root, with unmerged work"
+)]
+fn long_lived(w: &mut World, branch: String) {
+    let dir = w
+        .project
+        .home()
+        .join("workspace/worktrees")
+        .join(format!("proj--{branch}"));
+    w.foreign.push((branch, dir));
+}
+
 #[given(expr = "every session has been idle for {int} days")]
 fn idle(w: &mut World, days: u64) {
     w.idle_days = Some(days);
@@ -334,7 +493,14 @@ fn exits(w: &mut World, code: i32) {
 
 #[then(expr = "the output contains {string}")]
 fn output_contains(w: &mut World, text: String) {
-    w.ran().contains(&text);
+    // plan supersedes Go: clap's usage error says "unexpected argument",
+    // where cobra said "unknown flag" (plan 8.2: the command line is clap's).
+    let text = if text == "unknown flag" {
+        "unexpected argument"
+    } else {
+        &text
+    };
+    w.ran().contains(text);
 }
 
 #[then(expr = "the output does not contain {string}")]
@@ -538,6 +704,104 @@ fn sweep_kept(w: &mut World, harp: String, named: String) {
     w.ran().contains(&harp).contains(&named);
 }
 
+// The scratch worktrees (j001300, S11).
+
+#[then("the report names each scratch worktree with its harp, its owner and its verdict")]
+fn worktrees_named(w: &mut World) {
+    // plan supersedes Go: the owner is named by the state its lock proves,
+    // not by the pid Go's lock file carried.
+    let ran = w.ran();
+    ran.succeeds()
+        .contains("ctxloom-wt-clean")
+        .contains("ctxloom-wt-wip")
+        .contains("amber-quiet-heron")
+        .contains("dead")
+        .contains("reapable")
+        .contains("spared");
+}
+
+#[then("only the clean, provably-orphaned worktree is gone from disk")]
+fn only_clean_gone(w: &mut World) {
+    let mut problems = Vec::new();
+    for (harp, name, _) in &w.planted_scratch {
+        let dir = w.scratch_dir(harp, name);
+        let gone = !dir.is_dir();
+        let reapable = name == "clean" && w.reapable(harp);
+        if reapable && !gone {
+            problems.push(format!(
+                "{} is clean, its owner dead, and still on disk",
+                dir.display()
+            ));
+        } else if !reapable && gone {
+            problems.push(format!(
+                "{} was removed and nothing made it safe",
+                dir.display()
+            ));
+        }
+    }
+    assert!(problems.is_empty(), "{problems:?}: {}", w.ran().said());
+}
+
+#[then("the uncommitted work is still there, spared in place")]
+fn wip_spared(w: &mut World) {
+    let wip: Vec<_> = w
+        .planted_scratch
+        .iter()
+        .filter(|(_, name, _)| name == "wip")
+        .collect();
+    assert!(!wip.is_empty(), "no uncommitted work was seeded");
+    for (harp, name, _) in wip {
+        let body = std::fs::read_to_string(w.scratch_dir(harp, name).join("in-flight.go"))
+            .unwrap_or_else(|e| panic!("the uncommitted work in {harp} is GONE: {e}"));
+        assert!(body.contains(WIP_MARKER), "{body}");
+    }
+}
+
+#[then("the report says why each spared worktree was left alone")]
+fn spared_why(w: &mut World) {
+    w.ran().contains("spared").contains("uncommitted changes");
+}
+
+#[then(expr = "no worktree of {string} is removed, and ctxloom says it could prove nothing safe")]
+fn nothing_safe(w: &mut World, harp: String) {
+    let own: Vec<_> = w
+        .planted_scratch
+        .iter()
+        .filter(|(h, _, _)| *h == harp)
+        .collect();
+    assert!(!own.is_empty(), "no worktree was seeded under {harp}");
+    for (h, name, _) in own {
+        assert!(w.scratch_dir(h, name).is_dir(), "{h}'s {name} was REMOVED");
+    }
+    // An action verb that changed nothing refuses.
+    w.ran().fails().contains("skipped");
+}
+
+#[then("her own long-lived worktree is untouched and was never listed")]
+fn foreign_untouched(w: &mut World) {
+    assert!(
+        !w.planted_foreign.is_empty(),
+        "no foreign worktree was seeded"
+    );
+    for dir in &w.planted_foreign {
+        assert!(dir.is_dir(), "{} was removed", dir.display());
+        w.ran().lacks(&dir.display().to_string());
+    }
+}
+
+#[then("the scratch worktree is still registered with git")]
+fn still_registered(w: &mut World) {
+    let listed = w.git(w.project.dir(), &["worktree", "list", "--porcelain"]);
+    for (harp, name, dirty) in &w.planted_scratch {
+        if *dirty {
+            assert!(
+                listed.contains(&w.scratch_dir(harp, name).display().to_string()),
+                "{listed}"
+            );
+        }
+    }
+}
+
 // ------------------------------------------------------------ the features
 
 fn feature(path: &str) {
@@ -586,4 +850,9 @@ fn test_session_reclaim_feature() {
 #[test]
 fn test_sweep_feature() {
     feature("journeys/j001300_sweep.feature");
+}
+
+#[test]
+fn test_session_worktrees_feature() {
+    feature("cli/session_worktrees.feature");
 }

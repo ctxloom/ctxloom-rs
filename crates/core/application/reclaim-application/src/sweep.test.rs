@@ -6,6 +6,7 @@ use std::future::Future;
 use std::pin::pin;
 use std::task::{Context, Poll, Waker};
 
+use isolation_application::{IsolationError, Report, Row, Verdict as Worktree, WorktreeUse};
 use session_index::{Captured, SessionRecord, View};
 use sessions_application::{
     AppError, BindRequest, Bound, FilePlan, KeepRequest, Kept, ListQuery, Refusal, Removal,
@@ -68,6 +69,41 @@ struct Fake {
     views: Vec<View>,
     refusal: Option<Refusal>,
     asked: Vec<(String, bool, Scope)>,
+    /// The scratch checkouts the sessions left, with their verdicts.
+    scratch: Vec<Row>,
+    /// What `worktrees` was asked: the session and whether to apply.
+    worktrees_asked: Vec<(Option<String>, bool)>,
+}
+
+impl WorktreeUse for Fake {
+    fn worktrees(&mut self, harp: Option<&str>, apply: bool) -> Result<Report, IsolationError> {
+        self.worktrees_asked.push((harp.map(str::to_string), apply));
+        let rows: Vec<Row> = self
+            .scratch
+            .iter()
+            .filter(|r| harp.is_none_or(|h| h == r.harp))
+            .cloned()
+            .collect();
+        let count = |v: Worktree| rows.iter().filter(|r| r.verdict == v).count() as u64;
+        Ok(Report {
+            reaped: count(Worktree::Reaped),
+            spared: count(Worktree::Spared),
+            skipped: count(Worktree::Skipped),
+            worktrees: rows,
+            applied: apply,
+        })
+    }
+}
+
+fn scratch(harp: &str, name: &str, verdict: Worktree, reason: &str) -> Row {
+    Row {
+        harp: harp.to_string(),
+        worktree: format!("ctxloom-wt-{name}"),
+        path: format!("/home/.ctxloom/sessions/{harp}/work/ctxloom-wt-{name}"),
+        owner_state: "dead",
+        verdict,
+        reason: reason.to_string(),
+    }
 }
 
 fn nothing<T>() -> Result<T, AppError> {
@@ -286,4 +322,93 @@ fn a_session_already_emptied_is_untouched() {
     let report = ready(sweep(&mut fake, &request(true))).unwrap();
     assert!(report.rows.is_empty());
     assert_eq!(report.untouched, 1);
+}
+
+// j001300 "The sweep removes only what it can prove is safe": the scratch
+// worktrees are reclaimed through the worktree leaf, which the sweep asks
+// with its own apply decision, and each outcome is a row of the report.
+#[test]
+fn the_sweep_asks_the_worktree_leaf_for_each_session_with_its_own_decision() {
+    let mut fake = Fake {
+        views: vec![
+            view("olive-dirty-finch", State::Ended, 120, false),
+            view("teal-running-wren", State::Live, 0, false),
+        ],
+        ..Fake::default()
+    };
+    ready(sweep(&mut fake, &request(false))).unwrap();
+    assert_eq!(
+        fake.worktrees_asked,
+        vec![
+            (Some("olive-dirty-finch".to_string()), false),
+            (Some("teal-running-wren".to_string()), false)
+        ]
+    );
+    fake.worktrees_asked.clear();
+    ready(sweep(&mut fake, &request(true))).unwrap();
+    assert!(fake.worktrees_asked.iter().all(|(_, apply)| *apply));
+}
+
+#[test]
+fn each_scratch_checkout_is_a_row_with_its_verdict_and_reason() {
+    let mut fake = Fake {
+        views: vec![
+            view("olive-dirty-finch", State::Ended, 120, false),
+            view("teal-running-wren", State::Live, 0, false),
+        ],
+        scratch: vec![
+            scratch("olive-dirty-finch", "clean", Worktree::Reaped, ""),
+            scratch(
+                "olive-dirty-finch",
+                "wip",
+                Worktree::Spared,
+                "session olive-dirty-finch has ended, but the worktree has uncommitted changes (or unknown state)",
+            ),
+            scratch(
+                "teal-running-wren",
+                "own",
+                Worktree::Skipped,
+                "its session is running: its lock is held",
+            ),
+        ],
+        ..Fake::default()
+    };
+    let report = ready(sweep(&mut fake, &request(true))).unwrap();
+    let rows: Vec<_> = report
+        .rows
+        .iter()
+        .filter(|r| r.action == "worktree")
+        .collect();
+    assert_eq!(rows.len(), 3);
+    let by = |name: &str| {
+        rows.iter()
+            .find(|r| r.reason.contains(name) || r.command.contains(name))
+    };
+    assert_eq!(rows[0].verdict, Verdict::Done);
+    assert_eq!(rows[1].verdict, Verdict::Held);
+    assert!(rows[1].reason.contains("uncommitted changes"));
+    assert_eq!(rows[2].verdict, Verdict::Skipped);
+    assert!(by("running").is_some());
+}
+
+// A plan reaps nothing: a reapable checkout is planned, with the command.
+#[test]
+fn a_reapable_checkout_is_planned_naming_the_leaf_that_removes_it() {
+    let mut fake = Fake {
+        views: vec![view("amber-quiet-heron", State::Ended, 120, false)],
+        scratch: vec![scratch(
+            "amber-quiet-heron",
+            "clean",
+            Worktree::Reapable,
+            "",
+        )],
+        ..Fake::default()
+    };
+    let report = ready(sweep(&mut fake, &request(false))).unwrap();
+    let row = report.rows.iter().find(|r| r.action == "worktree").unwrap();
+    assert_eq!(row.verdict, Verdict::Planned);
+    assert_eq!(
+        row.command,
+        "ctxloom session worktrees purge amber-quiet-heron --yes"
+    );
 }

@@ -403,6 +403,15 @@ pub(crate) fn transcripts_text(rows: &[TranscriptRow], out: &mut dyn Write) -> i
     )
 }
 
+/// Go's `renderSessionWorktrees`.
+pub(crate) fn worktrees_text(
+    report: &isolation_application::Report,
+    out: &mut dyn Write,
+) -> io::Result<()> {
+    let _ = (report, out);
+    todo!("S11 green")
+}
+
 /// A transcript read as a conversation: `user: ...`, `assistant: ...`, for
 /// each entry; the records that are not entries (the session's id, a
 /// completion) say nothing a reader wants.

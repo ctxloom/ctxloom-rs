@@ -250,6 +250,7 @@ impl Extension for Commands {
         nouns.extend(deps_cli::nouns());
         nouns.extend(surface_cli::nouns());
         nouns.extend(setup_cli::nouns());
+        nouns.extend(container_cli::nouns());
         nouns
     }
 
@@ -261,6 +262,9 @@ impl Extension for Commands {
         out: &mut dyn Write,
         err: &mut dyn Write,
     ) -> Result<u8, Failure> {
+        if noun == "container" {
+            return crate::isolation::container(call, catalog, out);
+        }
         if SETUP_NOUNS.contains(&noun) {
             return self.setup(noun, call, catalog, out, err);
         }

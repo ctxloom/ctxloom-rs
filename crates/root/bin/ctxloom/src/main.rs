@@ -150,6 +150,9 @@ impl Services for Wired {
         all.extend(init_application::diagnostic_samples());
         all.extend(reclaim_application::diagnostic_samples());
         all.extend(setup_cli::diagnostic_samples());
+        all.extend(isolation_application::diagnostic_samples());
+        all.extend(worktree_git::diagnostic_samples());
+        all.extend(container_cli::diagnostic_samples());
         all
     }
 }

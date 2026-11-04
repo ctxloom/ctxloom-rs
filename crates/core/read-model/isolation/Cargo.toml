@@ -1,0 +1,21 @@
+[package]
+name = "isolation"
+version = "0.1.0"
+description = "The isolation decision table (S11): the workspace and runtime axes, six combinations, as a pure read model. A container is never substituted or dropped to the host; an ownership mismatch is fatal in both modes"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+
+[dev-dependencies]
+mutants.workspace = true
+
+[features]
+# `diagnostic_samples`, for other crates' catalog tests.
+test-support = []
+
+[lints]
+workspace = true

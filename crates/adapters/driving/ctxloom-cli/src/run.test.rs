@@ -99,6 +99,8 @@ impl SessionService for NoSessions {
     }
 }
 
+impl isolation_application::WorktreeUse for NoSessions {}
+
 impl ImportService for NoSessions {
     async fn import(&mut self, _: ImportRequest) -> Result<ImportReport, AppError> {
         unreachable!("no session command is run here")

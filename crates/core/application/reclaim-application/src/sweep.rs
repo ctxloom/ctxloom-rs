@@ -18,6 +18,7 @@
 
 use std::collections::BTreeMap;
 
+use isolation_application::WorktreeUse;
 use serde::Serialize;
 use session_index::stamp;
 use sessions_application::{
@@ -111,7 +112,7 @@ fn row(
 }
 
 /// Sweep the project's sessions (or every project's).
-pub async fn sweep<S: SessionService>(
+pub async fn sweep<S: SessionService + WorktreeUse>(
     service: &mut S,
     request: &SweepRequest,
 ) -> Result<SweepReport, ReclaimError> {

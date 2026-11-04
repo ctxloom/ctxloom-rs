@@ -10,6 +10,7 @@
 
 mod commands;
 mod error;
+mod isolation;
 mod library;
 #[cfg(feature = "test-support")]
 mod seed;
@@ -22,6 +23,7 @@ use std::sync::Arc;
 use ctxloom_store_sqlite::{SqliteStores, Stores};
 use file_system::{Fs, Os};
 use harp_names::HarpNames;
+use isolation_application::{IsolationError, Report, WorktreeUse, Worktrees};
 use liveness::LockFiles;
 use ports::Names;
 use project_registry::{Environment, ProjectRegistry};
@@ -33,6 +35,7 @@ use sessions_application::{
 };
 use system::System;
 use uuid::Uuid;
+use worktree_git::GitWorkspaces;
 
 pub use commands::{engines, Commands, Hooks};
 #[cfg(any(test, feature = "test-support"))]
@@ -72,6 +75,14 @@ pub type ImportUseCase = Importer<ProjectRegistry<HarpNames>, SqliteStores, GoDi
 pub struct Sessions {
     pub use_cases: SessionUseCases,
     pub importer: ImportUseCase,
+    /// The scratch worktrees sessions left behind (S11).
+    pub worktrees: Worktrees<GitWorkspaces, LockFiles>,
+}
+
+impl WorktreeUse for Sessions {
+    fn worktrees(&mut self, harp: Option<&str>, apply: bool) -> Result<Report, IsolationError> {
+        self.worktrees.worktrees(harp, apply)
+    }
 }
 
 impl SessionService for Sessions {
@@ -139,6 +150,8 @@ pub fn catalog_sources() -> Vec<angzarr_presentation::Source> {
         session_files::EN_US,
     ];
     sources.extend(sessions_application::CATALOGS);
+    sources.extend(isolation_application::CATALOGS);
+    sources.extend([worktree_git::EN_US, container_cli::EN_US]);
     sources
 }
 
@@ -207,6 +220,10 @@ impl Wiring {
                 GoDirs::new(Arc::clone(&self.fs), self.home.clone()),
                 System,
                 System,
+            ),
+            worktrees: Worktrees::new(
+                GitWorkspaces::new(self.home.clone()),
+                LockFiles::new(Arc::clone(&self.fs), self.home.clone()),
             ),
         }
     }

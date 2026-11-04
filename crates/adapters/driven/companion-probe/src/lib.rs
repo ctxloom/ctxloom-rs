@@ -25,6 +25,14 @@ impl ProcessProbe {
 
 impl LoadoutProbe for ProcessProbe {
     fn answers(&self, path: &str) -> Result<(), Unanswered> {
+        self.loadout(path).map(drop)
+    }
+}
+
+impl ProcessProbe {
+    /// The text `<path> loadout --format yaml` prints, under the same bound
+    /// and with the same failures as [`answers`](LoadoutProbe::answers).
+    pub fn loadout(&self, path: &str) -> Result<String, Unanswered> {
         use std::io::Read;
         use std::process::{Command, Stdio};
         use std::time::Instant;
@@ -72,7 +80,7 @@ impl LoadoutProbe for ProcessProbe {
         if printed.is_empty() {
             return Err(Unanswered::Silent);
         }
-        Ok(())
+        Ok(String::from_utf8_lossy(&printed).into_owned())
     }
 }
 

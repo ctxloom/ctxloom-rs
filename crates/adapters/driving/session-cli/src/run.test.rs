@@ -43,6 +43,23 @@ struct Fake {
     transcripts: Vec<TranscriptQuery>,
     report: Option<ImportReport>,
     imports: usize,
+    wt_report: Option<isolation_application::Report>,
+    wt_asked: Vec<(Option<String>, bool)>,
+}
+
+impl isolation_application::WorktreeUse for Fake {
+    fn worktrees(
+        &mut self,
+        harp: Option<&str>,
+        apply: bool,
+    ) -> Result<isolation_application::Report, isolation_application::IsolationError> {
+        self.wt_asked.push((harp.map(str::to_string), apply));
+        self.wt_report
+            .clone()
+            .ok_or(isolation_application::IsolationError::NoSession {
+                harp: harp.unwrap_or_default().to_string(),
+            })
+    }
 }
 
 impl ImportService for Fake {
@@ -978,4 +995,259 @@ fn a_transcript_is_printed_with_one_closing_newline() {
         go(&mut fake, Format::Json, &["transcript", "show", "h"]).out,
         "{\"v\":1}\n"
     );
+}
+
+// ---------------------------------------------------------------- worktrees
+// Ported from Go's cli/session_worktrees.go (release/0.7) and the scenarios
+// of cli/session.feature and j001300_closeout.feature.
+
+fn checkout(
+    harp: &str,
+    name: &str,
+    verdict: isolation_application::Verdict,
+    reason: &str,
+) -> isolation_application::Row {
+    isolation_application::Row {
+        harp: harp.to_string(),
+        worktree: format!("ctxloom-wt-{name}"),
+        path: format!("/home/.ctxloom/sessions/{harp}/work/ctxloom-wt-{name}"),
+        owner_state: "dead",
+        verdict,
+        reason: reason.to_string(),
+    }
+}
+
+fn wt_report(
+    rows: Vec<isolation_application::Row>,
+    applied: bool,
+) -> isolation_application::Report {
+    use isolation_application::Verdict;
+    let count = |v: Verdict| rows.iter().filter(|r| r.verdict == v).count() as u64;
+    isolation_application::Report {
+        reaped: count(Verdict::Reaped),
+        spared: count(Verdict::Spared),
+        skipped: count(Verdict::Skipped),
+        worktrees: rows,
+        applied,
+    }
+}
+
+// "The scratch worktrees are a population with their own listing": the bare
+// form lists, and so does `list`, with or without a session.
+#[test]
+fn worktrees_lists_bare_and_by_verb_and_by_session() {
+    let mut fake = Fake {
+        wt_report: Some(wt_report(Vec::new(), false)),
+        ..Fake::default()
+    };
+    for words in [
+        vec!["worktrees"],
+        vec!["worktrees", "list"],
+        vec!["worktrees", "list", "amber-swift-owl"],
+    ] {
+        assert!(go(&mut fake, Format::Text, &words).result.is_ok());
+    }
+    assert_eq!(
+        fake.wt_asked,
+        vec![
+            (None, false),
+            (None, false),
+            (Some("amber-swift-owl".to_string()), false)
+        ]
+    );
+}
+
+#[test]
+fn worktrees_with_nothing_to_list_says_so() {
+    let mut fake = Fake {
+        wt_report: Some(wt_report(Vec::new(), false)),
+        ..Fake::default()
+    };
+    assert_eq!(
+        go(&mut fake, Format::Text, &["worktrees"]).out,
+        "no ctxloom-owned scratch worktrees\n"
+    );
+}
+
+// j001300 "The scratch worktrees are listed before anything is removed".
+#[test]
+fn the_text_listing_names_harp_owner_and_verdict_and_says_it_removed_nothing() {
+    use isolation_application::Verdict;
+    let mut fake = Fake {
+        wt_report: Some(wt_report(
+            vec![
+                checkout("amber-quiet-heron", "clean", Verdict::Reapable, ""),
+                checkout(
+                    "amber-quiet-heron",
+                    "wip",
+                    Verdict::Spared,
+                    "session amber-quiet-heron has ended, but the worktree has uncommitted changes (or unknown state)",
+                ),
+            ],
+            false,
+        )),
+        ..Fake::default()
+    };
+    let ran = go(&mut fake, Format::Text, &["worktrees"]);
+    for expected in [
+        "HARP",
+        "WORKTREE",
+        "OWNER STATE",
+        "VERDICT",
+        "amber-quiet-heron",
+        "ctxloom-wt-clean",
+        "dead",
+        "reapable",
+        "spared",
+        "uncommitted changes",
+        "2 worktree(s) reviewed; 1 spared, 0 skipped (read-only - nothing was removed)",
+    ] {
+        assert!(ran.out.contains(expected), "{expected}: {}", ran.out);
+    }
+}
+
+#[test]
+fn the_json_listing_is_the_report() {
+    use isolation_application::Verdict;
+    let mut fake = Fake {
+        wt_report: Some(wt_report(
+            vec![checkout(
+                "amber-quiet-heron",
+                "clean",
+                Verdict::Reapable,
+                "",
+            )],
+            false,
+        )),
+        ..Fake::default()
+    };
+    let doc = json_of(&go(&mut fake, Format::Json, &["worktrees", "list"]));
+    assert_eq!(doc["worktrees"][0]["harp"], "amber-quiet-heron");
+    assert_eq!(doc["worktrees"][0]["worktree"], "ctxloom-wt-clean");
+    assert_eq!(doc["worktrees"][0]["verdict"], "reapable");
+    assert_eq!(doc["applied"], false);
+}
+
+// "Purging worktrees reports before it removes": succeeds, says it removed
+// nothing and names the command that would.
+#[test]
+fn purge_without_yes_reports_and_names_the_command_that_removes() {
+    use isolation_application::Verdict;
+    let mut fake = Fake {
+        wt_report: Some(wt_report(
+            vec![checkout("amber-swift-owl", "clean", Verdict::Reapable, "")],
+            false,
+        )),
+        ..Fake::default()
+    };
+    let ran = go(
+        &mut fake,
+        Format::Text,
+        &["worktrees", "purge", "amber-swift-owl"],
+    );
+    let notices = ran.result.unwrap().notices;
+    assert_eq!(notices.len(), 1);
+    assert_eq!(notices[0].code(), "sessions-application-removed-nothing");
+    let command = notices[0]
+        .args()
+        .into_iter()
+        .find(|(name, _)| *name == "command")
+        .map(|(_, value)| format!("{value:?}"))
+        .unwrap();
+    assert!(
+        command.contains("ctxloom session worktrees purge amber-swift-owl --yes"),
+        "{command}"
+    );
+    assert_eq!(
+        fake.wt_asked,
+        vec![(Some("amber-swift-owl".to_string()), false)]
+    );
+}
+
+// j001300 "Purging removes only what it can prove is safe": --yes applies
+// and the tally says what happened.
+#[test]
+fn purge_with_yes_applies_and_tallies() {
+    use isolation_application::Verdict;
+    let mut fake = Fake {
+        wt_report: Some(wt_report(
+            vec![
+                checkout("amber-quiet-heron", "clean", Verdict::Reaped, ""),
+                checkout(
+                    "amber-quiet-heron",
+                    "wip",
+                    Verdict::Spared,
+                    "has uncommitted changes",
+                ),
+            ],
+            true,
+        )),
+        ..Fake::default()
+    };
+    let ran = go(
+        &mut fake,
+        Format::Text,
+        &["worktrees", "purge", "amber-quiet-heron", "--yes"],
+    );
+    assert!(
+        ran.out.contains("removed 1, spared 1, skipped 0"),
+        "{}",
+        ran.out
+    );
+    let done = ran.result.unwrap();
+    assert!(done.notices.is_empty());
+    assert_eq!(
+        fake.wt_asked,
+        vec![(Some("amber-quiet-heron".to_string()), true)]
+    );
+}
+
+// j001300 "Purging a session that is still running removes nothing": an
+// action that changed nothing refuses (exit 2), after the report is out.
+#[test]
+fn purge_with_yes_that_removed_nothing_refuses_after_reporting() {
+    use isolation_application::Verdict;
+    let mut fake = Fake {
+        wt_report: Some(wt_report(
+            vec![checkout(
+                "teal-running-wren",
+                "clean",
+                Verdict::Skipped,
+                "its session is running",
+            )],
+            true,
+        )),
+        ..Fake::default()
+    };
+    let ran = go(
+        &mut fake,
+        Format::Text,
+        &["worktrees", "purge", "teal-running-wren", "--yes"],
+    );
+    assert!(ran.out.contains("skipped"), "{}", ran.out);
+    let failure = ran.result.unwrap_err();
+    assert_eq!(
+        failure.error.code(),
+        "isolation-application-nothing-removed"
+    );
+    assert_eq!(failure.exit, 2);
+}
+
+// "The retired reap switch is gone, not hidden".
+#[test]
+fn the_retired_reap_switch_is_refused() {
+    let command = Session::augment_args(Command::new("session")).no_binary_name(true);
+    let refused = command.try_get_matches_from(["worktrees", "--reap", "--yes"]);
+    assert!(refused.is_err());
+}
+
+// A session the use case cannot find is its error, with its exit code.
+#[test]
+fn a_session_with_no_directory_fails_the_listing() {
+    let mut fake = Fake::default();
+    let failure = go(&mut fake, Format::Text, &["worktrees", "list", "nobody"])
+        .result
+        .unwrap_err();
+    assert_eq!(failure.error.code(), "isolation-application-no-session");
+    assert_eq!(failure.exit, 1);
 }
