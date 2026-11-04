@@ -759,6 +759,7 @@ dependencies = [
  "library",
  "semver",
  "serde",
+ "url",
 ]
 
 [[package]]
