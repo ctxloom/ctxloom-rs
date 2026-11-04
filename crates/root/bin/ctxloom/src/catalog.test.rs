@@ -164,3 +164,41 @@ fn test_the_codes_the_binary_raises_are_among_its_diagnostics() {
         assert!(known.contains(&code), "{args:?}: {code} has no sample");
     }
 }
+
+#[test]
+fn test_the_binary_reports_the_diagnostics_of_every_crate_composed_in() {
+    let packages = packages();
+    let owners: BTreeSet<String> = diagnostics()
+        .iter()
+        .filter_map(|d| owner(d["code"].as_str()?, &packages).map(|p| p.name.clone()))
+        .collect();
+    // A crate with diagnostics joins the binary's samples (CLAUDE.md), and
+    // this list: a crate left out of `diagnostic_samples()` is missed here.
+    let composed = [
+        "cache-files",
+        "config-files",
+        "content-fs",
+        "ctxloom-cli",
+        "ctxloom-lib",
+        "ctxloom-store-sqlite",
+        "deps",
+        "deps-application",
+        "editor-process",
+        "hook-cli",
+        "init-application",
+        "library",
+        "library-application",
+        "reclaim-application",
+        "session-cli",
+        "session-files",
+        "sessions",
+        "sessions-application",
+        "setup-application",
+        "setup-cli",
+        "surface-ports",
+    ];
+    assert_eq!(
+        owners.iter().map(String::as_str).collect::<Vec<_>>(),
+        composed
+    );
+}
