@@ -158,7 +158,7 @@ impl SessionAggregate {
         &self,
         cmd: WithdrawSteer,
         ctx: &Context,
-    ) -> Result<SteerWithdrawn, Failed<SessionRejection>> {
+    ) -> Result<Option<SteerWithdrawn>, Failed<SessionRejection>> {
         let _ = ctx;
         Ok(inbox::withdrawn(&self.session, &cmd)?)
     }
