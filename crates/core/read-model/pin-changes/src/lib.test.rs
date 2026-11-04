@@ -375,3 +375,16 @@ fn test_a_classified_move_serializes_its_word() {
     let json = serde_json::to_value(&change).expect("json");
     assert_eq!(json["compat"], "breaking");
 }
+
+// A tag on only one side is no pair of tags: the manifests are read instead.
+#[test]
+fn test_a_tag_on_one_side_only_leaves_the_manifests_to_speak() {
+    assert_eq!(
+        moved(("v1.0.0", "1.0.0"), ("", "2.0.0")),
+        Some(Compat::Breaking)
+    );
+    assert_eq!(
+        moved(("", "1.0.0"), ("v2.0.0", "2.0.0")),
+        Some(Compat::Breaking)
+    );
+}
