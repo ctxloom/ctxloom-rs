@@ -9,6 +9,7 @@
 
 use std::collections::BTreeMap;
 
+use serde::{Deserialize, Deserializer, Serialize};
 use surface_ports::{Claim, Json, JsonOp, Kind, SurfaceError};
 
 /// One claim, and whose it is.
@@ -39,71 +40,196 @@ pub(crate) struct Record {
 
 const SCHEMA: &str = "1";
 
-pub(crate) fn hex(bytes: &[u8]) -> String {
-    use std::fmt::Write;
-    bytes.iter().fold(String::new(), |mut out, b| {
-        let _ = write!(out, "{b:02x}");
-        out
-    })
+// The document as it is written: these shapes are the persisted format, field
+// order included (serde writes fields in declaration order, a tag first).
+
+#[derive(Serialize, Deserialize)]
+struct Doc {
+    schema_version: String,
+    /// Written for whoever reads the file; reading ignores it.
+    #[serde(skip_deserializing)]
+    target: String,
+    files: BTreeMap<String, FileWire>,
 }
 
-fn unhex(text: &str) -> Option<Vec<u8>> {
-    if !text.len().is_multiple_of(2) {
-        return None;
+/// The document's version, read before the rest so that a version this
+/// ctxloom does not read is refused as that, whatever else it holds.
+#[derive(Deserialize)]
+struct Header {
+    schema_version: Option<Json>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct FileWire {
+    #[serde(default, deserialize_with = "only_true")]
+    existed: bool,
+    #[serde(with = "hexed")]
+    original: Vec<u8>,
+    #[serde(with = "hexed")]
+    written: Vec<u8>,
+    claims: Vec<OwnedWire>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct OwnedWire {
+    engine: String,
+    #[serde(with = "named")]
+    kind: Kind,
+    claim: ClaimWire,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+enum ClaimWire {
+    Section {
+        text: String,
+    },
+    Json {
+        ops: Vec<OpWire>,
+    },
+    Whole {
+        #[serde(with = "hexed")]
+        bytes: Vec<u8>,
+        #[serde(default, deserialize_with = "only_true")]
+        executable: bool,
+    },
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "op")]
+enum OpWire {
+    #[serde(rename = "set")]
+    Set { path: Vec<String>, value: Json },
+    #[serde(rename = "set-command")]
+    SetCommand { path: Vec<String>, value: Json },
+    #[serde(rename = "push")]
+    Push { path: Vec<String>, value: Json },
+    #[serde(rename = "hook")]
+    Hook {
+        event: String,
+        /// Always written (null for none); read as none unless a string.
+        #[serde(deserialize_with = "string_or_none")]
+        matcher: Option<String>,
+        value: Json,
+    },
+}
+
+/// Bytes as lower-case hex text.
+mod hexed {
+    use serde::{de::Error, Deserialize, Deserializer, Serializer};
+
+    pub(super) fn serialize<S: Serializer>(bytes: &[u8], s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&hex::encode(bytes))
     }
-    (0..text.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(text.get(i..i + 2)?, 16).ok())
-        .collect()
-}
 
-fn op_json(op: &JsonOp) -> Json {
-    match op {
-        JsonOp::Set { path, value } => Json::object([
-            ("op", Json::text("set")),
-            ("path", Json::strings(path)),
-            ("value", value.clone()),
-        ]),
-        JsonOp::SetCommand { path, value } => Json::object([
-            ("op", Json::text("set-command")),
-            ("path", Json::strings(path)),
-            ("value", value.clone()),
-        ]),
-        JsonOp::Push { path, value } => Json::object([
-            ("op", Json::text("push")),
-            ("path", Json::strings(path)),
-            ("value", value.clone()),
-        ]),
-        JsonOp::HookEntry {
-            event,
-            matcher,
-            value,
-        } => Json::object([
-            ("op", Json::text("hook")),
-            ("event", Json::text(event.as_str())),
-            ("matcher", matcher.as_deref().map_or(Json::Null, Json::text)),
-            ("value", value.clone()),
-        ]),
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
+        hex::decode(String::deserialize(d)?).map_err(D::Error::custom)
     }
 }
 
-fn claim_json(claim: &Claim) -> Json {
-    match claim {
-        Claim::Section { text, .. } => Json::object([
-            ("type", Json::text("section")),
-            ("text", Json::text(text.as_str())),
-        ]),
-        Claim::Json { ops, .. } => Json::object([
-            ("type", Json::text("json")),
-            ("ops", Json::Array(ops.iter().map(op_json).collect())),
-        ]),
-        Claim::Whole {
-            bytes, executable, ..
-        } => Json::object([
-            ("type", Json::text("whole")),
-            ("bytes", Json::text(hex(bytes))),
-            ("executable", Json::Bool(*executable)),
-        ]),
+/// A kind as the name `--surface` uses.
+mod named {
+    use serde::{de::Error, Deserialize, Deserializer, Serializer};
+    use surface_ports::Kind;
+
+    pub(super) fn serialize<S: Serializer>(kind: &Kind, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(kind.name())
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Kind, D::Error> {
+        let name = String::deserialize(d)?;
+        Kind::parse(&name).ok_or_else(|| D::Error::custom(format!("{name} is not a kind")))
+    }
+}
+
+/// A flag that is set only by `true`; any other value is unset.
+fn only_true<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    Ok(matches!(Json::deserialize(d)?, Json::Bool(true)))
+}
+
+fn string_or_none<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    Ok(Json::deserialize(d)?.as_str().map(str::to_string))
+}
+
+impl From<&JsonOp> for OpWire {
+    fn from(op: &JsonOp) -> OpWire {
+        match op {
+            JsonOp::Set { path, value } => OpWire::Set {
+                path: path.clone(),
+                value: value.clone(),
+            },
+            JsonOp::SetCommand { path, value } => OpWire::SetCommand {
+                path: path.clone(),
+                value: value.clone(),
+            },
+            JsonOp::Push { path, value } => OpWire::Push {
+                path: path.clone(),
+                value: value.clone(),
+            },
+            JsonOp::HookEntry {
+                event,
+                matcher,
+                value,
+            } => OpWire::Hook {
+                event: event.clone(),
+                matcher: matcher.clone(),
+                value: value.clone(),
+            },
+        }
+    }
+}
+
+impl From<OpWire> for JsonOp {
+    fn from(op: OpWire) -> JsonOp {
+        match op {
+            OpWire::Set { path, value } => JsonOp::Set { path, value },
+            OpWire::SetCommand { path, value } => JsonOp::SetCommand { path, value },
+            OpWire::Push { path, value } => JsonOp::Push { path, value },
+            OpWire::Hook {
+                event,
+                matcher,
+                value,
+            } => JsonOp::HookEntry {
+                event,
+                matcher,
+                value,
+            },
+        }
+    }
+}
+
+impl From<&Claim> for ClaimWire {
+    fn from(claim: &Claim) -> ClaimWire {
+        match claim {
+            Claim::Section { text, .. } => ClaimWire::Section { text: text.clone() },
+            Claim::Json { ops, .. } => ClaimWire::Json {
+                ops: ops.iter().map(OpWire::from).collect(),
+            },
+            Claim::Whole {
+                bytes, executable, ..
+            } => ClaimWire::Whole {
+                bytes: bytes.clone(),
+                executable: *executable,
+            },
+        }
+    }
+}
+
+impl ClaimWire {
+    /// The claim in the file at `path` (the record keeps it once, as the key).
+    fn into_claim(self, path: String) -> Claim {
+        match self {
+            ClaimWire::Section { text } => Claim::Section { path, text },
+            ClaimWire::Json { ops } => Claim::Json {
+                path,
+                ops: ops.into_iter().map(JsonOp::from).collect(),
+            },
+            ClaimWire::Whole { bytes, executable } => Claim::Whole {
+                path,
+                bytes,
+                executable,
+            },
+        }
     }
 }
 
@@ -116,31 +242,30 @@ impl Record {
                 let claims = file
                     .claims
                     .iter()
-                    .map(|owned| {
-                        Json::object([
-                            ("engine", Json::text(owned.engine.as_str())),
-                            ("kind", Json::text(owned.kind.name())),
-                            ("claim", claim_json(&owned.claim)),
-                        ])
+                    .map(|owned| OwnedWire {
+                        engine: owned.engine.clone(),
+                        kind: owned.kind,
+                        claim: ClaimWire::from(&owned.claim),
                     })
                     .collect();
-                (
-                    path.clone(),
-                    Json::object([
-                        ("existed", Json::Bool(file.existed)),
-                        ("original", Json::text(hex(&file.original))),
-                        ("written", Json::text(hex(&file.written))),
-                        ("claims", Json::Array(claims)),
-                    ]),
-                )
+                let file = FileWire {
+                    existed: file.existed,
+                    original: file.original.clone(),
+                    written: file.written.clone(),
+                    claims,
+                };
+                (path.clone(), file)
             })
-            .collect::<Vec<_>>();
-        let doc = Json::object([
-            ("schema_version", Json::text(SCHEMA)),
-            ("target", Json::text(target)),
-            ("files", Json::Object(files)),
-        ]);
-        format!("{}\n", doc.pretty())
+            .collect();
+        let doc = Doc {
+            schema_version: SCHEMA.to_string(),
+            target: target.to_string(),
+            files,
+        };
+        // A document of strings, numbers and maps with string keys cannot
+        // fail to be written.
+        let text = serde_json::to_string_pretty(&doc).unwrap_or_default();
+        format!("{text}\n")
     }
 
     pub(crate) fn decode(file: &str, text: &str) -> Result<Record, SurfaceError> {
@@ -148,111 +273,35 @@ impl Record {
             file: file.to_string(),
             detail: detail.to_string(),
         };
-        let doc = Json::parse(text).map_err(|e| bad(&e))?;
-        if doc.get("schema_version").and_then(Json::as_str) != Some(SCHEMA) {
+        let header: Header = serde_json::from_str(text).map_err(|e| bad(&e.to_string()))?;
+        if header.schema_version.as_ref().and_then(Json::as_str) != Some(SCHEMA) {
             return Err(bad("its schema_version is not one this ctxloom reads"));
         }
-        let Some(Json::Object(files)) = doc.get("files") else {
-            return Err(bad("it holds no files"));
-        };
-        let mut record = Record::default();
-        for (path, entry) in files {
-            let bytes = |key: &str| {
-                entry
-                    .get(key)
-                    .and_then(Json::as_str)
-                    .and_then(unhex)
-                    .ok_or_else(|| bad(&format!("{path}: {key} is not bytes")))
-            };
-            let existed = matches!(entry.get("existed"), Some(Json::Bool(true)));
-            let mut claims = Vec::new();
-            for owned in entry
-                .get("claims")
-                .and_then(Json::as_array)
-                .ok_or_else(|| bad(&format!("{path}: no claims")))?
-            {
-                claims.push(
-                    decode_owned(path, owned)
-                        .ok_or_else(|| bad(&format!("{path}: a claim is not one")))?,
-                );
-            }
-            record.files.insert(
-                path.clone(),
-                FileRecord {
-                    existed,
-                    original: bytes("original")?,
-                    written: bytes("written")?,
+        let doc: Doc = serde_json::from_str(text).map_err(|e| bad(&e.to_string()))?;
+        let files = doc
+            .files
+            .into_iter()
+            .map(|(path, file)| {
+                let claims = file
+                    .claims
+                    .into_iter()
+                    .map(|owned| Owned {
+                        engine: owned.engine,
+                        kind: owned.kind,
+                        claim: owned.claim.into_claim(path.clone()),
+                    })
+                    .collect();
+                let record = FileRecord {
+                    existed: file.existed,
+                    original: file.original,
+                    written: file.written,
                     claims,
-                },
-            );
-        }
-        Ok(record)
+                };
+                (path, record)
+            })
+            .collect();
+        Ok(Record { files })
     }
-}
-
-fn strings(value: Option<&Json>) -> Option<Vec<String>> {
-    value?
-        .as_array()?
-        .iter()
-        .map(|s| s.as_str().map(str::to_string))
-        .collect()
-}
-
-fn decode_op(op: &Json) -> Option<JsonOp> {
-    let value = op.get("value")?.clone();
-    Some(match op.get("op")?.as_str()? {
-        "set" => JsonOp::Set {
-            path: strings(op.get("path"))?,
-            value,
-        },
-        "set-command" => JsonOp::SetCommand {
-            path: strings(op.get("path"))?,
-            value,
-        },
-        "push" => JsonOp::Push {
-            path: strings(op.get("path"))?,
-            value,
-        },
-        "hook" => JsonOp::HookEntry {
-            event: op.get("event")?.as_str()?.to_string(),
-            matcher: op.get("matcher")?.as_str().map(str::to_string),
-            value,
-        },
-        _ => return None,
-    })
-}
-
-fn decode_owned(path: &str, owned: &Json) -> Option<Owned> {
-    let engine = owned.get("engine")?.as_str()?.to_string();
-    let kind = Kind::parse(owned.get("kind")?.as_str()?)?;
-    let claim = owned.get("claim")?;
-    let path = path.to_string();
-    let claim = match claim.get("type")?.as_str()? {
-        "section" => Claim::Section {
-            path,
-            text: claim.get("text")?.as_str()?.to_string(),
-        },
-        "json" => Claim::Json {
-            path,
-            ops: claim
-                .get("ops")?
-                .as_array()?
-                .iter()
-                .map(decode_op)
-                .collect::<Option<Vec<_>>>()?,
-        },
-        "whole" => Claim::Whole {
-            path,
-            bytes: unhex(claim.get("bytes")?.as_str()?)?,
-            executable: matches!(claim.get("executable"), Some(Json::Bool(true))),
-        },
-        _ => return None,
-    };
-    Some(Owned {
-        engine,
-        kind,
-        claim,
-    })
 }
 
 #[cfg(test)]

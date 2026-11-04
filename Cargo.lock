@@ -3377,7 +3377,10 @@ dependencies = [
 name = "surface-files"
 version = "0.1.0"
 dependencies = [
+ "hex",
  "mutants",
+ "serde",
+ "serde_json",
  "surface-ports",
  "tempfile",
 ]

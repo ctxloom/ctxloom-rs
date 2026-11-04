@@ -91,14 +91,6 @@ fn test_text_that_is_no_record_is_refused() {
     }
 }
 
-#[test]
-fn test_bytes_are_written_as_hex_and_read_back() {
-    assert_eq!(hex(&[0, 15, 255]), "000fff");
-    assert_eq!(unhex("000fff"), Some(vec![0, 15, 255]));
-    assert_eq!(unhex("0"), None);
-    assert_eq!(unhex("zz"), None);
-}
-
 /// A record with the edge values: nothing in a file, empty bytes, escapes and
 /// non-ASCII text, a number kept as written, a null matcher, nesting.
 fn edge() -> Record {
