@@ -830,3 +830,40 @@ pub fn demo(version: &str, fragment: &str) -> Vec<(&'static str, &'static str)> 
 #[cfg(test)]
 #[path = "fakes.test.rs"]
 mod tests;
+
+/// A project refresh that answers as it is told: what the preview would
+/// change (`planned`), or what refused it (`refused`), and the same when
+/// written. With neither, the project is current.
+#[derive(Default)]
+pub struct FakeRefresh {
+    pub planned: Vec<crate::RefreshEngine>,
+    pub refused: Option<String>,
+    pub asked: Mutex<Vec<bool>>,
+}
+
+impl crate::ProjectRefresh for FakeRefresh {
+    fn refresh(
+        &self,
+        write: bool,
+    ) -> Result<crate::Refresh, Box<dyn angzarr_diagnostic::Diagnostic>> {
+        self.asked.lock().expect("a lock").push(write);
+        if let Some(detail) = &self.refused {
+            return Err(Box::new(crate::AppError::Required {
+                what: detail.clone(),
+            }));
+        }
+        Ok(crate::Refresh {
+            target: "/project".to_string(),
+            engines: self
+                .planned
+                .iter()
+                .map(|e| crate::RefreshEngine {
+                    engine: e.engine.clone(),
+                    wrote: e.wrote.clone(),
+                    released: e.released.clone(),
+                    refused: Vec::new(),
+                })
+                .collect(),
+        })
+    }
+}

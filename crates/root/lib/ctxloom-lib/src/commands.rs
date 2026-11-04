@@ -16,12 +16,12 @@ use content_fs::ContentFs;
 use ctxloom_cli::{Call, Extension, Failure};
 use deps::forge;
 use deps::registry::Registry;
-use deps_application::Deps;
+use deps_application::{Deps, ProjectRefresh, Refresh, RefreshEngine, RefusedKind};
 use deps_files::ProjectFiles;
 use deps_ports::DepsFiles;
 use forge_github::GitHub;
 use remote_git::GitRemotes;
-use setup_application::{Puller, Setup};
+use setup_application::{MaterializeRequest, Puller, Setup};
 use surface_files::SurfaceFiles;
 use surface_ports::Registry as Engines;
 
@@ -71,6 +71,60 @@ impl Puller for DepsPuller {
             Ok(report) => Err(format!("{} could not be installed", report.errors)),
             Err(e) => Err(angzarr_diagnostic::Diagnostic::code(&e).to_string()),
         }
+    }
+}
+
+/// The project refresh a consented pull ends with, through `materialize`:
+/// into the project's directory, with the context of an engine whose context
+/// rides the launch left alone. Without consent it is a dry run, and answers
+/// only what would change.
+struct SetupRefresh<'a> {
+    setup: &'a Setup,
+    flags: library_application::Flags,
+}
+
+impl ProjectRefresh for SetupRefresh<'_> {
+    fn refresh(&self, write: bool) -> Result<Refresh, Box<dyn angzarr_diagnostic::Diagnostic>> {
+        let done = self
+            .setup
+            .materialize(&MaterializeRequest {
+                yes: true,
+                dry_run: !write,
+                leave_launch_context: true,
+                flags: self.flags.clone(),
+                ..MaterializeRequest::default()
+            })
+            .map_err(|e| Box::new(e) as Box<dyn angzarr_diagnostic::Diagnostic>)?;
+        let result = done.value;
+        if write {
+            if let Some(first) = result.failures.into_iter().next() {
+                return Err(Box::new(first));
+            }
+            return Ok(Refresh {
+                target: result.target,
+                engines: Vec::new(),
+            });
+        }
+        Ok(Refresh {
+            target: result.target,
+            engines: result
+                .engines
+                .into_iter()
+                .map(|e| RefreshEngine {
+                    engine: e.engine,
+                    wrote: e.wrote,
+                    released: e.released,
+                    refused: e
+                        .refused
+                        .into_iter()
+                        .map(|r| RefusedKind {
+                            kind: r.kind,
+                            cause: Box::new(r.cause),
+                        })
+                        .collect(),
+                })
+                .collect(),
+        })
     }
 }
 
@@ -302,7 +356,15 @@ impl Extension for Commands {
             default_format: call.default_format,
             stdout_is_terminal: call.stdout_is_terminal,
         };
-        deps_cli::run(&wired.deps, noun, &inner, catalog, out, err).map_err(|f| Failure {
+        let refresh = SetupRefresh {
+            setup: &wired.surface,
+            flags: library_application::Flags {
+                degraded: call.degraded,
+                config_set: call.config_set.clone(),
+                no_companions: call.no_companions,
+            },
+        };
+        deps_cli::run(&wired.deps, &refresh, noun, &inner, catalog, out, err).map_err(|f| Failure {
             cause: f.cause,
             exit: f.exit,
         })

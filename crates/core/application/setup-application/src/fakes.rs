@@ -164,6 +164,7 @@ pub(crate) struct Engine {
     pub name: &'static str,
     pub kinds: Vec<Kind>,
     pub wire: Wire,
+    pub rides_launch: bool,
 }
 
 impl Engine {
@@ -172,6 +173,7 @@ impl Engine {
             name,
             kinds: Kind::ALL.to_vec(),
             wire: Wire,
+            rides_launch: false,
         }
     }
 }
@@ -183,6 +185,10 @@ impl EngineSurfaces for Engine {
 
     fn carries(&self, kind: Kind) -> bool {
         self.kinds.contains(&kind)
+    }
+
+    fn context_rides_launch(&self) -> bool {
+        self.rides_launch
     }
 
     fn plan(&self, kind: Kind, inputs: &Inputs) -> Result<Planned, SurfaceError> {
@@ -295,6 +301,7 @@ pub(crate) fn world(config: &'static str) -> World {
             name: "mock",
             kinds: vec![Kind::Context],
             wire: Wire,
+            rides_launch: false,
         }),
     ]);
     let setup = Setup::new(library, engines, store.clone(), mem.clone(), "/p", "/p");

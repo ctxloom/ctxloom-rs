@@ -246,13 +246,21 @@ impl SurfaceFiles {
         let mut record = self.load(target)?;
         let mut touched: Vec<String> = Vec::new();
         let mut prior: std::collections::BTreeMap<String, Vec<Owned>> = Default::default();
+        // Where each file held the claims being replaced: they go back in
+        // that place, so that delivering a kind again leaves the file as it
+        // was, whichever kinds were delivered after it.
+        let mut slot: std::collections::BTreeMap<String, usize> = Default::default();
         for (rel, file) in &mut record.files {
             let before = file.claims.clone();
+            let first = before
+                .iter()
+                .position(|o| o.engine == engine && o.kind == kind);
             file.claims
                 .retain(|o| !(o.engine == engine && o.kind == kind));
             if file.claims.len() != before.len() {
                 touched.push(rel.clone());
                 prior.insert(rel.clone(), before);
+                slot.extend(first.map(|at| (rel.clone(), at)));
             }
         }
         for claim in claims {
@@ -267,11 +275,18 @@ impl SurfaceFiles {
                     Vec::new()
                 }
             });
-            file.claims.push(Owned {
-                engine: engine.to_string(),
-                kind,
-                claim: claim.clone(),
-            });
+            let at = slot
+                .get(&rel)
+                .map_or(file.claims.len(), |at| (*at).min(file.claims.len()));
+            file.claims.insert(
+                at,
+                Owned {
+                    engine: engine.to_string(),
+                    kind,
+                    claim: claim.clone(),
+                },
+            );
+            slot.insert(rel.clone(), at + 1);
             if !touched.contains(&rel) {
                 touched.push(rel);
             }

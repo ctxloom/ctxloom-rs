@@ -18,7 +18,7 @@ struct Warning<'a> {
 }
 
 /// The remedy of a diagnostic: its code with `-fix`, and its args.
-struct FixOf<'a>(&'a dyn Diagnostic, String);
+pub(crate) struct FixOf<'a>(pub(crate) &'a dyn Diagnostic, pub(crate) String);
 
 impl fmt::Debug for FixOf<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

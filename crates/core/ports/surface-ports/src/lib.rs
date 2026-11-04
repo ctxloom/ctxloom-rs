@@ -350,6 +350,12 @@ pub trait EngineSurfaces {
     /// Whether the engine carries `kind` at all.
     fn carries(&self, kind: Kind) -> bool;
 
+    /// Whether a launched session carries the engine's context itself (on
+    /// its command line), so a copy at rest would double it.
+    fn context_rides_launch(&self) -> bool {
+        false
+    }
+
     /// The claims `kind` makes at a directory's root for `inputs`.
     fn plan(&self, kind: Kind, inputs: &Inputs) -> Result<Planned, SurfaceError>;
 

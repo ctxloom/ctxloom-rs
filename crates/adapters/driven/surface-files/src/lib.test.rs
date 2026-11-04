@@ -313,3 +313,22 @@ fn test_a_foreign_file_and_the_record_of_its_last_write_are_kept_apart() {
     assert!(kept.ends_with(".hew-record.yaml") && !kept.starts_with(&f.target));
     assert_eq!(f.store.record(&path).unwrap().as_deref(), Some("record"));
 }
+
+// A kind delivered again keeps its place among the claims of a shared file, so
+// a delivery that changes nothing changes nothing (the project refresh's
+// preview of a project already current names no kind).
+#[test]
+fn test_delivering_an_earlier_kind_again_leaves_a_shared_file_unchanged() {
+    let f = Fixture::new();
+    let first = set("s.json", "first", "1");
+    let second = set("s.json", "second", "2");
+    f.deliver("e", Kind::Settings, std::slice::from_ref(&first));
+    f.deliver("e", Kind::Hooks, std::slice::from_ref(&second));
+    let before = f.get("s.json").unwrap();
+    let again = f
+        .store
+        .deliver(&f.target, "e", Kind::Settings, &[first], true)
+        .unwrap();
+    assert!(!again.changed);
+    assert_eq!(f.get("s.json").unwrap(), before);
+}

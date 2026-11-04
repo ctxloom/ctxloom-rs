@@ -64,6 +64,10 @@ pub struct MaterializeRequest {
     pub release: bool,
     /// Plan and report; write nothing.
     pub dry_run: bool,
+    /// Leave the context alone (neither write nor release it) for an engine
+    /// whose context rides the launch: the project refresh sets it, for a
+    /// launched session carries that context itself.
+    pub leave_launch_context: bool,
     pub flags: Flags,
 }
 
@@ -72,6 +76,13 @@ pub struct MaterializeRequest {
 pub struct NotCarried {
     pub surface: String,
     pub reason: String,
+}
+
+/// A kind an engine's delivery was refused, and why.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct KindRefusal {
+    pub kind: String,
+    pub cause: SurfaceError,
 }
 
 /// One engine's part of a materialize.
@@ -95,6 +106,10 @@ pub struct EngineOutcome {
     pub skipped: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
+    /// The kinds refused, with the cause (said in words by whoever renders
+    /// them).
+    #[serde(skip)]
+    pub refused: Vec<KindRefusal>,
 }
 
 /// What one materialize did, per engine.
@@ -287,7 +302,16 @@ impl Setup {
             let Some(engine) = self.engines.get(name) else {
                 continue;
             };
-            let outcome = self.deliver(engine, kinds, &inputs, package, request, result);
+            let outcome = if request.leave_launch_context && engine.context_rides_launch() {
+                let kept: Vec<Kind> = kinds
+                    .iter()
+                    .copied()
+                    .filter(|k| *k != Kind::Context)
+                    .collect();
+                self.deliver(engine, &kept, &inputs, package, request, result)
+            } else {
+                self.deliver(engine, kinds, &inputs, package, request, result)
+            };
             result.engines.push(outcome);
         }
         result.created = state == Inspected::Missing && !request.dry_run;
@@ -311,7 +335,7 @@ impl Setup {
             engine: name.clone(),
             ..EngineOutcome::default()
         };
-        let mut refused: Vec<String> = Vec::new();
+        let mut refused: Vec<(String, SurfaceError)> = Vec::new();
         for kind in kinds {
             if !engine.carries(*kind) {
                 if carries_items(package, *kind) {
@@ -326,6 +350,10 @@ impl Setup {
                 Ok(planned) => planned,
                 Err(e) => {
                     outcome.warnings.push(format!("{}: refused", kind.name()));
+                    outcome.refused.push(KindRefusal {
+                        kind: kind.name().to_string(),
+                        cause: e.clone(),
+                    });
                     result.failures.push(e);
                     continue;
                 }
@@ -336,7 +364,11 @@ impl Setup {
                 .iter()
                 .map(|c| c.path().to_string())
                 .collect();
-            if files.iter().any(|f| refused.contains(f)) {
+            if let Some((_, cause)) = refused.iter().find(|(file, _)| files.contains(file)) {
+                outcome.refused.push(KindRefusal {
+                    kind: kind.name().to_string(),
+                    cause: cause.clone(),
+                });
                 outcome.warnings.push(format!(
                     "{}: not delivered, for it shares a file with a kind that was refused",
                     kind.name()
@@ -357,8 +389,12 @@ impl Setup {
                     }
                 }
                 Err(e) => {
-                    refused.extend(files);
+                    refused.extend(files.into_iter().map(|file| (file, e.clone())));
                     outcome.warnings.push(format!("{}: refused", kind.name()));
+                    outcome.refused.push(KindRefusal {
+                        kind: kind.name().to_string(),
+                        cause: e.clone(),
+                    });
                     result.failures.push(e);
                 }
             }

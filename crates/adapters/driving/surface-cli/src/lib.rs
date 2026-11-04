@@ -246,6 +246,7 @@ fn materialize(
         surfaces,
         release: flag(args, "release"),
         dry_run: flag(args, "dry-run") || flag(args, "diff"),
+        leave_launch_context: false,
         flags: cx.flags.clone(),
     };
     let mut done = cx.setup.materialize(&request)?;

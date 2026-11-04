@@ -11,6 +11,7 @@
 
 mod commands;
 mod notices;
+mod refresh;
 mod text;
 
 use std::io::{self, Write};
@@ -20,7 +21,8 @@ use angzarr_presentation::{write_json, Catalog, Format};
 use clap::ArgMatches;
 use deps::registry::Edit;
 use deps_application::{
-    AppError, CreateRequest, Deps, DiscoverRequest, MoveRequest, Notice, Outcome, PushRequest,
+    AppError, CreateRequest, Deps, DiscoverRequest, MoveRequest, Notice, Outcome, ProjectRefresh,
+    PushRequest,
 };
 use serde::Serialize;
 
@@ -59,13 +61,16 @@ impl From<AppError> for Failure {
 
 struct Context<'a> {
     deps: &'a Deps,
+    refresh: &'a dyn ProjectRefresh,
     format: Format,
     catalog: &'a Catalog,
 }
 
-/// Run `noun` (given the matches of the whole line).
+/// Run `noun` (given the matches of the whole line); `refresh` is the project
+/// refresh a pull ends with.
 pub fn run(
     deps: &Deps,
+    refresh: &dyn ProjectRefresh,
     noun: &str,
     call: &Call<'_>,
     catalog: &Catalog,
@@ -79,6 +84,7 @@ pub fn run(
     });
     let cx = Context {
         deps,
+        refresh,
         format,
         catalog,
     };
@@ -274,9 +280,30 @@ fn dependencies(
         "pull" => {
             let _ = writeln!(err, "Pulling dependencies...");
             let lock = args.get_one::<bool>("lock").copied().unwrap_or(true);
-            let report = answer(cx, deps.pull(flag(args, "force"), lock), err)?;
-            emit(cx.format, out, &report, |out| text::pull(out, &report))?;
-            if let Some(failure) = report.failure() {
+            let yes = flag(args, "yes");
+            let pulled = answer(
+                cx,
+                deps.pull_and_refresh(cx.refresh, flag(args, "force"), lock, yes),
+                err,
+            )?;
+            let skipped = pulled
+                .skipped
+                .as_ref()
+                .map(|refresh| refresh::view(refresh, cx.catalog));
+            let shown = refresh::Pulled {
+                report: &pulled.report,
+                refresh_skipped: skipped,
+            };
+            emit(cx.format, out, &shown, |out| {
+                text::pull(out, &pulled.report)?;
+                shown.refresh_skipped.as_ref().map_or(Ok(()), |skipped| {
+                    refresh::text(out, skipped, "ctxloom deps pull --yes")
+                })
+            })?;
+            if let Some(failure) = pulled.report.failure() {
+                return Err(failure.into());
+            }
+            if let Some(failure) = pulled.failure {
                 return Err(failure.into());
             }
         }

@@ -4,7 +4,7 @@
 
 use angzarr_presentation::{Catalog, Format};
 use clap::Command;
-use deps_application::fakes::{demo, Fixture, BUNDLES};
+use deps_application::fakes::{demo, FakeRefresh, Fixture, BUNDLES};
 
 use super::*;
 
@@ -62,6 +62,10 @@ fn program() -> Command {
 }
 
 fn go(fx: &Fixture, line: &[&str], how: How) -> Ran {
+    go_refreshing(fx, &FakeRefresh::default(), line, how)
+}
+
+fn go_refreshing(fx: &Fixture, refresh: &FakeRefresh, line: &[&str], how: How) -> Ran {
     let mut argv = vec!["ctxloom"];
     argv.extend_from_slice(line);
     let matches = program()
@@ -77,8 +81,10 @@ fn go(fx: &Fixture, line: &[&str], how: How) -> Ran {
     let catalog = Catalog::en_us(&[deps_application::EN_US, deps::EN_US, angzarr_yaml::EN_US])
         .expect("a catalog");
     let (mut out, mut err) = (Vec::new(), Vec::new());
-    let exit = run(&fx.deps, &noun, &call, &catalog, &mut out, &mut err)
-        .map_err(|f| (f.cause.code().to_string(), f.exit));
+    let exit = run(
+        &fx.deps, refresh, &noun, &call, &catalog, &mut out, &mut err,
+    )
+    .map_err(|f| (f.cause.code().to_string(), f.exit));
     Ran {
         exit,
         out: String::from_utf8(out).expect("utf-8"),
@@ -1045,4 +1051,88 @@ fn test_an_update_says_what_its_pin_tracks() {
             check_text(&r)
         );
     }
+}
+
+fn writing_hooks() -> FakeRefresh {
+    FakeRefresh {
+        planned: vec![deps_application::RefreshEngine {
+            engine: "claude-code".to_string(),
+            wrote: vec!["hooks".to_string()],
+            ..deps_application::RefreshEngine::default()
+        }],
+        ..FakeRefresh::default()
+    }
+}
+
+// deps.feature: A pull without --yes installs the closure and leaves the
+// project's engine files alone
+#[test]
+fn test_a_pull_without_yes_says_what_the_refresh_would_have_written() {
+    let fx = Fixture::new();
+    fx.origin("origin", URL);
+    fx.profile("dev", &[&demo_ref()]);
+    let refresh = writing_hooks();
+    let ran = go_refreshing(&fx, &refresh, &["deps", "pull"], TEXT);
+    ran.ok();
+    assert!(
+        ran.out
+            .contains("Project refresh skipped: without --yes nothing was written into /project."),
+        "{}",
+        ran.out
+    );
+    assert!(
+        ran.out.contains("claude-code: would write hooks"),
+        "{}",
+        ran.out
+    );
+    assert!(
+        ran.out.contains("Apply it with 'ctxloom deps pull --yes', or 'ctxloom materialize --yes --surface hooks'."),
+        "{}",
+        ran.out
+    );
+    assert_eq!(*refresh.asked.lock().unwrap(), [false]);
+}
+
+#[test]
+fn test_a_pull_without_yes_carries_the_skipped_refresh_in_json() {
+    let fx = Fixture::new();
+    fx.origin("origin", URL);
+    fx.profile("dev", &[&demo_ref()]);
+    let ran = go_refreshing(&fx, &writing_hooks(), &["deps", "pull"], JSON);
+    ran.ok();
+    let skipped = &ran.json()["refresh_skipped"];
+    assert_eq!(skipped["target"], "/project");
+    assert_eq!(skipped["engines"][0]["wrote"][0], "hooks");
+    assert_eq!(ran.json()["installed"], 1);
+}
+
+// deps.feature: A pull with --yes also refreshes the project's engine files
+#[test]
+fn test_a_pull_with_yes_asks_for_the_write_and_carries_no_note() {
+    let fx = Fixture::new();
+    fx.origin("origin", URL);
+    fx.profile("dev", &[&demo_ref()]);
+    let refresh = writing_hooks();
+    let ran = go_refreshing(&fx, &refresh, &["deps", "pull", "--yes"], TEXT);
+    ran.ok();
+    assert!(!ran.out.contains("Project refresh skipped"), "{}", ran.out);
+    assert_eq!(*refresh.asked.lock().unwrap(), [true]);
+    let json = go_refreshing(&fx, &writing_hooks(), &["deps", "pull", "--yes"], JSON);
+    assert!(json.json().get("refresh_skipped").is_none());
+}
+
+// behaviour-changes-0.7.0: a refused consented refresh exits 3, the pull
+// having landed.
+#[test]
+fn test_a_pull_with_yes_whose_refresh_is_refused_exits_3_after_the_pull() {
+    let fx = Fixture::new();
+    fx.origin("origin", URL);
+    fx.profile("dev", &[&demo_ref()]);
+    let refresh = FakeRefresh {
+        refused: Some("hooks".to_string()),
+        ..FakeRefresh::default()
+    };
+    let ran = go_refreshing(&fx, &refresh, &["deps", "pull", "--yes"], JSON);
+    assert_eq!(ran.refused(), ("deps-application-refresh-aborted", 3));
+    assert_eq!(ran.json()["installed"], 1);
 }
