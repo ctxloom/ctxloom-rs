@@ -136,6 +136,18 @@ mod through_an_app {
         );
     }
 
+    // NEW-DESIGN: a command that records nothing is still answered for the
+    // stream it addressed, with no events.
+    #[tokio::test]
+    async fn a_command_that_records_nothing_is_answered_with_its_stream_and_no_events() {
+        let edge = edge().await;
+        edge.handle(found()).await.unwrap();
+        let answered = edge.handle(occupy("s")).await.unwrap();
+        let book = answered.events.expect("events");
+        assert_eq!(book.cover, Some(cover()));
+        assert!(book.pages.is_empty());
+    }
+
     // NEW-DESIGN: serve is the exposure seam: an arrival the domain is exposed
     // to is served as handle serves it; another is hidden.
     #[tokio::test]
