@@ -101,6 +101,11 @@ pub fn run(
     let answered = match cli.command {
         Some(Verb::Version) => version(context, format, out),
         Some(Verb::Session(session)) => sessions(&session, format, services, catalog, out, err),
+        Some(Verb::Completion(args)) => {
+            let mut command = command.clone();
+            clap_complete::generate(args.shell, &mut command, PROG, out);
+            Ok(())
+        }
         Some(Verb::Hook(hook)) => hook_verb(&hook, format, services, catalog, out, err),
         #[cfg(feature = "test-support")]
         Some(Verb::Test(verb)) => crate::test_commands::run(verb, format, catalog, services, out),

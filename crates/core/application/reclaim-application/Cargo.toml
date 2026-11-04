@@ -1,0 +1,29 @@
+[package]
+name = "reclaim-application"
+version = "0.1.0"
+description = "The reclaim use cases (S12): clean the project's cache, and sweep ended sessions by rule"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+ctxloom-ports.workspace = true
+serde.workspace = true
+session-index.workspace = true
+sessions.workspace = true
+sessions-application.workspace = true
+# Dates and offsets for --older-than: pure calendar arithmetic, no clock.
+time.workspace = true
+
+[dev-dependencies]
+angzarr-presentation = { workspace = true, features = ["test-support"] }
+mutants.workspace = true
+
+[features]
+# `diagnostic_samples`, for other crates' catalog tests.
+test-support = []
+
+[lints]
+workspace = true

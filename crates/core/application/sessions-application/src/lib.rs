@@ -48,7 +48,8 @@ pub use service::{registry, Service, SessionService};
 pub use session_index::{State, View, STATES};
 pub use types::{
     BindRequest, Bound, Class, FilePlan, KeepRequest, Kept, ListQuery, PlanItem, Removal,
-    RemoveRequest, RenameRequest, Renamed, SearchQuery, ShowQuery, TranscriptQuery, TranscriptRow,
+    RemoveRequest, RenameRequest, Renamed, Scope, SearchQuery, ShowQuery, TranscriptQuery,
+    TranscriptRow,
 };
 
 /// A store's failure, as the use cases fail with it.

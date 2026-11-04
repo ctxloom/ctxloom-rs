@@ -9,6 +9,8 @@ use std::sync::OnceLock;
 
 use deps_ports::Why;
 
+use crate::auth::Credential;
+
 /// The variables git itself says are local to a repository: `GIT_DIR` and its
 /// siblings, and the numbered config overrides `git -c` exports. Asked of git
 /// once, from the filesystem root with an empty environment, so nothing of
@@ -65,12 +67,25 @@ fn environment() -> Vec<(OsString, OsString)> {
 /// Run `git args` in `dir` (the process's working directory where none),
 /// feeding `stdin`; its output. A failure is git's own words.
 pub(crate) fn run(dir: Option<&Path>, args: &[&str], stdin: Option<&[u8]>) -> Result<Vec<u8>, Why> {
+    run_with(dir, args, stdin, &Credential::none())
+}
+
+/// `run` with `credential` in git's environment, set after the scrub so the
+/// caller's own `GIT_CONFIG_*` never mixes with it; git's words in a failure
+/// have it blotted out.
+pub(crate) fn run_with(
+    dir: Option<&Path>,
+    args: &[&str],
+    stdin: Option<&[u8]>,
+    credential: &Credential,
+) -> Result<Vec<u8>, Why> {
     let label = args.first().copied().unwrap_or("");
     let mut command = Command::new("git");
     command
         .args(args)
         .env_clear()
         .envs(environment())
+        .envs(credential.pairs().iter().map(|(k, v)| (k, v)))
         .stdin(if stdin.is_some() {
             Stdio::piped()
         } else {
@@ -99,7 +114,7 @@ pub(crate) fn run(dir: Option<&Path>, args: &[&str], stdin: Option<&[u8]>) -> Re
         return Ok(output.stdout);
     }
     let said = String::from_utf8_lossy(&output.stderr);
-    let said = said.trim();
+    let said = credential.redact(said.trim());
     Err(if said.is_empty() {
         format!("git {label}: {}", output.status)
     } else {

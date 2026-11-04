@@ -180,6 +180,9 @@ mod exit;
 #[path = "format.test.rs"]
 mod format;
 
+#[path = "gherkin.test.rs"]
+mod gherkin;
+
 #[path = "hook.test.rs"]
 mod hook;
 

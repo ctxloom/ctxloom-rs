@@ -231,6 +231,20 @@ pub trait LoadoutProbe {
     fn answers(&self, path: &str) -> Result<(), Unanswered>;
 }
 
+/// The project's regenerable cache (`.ctxloom/cache`): measured and removed
+/// by path below the app dir, nothing else (S12, `ctxloom clean`).
+pub trait ProjectCache {
+    /// The project's `.ctxloom` directory, as the user is shown it.
+    fn app_dir(&self) -> String;
+
+    /// The bytes of the files below `rel` (a file's own size); none where
+    /// nothing is at `rel`. A file that vanishes mid-walk counts nothing.
+    fn measure(&self, rel: &str) -> Result<Option<u64>, Failure>;
+
+    /// Everything at `rel` removed; nothing there is not a failure.
+    fn remove(&self, rel: &str) -> Result<(), Failure>;
+}
+
 #[cfg(test)]
 #[path = "lib.test.rs"]
 mod tests;

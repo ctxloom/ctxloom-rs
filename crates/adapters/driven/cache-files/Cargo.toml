@@ -1,0 +1,25 @@
+[package]
+name = "cache-files"
+version = "0.1.0"
+description = "The ProjectCache port over the file-system seam: the project's regenerable cache, measured and removed"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+ctxloom-ports.workspace = true
+file-system.workspace = true
+
+[dev-dependencies]
+file-system = { workspace = true, features = ["test-support"] }
+os.workspace = true
+mutants.workspace = true
+
+[features]
+# `diagnostic_samples`, for other crates' catalog tests.
+test-support = []
+
+[lints]
+workspace = true

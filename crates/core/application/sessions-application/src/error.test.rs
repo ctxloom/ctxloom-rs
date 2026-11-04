@@ -89,6 +89,7 @@ fn the_refusals_have_codes_and_the_arg_their_fix_needs() {
     let dead = Refusal::NotProvenDead {
         harp: "h".to_string(),
         reason: "no lock file".to_string(),
+        verb: "session remove".to_string(),
     };
     assert_eq!(dead.code(), "sessions-application-refused-not-dead");
     let kept = Refusal::Kept {

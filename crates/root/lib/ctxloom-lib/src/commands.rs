@@ -14,14 +14,18 @@ use clap::Command;
 use config_files::{find_app_dir, Surroundings};
 use content_fs::ContentFs;
 use ctxloom_cli::{Call, Extension, Failure};
+use deps::forge;
+use deps::registry::Registry;
 use deps_application::Deps;
 use deps_files::ProjectFiles;
+use deps_ports::DepsFiles;
 use forge_github::GitHub;
 use remote_git::GitRemotes;
 use setup_application::{Puller, Setup};
 use surface_files::SurfaceFiles;
-use surface_ports::Registry;
+use surface_ports::Registry as Engines;
 
+use crate::setup::{SetupUseCases, NOUNS as SETUP_NOUNS};
 use crate::{LibError, LibraryCommands, Wiring};
 
 /// The nouns the dependency commands own outright.
@@ -39,19 +43,22 @@ fn build_deps() -> Result<Deps, LibError> {
         temp_root: std::env::temp_dir(),
     };
     let app = find_app_dir(fs.as_ref(), &around);
+    let files = Arc::new(ProjectFiles::new(Arc::clone(&fs), app.path.clone()));
     Ok(Deps::new(
-        Arc::new(GitRemotes::new(
-            Arc::clone(&fs),
-            app.path.join("cache/repos"),
-        )),
-        Arc::new(ProjectFiles::new(Arc::clone(&fs), app.path.clone())),
+        Arc::new(
+            GitRemotes::new(Arc::clone(&fs), app.path.join("cache/repos")).with_credentials(
+                Arc::new(|name| std::env::var(name).ok()),
+                token_vars(Arc::clone(&files)),
+            ),
+        ),
+        files,
         Arc::new(ContentFs::new(fs, &app.path)),
     )
     .with_forge(Arc::new(GitHub::from_process())))
 }
 
-/// The nouns the setup commands own outright.
-const SETUP_NOUNS: [&str; 3] = ["manage", "materialize", "util"];
+/// The nouns the surface commands own outright.
+const SURFACE_NOUNS: [&str; 3] = ["manage", "materialize", "util"];
 
 /// The dependency pull `manage install` ends with.
 struct DepsPuller(Rc<Deps>);
@@ -69,8 +76,8 @@ impl Puller for DepsPuller {
 
 /// The engines composed in: claude first (the default), then the mock and its
 /// home-keyed variant.
-pub fn engines() -> Registry {
-    Registry::new(vec![
+pub fn engines() -> Engines {
+    Engines::new(vec![
         Box::new(engine_claude::Claude::new()),
         Box::new(engine_mock::Mock::standard()),
         Box::new(engine_mock::Mock::home_keyed()),
@@ -136,6 +143,23 @@ impl hook_cli::HookService for Hooks<'_> {
     }
 }
 
+/// The variables a clone address's token is read from: the forge the
+/// registry (or the built-in rules) binds the address to says so, the same
+/// answer the API calls get. A registry that cannot be read is an empty one
+/// here: the clone then goes with the user's own git credentials, and the
+/// commands that need the registry report it.
+fn token_vars(files: Arc<ProjectFiles>) -> remote_git::TokenVars {
+    Arc::new(move |url| {
+        let registry = files
+            .read_registry()
+            .ok()
+            .flatten()
+            .and_then(|text| Registry::decode(&text, &files.registry_path()).ok())
+            .unwrap_or_else(Registry::empty);
+        forge::resolve(url, "", &registry).token_vars()
+    })
+}
+
 /// Every command of the program, wired when one first needs the home.
 #[derive(Default)]
 pub struct Commands {
@@ -145,7 +169,8 @@ pub struct Commands {
 struct Wired {
     deps: Rc<Deps>,
     library: LibraryCommands,
-    setup: Setup,
+    surface: Setup,
+    setup: SetupUseCases,
 }
 
 impl Commands {
@@ -155,24 +180,57 @@ impl Commands {
 
     /// The engines' callbacks, over the setup use cases.
     pub fn hooks(&mut self) -> Result<Hooks<'_>, LibError> {
-        Ok(Hooks(&self.wired()?.setup))
+        Ok(Hooks(&self.wired()?.surface))
     }
 
     fn wired(&mut self) -> Result<&mut Wired, LibError> {
         if self.wired.is_none() {
             let deps = Rc::new(build_deps()?);
             let library = LibraryCommands::new().with_remotes(deps.clone());
-            let setup = build_setup(deps.clone())?;
+            let surface = build_setup(deps.clone())?;
+            let setup = SetupUseCases::build(deps.clone())?;
             self.wired = Some(Wired {
                 deps,
                 library,
                 setup,
+                surface,
             });
         }
         Ok(self
             .wired
             .as_mut()
             .unwrap_or_else(|| unreachable!("just built")))
+    }
+}
+
+impl Commands {
+    /// A setup command: `clean`, `doctor` or `init`.
+    fn setup(
+        &mut self,
+        noun: &str,
+        call: &Call<'_>,
+        catalog: &Catalog,
+        out: &mut dyn Write,
+        err: &mut dyn Write,
+    ) -> Result<u8, Failure> {
+        let wired = self.wired().map_err(|e| Failure {
+            cause: Box::new(e),
+            exit: 1,
+        })?;
+        let uses = setup_cli::UseCases {
+            cleaner: &wired.setup.cleaner,
+            doctor: &wired.setup.doctor,
+            init: &wired.setup.init,
+        };
+        let inner = setup_cli::Call {
+            matches: call.matches,
+            explicit_format: call.explicit_format,
+            default_format: call.default_format,
+        };
+        setup_cli::run(&uses, noun, &inner, catalog, out, err).map_err(|f| Failure {
+            cause: f.cause,
+            exit: f.exit,
+        })
     }
 }
 
@@ -191,6 +249,7 @@ impl Extension for Commands {
             .collect();
         nouns.extend(deps_cli::nouns());
         nouns.extend(surface_cli::nouns());
+        nouns.extend(setup_cli::nouns());
         nouns
     }
 
@@ -202,6 +261,9 @@ impl Extension for Commands {
         out: &mut dyn Write,
         err: &mut dyn Write,
     ) -> Result<u8, Failure> {
+        if SETUP_NOUNS.contains(&noun) {
+            return self.setup(noun, call, catalog, out, err);
+        }
         let verb = call
             .matches
             .subcommand_matches(noun)
@@ -212,7 +274,7 @@ impl Extension for Commands {
             cause: Box::new(e),
             exit: 1,
         })?;
-        if SETUP_NOUNS.contains(&noun) {
+        if SURFACE_NOUNS.contains(&noun) {
             let inner = surface_cli::Call {
                 matches: call.matches,
                 explicit_format: call.explicit_format,
@@ -222,12 +284,12 @@ impl Extension for Commands {
                 no_companions: call.no_companions,
                 config_set: call.config_set.clone(),
             };
-            return surface_cli::run(&wired.setup, noun, &inner, catalog, out, err).map_err(|f| {
-                Failure {
+            return surface_cli::run(&wired.surface, noun, &inner, catalog, out, err).map_err(
+                |f| Failure {
                     cause: f.cause,
                     exit: f.exit,
-                }
-            });
+                },
+            );
         }
         let ours =
             OWN_NOUNS.contains(&noun) || (noun == "bundle" && deps_cli::is_bundle_verb(&verb));

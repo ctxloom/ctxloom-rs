@@ -1,0 +1,25 @@
+[package]
+name = "init-application"
+version = "0.1.0"
+description = "ctxloom init (S12): what a re-run on an existing project does, and the setup interview's body"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+ctxloom-ports.workspace = true
+deps-application.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+angzarr-presentation = { workspace = true, features = ["test-support"] }
+mutants.workspace = true
+
+[features]
+# `diagnostic_samples`, for other crates' catalog tests.
+test-support = []
+
+[lints]
+workspace = true

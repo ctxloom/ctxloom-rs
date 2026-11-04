@@ -15,6 +15,7 @@
 //! are git's own: its credential helpers, ssh keys and agent, and the
 //! committer's identity from the user's configuration.
 
+mod auth;
 mod command;
 mod publish;
 mod read;
@@ -23,6 +24,8 @@ use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
+use auth::{Auth, Credential};
+pub use auth::{Env, TokenVars};
 use deps::address::cache_segments;
 use deps_ports::{Remotes, RepoTree, Why};
 use file_system::Fs;
@@ -34,12 +37,31 @@ pub const BUNDLES: &str = ".ctxloom/content/bundles/v2";
 pub struct GitRemotes {
     fs: Arc<dyn Fs>,
     cache: PathBuf,
+    auth: Auth,
 }
 
 impl GitRemotes {
     /// Remotes cloned below `cache` (`<app dir>/cache/repos`), on `fs`.
     pub fn new(fs: Arc<dyn Fs>, cache: PathBuf) -> GitRemotes {
-        GitRemotes { fs, cache }
+        GitRemotes {
+            fs,
+            cache,
+            auth: Auth::none(),
+        }
+    }
+
+    /// Remotes that send a token to the `https` address that has one: found
+    /// in the first of `vars(url)` that `env` sets. Only clone and fetch send
+    /// it; publishing is the user's own git.
+    pub fn with_credentials(self, env: Env, vars: TokenVars) -> GitRemotes {
+        GitRemotes {
+            auth: Auth::new(env, vars),
+            ..self
+        }
+    }
+
+    fn credential(&self, url: &str) -> Credential {
+        self.auth.credential(url)
     }
 
     /// Where the clone of `url` is cached; why it has no place if its address
@@ -98,7 +120,7 @@ impl GitRemotes {
             args.push("--no-checkout");
         }
         args.extend(["--", url, &target]);
-        let outcome = command::run(None, &args, None);
+        let outcome = command::run_with(None, &args, None, &self.credential(url));
         if outcome.is_err() {
             // A partial clone is not a clone; the next call clones afresh.
             let _ = self.fs.remove_dir_all(dir);
@@ -133,10 +155,11 @@ impl Remotes for GitRemotes {
         if !self.is_clone(&dir) {
             return self.clone_into(url, &dir, false);
         }
-        command::run(
+        command::run_with(
             Some(&dir),
             &["fetch", "--prune", "--force", "--tags", "origin"],
             None,
+            &self.credential(url),
         )?;
         // The default branch may have moved; a repository with no branch yet
         // has none to point at, and that is not a failure.

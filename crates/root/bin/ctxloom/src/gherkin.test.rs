@@ -1,0 +1,589 @@
+//! Gherkin features (S12), run with cucumber-rs over the real binary: Go
+//! ctxloom's own `.feature` text (revision f36e8dfb21, release/0.7; see each
+//! file's header for what was left out) with new Rust step definitions.
+//!
+//! The steps build a project and a home the way Go's steps do (see
+//! `library.test.rs`), seed sessions through `ctxloom test seed-session`
+//! (session.test.rs), run the binary, and read what it printed.
+
+use std::fmt;
+use std::fs::File;
+use std::path::{Path, PathBuf};
+
+use cucumber::gherkin::Step;
+use cucumber::{given, then, when, World as _};
+use serde_json::Value;
+
+use super::library::{at, Project};
+use super::Ran;
+
+const DAY: u64 = 86_400;
+
+/// How a session is to be seeded, decided when the first command runs (a
+/// step such as "every session has been idle for 120 days" comes after the
+/// sessions it dates).
+struct Planted {
+    harp: String,
+    /// `finished`, `running`, `unproven` or `oneshot`.
+    kind: &'static str,
+    /// Seconds since it ended, when the step says; else the kind's default.
+    ended_ago: Option<u64>,
+    keep: bool,
+    summary: bool,
+    no_lock: bool,
+}
+
+#[derive(cucumber::World)]
+#[world(init = Self::new)]
+struct World {
+    project: Project,
+    env: Vec<(String, String)>,
+    planted: Vec<Planted>,
+    seeded: bool,
+    idle_days: Option<u64>,
+    ran: Option<Ran>,
+    /// The locks of the sessions that are running, held until the scenario
+    /// ends.
+    held: Vec<File>,
+}
+
+impl fmt::Debug for World {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "World")
+    }
+}
+
+impl World {
+    fn new() -> World {
+        World {
+            project: Project::bare(),
+            env: Vec::new(),
+            planted: Vec::new(),
+            seeded: false,
+            idle_days: None,
+            ran: None,
+            held: Vec::new(),
+        }
+    }
+
+    fn session_dir(&self, harp: &str) -> PathBuf {
+        self.project.home().join(".ctxloom/sessions").join(harp)
+    }
+
+    fn output_dir(&self, harp: &str) -> PathBuf {
+        let project = self.project.dir().file_name().expect("a name");
+        self.project
+            .home()
+            .join("Documents/ctxloom")
+            .join(project)
+            .join(harp)
+    }
+
+    /// Plant the sessions the steps described, once.
+    fn seed(&mut self) {
+        if self.seeded {
+            return;
+        }
+        self.seeded = true;
+        let planted = std::mem::take(&mut self.planted);
+        for session in &planted {
+            let ended = session
+                .ended_ago
+                .or(self.idle_days.map(|d| d * DAY))
+                .unwrap_or(match session.kind {
+                    "oneshot" => 3_600,
+                    _ => 60 * DAY,
+                });
+            let started = (ended + DAY).to_string();
+            let ended = ended.to_string();
+            let mut flags: Vec<&str> = vec!["test", "seed-session", &session.harp, "--transcript"];
+            match session.kind {
+                "running" => flags.extend(["--lock", "free", "--started-ago", "86400"]),
+                _ => {
+                    if !session.no_lock {
+                        flags.extend(["--lock", "free"]);
+                    }
+                    flags.extend(["--started-ago", &started, "--ended-ago", &ended]);
+                }
+            }
+            if session.kind == "oneshot" {
+                flags.push("--oneshot");
+            }
+            if session.keep {
+                flags.push("--keep");
+            }
+            let ran = self.project.run(&flags);
+            assert_eq!(ran.code, 0, "seeding {}: {}", session.harp, ran.said());
+            if session.summary {
+                let dir = self.output_dir(&session.harp);
+                std::fs::create_dir_all(&dir).expect("the output dir");
+                std::fs::write(dir.join("essence.md"), "an older ctxloom's summary\n")
+                    .expect("a summary");
+            }
+            if session.kind == "running" {
+                let lock = File::open(
+                    self.project
+                        .home()
+                        .join(".ctxloom/sessions")
+                        .join(format!("{}.lock", session.harp)),
+                )
+                .expect("a lock file");
+                lock.lock().expect("the lock is free to take");
+                self.held.push(lock);
+            }
+        }
+    }
+
+    fn run(&mut self, line: &str) {
+        self.seed();
+        let words = split(line);
+        assert_eq!(words.first().map(String::as_str), Some("ctxloom"), "{line}");
+        let args: Vec<&str> = words[1..].iter().map(String::as_str).collect();
+        let env: Vec<(&str, &str)> = self
+            .env
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        self.ran = Some(self.project.run_with(&env, &args));
+    }
+
+    fn ran(&self) -> &Ran {
+        self.ran.as_ref().expect("a command ran")
+    }
+
+    fn json(&self) -> Value {
+        super::parse_one(&self.ran().stdout)
+    }
+
+    fn plant(&mut self, harp: &str, kind: &'static str) -> &mut Planted {
+        self.planted.push(Planted {
+            harp: harp.to_string(),
+            kind,
+            ended_ago: None,
+            keep: false,
+            summary: false,
+            no_lock: false,
+        });
+        self.planted.last_mut().expect("just pushed")
+    }
+}
+
+/// A command line's words: whitespace separates, double quotes group.
+fn split(line: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut word = String::new();
+    let (mut quoted, mut any) = (false, false);
+    for c in line.chars() {
+        match c {
+            '"' => {
+                quoted = !quoted;
+                any = true;
+            }
+            c if c.is_whitespace() && !quoted => {
+                if any {
+                    words.push(std::mem::take(&mut word));
+                    any = false;
+                }
+            }
+            c => {
+                word.push(c);
+                any = true;
+            }
+        }
+    }
+    if any {
+        words.push(word);
+    }
+    words
+}
+
+fn doc(step: &Step) -> String {
+    step.docstring
+        .clone()
+        .expect("a docstring")
+        .trim()
+        .to_string()
+}
+
+// ------------------------------------------------------------------ given
+
+#[given("an initialized ctxloom project")]
+fn initialized(w: &mut World) {
+    w.project = Project::initialized();
+}
+
+#[given("an empty project directory")]
+fn empty(w: &mut World) {
+    w.project = Project::bare();
+}
+
+#[given(expr = "the environment variable {string} is set to {string}")]
+fn env_set(w: &mut World, name: String, value: String) {
+    w.env.retain(|(n, _)| *n != name);
+    w.env.push((name, value));
+}
+
+#[given(expr = "the project already has the file {string}:")]
+fn project_file(w: &mut World, step: &Step, rel: String) {
+    w.project.write(&rel, &format!("{}\n", doc(step)));
+}
+
+#[given(expr = "the home already has the file {string}:")]
+fn home_file(w: &mut World, step: &Step, rel: String) {
+    w.project.write_home(&rel, &format!("{}\n", doc(step)));
+}
+
+#[given("a malformed ctxloom config")]
+fn malformed(w: &mut World) {
+    w.project.write(
+        ".ctxloom/config.yaml",
+        "schema_version: [unclosed\n  - : :\n",
+    );
+}
+
+#[given(expr = "the file {string} contains {string}")]
+#[then(expr = "the file {string} contains {string}")]
+fn file_contains(w: &mut World, rel: String, text: String) {
+    w.project.file_contains(&rel, &text);
+}
+
+#[given(expr = "a finished session {string} with a transcript")]
+fn finished(w: &mut World, harp: String) {
+    w.plant(&harp, "finished");
+}
+
+#[given(expr = "a finished session {string} with a transcript and a summary an older ctxloom left")]
+fn finished_with_summary(w: &mut World, harp: String) {
+    w.plant(&harp, "finished").summary = true;
+}
+
+#[given(expr = "a finished session {string} with a transcript but no session lock")]
+fn finished_unlocked(w: &mut World, harp: String) {
+    w.plant(&harp, "finished").no_lock = true;
+}
+
+#[given(expr = "a finished session {string} whose transcript retention has passed")]
+fn finished_retention_passed(w: &mut World, harp: String) {
+    w.plant(&harp, "finished");
+}
+
+#[given(expr = "a finished session {string} marked keep")]
+fn finished_kept(w: &mut World, harp: String) {
+    w.plant(&harp, "finished").keep = true;
+}
+
+#[given(expr = "a session {string} with a transcript that is running again")]
+fn running_again(w: &mut World, harp: String) {
+    // The index says ended; the lock says running.
+    w.plant(&harp, "running");
+}
+
+#[given(expr = "a session {string} that is still running")]
+fn still_running(w: &mut World, harp: String) {
+    w.plant(&harp, "running");
+}
+
+#[given(expr = "a session {string} nothing can prove the liveness of")]
+fn unproven(w: &mut World, harp: String) {
+    w.plant(&harp, "unproven").no_lock = true;
+}
+
+#[given(expr = "a session {string} with a transcript that finished an hour ago")]
+fn finished_an_hour_ago(w: &mut World, harp: String) {
+    w.plant(&harp, "finished").ended_ago = Some(3_600);
+}
+
+#[given(expr = "an internal one-shot session {string} that finished an hour ago")]
+fn oneshot(w: &mut World, harp: String) {
+    w.plant(&harp, "oneshot");
+}
+
+#[given(expr = "every session has been idle for {int} days")]
+fn idle(w: &mut World, days: u64) {
+    w.idle_days = Some(days);
+}
+
+// ------------------------------------------------------------------- when
+
+#[when(expr = "I run {string}")]
+fn run(w: &mut World, line: String) {
+    w.run(&line);
+}
+
+#[when(regex = r"^Alice .*:$")]
+fn alice_runs(w: &mut World, step: &Step) {
+    w.run(&doc(step));
+}
+
+// ------------------------------------------------------------------- then
+
+#[then("the command succeeds")]
+fn succeeds(w: &mut World) {
+    w.ran().succeeds();
+}
+
+#[then("the command fails")]
+fn fails(w: &mut World) {
+    w.ran().fails();
+}
+
+#[then(expr = "the command exits with code {int}")]
+fn exits(w: &mut World, code: i32) {
+    assert_eq!(w.ran().code, code, "{}", w.ran().said());
+}
+
+#[then(expr = "the output contains {string}")]
+fn output_contains(w: &mut World, text: String) {
+    w.ran().contains(&text);
+}
+
+#[then(expr = "the output does not contain {string}")]
+fn output_lacks(w: &mut World, text: String) {
+    w.ran().lacks(&text);
+}
+
+#[then(expr = "the file {string} exists")]
+fn file_exists(w: &mut World, rel: String) {
+    assert!(w.project.exists(&rel), "{rel} should exist");
+}
+
+#[then(expr = "the file {string} does not exist")]
+fn file_absent(w: &mut World, rel: String) {
+    w.project.file_is_absent(&rel);
+}
+
+#[then(expr = "the file {string} does not contain {string}")]
+fn file_lacks(w: &mut World, rel: String, text: String) {
+    w.project.file_lacks(&rel, &text);
+}
+
+#[then(expr = "the file {string} contains {string} exactly {int} times")]
+fn file_contains_times(w: &mut World, rel: String, text: String, times: usize) {
+    let held = w.project.read(&rel).unwrap_or_default();
+    assert_eq!(held.matches(&text).count(), times, "{rel}: {held}");
+}
+
+#[then(expr = "the home file {string} exists")]
+fn home_exists(w: &mut World, rel: String) {
+    assert!(w.project.home().join(&rel).exists(), "{rel} should exist");
+}
+
+#[then(expr = "the home file {string} does not exist")]
+fn home_absent(w: &mut World, rel: String) {
+    assert!(
+        !w.project.home().join(&rel).exists(),
+        "{rel} should not exist"
+    );
+}
+
+#[then(expr = "the home file {string} does not contain {string}")]
+fn home_lacks(w: &mut World, rel: String, text: String) {
+    let held = w.project.read_home(&rel).expect("a home file");
+    assert!(!held.contains(&text), "{rel}: {held}");
+}
+
+#[then(expr = "the output file {string} of session {string} exists")]
+fn output_file_exists(w: &mut World, file: String, harp: String) {
+    let path = w.output_dir(&harp).join(&file);
+    assert!(path.exists(), "{} should exist", path.display());
+}
+
+#[then("the output is valid JSON")]
+fn valid_json(w: &mut World) {
+    let _ = w.json();
+}
+
+fn array<'a>(doc: &'a Value, path: &str) -> &'a Vec<Value> {
+    at(doc, path)
+        .and_then(Value::as_array)
+        .unwrap_or_else(|| panic!("no array at {path} in {doc}"))
+}
+
+#[then(expr = "the JSON output array {string} contains an object whose {string} is {string}")]
+fn array_has(w: &mut World, path: String, key: String, value: String) {
+    let doc = w.json();
+    assert!(
+        array(&doc, &path).iter().any(|o| is(o, &key, &value)),
+        "no object with {key}={value}: {doc}"
+    );
+}
+
+#[then(
+    expr = "the JSON output array {string} contains an object whose {string} is {string} and whose {string} is {string}"
+)]
+fn array_has_two(
+    w: &mut World,
+    path: String,
+    key: String,
+    value: String,
+    key2: String,
+    value2: String,
+) {
+    let doc = w.json();
+    assert!(
+        array(&doc, &path)
+            .iter()
+            .any(|o| is(o, &key, &value) && is(o, &key2, &value2)),
+        "no object with {key}={value} and {key2}={value2}: {doc}"
+    );
+}
+
+/// Go's comparison: the value as the text of its JSON (a bool is `true`).
+fn is(object: &Value, key: &str, want: &str) -> bool {
+    match &object[key] {
+        Value::String(s) => s == want,
+        Value::Null => false,
+        other => {
+            let text = other.to_string();
+            text == want
+        }
+    }
+}
+
+#[then(expr = "every object in the JSON output array {string} has a non-empty {string}")]
+fn every_non_empty(w: &mut World, path: String, key: String) {
+    let doc = w.json();
+    for object in array(&doc, &path) {
+        assert!(
+            object[&key].as_str().is_some_and(|s| !s.is_empty()),
+            "{object} lacks {key}"
+        );
+    }
+}
+
+fn hook_commands(w: &World, rel: &str, event: &str) -> Vec<String> {
+    let text = w.project.read(rel).unwrap_or_default();
+    let doc: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
+    let mut commands = Vec::new();
+    for group in doc["hooks"][event].as_array().into_iter().flatten() {
+        for hook in group["hooks"].as_array().into_iter().flatten() {
+            if let Some(command) = hook["command"].as_str() {
+                commands.push(command.to_string());
+            }
+        }
+    }
+    commands
+}
+
+#[then(expr = "the file {string} registers no SessionStart hook whose command contains {string}")]
+fn registers_no_hook(w: &mut World, rel: String, text: String) {
+    let commands = hook_commands(w, &rel, "SessionStart");
+    assert!(!commands.iter().any(|c| c.contains(&text)), "{commands:?}");
+}
+
+#[then(expr = "the file {string} registers a SessionStart hook whose command contains {string}")]
+fn registers_hook(w: &mut World, rel: String, text: String) {
+    let commands = hook_commands(w, &rel, "SessionStart");
+    assert!(commands.iter().any(|c| c.contains(&text)), "{commands:?}");
+}
+
+// The sweep (j001300).
+
+#[then(expr = "the sweep report names {string} and {string}")]
+fn sweep_names(w: &mut World, a: String, b: String) {
+    w.ran().succeeds().contains(&a).contains(&b);
+}
+
+#[then("every byte of every session is still on disk")]
+fn bytes_on_disk(w: &mut World) {
+    let sessions = w.project.home().join(".ctxloom/sessions");
+    for entry in std::fs::read_dir(&sessions).expect("sessions") {
+        let path = entry.expect("an entry").path();
+        if path.is_dir() {
+            assert!(
+                path.join("transcripts/transcript.jsonl").exists(),
+                "{} lost its transcript",
+                path.display()
+            );
+        }
+    }
+}
+
+#[then(expr = "the sweep skipped {string} and {string} without touching either")]
+fn sweep_skipped(w: &mut World, running: String, unproven: String) {
+    w.ran()
+        .succeeds()
+        .contains("it is running")
+        .contains("its liveness cannot be proven")
+        .contains(&format!("ctxloom session purge {unproven} --even-if-live"));
+    for harp in [running, unproven] {
+        assert!(
+            w.session_dir(&harp)
+                .join("transcripts/transcript.jsonl")
+                .exists(),
+            "{harp} was touched"
+        );
+    }
+}
+
+#[then(expr = "the machine-written bulk of {string} is gone")]
+fn bulk_gone(w: &mut World, harp: String) {
+    assert!(
+        !w.session_dir(&harp)
+            .join("transcripts/transcript.jsonl")
+            .exists(),
+        "{harp}'s transcript is still there: {}",
+        w.ran().said()
+    );
+}
+
+#[then(expr = "the sweep kept the transcript of {string} and named {string}")]
+fn sweep_kept(w: &mut World, harp: String, named: String) {
+    assert!(
+        w.session_dir(&harp)
+            .join("transcripts/transcript.jsonl")
+            .exists(),
+        "{harp}'s transcript was destroyed"
+    );
+    w.ran().contains(&harp).contains(&named);
+}
+
+// ------------------------------------------------------------ the features
+
+fn feature(path: &str) {
+    let file: &Path = &Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("features")
+        .join(path);
+    let writer = futures::executor::block_on(
+        World::cucumber()
+            // The test harness's own arguments (`--exact`) are not ours.
+            .with_cli(cucumber::cli::Opts::<_, _, _, cucumber::cli::Empty>::default())
+            .max_concurrent_scenarios(4)
+            .fail_on_skipped()
+            .run(file),
+    );
+    assert!(
+        !cucumber::writer::Stats::execution_has_failed(&writer),
+        "{path} failed"
+    );
+}
+
+#[test]
+fn test_clean_feature() {
+    feature("cli/clean.feature");
+}
+
+#[test]
+fn test_completion_feature() {
+    feature("cli/completion.feature");
+}
+
+#[test]
+fn test_doctor_feature() {
+    feature("cli/doctor.feature");
+}
+
+#[test]
+fn test_init_feature() {
+    feature("cli/init.feature");
+}
+
+#[test]
+fn test_session_reclaim_feature() {
+    feature("cli/session_reclaim.feature");
+}
+
+#[test]
+fn test_sweep_feature() {
+    feature("journeys/j001300_sweep.feature");
+}

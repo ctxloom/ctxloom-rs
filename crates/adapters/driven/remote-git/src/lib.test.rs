@@ -681,3 +681,80 @@ fn test_a_clone_is_made_only_in_a_place_of_the_cache() {
         assert!(fs.exists(Path::new(kept)).unwrap_or(false), "{kept}");
     }
 }
+
+// A token for a private repository reaches git only through its environment:
+// never argv, never the URL, never an error's text, never the clone's config.
+mod credentials {
+    use super::*;
+
+    const TOKEN: &str = "ghp_sekrit0123456789"; // gitleaks:allow
+
+    fn with_token(c: Cache) -> Cache {
+        Cache {
+            remotes: c.remotes.with_credentials(
+                Arc::new(|name| (name == "GH_TOKEN").then(|| TOKEN.to_string())),
+                Arc::new(|_| vec!["GH_TOKEN".to_string()]),
+            ),
+            dir: c.dir,
+        }
+    }
+
+    #[test]
+    fn test_the_header_reaches_git_as_configuration_from_the_environment() {
+        let c = with_token(cache());
+        let credential = c.remotes.credential("https://example.test/o/r");
+        let out = command::run_with(
+            None,
+            &["config", "--get", "http.https://example.test/.extraheader"],
+            None,
+            &credential,
+        )
+        .expect("git sees the header");
+        let seen = String::from_utf8_lossy(&out);
+        assert!(seen.starts_with("AUTHORIZATION: basic "), "{seen}");
+    }
+
+    #[test]
+    fn test_a_failed_clone_names_neither_the_token_nor_its_header() {
+        let c = with_token(cache());
+        let err = c
+            .remotes
+            .ensure("https://127.0.0.1:1/o/r")
+            .expect_err("nothing listens there");
+        assert!(
+            !err.contains(TOKEN)
+                && !err.contains("basic ")
+                && !err.to_lowercase().contains("authorization"),
+            "{err}"
+        );
+        assert!(err.starts_with("git clone"), "{err}");
+    }
+
+    #[test]
+    fn test_an_unauthenticated_public_clone_is_unchanged() {
+        let origin = Origin::new();
+        demo(&origin);
+        let plain = cache();
+        plain.remotes.ensure(&origin.url()).expect("clones");
+        let keyed = with_token(cache());
+        keyed.remotes.ensure(&origin.url()).expect("clones");
+        keyed.remotes.refresh(&origin.url()).expect("fetches");
+        let dir = keyed.remotes.clone_dir(&origin.url()).expect("a directory");
+        let config = std::fs::read_to_string(dir.join(".git/config")).expect("config");
+        assert!(
+            !config.contains(TOKEN) && !config.to_lowercase().contains("extraheader"),
+            "{config}"
+        );
+        assert_eq!(
+            keyed
+                .remotes
+                .resolve_ref(&origin.url(), "main")
+                .expect("resolves"),
+            plain
+                .remotes
+                .resolve_ref(&origin.url(), "main")
+                .expect("resolves"),
+        );
+        assert!(keyed.remotes.credential(&origin.url()).pairs().is_empty());
+    }
+}

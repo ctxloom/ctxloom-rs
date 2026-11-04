@@ -589,6 +589,7 @@ fn an_empty_name_reaches_the_use_case() {
 
 fn plan(applied: bool) -> Removal {
     Removal {
+        scope: Default::default(),
         harp: "amber-swift-owl".to_string(),
         applied,
         index_entry_removed: applied,

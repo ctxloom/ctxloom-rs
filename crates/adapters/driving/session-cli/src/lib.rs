@@ -71,7 +71,17 @@ pub enum SessionVerb {
     /// Remove a session entirely: its index entry and its transcript
     #[command(after_help = "Examples:\n  ctxloom session remove amber-swift-owl --yes")]
     Remove(RemoveArgs),
-    /// The recorded conversation behind a session: list it, show it
+    /// Empty a session of its recorded conversation; it stays listed
+    #[command(
+        after_help = "Examples:\n  ctxloom session purge amber-swift-owl\n  ctxloom session purge amber-swift-owl --yes"
+    )]
+    Purge(RemoveArgs),
+    /// Tidy every ended session of this project by rule: purge what it can prove is safe, report the rest
+    #[command(
+        after_help = "Examples:\n  ctxloom session sweep\n  ctxloom session sweep --purge-older-than 90d --yes"
+    )]
+    Sweep(SweepArgs),
+    /// The recorded conversation behind a session: list it, show it, purge it
     Transcript(Transcript),
     /// Import Go ctxloom's sessions (~/.ctxloom/sessions) into each project's store, once
     #[command(after_help = "Examples:\n  ctxloom session import")]
@@ -154,6 +164,22 @@ pub enum TranscriptVerb {
     List(TranscriptListArgs),
     /// Print a session's whole transcript, then exit
     Show(HarpArgs),
+    /// Destroy a session's recorded transcripts; the session stays listed
+    #[command(after_help = "Examples:\n  ctxloom session transcript purge amber-swift-owl --yes")]
+    Purge(RemoveArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct SweepArgs {
+    /// Purge ended sessions last active before this age (30d, 12w, 720h) or date (2026-01-01); without it nothing is purged
+    #[arg(long, value_name = "AGE")]
+    pub purge_older_than: Option<String>,
+    /// Sweep every session on this machine, not only this project's
+    #[arg(long)]
+    pub all_projects: bool,
+    /// Act on exactly the plan this reports
+    #[arg(short = 'y', long)]
+    pub yes: bool,
 }
 
 #[derive(Args, Debug, Default)]
