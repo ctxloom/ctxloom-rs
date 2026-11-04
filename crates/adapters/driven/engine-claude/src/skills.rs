@@ -51,12 +51,7 @@ fn violation(skill: &Skill) -> Option<String> {
 
 /// Whether a package file's path stays inside its package.
 fn inside(path: &str) -> bool {
-    !path.is_empty()
-        && !path.starts_with('/')
-        && !path.contains('\\')
-        && !path
-            .split('/')
-            .any(|part| part.is_empty() || part == "." || part == "..")
+    ctxloom_ports::is_plain_relative(path) && !path.contains('\\')
 }
 
 pub(crate) fn plan(skills: &[Skill], planned: &mut Planned) {

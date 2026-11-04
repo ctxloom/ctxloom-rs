@@ -765,6 +765,7 @@ dependencies = [
  "library",
  "semver",
  "serde",
+ "url",
 ]
 
 [[package]]
@@ -920,6 +921,7 @@ checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
 name = "engine-claude"
 version = "0.1.0"
 dependencies = [
+ "ctxloom-ports",
  "mutants",
  "surface-ports",
 ]
@@ -928,6 +930,7 @@ dependencies = [
 name = "engine-mock"
 version = "0.1.0"
 dependencies = [
+ "ctxloom-ports",
  "mutants",
  "surface-ports",
 ]
@@ -1094,7 +1097,9 @@ checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 name = "forge-github"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "deps-ports",
+ "percent-encoding",
  "reqwest",
  "serde_json",
 ]
@@ -1868,6 +1873,8 @@ dependencies = [
  "angzarr-yaml",
  "crc32fast",
  "flate2",
+ "sha2",
+ "strsim",
  "zip",
 ]
 

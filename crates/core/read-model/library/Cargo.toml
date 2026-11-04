@@ -19,6 +19,10 @@ crc32fast = "1"
 # (miniz_oxide) is the one chosen here, and the tests deflate by it as well.
 flate2 = "1"
 zip = { version = "9.0.5", default-features = false, features = ["deflate-flate2"] }
+# The digests (sha256); already in the lock, by sqlx.
+sha2 = "0.10"
+# The nearest known key to a misspelt one (already in the lock).
+strsim = "0.11"
 
 [dev-dependencies]
 # The tests hold an error's English to Go's words (english_for!).

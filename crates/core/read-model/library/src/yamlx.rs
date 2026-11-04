@@ -108,23 +108,6 @@ pub(crate) fn kind(value: &Value) -> &'static str {
     }
 }
 
-/// Levenshtein distance over characters.
-fn edit_distance(a: &str, b: &str) -> usize {
-    let a: Vec<char> = a.chars().collect();
-    let b: Vec<char> = b.chars().collect();
-    let mut prev: Vec<usize> = (0..=b.len()).collect();
-    let mut curr = vec![0; b.len() + 1];
-    for i in 1..=a.len() {
-        curr[0] = i;
-        for j in 1..=b.len() {
-            let cost = usize::from(a[i - 1] != b[j - 1]);
-            curr[j] = (curr[j - 1] + 1).min(prev[j] + 1).min(prev[j - 1] + cost);
-        }
-        std::mem::swap(&mut prev, &mut curr);
-    }
-    prev[b.len()]
-}
-
 /// The known key `key` was most likely meant to be (Go's `keymatch.Nearest`):
 /// the first of the nearest, within an edit budget of a third of the key's
 /// length (at least one, at most two); empty when none is near enough.
@@ -132,7 +115,7 @@ pub(crate) fn nearest(key: &str, known: &[&str]) -> String {
     let budget = (key.chars().count() / 3).clamp(1, 2);
     let mut best = ("", usize::MAX);
     for candidate in known {
-        let distance = edit_distance(key, candidate);
+        let distance = strsim::levenshtein(key, candidate);
         if distance < best.1 {
             best = (candidate, distance);
         }

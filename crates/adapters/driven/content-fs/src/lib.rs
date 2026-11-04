@@ -286,12 +286,7 @@ fn ignore_missing(result: io::Result<()>, path: &Path) -> Result<(), Failure> {
 impl ContentFs {
     /// The bundle's directory, for a name that does not climb out of the root.
     fn bundle_path(&self, name: &str) -> Result<PathBuf, Failure> {
-        let climbs = name.is_empty()
-            || Path::new(name).is_absolute()
-            || name
-                .split('/')
-                .any(|part| part.is_empty() || part == ".." || part == ".");
-        if climbs {
+        if !ctxloom_ports::is_plain_relative(name) {
             return Err(Box::new(ContentError::BadName {
                 name: name.to_string(),
             }));
@@ -308,16 +303,10 @@ impl ContentFs {
                 path: rel.to_string(),
             })
         };
-        if rel.is_empty() || rel.starts_with('/') || rel.contains('\0') {
+        if !ctxloom_ports::is_plain_relative(rel) || rel.contains('\0') {
             return Err(bad());
         }
         let parts: Vec<&str> = rel.split('/').collect();
-        if parts
-            .iter()
-            .any(|p| p.is_empty() || *p == "." || *p == "..")
-        {
-            return Err(bad());
-        }
         let last = if whole { parts.len() } else { parts.len() - 1 };
         let mut here = top.to_path_buf();
         for part in &parts[..last] {

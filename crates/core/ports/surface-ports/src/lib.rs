@@ -97,6 +97,37 @@ impl Hook {
     pub fn is_callback(&self) -> bool {
         self.command == "ctxloom" && self.args.first().is_some_and(|a| a == "hook")
     }
+
+    /// The members an engine's native hook file shares: `type` (defaulting
+    /// to `command`), then `command`, `args`, `prompt` and `timeout` where
+    /// set. A ctxloom callback's args end `--engine <engine>`. The engine adds
+    /// what only it spells (`async`, `tool`, `matcher`).
+    pub fn json_members(&self, engine: &str) -> Vec<(&'static str, Json)> {
+        let mut args = self.args.clone();
+        if self.is_callback() && !args.iter().any(|a| a == "--engine") {
+            args.push("--engine".to_string());
+            args.push(engine.to_string());
+        }
+        let kind = if self.kind.is_empty() {
+            "command"
+        } else {
+            &self.kind
+        };
+        let mut members = vec![("type", Json::text(kind))];
+        if !self.command.is_empty() {
+            members.push(("command", Json::text(self.command.as_str())));
+        }
+        if !args.is_empty() {
+            members.push(("args", Json::strings(&args)));
+        }
+        if !self.prompt.is_empty() {
+            members.push(("prompt", Json::text(self.prompt.as_str())));
+        }
+        if self.timeout > 0 {
+            members.push(("timeout", Json::Number(self.timeout.to_string())));
+        }
+        members
+    }
 }
 
 /// A command (a slash command's template).
