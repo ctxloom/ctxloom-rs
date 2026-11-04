@@ -267,9 +267,10 @@ fn fit_title(title: &str) -> (String, String) {
         return (title.to_string(), String::new());
     }
     let window: String = title.chars().take(TITLE_LIMIT).collect();
+    // The title is trimmed, so a space is never its first character.
     let cut = match window.rfind(' ') {
-        Some(at) if at > 0 => &window[..at],
-        _ => &window,
+        Some(at) => &window[..at],
+        None => &window,
     };
     (format!("{cut}\u{2026}"), title.to_string())
 }
