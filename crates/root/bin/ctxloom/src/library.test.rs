@@ -99,6 +99,10 @@ impl Project {
         &self.project
     }
 
+    pub(crate) fn home(&self) -> &Path {
+        &self.home
+    }
+
     /// Put `content` at `rel` in the project.
     pub(crate) fn write(&self, rel: &str, content: &str) {
         put(&self.project.join(rel), content);

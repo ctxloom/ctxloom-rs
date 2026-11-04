@@ -231,6 +231,24 @@ mod library_write_skill;
 #[path = "session.test.rs"]
 mod session;
 
+#[path = "manage.test.rs"]
+mod manage;
+
+#[path = "materialize.test.rs"]
+mod materialize;
+
+#[path = "post_tool_hooks.test.rs"]
+mod post_tool_hooks;
+
+#[path = "session_start.test.rs"]
+mod session_start;
+
+#[path = "surfaces.test.rs"]
+mod surfaces;
+
+#[path = "util.test.rs"]
+mod util;
+
 #[path = "usage.test.rs"]
 mod usage;
 
