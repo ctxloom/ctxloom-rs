@@ -179,3 +179,16 @@ fn test_a_settings_document_with_a_ctxloom_callback_is_wired() {
         assert!(!has_callback(&Json::parse(not).unwrap()), "{not}");
     }
 }
+
+#[test]
+fn test_a_timeout_is_written_only_when_it_is_positive() {
+    let with = |timeout| {
+        value(&Hook {
+            timeout,
+            ..hook("x")
+        })
+    };
+    assert_eq!(with(1).get("timeout"), Some(&Json::Number("1".into())));
+    assert_eq!(with(0).get("timeout"), None);
+    assert_eq!(with(-1).get("timeout"), None);
+}

@@ -121,3 +121,16 @@ fn test_debug_and_redaction_never_show_the_token() {
 fn test_redacting_with_no_credential_changes_nothing() {
     assert_eq!(Credential::none().redact("fatal: x"), "fatal: x");
 }
+
+#[test]
+fn test_a_credential_debug_counts_its_variables_and_shows_no_secret() {
+    let shown = format!(
+        "{:?}",
+        auth(&["GH_TOKEN"], &[("GH_TOKEN", TOKEN)]).credential("https://github.com/o/r")
+    );
+    assert_eq!(shown, "Credential(3 variables, redacted)");
+    assert_eq!(
+        format!("{:?}", Credential::none()),
+        "Credential(0 variables, redacted)"
+    );
+}

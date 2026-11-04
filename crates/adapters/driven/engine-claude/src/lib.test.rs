@@ -216,3 +216,8 @@ fn test_the_engine_carries_every_kind_under_its_name() {
     assert_eq!(claude.name(), "claude-code");
     assert!(Kind::ALL.iter().all(|k| claude.carries(*k)));
 }
+
+#[test]
+fn test_claude_takes_its_context_at_launch() {
+    assert!(Claude::new().context_rides_launch());
+}

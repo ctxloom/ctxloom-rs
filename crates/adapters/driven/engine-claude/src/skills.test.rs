@@ -84,3 +84,30 @@ fn test_a_name_of_digits_and_hyphens_is_a_name() {
     plan(&[skill("a1-b2", "d")], &mut planned);
     assert!(planned.skipped.is_empty());
 }
+
+#[test]
+fn test_a_name_or_description_at_its_limit_is_accepted_and_one_over_is_refused() {
+    let ok = "a".repeat(64);
+    let desc = "d".repeat(1024);
+    assert_eq!(violation(&skill(&ok, &desc)), None);
+    let long_name = "a".repeat(65);
+    assert!(violation(&skill(&long_name, &desc))
+        .unwrap()
+        .contains("65 chars"));
+    let long_desc = "d".repeat(1025);
+    assert!(violation(&skill(&ok, &long_desc))
+        .unwrap()
+        .contains("1025 chars"));
+}
+
+#[test]
+fn test_a_package_file_is_inside_only_when_its_path_stays_in_the_package() {
+    for good in ["SKILL.md", "a/b.sh", "..a", "a.b"] {
+        assert!(inside(good), "{good}");
+    }
+    for bad in [
+        "", "/a", "a\\b", "a//b", "a/", "./a", "a/./b", "../a", "a/../b", "a/..",
+    ] {
+        assert!(!inside(bad), "{bad}");
+    }
+}
