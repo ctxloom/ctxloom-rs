@@ -223,23 +223,42 @@ fn isolation_failure(error: IsolationError) -> Failure {
     }
 }
 
-/// `session worktrees ...`: the scratch checkouts, listed or purged.
+/// `session worktrees ...`: the scratch checkouts, listed or purged. A purge
+/// reports first, and an action that changed nothing refuses (exit 2) after
+/// the report is out, so an unattended run that found nothing safe cannot be
+/// mistaken for one that cleaned up.
 fn worktree_verb<S: WorktreeUse>(
     service: &mut S,
     worktrees: &Worktrees,
     format: Format,
     out: &mut dyn Write,
 ) -> Result<Done, Failure> {
-    let _ = (
-        service,
-        worktrees,
-        format,
-        out,
-        isolation_failure,
-        worktrees_text,
-        WorktreesVerb::List,
-    );
-    todo!("S11 green")
+    let (harp, apply) = match &worktrees.verb {
+        None => (None, false),
+        Some(WorktreesVerb::List(args)) => (args.harp.as_deref(), false),
+        Some(WorktreesVerb::Purge(args)) => (Some(args.harp.as_str()), args.yes),
+    };
+    let report = service.worktrees(harp, apply).map_err(isolation_failure)?;
+    wrote(match format {
+        Format::Json => write_json(out, &report),
+        Format::Text => worktrees_text(&report, out),
+    })?;
+    let mut done = Done::default();
+    let Some(WorktreesVerb::Purge(args)) = &worktrees.verb else {
+        return Ok(done);
+    };
+    if !args.yes {
+        done.notices.push(Box::new(RemovedNothing {
+            command: format!("ctxloom session worktrees purge {} --yes", args.harp),
+        }));
+    } else if report.reaped == 0 {
+        return Err(isolation_failure(IsolationError::NothingRemoved {
+            harp: args.harp.clone(),
+            spared: report.spared,
+            skipped: report.skipped,
+        }));
+    }
+    Ok(done)
 }
 
 async fn list<S: SessionService>(

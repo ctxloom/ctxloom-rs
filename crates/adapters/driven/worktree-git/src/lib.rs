@@ -15,7 +15,6 @@
 //! forced, and a doubtful state is never read as clean.
 
 mod error;
-#[allow(dead_code)] // used by the green commit
 mod git;
 mod workspace;
 

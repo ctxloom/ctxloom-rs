@@ -403,13 +403,59 @@ pub(crate) fn transcripts_text(rows: &[TranscriptRow], out: &mut dyn Write) -> i
     )
 }
 
-/// Go's `renderSessionWorktrees`.
+/// Go's `renderSessionWorktrees`: a table when there is anything to show, one
+/// summary line naming what happened (or would happen) after it.
 pub(crate) fn worktrees_text(
     report: &isolation_application::Report,
     out: &mut dyn Write,
 ) -> io::Result<()> {
-    let _ = (report, out);
-    todo!("S11 green")
+    if report.worktrees.is_empty() {
+        return writeln!(out, "no ctxloom-owned scratch worktrees");
+    }
+    let cells: Vec<Vec<String>> = report
+        .worktrees
+        .iter()
+        .map(|r| {
+            vec![
+                r.harp.clone(),
+                r.worktree.clone(),
+                r.path.clone(),
+                r.owner_state.to_string(),
+                format!("{:?}", r.verdict).to_lowercase(),
+                r.reason.clone(),
+            ]
+        })
+        .collect();
+    write!(
+        out,
+        "{}",
+        table(
+            &[
+                "HARP",
+                "WORKTREE",
+                "PATH",
+                "OWNER STATE",
+                "VERDICT",
+                "REASON"
+            ],
+            &cells
+        )
+    )?;
+    if report.applied {
+        writeln!(
+            out,
+            "removed {}, spared {}, skipped {}",
+            report.reaped, report.spared, report.skipped
+        )
+    } else {
+        writeln!(
+            out,
+            "{} worktree(s) reviewed; {} spared, {} skipped (read-only - nothing was removed)",
+            report.worktrees.len(),
+            report.spared,
+            report.skipped
+        )
+    }
 }
 
 /// A transcript read as a conversation: `user: ...`, `assistant: ...`, for

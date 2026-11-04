@@ -4,6 +4,7 @@ use std::fmt;
 
 use angzarr_diagnostic::{code, Arg, Diagnostic};
 use ctxloom_ports::Failure;
+use isolation_application::IsolationError;
 use sessions_application::AppError;
 
 #[derive(Debug)]
@@ -14,6 +15,8 @@ pub enum ReclaimError {
     Cache(Failure),
     /// A sessions use case failed.
     Sessions(AppError),
+    /// A worktree use case failed.
+    Isolation(IsolationError),
 }
 
 impl ReclaimError {
@@ -23,6 +26,7 @@ impl ReclaimError {
         match self {
             ReclaimError::BadAge { .. } => 2,
             ReclaimError::Sessions(error) => error.exit_code(),
+            ReclaimError::Isolation(error) => error.exit_code(),
             ReclaimError::Cache(_) => 1,
         }
     }
@@ -46,6 +50,7 @@ impl Diagnostic for ReclaimError {
             ReclaimError::BadAge { .. } => code!("bad-age"),
             ReclaimError::Cache(cause) => cause.code(),
             ReclaimError::Sessions(cause) => cause.code(),
+            ReclaimError::Isolation(cause) => cause.code(),
         }
     }
 
@@ -59,6 +64,7 @@ impl Diagnostic for ReclaimError {
             }
             ReclaimError::Cache(cause) => cause.args(),
             ReclaimError::Sessions(cause) => cause.args(),
+            ReclaimError::Isolation(cause) => cause.args(),
         }
     }
 }

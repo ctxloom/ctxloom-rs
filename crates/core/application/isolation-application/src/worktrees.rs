@@ -15,7 +15,10 @@
 //! A long-lived worktree ctxloom did not create lives outside the sessions'
 //! work directories and is never listed here.
 
-use isolation_ports::{Removal, Safety, Standing, Workspaces};
+use std::collections::BTreeMap;
+use std::path::Path;
+
+use isolation_ports::{Removal, Safety, Scratch, Standing, Workspaces};
 use serde::Serialize;
 use session_ports::{Liveness, LockState};
 
@@ -35,6 +38,24 @@ impl Owner {
             LockState::Held => Owner::Alive,
             LockState::Free => Owner::Dead,
             LockState::Unproven => Owner::Indeterminate,
+        }
+    }
+}
+
+impl Owner {
+    fn name(self) -> &'static str {
+        match self {
+            Owner::Alive => "alive",
+            Owner::Dead => "dead",
+            Owner::Indeterminate => "indeterminate",
+        }
+    }
+
+    /// Why a lock that does not prove the owner dead refuses.
+    fn refusal(self) -> &'static str {
+        match self {
+            Owner::Alive => "its session is running: its lock is held",
+            _ => "its session's liveness cannot be proven: no readable lock, and a missing lock is never a free one",
         }
     }
 }
@@ -63,8 +84,35 @@ pub struct Decision {
 
 /// One checkout's classification, changing nothing.
 pub fn classify(harp: &str, owner: Owner, standing: &Standing) -> Decision {
-    let _ = (harp, owner, standing);
-    todo!("S11 green")
+    let skipped = |reason: String| Decision {
+        verdict: Verdict::Skipped,
+        reason,
+    };
+    // The lock only ever refuses: only a dead owner permits anything, so an
+    // alive or unprovable one falls out here rather than toward a removal by
+    // omission.
+    if owner != Owner::Dead {
+        return skipped(owner.refusal().to_string());
+    }
+    match standing {
+        Standing::Unresolved(why) => skipped(format!(
+            "its owning repository could not be resolved: {why}"
+        )),
+        Standing::Resolved {
+            safety: Safety::Unsafe(why),
+            ..
+        } => Decision {
+            verdict: Verdict::Spared,
+            reason: format!("session {harp} has ended, but the worktree {why}"),
+        },
+        Standing::Resolved {
+            safety: Safety::Clean,
+            ..
+        } => Decision {
+            verdict: Verdict::Reapable,
+            reason: String::new(),
+        },
+    }
 }
 
 /// One checkout, as the report shows it.
@@ -127,10 +175,92 @@ impl<W: Workspaces, L: Liveness> Worktrees<W, L> {
     }
 }
 
+/// What Go's reaper says when a checkout will not go after being classified
+/// reapable: it changed in between, and teardown re-checks.
+const LEFT_AFTER_LISTING: &str =
+    "went dirty, or otherwise became unsafe, between listing and removal; teardown left it in place";
+
+impl<W: Workspaces, L: Liveness> Worktrees<W, L> {
+    /// One checkout, classified: its row and, when reapable, where its
+    /// repository is. One probe per session, however many it left: liveness
+    /// is the session's.
+    fn classified(
+        &mut self,
+        scratch: &Scratch,
+        owners: &mut BTreeMap<String, Owner>,
+    ) -> (Row, Option<String>) {
+        let owner = *owners
+            .entry(scratch.harp.clone())
+            .or_insert_with(|| Owner::of(self.liveness.lock_state(&scratch.harp)));
+        // A checkout whose owner is not provably dead is never looked at.
+        let standing = if owner == Owner::Dead {
+            self.workspaces.inspect(&scratch.path)
+        } else {
+            Standing::Unresolved(String::new())
+        };
+        let decision = classify(&scratch.harp, owner, &standing);
+        let repo = match (&decision.verdict, standing) {
+            (Verdict::Reapable, Standing::Resolved { repo_dir, .. }) => Some(repo_dir),
+            _ => None,
+        };
+        let name = Path::new(&scratch.path)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let row = Row {
+            harp: scratch.harp.clone(),
+            worktree: name,
+            path: scratch.path.clone(),
+            owner_state: owner.name(),
+            verdict: decision.verdict,
+            reason: decision.reason,
+        };
+        (row, repo)
+    }
+}
+
 impl<W: Workspaces, L: Liveness> WorktreeUse for Worktrees<W, L> {
     fn worktrees(&mut self, harp: Option<&str>, apply: bool) -> Result<Report, IsolationError> {
-        let _ = (&mut self.workspaces, &mut self.liveness, harp, apply);
-        let _ = (Removal::Removed, Safety::Clean);
-        todo!("S11 green")
+        let adapter = IsolationError::Adapter;
+        if let Some(harp) = harp {
+            if !self.workspaces.session_known(harp).map_err(adapter)? {
+                return Err(IsolationError::NoSession {
+                    harp: harp.to_string(),
+                });
+            }
+        }
+        let found = self
+            .workspaces
+            .scratch(harp)
+            .map_err(IsolationError::Adapter)?;
+        let mut owners = BTreeMap::new();
+        let mut classified: Vec<(Row, Option<String>)> = found
+            .iter()
+            .map(|scratch| self.classified(scratch, &mut owners))
+            .collect();
+        if apply {
+            for (row, repo) in &mut classified {
+                let Some(repo) = repo else { continue };
+                match self.workspaces.remove(repo, &row.path) {
+                    Removal::Removed => {
+                        row.verdict = Verdict::Reaped;
+                        row.reason = String::new();
+                    }
+                    Removal::Left(_) => {
+                        row.verdict = Verdict::Spared;
+                        row.reason = LEFT_AFTER_LISTING.to_string();
+                    }
+                }
+            }
+        }
+        let rows: Vec<Row> = classified.into_iter().map(|(row, _)| row).collect();
+        let count = |v: Verdict| rows.iter().filter(|r| r.verdict == v).count() as u64;
+        Ok(Report {
+            reaped: count(Verdict::Reaped),
+            spared: count(Verdict::Spared),
+            skipped: count(Verdict::Skipped),
+            worktrees: rows,
+            applied: apply,
+        })
     }
 }

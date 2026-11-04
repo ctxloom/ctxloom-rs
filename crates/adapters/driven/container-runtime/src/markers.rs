@@ -13,8 +13,33 @@ pub trait Machine {
 /// none did. A HEURISTIC: it feeds diagnostics, and the can-containers-launch
 /// decision is behavior-based, never this alone.
 pub fn markers_from(machine: &dyn Machine) -> Vec<String> {
-    let _ = machine;
-    todo!("S11 green")
+    let mut markers = Vec::new();
+    for file in ["/.dockerenv", "/run/.containerenv"] {
+        if machine.exists(file) {
+            markers.push(file.to_string());
+        }
+    }
+    for var in [
+        "REMOTE_CONTAINERS",
+        "CODESPACES",
+        "DEVCONTAINER",
+        "KUBERNETES_SERVICE_HOST",
+    ] {
+        if !machine.var(var).is_empty() {
+            markers.push(format!("${var}"));
+        }
+    }
+    // cgroup v1 runtime signatures: BEST-EFFORT ONLY. cgroup v2 exposes a
+    // bare "0::/" with no runtime marker, which is why the sentinel files and
+    // the environment lead and this never stands alone as a negative signal.
+    if let Some(cgroup) = machine.read("/proc/1/cgroup") {
+        for marker in ["docker", "containerd", "kubepods", "/lxc/"] {
+            if cgroup.contains(marker) {
+                markers.push(format!("cgroup:{marker}"));
+            }
+        }
+    }
+    markers
 }
 
 /// The real machine: the filesystem and the process environment.
