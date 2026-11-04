@@ -9,6 +9,7 @@
 //!   opened over them.
 
 mod error;
+mod library;
 
 use std::io;
 use std::path::PathBuf;
@@ -23,6 +24,7 @@ use uuid::Uuid;
 #[cfg(any(test, feature = "test-support"))]
 pub use error::diagnostic_samples;
 pub use error::{LibError, EN_US};
+pub use library::LibraryCommands;
 
 /// A newly minted session's harp: two adjectives and a noun.
 pub fn session_name() -> String {
@@ -66,6 +68,14 @@ impl Wiring {
             fs: Arc::new(fs),
             home,
         })
+    }
+
+    pub(crate) fn fs(&self) -> Arc<dyn Fs> {
+        Arc::clone(&self.fs)
+    }
+
+    pub(crate) fn home(&self) -> &std::path::Path {
+        &self.home
     }
 
     /// `project`'s store opened (made, if need be) under the home; the path

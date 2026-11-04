@@ -1,0 +1,19 @@
+Installed bundles (5):
+
+  code-quality (v1.0.0)
+    golden corpus code-quality
+    Contains: 2 fragments, 1 command, 1 MCP server
+
+  ctxloom-project (v0.7.0-pre1)
+    How this project itself is configured: the config precedence chain, the two override channels, and why a command's own flags are not one of them.
+    Contains: 8 fragments
+
+  premised (v1.0.0)
+    premised corpus
+    Contains: 2 fragments, 1 command
+
+  project (v1.0.0)
+
+  tooling (v1.0.0)
+    golden corpus tooling
+    Contains: 1 MCP server

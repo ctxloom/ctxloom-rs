@@ -1,0 +1,47 @@
+{
+  "agents": {
+    "home": {
+      "llm": "claude-code",
+      "profiles": [
+        "h"
+      ]
+    },
+    "proj": {
+      "llm": "claude-code",
+      "profiles": [
+        "x"
+      ]
+    }
+  },
+  "companions": [
+    "acme",
+    "beta",
+    "gamma"
+  ],
+  "editor": {
+    "args": [
+      "-h"
+    ],
+    "command": "project-editor"
+  },
+  "llm": {
+    "configs": {
+      "claude-code": {
+        "model": "opus",
+        "role": "primary",
+        "type": "claude-code"
+      },
+      "claude-fast": {
+        "model": "haiku",
+        "role": "fast",
+        "type": "claude-code"
+      }
+    },
+    "defaults": {
+      "fast": "claude-fast",
+      "primary": "claude-code"
+    }
+  },
+  "schema_version": 8,
+  "workspace": "worktree"
+}

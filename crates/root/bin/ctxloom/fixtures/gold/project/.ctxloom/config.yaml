@@ -1,0 +1,5 @@
+schema_version: 8
+agents:
+  default:
+    profiles: [golden-auto]
+default_agent: default

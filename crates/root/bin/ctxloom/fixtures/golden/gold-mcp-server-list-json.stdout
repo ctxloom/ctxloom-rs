@@ -1,0 +1,12 @@
+{
+  "servers": [
+    {
+      "name": "postgres",
+      "command": "mcp-postgres",
+      "args": [
+        "--readonly"
+      ],
+      "source": "ctxloom+local:code-quality"
+    }
+  ]
+}

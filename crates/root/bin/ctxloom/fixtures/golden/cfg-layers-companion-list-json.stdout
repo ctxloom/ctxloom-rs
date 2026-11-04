@@ -1,0 +1,17 @@
+[
+  {
+    "name": "acme",
+    "bin": "ctxloom-companion-acme",
+    "resolves": false
+  },
+  {
+    "name": "beta",
+    "bin": "ctxloom-companion-beta",
+    "resolves": false
+  },
+  {
+    "name": "gamma",
+    "bin": "ctxloom-companion-gamma",
+    "resolves": false
+  }
+]

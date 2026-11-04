@@ -1,0 +1,4 @@
+parents: [excl-parent]
+bundles: [c]
+exclude_fragments: [c2]
+deny_tools: [WebFetch]

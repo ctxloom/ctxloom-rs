@@ -1,0 +1,20 @@
+[
+  {
+    "name": "review",
+    "tags": [
+      "review"
+    ],
+    "bundle": "code-quality",
+    "ref": "code-quality#commands/review",
+    "remote": "",
+    "bundle_label": "code-quality"
+  },
+  {
+    "name": "release",
+    "tags": [],
+    "bundle": "premised",
+    "ref": "premised#commands/release",
+    "remote": "",
+    "bundle_label": "premised"
+  }
+]

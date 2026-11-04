@@ -1,0 +1,15 @@
+{
+  "query": "dev",
+  "local": [
+    {
+      "type": "profile",
+      "name": "dev",
+      "tags": [
+        "team"
+      ],
+      "match": "name"
+    }
+  ],
+  "remote": [],
+  "count": 1
+}

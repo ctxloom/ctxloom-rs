@@ -1,0 +1,36 @@
+Bundle: demo
+Version: 1.2.0
+Author: someone
+Description: demo bundle
+Tags: sample
+Path: {PROJECT}/.ctxloom/content/bundles/v2/demo/bundle.yaml
+
+MCP Servers (2):
+  - remote
+      Command: 
+  - tree-sitter
+      Command: tree-sitter
+      Args: --stdio
+      Env:
+        LOG=debug
+      Notes:
+        parse trees
+      Installation:
+        npm i tree-sitter
+
+Fragments (4):
+  - dist [distilled] (distilled)
+      long form of distilled
+  - example [example, house]
+      # Example Fragment
+  - golang [go]
+      GO-RULES-BODY
+  - testing
+      # testing
+
+Commands (1):
+  - review [review]
+      Review code
+
+Notes:
+  human notes

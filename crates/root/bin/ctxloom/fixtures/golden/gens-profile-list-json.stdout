@@ -1,0 +1,17 @@
+[
+  {
+    "name": "legacy",
+    "display_name": "legacy",
+    "description": "spelled the old way",
+    "parents": [
+      "ctxloom+git://github.com/acme/repo//bundles/base"
+    ],
+    "bundles": [
+      "g0",
+      "ctxloom+git://github.com/acme/repo//bundles/tools"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/legacy.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  }
+]

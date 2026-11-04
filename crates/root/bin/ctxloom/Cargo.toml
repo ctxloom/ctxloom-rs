@@ -10,17 +10,30 @@ publish.workspace = true
 [dependencies]
 angzarr-diagnostic.workspace = true
 angzarr-presentation.workspace = true
+angzarr-yaml.workspace = true
+config-files.workspace = true
+content-fs.workspace = true
 ctxloom-cli.workspace = true
 ctxloom-lib.workspace = true
 ctxloom-store-sqlite.workspace = true
 file-lock.workspace = true
+library.workspace = true
+library-application.workspace = true
 
 [features]
 # The test-only commands (`ctxloom test ...`): the exit ladder, the --format
 # matrix, the error envelope, every diagnostic, the id mints and the store
 # open, reached through the binary because S0 has no real command that does
 # them. Off in a release build; the acceptance tests build the binary with it.
-test-support = ["ctxloom-cli/test-support", "ctxloom-lib/test-support", "ctxloom-store-sqlite/test-support"]
+test-support = [
+    "ctxloom-cli/test-support",
+    "ctxloom-lib/test-support",
+    "ctxloom-store-sqlite/test-support",
+    "library/test-support",
+    "library-application/test-support",
+    "content-fs/test-support",
+    "config-files/test-support",
+]
 
 [dev-dependencies]
 # Already pinned in the workspace: the word lists the ids are checked against.

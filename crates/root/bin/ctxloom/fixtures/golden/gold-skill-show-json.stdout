@@ -1,0 +1,23 @@
+{
+  "name": "code-reviewer",
+  "bundle": "code-quality",
+  "description": "Review a change against the project's review checklist.",
+  "body": "Run scripts/run.sh, then apply references/checklist.md.\n",
+  "files": [
+    {
+      "path": "SKILL.md",
+      "sha256": "sha256:3582f100e65d3b5cf0e67d3f7c8b3fd47132d0e11a480ef417e0d14878abe3f0",
+      "mode": "0644"
+    },
+    {
+      "path": "references/checklist.md",
+      "sha256": "sha256:488f9de396885e7c595d5d2379ee46b013537bdc2650cccd9d9259f6216456dc",
+      "mode": "0644"
+    },
+    {
+      "path": "scripts/run.sh",
+      "sha256": "sha256:02c24da2e817c3e862ced495a3ccc90f08ed3294eeb57865f904bbb81880fdbb",
+      "mode": "0755"
+    }
+  ]
+}

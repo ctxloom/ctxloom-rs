@@ -1,0 +1,73 @@
+[
+  {
+    "name": "g0",
+    "ref": "ctxloom+local:g0",
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/g0/bundle.yaml",
+    "version": "1.0.0",
+    "description": "generation 0",
+    "fragment_count": 1,
+    "command_count": 1,
+    "mcp_count": 1,
+    "profile_count": 0,
+    "held": false
+  },
+  {
+    "name": "g1",
+    "ref": "ctxloom+local:g1",
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/g1/bundle.yaml",
+    "version": "1.0.1",
+    "description": "generation 1",
+    "fragment_count": 1,
+    "command_count": 1,
+    "mcp_count": 1,
+    "profile_count": 0,
+    "held": false
+  },
+  {
+    "name": "g2",
+    "ref": "ctxloom+local:g2",
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/g2/bundle.yaml",
+    "version": "1.0.2",
+    "description": "generation 2",
+    "fragment_count": 1,
+    "command_count": 1,
+    "mcp_count": 1,
+    "profile_count": 0,
+    "held": false
+  },
+  {
+    "name": "g3",
+    "ref": "ctxloom+local:g3",
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/g3/bundle.yaml",
+    "version": "1.0.3",
+    "description": "generation 3",
+    "fragment_count": 1,
+    "command_count": 1,
+    "mcp_count": 1,
+    "profile_count": 0,
+    "held": false
+  },
+  {
+    "name": "g4",
+    "ref": "ctxloom+local:g4",
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/g4/bundle.yaml",
+    "version": "1.0.4",
+    "description": "generation 4",
+    "fragment_count": 1,
+    "command_count": 1,
+    "mcp_count": 1,
+    "profile_count": 0,
+    "held": false
+  },
+  {
+    "name": "project",
+    "ref": "ctxloom+local:project",
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/bundle.yaml",
+    "version": "1.0.0",
+    "fragment_count": 0,
+    "command_count": 0,
+    "mcp_count": 0,
+    "profile_count": 1,
+    "held": false
+  }
+]

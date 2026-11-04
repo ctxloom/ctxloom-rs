@@ -1,0 +1,67 @@
+{
+  "resolved": {
+    "workspace": "none",
+    "runtime": "host"
+  },
+  "environment": {
+    "runtime": "host",
+    "reach": "loopback"
+  },
+  "llm": "claude-fast",
+  "backend": "claude-code",
+  "profiles": [
+    "orphan"
+  ],
+  "fragments": [
+    "ctxloom+local:d#fragments/d1",
+    "ctxloom+local:a#fragments/a1",
+    "ctxloom+local:a#fragments/a2",
+    "ctxloom+local:d#fragments/d2"
+  ],
+  "context": "FRAG-d1 bottom hello\n\n---\n\nFRAG-a1 bottom hello\n\n---\n\nFRAG-a2\n\n---\n\nFRAG-d2",
+  "delivery": [
+    {
+      "kind": "context",
+      "approach": "system-prompt",
+      "root": "session-home",
+      "unsafe": false
+    },
+    {
+      "kind": "mcp",
+      "approach": "mcp-config",
+      "root": "session-home",
+      "unsafe": false
+    },
+    {
+      "kind": "settings",
+      "approach": "settings",
+      "root": "session-home",
+      "unsafe": false
+    },
+    {
+      "kind": "hooks",
+      "approach": "settings-hooks",
+      "root": "session-home",
+      "unsafe": false
+    },
+    {
+      "kind": "commands",
+      "approach": "commands-dir",
+      "root": "session-home",
+      "unsafe": false
+    }
+  ],
+  "engine_home": {
+    "mode": "session",
+    "unsafe": false
+  },
+  "tokens": 19,
+  "findings": [
+    {
+      "kind": "ref",
+      "text": "profile \"ctxloom+local:project#profiles/orphan\": parent ghost does not exist; skipping",
+      "remedy": "`ctxloom profile list` names every profile you can use; otherwise create the profile ghost, or correct or remove that parent in profile ctxloom+local:project#profiles/orphan",
+      "fatal": true
+    }
+  ]
+}

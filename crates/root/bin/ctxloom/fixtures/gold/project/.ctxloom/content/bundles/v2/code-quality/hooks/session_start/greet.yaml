@@ -1,0 +1,3 @@
+type: prompt
+prompt: Load the project context.
+pre_tool_fallback: true

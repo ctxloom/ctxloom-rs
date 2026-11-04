@@ -1,0 +1,33 @@
+{
+  "name": "premised",
+  "path": "{PROJECT}/.ctxloom/content/bundles/v2/premised/bundle.yaml",
+  "version": "1.0.0",
+  "description": "premised corpus",
+  "fragments": {
+    "always": {
+      "tags": [
+        "golden"
+      ],
+      "preview": "Project {{project}}: always on.",
+      "distilled": false,
+      "no_distill": false
+    },
+    "sometimes": {
+      "tags": [
+        "golden"
+      ],
+      "preview": "Do not edit a signed bundle in place.",
+      "distilled": false,
+      "no_distill": false,
+      "premise": "the agent is about to edit a signed bundle"
+    }
+  },
+  "commands": {
+    "release": {
+      "description": "Cut a release",
+      "preview": "Prepare the release notes.",
+      "distilled": false,
+      "no_distill": false
+    }
+  }
+}

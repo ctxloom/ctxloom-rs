@@ -1,0 +1,11 @@
+Profile: base
+Path: {PROJECT}/.ctxloom/content/bundles/v2/project/profiles/base.yaml
+Bundle: ctxloom+local:project
+Description: base profile
+Bundles:
+  - rules
+Variables:
+  name: World
+  tone: formal
+Excluded MCP servers:
+  - remote

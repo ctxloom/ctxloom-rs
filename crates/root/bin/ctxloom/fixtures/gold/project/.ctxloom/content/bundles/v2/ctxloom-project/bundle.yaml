@@ -1,0 +1,4 @@
+schema_version: 3
+version: 0.7.0-pre1
+description: 'How this project itself is configured: the config precedence chain, the two override channels, and why a command''s own flags are not one of them.'
+name: ctxloom-project

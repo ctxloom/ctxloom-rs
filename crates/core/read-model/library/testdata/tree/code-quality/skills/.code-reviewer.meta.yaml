@@ -1,0 +1,10 @@
+tags:
+  - review
+notes: Wraps the house review checklist.
+exports:
+  claude-code:
+    enabled: true
+  other-engine:
+    enabled: false
+executable:
+  - scripts/run.sh

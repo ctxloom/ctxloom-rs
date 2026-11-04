@@ -1,0 +1,4 @@
+tags:
+  - code
+notes: parse trees
+installation: npm i tree-sitter

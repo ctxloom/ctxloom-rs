@@ -1,0 +1,29 @@
+{
+  "name": "g2",
+  "path": "{PROJECT}/.ctxloom/content/bundles/v2/g2/bundle.yaml",
+  "version": "1.0.2",
+  "description": "generation 2",
+  "fragments": {
+    "f": {
+      "tags": [
+        "gen2"
+      ],
+      "preview": "BODY-g2",
+      "distilled": false,
+      "no_distill": false
+    }
+  },
+  "commands": {
+    "p": {
+      "description": "prompt 2",
+      "preview": "PROMPT-g2",
+      "distilled": false,
+      "no_distill": false
+    }
+  },
+  "mcp": {
+    "m": {
+      "command": "server-g2"
+    }
+  }
+}

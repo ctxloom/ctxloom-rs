@@ -1,0 +1,5 @@
+schema_version: 8
+agents:
+  main:
+    profiles: [top]
+default_agent: main

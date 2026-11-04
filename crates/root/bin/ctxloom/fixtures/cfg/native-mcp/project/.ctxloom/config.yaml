@@ -1,0 +1,5 @@
+schema_version: 8
+mcp:
+  servers:
+    tools:
+      command: echo

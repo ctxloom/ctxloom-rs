@@ -1,0 +1,15 @@
+description: golden curated
+parents: [golden-auto]
+commands:
+  - code-quality#prompts/review
+  - premised#commands/release
+skills:
+  - code-quality#skills/code-reviewer
+select_tags: [ctxloom]
+deny_tools: [Task]
+hooks:
+  unified:
+    pre_tool:
+      - matcher: Bash
+        type: command
+        command: echo golden

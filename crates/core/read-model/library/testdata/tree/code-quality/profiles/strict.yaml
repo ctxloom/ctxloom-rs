@@ -1,0 +1,13 @@
+description: Strict review profile
+parents:
+  - base
+tags:
+  - review
+fragments:
+  - solid
+  - name: tricky
+    priority: 10
+  - name: solid
+    priority: -5
+bundles:
+  - code-quality#fragments/solid

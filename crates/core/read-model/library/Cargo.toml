@@ -1,0 +1,24 @@
+[package]
+name = "library"
+version = "0.1.0"
+description = "The library read model: references, bundles, profiles, composite selection, the premise index (pure, D4: the library is files-as-truth)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+# The one config reader (D15): the parsed tree, versioned documents.
+angzarr-yaml.workspace = true
+
+[dev-dependencies]
+# The tests hold an error's English to Go's words (english_for!).
+angzarr-presentation = { workspace = true, features = ["test-support"] }
+
+[features]
+# `diagnostic_samples`, for other crates' catalog tests.
+test-support = []
+
+[lints]
+workspace = true

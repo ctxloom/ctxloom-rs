@@ -14,6 +14,7 @@
 
 mod commands;
 mod error;
+mod extension;
 mod run;
 #[cfg(feature = "test-support")]
 mod test_commands;
@@ -23,4 +24,9 @@ pub use commands::PROG;
 #[cfg(any(test, feature = "test-support"))]
 pub use error::diagnostic_samples;
 pub use error::{CliError, Fix, EN_US};
+pub use extension::{Call, Extension, Failure, NoExtension};
 pub use run::{run, Context, Services};
+
+#[cfg(test)]
+#[path = "run.test.rs"]
+mod tests;

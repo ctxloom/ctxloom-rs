@@ -1,0 +1,52 @@
+[
+  {
+    "name": "f",
+    "tags": [
+      "gen0"
+    ],
+    "bundle": "g0",
+    "ref": "g0#fragments/f",
+    "remote": "",
+    "bundle_label": "g0"
+  },
+  {
+    "name": "f",
+    "tags": [
+      "gen1"
+    ],
+    "bundle": "g1",
+    "ref": "g1#fragments/f",
+    "remote": "",
+    "bundle_label": "g1"
+  },
+  {
+    "name": "f",
+    "tags": [
+      "gen2"
+    ],
+    "bundle": "g2",
+    "ref": "g2#fragments/f",
+    "remote": "",
+    "bundle_label": "g2"
+  },
+  {
+    "name": "f",
+    "tags": [
+      "gen3"
+    ],
+    "bundle": "g3",
+    "ref": "g3#fragments/f",
+    "remote": "",
+    "bundle_label": "g3"
+  },
+  {
+    "name": "f",
+    "tags": [
+      "gen4"
+    ],
+    "bundle": "g4",
+    "ref": "g4#fragments/f",
+    "remote": "",
+    "bundle_label": "g4"
+  }
+]

@@ -1,0 +1,3 @@
+url: https://mcp.example.com/v1
+headers:
+  X-Team: core

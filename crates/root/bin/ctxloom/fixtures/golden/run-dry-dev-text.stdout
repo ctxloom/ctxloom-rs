@@ -1,0 +1,50 @@
+=== Environment ===
+runtime: host, reach: loopback
+=== LLM ===
+claude-fast (claude-code)
+
+=== Profiles ===
+  dev
+
+=== Fragments Loaded ===
+  ctxloom+local:style#fragments/a
+  ctxloom+local:rules#fragments/one
+  ctxloom+local:rules#fragments/two
+  ctxloom+local:demo#fragments/dist
+  ctxloom+local:demo#fragments/example
+
+=== Delivery ===
+  context → session-home via system-prompt
+  mcp → session-home via mcp-config
+  settings → session-home via settings
+  hooks → session-home via settings-hooks
+  commands → session-home via commands-dir
+  skills → session-home via skills-dir
+  engine-home → session
+
+=== Assembled Context (~30 tokens) ===
+STYLE-A
+
+---
+
+RULES-ONE
+
+---
+
+RULES-TWO
+
+---
+
+short form
+
+---
+
+# Example Fragment
+
+Add your content here. Hello World.
+
+=== Prompt ===
+hello
+
+=== Context File ===
+Would write to: {PROJECT}/.ctxloom/cache/context/[hash].md

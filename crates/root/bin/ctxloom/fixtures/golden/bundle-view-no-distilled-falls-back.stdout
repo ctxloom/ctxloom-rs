@@ -1,0 +1,6 @@
+{
+  "bundle": "demo",
+  "path": "fragments/testing",
+  "distilled": true,
+  "content": "# testing\n\nFRAGMENT-BODY-testing\n"
+}

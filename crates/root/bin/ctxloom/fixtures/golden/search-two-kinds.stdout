@@ -1,0 +1,23 @@
+{
+  "query": "review",
+  "local": [
+    {
+      "type": "skill",
+      "name": "demo/reviewer",
+      "tags": [
+        "sample",
+        "quality"
+      ],
+      "source": "demo",
+      "match": "name"
+    },
+    {
+      "type": "command",
+      "name": "review",
+      "source": "demo",
+      "match": "name"
+    }
+  ],
+  "remote": [],
+  "count": 2
+}

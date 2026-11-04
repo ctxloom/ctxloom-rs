@@ -1,0 +1,5 @@
+MCP Servers:
+  tree-sitter
+    Command: tree-sitter
+    Args: --stdio
+    Bundle: ctxloom+local:demo

@@ -1,0 +1,16 @@
+{
+  "query": "testing",
+  "local": [
+    {
+      "type": "fragment",
+      "name": "testing",
+      "tags": [
+        "sample"
+      ],
+      "source": "demo",
+      "match": "name"
+    }
+  ],
+  "remote": [],
+  "count": 1
+}

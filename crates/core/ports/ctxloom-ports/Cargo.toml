@@ -1,0 +1,17 @@
+[package]
+name = "ctxloom-ports"
+version = "0.1.0"
+description = "The ports the core needs from outside: the content tree and the config layers (S1)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+
+[features]
+test-support = []
+
+[lints]
+workspace = true

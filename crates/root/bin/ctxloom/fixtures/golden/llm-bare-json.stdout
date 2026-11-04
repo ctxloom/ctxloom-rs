@@ -1,0 +1,82 @@
+[
+  {
+    "label": "big",
+    "default": false,
+    "authored": true,
+    "runtimes": [
+      "host",
+      "container-rootless",
+      "container-rootful"
+    ]
+  },
+  {
+    "label": "claude-code",
+    "default": true,
+    "authored": true,
+    "runtimes": [
+      "host",
+      "container-rootless",
+      "container-rootful"
+    ]
+  },
+  {
+    "label": "claude-fast",
+    "default": false,
+    "authored": true,
+    "runtimes": [
+      "host",
+      "container-rootless",
+      "container-rootful"
+    ]
+  },
+  {
+    "label": "mock",
+    "default": false,
+    "authored": false,
+    "runtimes": [
+      "host",
+      "container-rootless",
+      "container-rootful"
+    ]
+  },
+  {
+    "label": "mock-launch",
+    "default": false,
+    "authored": false,
+    "runtimes": [
+      "host",
+      "container-rootless",
+      "container-rootful"
+    ]
+  },
+  {
+    "label": "mock-lossy",
+    "default": false,
+    "authored": false,
+    "runtimes": [
+      "host",
+      "container-rootless",
+      "container-rootful"
+    ]
+  },
+  {
+    "label": "mock-noskills",
+    "default": false,
+    "authored": false,
+    "runtimes": [
+      "host",
+      "container-rootless",
+      "container-rootful"
+    ]
+  },
+  {
+    "label": "opencode",
+    "default": false,
+    "authored": false,
+    "runtimes": [
+      "host",
+      "container-rootless",
+      "container-rootful"
+    ]
+  }
+]

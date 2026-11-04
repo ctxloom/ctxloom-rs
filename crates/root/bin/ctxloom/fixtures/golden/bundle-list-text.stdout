@@ -1,0 +1,15 @@
+Installed bundles (4):
+
+  demo (v1.2.0)
+    demo bundle
+    Contains: 4 fragments, 1 command, 2 MCP servers
+    Tags: sample
+
+  project (v1.0.0)
+
+  rules (v0.1.0)
+    team rules
+    Contains: 2 fragments
+
+  style (v2.0.0)
+    Contains: 1 fragment

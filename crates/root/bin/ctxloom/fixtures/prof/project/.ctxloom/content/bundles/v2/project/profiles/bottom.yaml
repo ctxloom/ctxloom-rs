@@ -1,0 +1,6 @@
+description: bottom of the diamond
+bundles: [d]
+variables:
+  who: bottom
+  greeting: hello
+llm: claude-fast

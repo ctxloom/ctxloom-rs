@@ -1,0 +1,13 @@
+schema_version: 8
+editor:
+  command: home-editor
+  args: [-h]
+workspace: worktree
+agents:
+  home:
+    llm: claude-code
+    profiles: [h]
+  proj:
+    llm: claude-fast
+    profiles: [overridden]
+companions: [acme, beta]

@@ -1,0 +1,17 @@
+{
+  "query": "solid",
+  "local": [
+    {
+      "type": "fragment",
+      "name": "solid",
+      "tags": [
+        "go",
+        "design"
+      ],
+      "source": "code-quality",
+      "match": "name"
+    }
+  ],
+  "remote": [],
+  "count": 1
+}

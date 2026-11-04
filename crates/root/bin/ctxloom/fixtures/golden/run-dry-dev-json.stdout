@@ -1,0 +1,68 @@
+{
+  "resolved": {
+    "workspace": "none",
+    "runtime": "host"
+  },
+  "environment": {
+    "runtime": "host",
+    "reach": "loopback"
+  },
+  "llm": "claude-fast",
+  "backend": "claude-code",
+  "profiles": [
+    "dev"
+  ],
+  "fragments": [
+    "ctxloom+local:style#fragments/a",
+    "ctxloom+local:rules#fragments/one",
+    "ctxloom+local:rules#fragments/two",
+    "ctxloom+local:demo#fragments/dist",
+    "ctxloom+local:demo#fragments/example"
+  ],
+  "context": "STYLE-A\n\n---\n\nRULES-ONE\n\n---\n\nRULES-TWO\n\n---\n\nshort form\n\n---\n\n# Example Fragment\n\nAdd your content here. Hello World.",
+  "delivery": [
+    {
+      "kind": "context",
+      "approach": "system-prompt",
+      "root": "session-home",
+      "unsafe": false
+    },
+    {
+      "kind": "mcp",
+      "approach": "mcp-config",
+      "root": "session-home",
+      "unsafe": false
+    },
+    {
+      "kind": "settings",
+      "approach": "settings",
+      "root": "session-home",
+      "unsafe": false
+    },
+    {
+      "kind": "hooks",
+      "approach": "settings-hooks",
+      "root": "session-home",
+      "unsafe": false
+    },
+    {
+      "kind": "commands",
+      "approach": "commands-dir",
+      "root": "session-home",
+      "unsafe": false
+    },
+    {
+      "kind": "skills",
+      "approach": "skills-dir",
+      "root": "session-home",
+      "unsafe": false
+    }
+  ],
+  "engine_home": {
+    "mode": "session",
+    "unsafe": false
+  },
+  "tokens": 30,
+  "prompt": "hello",
+  "findings": []
+}

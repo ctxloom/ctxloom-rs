@@ -1,0 +1,15 @@
+configs:
+  big:
+    type: mock
+    model: o1
+  claude-code:
+    type: claude-code
+    role: primary
+    model: opus
+  claude-fast:
+    type: claude-code
+    role: fast
+    model: haiku
+defaults:
+  primary: claude-code
+  fast: claude-fast

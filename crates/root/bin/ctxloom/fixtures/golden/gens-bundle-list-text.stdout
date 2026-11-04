@@ -1,0 +1,23 @@
+Installed bundles (6):
+
+  g0 (v1.0.0)
+    generation 0
+    Contains: 1 fragment, 1 command, 1 MCP server
+
+  g1 (v1.0.1)
+    generation 1
+    Contains: 1 fragment, 1 command, 1 MCP server
+
+  g2 (v1.0.2)
+    generation 2
+    Contains: 1 fragment, 1 command, 1 MCP server
+
+  g3 (v1.0.3)
+    generation 3
+    Contains: 1 fragment, 1 command, 1 MCP server
+
+  g4 (v1.0.4)
+    generation 4
+    Contains: 1 fragment, 1 command, 1 MCP server
+
+  project (v1.0.0)

@@ -1,0 +1,55 @@
+{
+  "resolved": {
+    "workspace": "none",
+    "runtime": "host"
+  },
+  "environment": {
+    "runtime": "host",
+    "reach": "loopback"
+  },
+  "llm": "claude-code",
+  "backend": "claude-code",
+  "profiles": [],
+  "fragments": [
+    "ctxloom+local:demo#fragments/testing"
+  ],
+  "context": "# testing\n\nFRAGMENT-BODY-testing",
+  "delivery": [
+    {
+      "kind": "context",
+      "approach": "system-prompt",
+      "root": "session-home",
+      "unsafe": false
+    },
+    {
+      "kind": "mcp",
+      "approach": "mcp-config",
+      "root": "session-home",
+      "unsafe": false
+    },
+    {
+      "kind": "settings",
+      "approach": "settings",
+      "root": "session-home",
+      "unsafe": false
+    },
+    {
+      "kind": "hooks",
+      "approach": "settings-hooks",
+      "root": "session-home",
+      "unsafe": false
+    },
+    {
+      "kind": "commands",
+      "approach": "commands-dir",
+      "root": "session-home",
+      "unsafe": false
+    }
+  ],
+  "engine_home": {
+    "mode": "session",
+    "unsafe": false
+  },
+  "tokens": 8,
+  "findings": []
+}

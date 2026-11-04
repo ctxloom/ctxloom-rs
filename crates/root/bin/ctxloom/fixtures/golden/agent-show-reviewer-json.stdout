@@ -1,0 +1,63 @@
+{
+  "definition": {
+    "name": "reviewer",
+    "llm": "big",
+    "profiles": [
+      "base",
+      "dev"
+    ],
+    "runtime": "container-rootless",
+    "permissions": {
+      "claude-code": {
+        "mode": "plan"
+      }
+    }
+  },
+  "resolved": {
+    "name": "reviewer",
+    "llm": "big",
+    "profiles": [
+      "base",
+      "dev"
+    ],
+    "label": "big",
+    "backend": "mock",
+    "model": "o1",
+    "context": "STYLE-A\n\n---\n\nRULES-TWO\n\n---\n\n# Example Fragment\n\nAdd your content here. Hello World.\n\n---\n\nshort form\n\n---\n\nRULES-ONE",
+    "fragments": [
+      "ctxloom+local:style#fragments/a",
+      "ctxloom+local:rules#fragments/two",
+      "ctxloom+local:demo#fragments/example",
+      "ctxloom+local:demo#fragments/dist",
+      "ctxloom+local:rules#fragments/one"
+    ],
+    "runtime": "container-rootless",
+    "permissions": {
+      "claude-code": {
+        "mode": "plan"
+      }
+    },
+    "approver": "human",
+    "engine_home": "session"
+  },
+  "requirements": [
+    {
+      "command": "git",
+      "sources": [
+        {
+          "kind": "bundle",
+          "ref": "demo"
+        }
+      ]
+    },
+    {
+      "command": "tree-sitter",
+      "sources": [
+        {
+          "kind": "mcp",
+          "ref": "tree-sitter"
+        }
+      ]
+    }
+  ]
+}

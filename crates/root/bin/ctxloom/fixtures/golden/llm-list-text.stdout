@@ -1,0 +1,22 @@
+Available LLMs:
+  big [configured]
+      runtimes: host, container-rootless, container-rootful
+  claude-code (default) [configured]
+      runtimes: host, container-rootless, container-rootful
+  claude-fast [configured]
+      runtimes: host, container-rootless, container-rootful
+  mock [built-in]
+      runtimes: host, container-rootless, container-rootful
+  mock-launch [built-in]
+      runtimes: host, container-rootless, container-rootful
+  mock-lossy [built-in]
+      runtimes: host, container-rootless, container-rootful
+  mock-noskills [built-in]
+      runtimes: host, container-rootless, container-rootful
+  opencode [built-in]
+      runtimes: host, container-rootless, container-rootful
+
+[configured] declared in your config.yaml   [built-in] supplied by ctxloom
+runtimes: the `agent create --runtime` values that engine can be given. There is
+no default — an agent created without one inherits whatever the project says,
+which is a default rather than a decision.

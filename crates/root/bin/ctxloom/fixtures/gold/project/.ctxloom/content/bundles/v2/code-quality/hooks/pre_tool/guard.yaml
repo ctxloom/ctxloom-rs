@@ -1,0 +1,4 @@
+tool: shell
+type: command
+command: ltk guard
+timeout: 30

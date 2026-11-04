@@ -106,6 +106,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "angzarr-yaml"
+version = "0.1.0"
+source = "git+https://github.com/angzarr-io/angzarr?rev=4d7ef3573aad114d789a9c30f9cd702d7bb5c213#4d7ef3573aad114d789a9c30f9cd702d7bb5c213"
+dependencies = [
+ "angzarr-diagnostic",
+ "serde",
+]
+
+[[package]]
 name = "anstream"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -287,10 +296,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
+name = "config-files"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "ctxloom-ports",
+ "file-system",
+ "os",
+]
+
+[[package]]
 name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
+
+[[package]]
+name = "content-fs"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "ctxloom-ports",
+ "file-system",
+ "os",
+]
 
 [[package]]
 name = "cpufeatures"
@@ -356,11 +385,16 @@ version = "0.1.0"
 dependencies = [
  "angzarr-diagnostic",
  "angzarr-presentation",
+ "angzarr-yaml",
+ "config-files",
+ "content-fs",
  "ctxloom-cli",
  "ctxloom-lib",
  "ctxloom-store-sqlite",
  "file-lock",
  "harp-core",
+ "library",
+ "library-application",
  "serde_json",
  "tempfile",
 ]
@@ -381,14 +415,29 @@ name = "ctxloom-lib"
 version = "0.1.0"
 dependencies = [
  "angzarr-diagnostic",
+ "angzarr-presentation",
+ "clap",
+ "config-files",
+ "content-fs",
+ "ctxloom-cli",
+ "ctxloom-ports",
  "ctxloom-store-sqlite",
  "file-system",
  "harp-core",
  "harp-names",
+ "library-application",
+ "library-cli",
  "os",
  "ports",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "ctxloom-ports"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
 ]
 
 [[package]]
@@ -1066,6 +1115,40 @@ name = "libm"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
+
+[[package]]
+name = "library"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "angzarr-presentation",
+ "angzarr-yaml",
+]
+
+[[package]]
+name = "library-application"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "angzarr-presentation",
+ "angzarr-yaml",
+ "ctxloom-ports",
+ "library",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "library-cli"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "angzarr-presentation",
+ "clap",
+ "library-application",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "libredox"

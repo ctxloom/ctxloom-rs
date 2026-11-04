@@ -1,0 +1,22 @@
+{
+  "configs": {
+    "big": {
+      "model": "o1",
+      "type": "mock"
+    },
+    "claude-code": {
+      "model": "opus",
+      "role": "primary",
+      "type": "claude-code"
+    },
+    "claude-fast": {
+      "model": "haiku",
+      "role": "fast",
+      "type": "claude-code"
+    }
+  },
+  "defaults": {
+    "fast": "claude-fast",
+    "primary": "claude-fast"
+  }
+}

@@ -1,0 +1,16 @@
+Profile: dev
+Path: {PROJECT}/.ctxloom/content/bundles/v2/project/profiles/dev.yaml
+Bundle: ctxloom+local:project
+Default: yes
+Description: dev profile
+LLM: claude-fast
+Parents:
+  - base
+Bundles:
+  - demo
+Tags:
+  - team
+Variables:
+  tone: casual
+Excluded fragments:
+  - testing

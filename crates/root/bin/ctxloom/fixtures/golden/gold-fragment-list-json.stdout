@@ -1,0 +1,135 @@
+[
+  {
+    "name": "solid",
+    "tags": [
+      "go",
+      "design"
+    ],
+    "bundle": "code-quality",
+    "ref": "code-quality#fragments/solid",
+    "remote": "",
+    "bundle_label": "code-quality"
+  },
+  {
+    "name": "tricky",
+    "tags": [
+      "edge-case"
+    ],
+    "bundle": "code-quality",
+    "ref": "code-quality#fragments/tricky",
+    "remote": "",
+    "bundle_label": "code-quality"
+  },
+  {
+    "name": "commit-timeouts",
+    "tags": [
+      "ctxloom",
+      "git",
+      "workflow"
+    ],
+    "bundle": "ctxloom-project",
+    "ref": "ctxloom-project#fragments/commit-timeouts",
+    "remote": "",
+    "bundle_label": "ctxloom-project"
+  },
+  {
+    "name": "conditional-guidance",
+    "tags": [
+      "ctxloom",
+      "workflow"
+    ],
+    "bundle": "ctxloom-project",
+    "ref": "ctxloom-project#fragments/conditional-guidance",
+    "remote": "",
+    "bundle_label": "ctxloom-project"
+  },
+  {
+    "name": "config-hierarchy",
+    "tags": [
+      "ctxloom",
+      "config"
+    ],
+    "bundle": "ctxloom-project",
+    "ref": "ctxloom-project#fragments/config-hierarchy",
+    "remote": "",
+    "bundle_label": "ctxloom-project"
+  },
+  {
+    "name": "dind-in-agent-cells",
+    "tags": [
+      "ctxloom",
+      "container",
+      "isolation"
+    ],
+    "bundle": "ctxloom-project",
+    "ref": "ctxloom-project#fragments/dind-in-agent-cells",
+    "remote": "",
+    "bundle_label": "ctxloom-project"
+  },
+  {
+    "name": "fail-loud-launch",
+    "tags": [
+      "ctxloom",
+      "workflow",
+      "trust"
+    ],
+    "bundle": "ctxloom-project",
+    "ref": "ctxloom-project#fragments/fail-loud-launch",
+    "remote": "",
+    "bundle_label": "ctxloom-project"
+  },
+  {
+    "name": "green-is-not-passing",
+    "tags": [
+      "ctxloom",
+      "testing"
+    ],
+    "bundle": "ctxloom-project",
+    "ref": "ctxloom-project#fragments/green-is-not-passing",
+    "remote": "",
+    "bundle_label": "ctxloom-project"
+  },
+  {
+    "name": "tool-intent-and-finding",
+    "tags": [
+      "ctxloom",
+      "workflow"
+    ],
+    "bundle": "ctxloom-project",
+    "ref": "ctxloom-project#fragments/tool-intent-and-finding",
+    "remote": "",
+    "bundle_label": "ctxloom-project"
+  },
+  {
+    "name": "turn-gates",
+    "tags": [
+      "ctxloom",
+      "testing",
+      "workflow"
+    ],
+    "bundle": "ctxloom-project",
+    "ref": "ctxloom-project#fragments/turn-gates",
+    "remote": "",
+    "bundle_label": "ctxloom-project"
+  },
+  {
+    "name": "always",
+    "tags": [
+      "golden"
+    ],
+    "bundle": "premised",
+    "ref": "premised#fragments/always",
+    "remote": "",
+    "bundle_label": "premised"
+  },
+  {
+    "name": "sometimes",
+    "tags": [
+      "golden"
+    ],
+    "bundle": "premised",
+    "ref": "premised#fragments/sometimes",
+    "remote": "",
+    "bundle_label": "premised"
+  }
+]

@@ -1,0 +1,8 @@
+description: base profile
+bundles:
+  - rules
+variables:
+  name: World
+  tone: formal
+exclude_mcp:
+  - remote

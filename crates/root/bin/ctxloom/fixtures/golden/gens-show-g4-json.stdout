@@ -1,0 +1,29 @@
+{
+  "name": "g4",
+  "path": "{PROJECT}/.ctxloom/content/bundles/v2/g4/bundle.yaml",
+  "version": "1.0.4",
+  "description": "generation 4",
+  "fragments": {
+    "f": {
+      "tags": [
+        "gen4"
+      ],
+      "preview": "BODY-g4",
+      "distilled": false,
+      "no_distill": false
+    }
+  },
+  "commands": {
+    "p": {
+      "description": "prompt 4",
+      "preview": "PROMPT-g4",
+      "distilled": false,
+      "no_distill": false
+    }
+  },
+  "mcp": {
+    "m": {
+      "command": "server-g4"
+    }
+  }
+}

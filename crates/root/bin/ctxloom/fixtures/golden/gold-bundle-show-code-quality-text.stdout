@@ -1,0 +1,27 @@
+Bundle: code-quality
+Version: 1.0.0
+Description: golden corpus code-quality
+Path: {PROJECT}/.ctxloom/content/bundles/v2/code-quality/bundle.yaml
+
+MCP Servers (1):
+  - postgres
+      Command: mcp-postgres
+      Args: --readonly
+      Env:
+        PGDATABASE=app
+        PGHOST=localhost
+        PGPORT=5432
+      Notes:
+        Read-only connection to the app database.
+      Installation:
+        brew install mcp-postgres
+
+Fragments (2):
+  - solid [go, design] (distilled)
+      # SOLID
+  - tricky [edge-case] (no_distill)
+      Body with a horizontal rule below.
+
+Commands (1):
+  - review [review]
+      Review a diff against the project's standards

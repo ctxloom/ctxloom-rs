@@ -1,0 +1,5 @@
+{
+  "bundle": "demo",
+  "path": "mcp/tree-sitter",
+  "content": "# MCP Server: tree-sitter\ncommand: tree-sitter\nargs:\n  - --stdio\nenv:\n  LOG: debug\ntags:\n  - code\nnotes: parse trees\ninstallation: npm i tree-sitter\n"
+}

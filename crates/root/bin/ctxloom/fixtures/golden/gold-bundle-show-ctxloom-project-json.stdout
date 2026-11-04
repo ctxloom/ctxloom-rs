@@ -1,0 +1,90 @@
+{
+  "name": "ctxloom-project",
+  "path": "{PROJECT}/.ctxloom/content/bundles/v2/ctxloom-project/bundle.yaml",
+  "version": "0.7.0-pre1",
+  "description": "How this project itself is configured: the config precedence chain, the two override channels, and why a command's own flags are not one of them.",
+  "fragments": {
+    "commit-timeouts": {
+      "tags": [
+        "ctxloom",
+        "git",
+        "workflow"
+      ],
+      "preview": "# A commit can outlive the shell tool's timeout",
+      "distilled": false,
+      "no_distill": false,
+      "premise": "You are about to run git commit, git merge or git push through the shell tool — directly, inside a script, or as the last step of a change. For anyone whose next command fires this repository's git hooks, however the moment is worded."
+    },
+    "conditional-guidance": {
+      "tags": [
+        "ctxloom",
+        "workflow"
+      ],
+      "preview": "# Not all of this project's guidance is in your context",
+      "distilled": true,
+      "no_distill": false
+    },
+    "config-hierarchy": {
+      "tags": [
+        "ctxloom",
+        "config"
+      ],
+      "preview": "# Configuration precedence",
+      "distilled": false,
+      "no_distill": true,
+      "premise": "You are adding or changing a flag, an environment variable, or a config key; working out which layer won when a setting resolved unexpectedly; or reading configuration to decide how something is declared. For anyone touching how this family of binaries is configured, however the moment is worded."
+    },
+    "dind-in-agent-cells": {
+      "tags": [
+        "ctxloom",
+        "container",
+        "isolation"
+      ],
+      "preview": "# An agent cell is already the dev environment",
+      "distilled": false,
+      "no_distill": false,
+      "premise": "You are about to give an agent docker access, ask for docker-in-docker for a cell, or work out why an ordinary build, test or lint recipe fails inside an agent container. For anyone reaching for a container runtime from inside a cell, however the moment is worded. This is about whether the cell needs docker AT ALL; turn-gates is about which gate proves a change."
+    },
+    "fail-loud-launch": {
+      "tags": [
+        "ctxloom",
+        "workflow",
+        "trust"
+      ],
+      "preview": "# Refuse when something is amiss; `--degraded` is the way through",
+      "distilled": false,
+      "no_distill": false,
+      "premise": "You are writing a check that can find something wrong; writing code that accepts a configuration value, a file, or any input from outside the program; deciding what an unknown, malformed, or missing value should resolve to; or choosing between refusing and carrying on with less. For anyone deciding how loudly a failure should surface, and where the set of acceptable values is declared. This one also governs ordinary resolution code, not only launch-time findings."
+    },
+    "green-is-not-passing": {
+      "tags": [
+        "ctxloom",
+        "testing"
+      ],
+      "preview": "# A test does not pass until a mutation dies",
+      "distilled": false,
+      "no_distill": true,
+      "premise": "You have just written or changed a test; you are reading a gate result and deciding what it proves; or you are about to describe something as verified, working, or done. For anyone about to treat a green result as evidence, however that moment arises. More than one fragment may apply here; this one is about whether the evidence is real."
+    },
+    "tool-intent-and-finding": {
+      "tags": [
+        "ctxloom",
+        "workflow"
+      ],
+      "preview": "# Say what you are looking for, and what you found",
+      "distilled": true,
+      "no_distill": false
+    },
+    "turn-gates": {
+      "tags": [
+        "ctxloom",
+        "testing",
+        "workflow"
+      ],
+      "preview": "# Which gate is real in this repo, and how to read one",
+      "distilled": false,
+      "no_distill": false,
+      "premise": "You are writing or changing a test during a turn, and need it to survive the close-out mutation run; choosing which build, test, lint, or mutation command to run; interpreting an exit code or a suite's output; or deciding whether the gate you ran actually covers the claim you are making. For anyone deciding which command proves a change is done. This is about WHICH gate and how to read it, not about whether a passing test means anything."
+    }
+  }
+}

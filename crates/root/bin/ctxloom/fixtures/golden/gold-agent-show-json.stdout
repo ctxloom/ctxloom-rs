@@ -1,0 +1,41 @@
+{
+  "definition": {
+    "name": "default",
+    "profiles": [
+      "golden-auto"
+    ],
+    "permissions": {}
+  },
+  "resolved": {
+    "name": "default",
+    "profiles": [
+      "golden-auto"
+    ],
+    "label": "claude-code",
+    "backend": "claude-code",
+    "model": "opus",
+    "context": "Body with a horizontal rule below.\n\n---\n\nAnd a literal mustache pair: {{not_a_template}} plus {{triple}}.\n\n---\n\n---\n\nProject golden: always on.\n\n---\n\n# Not all of this project's guidance is in your context\n\nCONDITIONAL fragments each carry a PREMISE (the situation they apply to) and\nare not loaded at launch. You have only the unconditional ones; the rest exist,\nand nothing fires when one becomes relevant. This fragment has no premise: it\nis the pointer to the ones you cannot see.\n\n**Why pulled, not pushed.** Assembled context is delivered once, at launch,\nand an in-process subagent inherits it wholesale. With no per-agent scoping, a\npushed index fits nobody and never reaches a child ctxloom did not mediate. A\ncatalog you ASK for has neither problem, and is answered at the only moment\nthe answer means anything: when you have something to match against. The cost:\nan agent that does not know to ask never learns those fragments exist.\n\n**Ask.** `ctxloom fragment premises` lists every premised fragment, its\ncondition, and the instruction for deciding between them. Over MCP the same\nmenu is the `ctxloom://fragments` resource (each entry: its premise and the\nqualified ref to quote back); bodies come from `ctxloom://fragments/{name}`.\nJudge the premise, not the name: read the guidance the listing ships rather\nthan guessing from a title.\n\n**Load.** `ctxloom fragment show <qualified-ref>`, or over MCP call\n`assemble_context` with the chosen names in its `bundles` argument.\n\n**When.** When you are about to ACT and this corpus might hold a rule about\nthat action — not once at session start, and not against the conversation\nbehind you. Ask again later in a long session: what you are about to do has\nchanged, so the answer has too.\n\n---\n\n# Say what you are looking for, and what you found\n\nTwo short statements per tool call — not narration, but the only part of a\ntool interaction that survives compaction:\n\n- BEFORE: what you are trying to learn or change.\n- AFTER: what you actually learned, including \"nothing\" and \"not what I\n  expected\", which are results.\n\n**Why it is a rule.** Compaction reduces tool RESULTS to their shape\n(`[2,431 bytes, 47 lines]`): a truncated grep is neither the information nor\na summary of it, and the content can be re-derived by asking again. What\ncannot be re-derived is what you were trying to find out and what the answer\nchanged; omit it and the essence records only that a command ran. Measured on\nthis project's transcripts: tool traffic is 50-69% of a session; Bash's\nrequired `description` covers the BEFORE half (100% of 1,286 calls), but the\nAFTER half follows only 12% of results. That gap is the entire cost.\n\nWeak: \"Let me check the config.\" Strong: \"Checking whether the byte cap\napplies per-argument or to the whole object — it decides whether eliding one\nkey buys anything.\"\n\nWeak: \"Done.\" (the result's shape already said that). Strong: \"It caps the\nwhole object, so eliding the payload should free budget for the path — but\n210 of 210 paths were already visible, so it does not.\"\n\nA finding that overturns what you expected is the most valuable thing you can\nwrite. Say it plainly and carry on.\n\n---\n\nSOLID: SRP, OCP, LSP, ISP, DIP.",
+    "fragments": [
+      "ctxloom+local:code-quality#fragments/tricky",
+      "ctxloom+local:premised#fragments/always",
+      "ctxloom+local:ctxloom-project#fragments/conditional-guidance",
+      "ctxloom+local:ctxloom-project#fragments/tool-intent-and-finding",
+      "ctxloom+local:code-quality#fragments/solid"
+    ],
+    "permissions": {},
+    "effectivePermissions": "acceptEdits",
+    "approver": "human",
+    "engine_home": "session"
+  },
+  "requirements": [
+    {
+      "command": "mcp-postgres",
+      "sources": [
+        {
+          "kind": "mcp",
+          "ref": "postgres"
+        }
+      ]
+    }
+  ]
+}

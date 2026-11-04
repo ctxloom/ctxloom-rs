@@ -26,6 +26,8 @@ angzarr-embedded = { git = "https://github.com/angzarr-io/angzarr-embedded", rev
 angzarr-diagnostic = { git = "https://github.com/angzarr-io/angzarr", rev = "4d7ef3573aad114d789a9c30f9cd702d7bb5c213" }
 # Presentation at the driving edge (json or text, catalogs, envelopes).
 angzarr-presentation = { git = "https://github.com/angzarr-io/angzarr", rev = "4d7ef3573aad114d789a9c30f9cd702d7bb5c213" }
+# The one config reader (D15): strict YAML subset, versioned documents.
+angzarr-yaml = { git = "https://github.com/angzarr-io/angzarr", rev = "4d7ef3573aad114d789a9c30f9cd702d7bb5c213" }
 # The platform crates: os, the file-system seam, advisory locks.
 os = { git = "https://github.com/angzarr-io/angzarr-platform", rev = "656a780bbde168dfc61d7ea3cb119e96fa0766a2" }
 file-system = { git = "https://github.com/angzarr-io/angzarr-platform", rev = "656a780bbde168dfc61d7ea3cb119e96fa0766a2" }
@@ -39,6 +41,12 @@ ports = { git = "https://github.com/ctxloom/taskloom", rev = "f635c314c012dc4427
 harp-core = { git = "https://github.com/benjaminabbitt/harp", rev = "e27196f5a425ffcf8e443aab95d2bf085cd2b134" }
 
 ctxloom-cli = { path = "crates/adapters/driving/ctxloom-cli" }
+config-files = { path = "crates/adapters/driven/config-files" }
+content-fs = { path = "crates/adapters/driven/content-fs" }
+ctxloom-ports = { path = "crates/core/ports/ctxloom-ports" }
+library = { path = "crates/core/read-model/library" }
+library-application = { path = "crates/core/application/library-application" }
+library-cli = { path = "crates/adapters/driving/library-cli" }
 ctxloom-lib = { path = "crates/root/lib/ctxloom-lib" }
 ctxloom-store-sqlite = { path = "crates/adapters/driven/ctxloom-store-sqlite" }
 

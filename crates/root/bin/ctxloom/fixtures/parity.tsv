@@ -1,0 +1,320 @@
+# Go-parity commands: id <TAB> fixture <TAB> [ENV=value ...] arguments
+# Each line is run by scripts/go-library-goldens.sh against Go ctxloom
+# (release/0.7 860336c4e) to make fixtures/golden/<id>.stdout and .exit, and
+# by the Rust acceptance test (library_parity.test.rs) against this binary.
+# Source of every line: the Go feature named in the id's group comment.
+#
+# cli/bundle.feature
+bundle-list-json	lib	bundle list --format json
+bundle-list-text	lib	bundle list --format text
+bundle-bare-json	lib	bundle --format json
+bundle-bare-text	lib	bundle --format text
+bundle-show-demo-json	lib	bundle show demo --format json
+bundle-show-demo-text	lib	bundle show demo --format text
+bundle-show-rules-json	lib	bundle show rules --format json
+bundle-show-nosuch	lib	bundle show nosuch
+bundle-show-item-selector	lib	bundle show demo#fragments/testing
+bundle-view-demo	lib	bundle view demo --format json
+bundle-view-fragment	lib	bundle view demo#fragments/testing --format json
+bundle-view-command	lib	bundle view demo#commands/review --format json
+bundle-view-prompts-alias	lib	bundle view demo#prompts/review --format json
+bundle-view-mcp	lib	bundle view demo#mcp/tree-sitter --format json
+bundle-view-skill	lib	bundle view demo#skills/reviewer --format json
+bundle-view-profile	lib	bundle view project#profiles/dev --format json
+bundle-view-distilled	lib	bundle view demo#fragments/dist --distilled --format json
+bundle-view-no-distilled-falls-back	lib	bundle view demo#fragments/testing --distilled --format json
+bundle-view-text-fragment	lib	bundle view demo#fragments/golang --format text
+bundle-view-bad-path	lib	bundle view demo#fragments
+bundle-view-unknown-kind	lib	bundle view demo#widgets/testing
+bundle-view-missing-fragment	lib	bundle view demo#fragments/nope
+bundle-view-nosuch	lib	bundle view nosuch
+# cli/fragment.feature, cli/read_extras.feature, fault_tolerance.feature
+fragment-list-json	lib	fragment list --format json
+fragment-list-text	lib	fragment list --format text
+fragment-bare-json	lib	fragment --format json
+fragment-list-bundle	lib	fragment list --bundle demo --format json
+fragment-list-bundle-nosuch	lib	fragment list --bundle nosuch
+fragment-show	lib	fragment show demo#fragments/golang
+fragment-show-example	lib	fragment show demo#fragments/example
+fragment-show-distilled	lib	fragment show demo#fragments/dist --distilled
+fragment-show-raw	lib	fragment show demo#fragments/dist
+fragment-show-no-distilled	lib	fragment show rules#fragments/one --distilled
+fragment-show-explicit-json-refused	lib	fragment show demo#fragments/golang --format json
+fragment-show-unknown-item	lib	fragment show demo#fragments/does-not-exist
+fragment-show-garbage-ref	lib	fragment show not-a-real-reference
+fragment-premises-json	lib	fragment premises --format json
+fragment-premises-text	lib	fragment premises --format text
+# cli/command.feature
+command-list-json	lib	command list --format json
+command-list-text	lib	command list --format text
+command-bare-json	lib	command --format json
+command-list-bundle-nosuch	lib	command list --bundle nosuchbundle
+command-show	lib	command show demo#commands/review
+command-show-unknown	lib	command show demo#commands/nope
+# cli/skill.feature
+skill-list-json	lib	skill list --format json
+skill-list-text	lib	skill list --format text
+skill-show-json	lib	skill show demo#skills/reviewer --format json
+skill-show-text	lib	skill show demo#skills/reviewer --format text
+skill-show-unknown	lib	skill show demo#skills/never-created
+# cli/profile.feature
+profile-list-json	lib	profile list --format json
+profile-list-text	lib	profile list --format text
+profile-bare-json	lib	profile --format json
+profile-ls-json	lib	profile ls --format json
+profile-show-dev-json	lib	profile show dev --format json
+profile-show-dev-text	lib	profile show dev --format text
+profile-show-base-text	lib	profile show base --format text
+profile-show-unknown	lib	profile show nope
+# cli/agent.feature
+agent-list-json	lib	agent list --format json
+agent-list-text	lib	agent list --format text
+agent-bare-json	lib	agent --format json
+agent-show-developer-json	lib	agent show developer --format json
+agent-show-developer-text	lib	agent show developer --format text
+agent-show-reviewer-json	lib	agent show reviewer --format json
+agent-show-unknown	lib	agent show nosuchagent
+# cli/llm.feature
+llm-list-json	lib	llm list --format json
+llm-list-text	lib	llm list --format text
+llm-bare-json	lib	llm --format json
+# cli/companion.feature
+companion-list-json	lib	companion list --format json
+companion-list-text	lib	companion list --format text
+companion-bare-json	lib	companion --format json
+# cli/mcp.feature
+mcp-server-list-json	lib	mcp server list --format json
+mcp-server-list-text	lib	mcp server list --format text
+mcp-server-show-json	lib	mcp server show tree-sitter --format json
+mcp-server-show-text	lib	mcp server show tree-sitter --format text
+mcp-server-show-excluded	lib	mcp server show remote
+mcp-server-show-unknown	lib	mcp server show nosuch
+# cli/search.feature
+search-name-json	lib	search --local golang --format json
+search-name-text	lib	search --local golang --format text
+search-two-kinds	lib	search --local review --format json
+search-type-fragment	lib	search --local --type fragment testing --format json
+search-type-command	lib	search --local --type command review --format json
+search-type-profile	lib	search --local --type profile dev --format json
+search-tag	lib	search --local --tag review --format json
+search-mcp	lib	search --local tree --format json
+search-no-query	lib	search --local
+search-bad-type	lib	search --local --type widget testing
+# cli/config.feature
+config-show-json	lib	config show --format json
+config-show-text	lib	config show --format text
+config-bare-json	lib	config --format json
+config-show-llm-json	lib	config show llm --format json
+config-show-llm-text	lib	config show llm --format text
+config-show-agents-json	lib	config show agents --format json
+config-show-raw-json	lib	config show --raw --format json
+config-show-unknown-section	lib	config show nonsense
+config-set-json	lib	--config-set editor.command=vim config show editor --format json
+config-set-llm-json	lib	--config-set llm.defaults.primary=claude-fast config show llm --format json
+config-env-json	lib	CTXLOOM_CONFIG_EDITOR_COMMAND=nano config show editor --format json
+config-misspelled-subcommand	lib	config shwo
+# cli/run.feature (run --dry-run)
+run-dry-dev-json	lib	run --dry-run --profile dev hello --format json
+run-dry-dev-text	lib	run --dry-run --profile dev hello --format text
+run-dry-default-json	lib	run --dry-run hello --format json
+run-dry-agent-json	lib	run --dry-run --agent developer hello --format json
+run-dry-llm-json	lib	run --dry-run -p base -l claude-fast hello --format json
+run-dry-bad-llm	lib	run --dry-run -p dev -l nosuch hello
+run-dry-fragment-json	lib	run --dry-run -f demo#fragments/testing --format json
+run-dry-fragment-bare-json	lib	run --dry-run -f testing --format json
+run-dry-fragment-premised-json	lib	run --dry-run -f golang --format json
+run-dry-tag-json	lib	run --dry-run -t house --format json
+run-dry-tag-none	lib	run --dry-run -t no-such-tag-anywhere hello
+run-dry-fragment-none	lib	run --dry-run -f nosuch --format json
+run-dry-profile-unknown	lib	run --dry-run -p nosuch hello
+run-dry-agent-unknown	lib	run --dry-run --agent nosuch hello
+run-dry-agent-and-profile	lib	run --dry-run --agent developer --profile dev hello
+# Go's own corpus (internal/core/composite/assemble_golden_test.go): the project's
+# ctxloom-project bundle, adapters/content's tree fixtures, a premised bundle
+gold-bundle-list-json	gold	bundle list --format json
+gold-bundle-list-text	gold	bundle list --format text
+gold-bundle-show-code-quality-json	gold	bundle show code-quality --format json
+gold-bundle-show-code-quality-text	gold	bundle show code-quality --format text
+gold-bundle-show-ctxloom-project-json	gold	bundle show ctxloom-project --format json
+gold-bundle-show-premised-json	gold	bundle show premised --format json
+gold-bundle-view-ctxloom-project	gold	bundle view ctxloom-project --format json
+gold-bundle-view-distilled	gold	bundle view ctxloom-project#fragments/conditional-guidance --distilled --format json
+gold-fragment-list-json	gold	fragment list --format json
+gold-fragment-list-text	gold	fragment list --format text
+gold-fragment-premises-json	gold	fragment premises --format json
+gold-fragment-premises-text	gold	fragment premises --format text
+gold-fragment-show-tricky	gold	fragment show code-quality#fragments/tricky
+gold-fragment-show-solid-distilled	gold	fragment show code-quality#fragments/solid --distilled
+gold-command-list-json	gold	command list --format json
+gold-command-show-review	gold	command show code-quality#commands/review
+gold-skill-list-json	gold	skill list --format json
+gold-skill-show-json	gold	skill show code-quality#skills/code-reviewer --format json
+gold-skill-show-text	gold	skill show code-quality#skills/code-reviewer --format text
+gold-profile-list-json	gold	profile list --format json
+gold-profile-list-text	gold	profile list --format text
+gold-profile-show-curated-json	gold	profile show golden-curated --format json
+gold-profile-show-curated-text	gold	profile show golden-curated --format text
+gold-agent-list-json	gold	agent list --format json
+gold-agent-show-json	gold	agent show default --format json
+gold-mcp-server-list-json	gold	mcp server list --format json
+gold-mcp-server-show-postgres	gold	mcp server show postgres --format json
+gold-search-solid-json	gold	search --local solid --format json
+gold-search-tag-json	gold	search --local --tag golden --format json
+gold-search-tag-text	gold	search --local --tag golden --format text
+gold-search-mcp-json	gold	search --local postgres --format json
+gold-config-show-json	gold	config show --format json
+gold-run-dry-auto-json	gold	run --dry-run -p golden-auto --format json
+gold-run-dry-auto-text	gold	run --dry-run -p golden-auto --format text
+gold-run-dry-curated-json	gold	run --dry-run -p golden-curated --format json
+gold-run-dry-default-json	gold	run --dry-run --format json
+gold-run-dry-explicit-premised-json	gold	run --dry-run -p golden-auto -f premised#fragments/sometimes --format json
+# Envelope generations 0 to 4 (bundles/upgrade.go envelopeSteps): one model whatever the stamp
+gens-bundle-list-json	gens	bundle list --format json
+gens-bundle-list-text	gens	bundle list --format text
+gens-show-g0-json	gens	bundle show g0 --format json
+gens-show-g1-json	gens	bundle show g1 --format json
+gens-show-g2-json	gens	bundle show g2 --format json
+gens-show-g3-json	gens	bundle show g3 --format json
+gens-show-g4-json	gens	bundle show g4 --format json
+gens-show-g0-text	gens	bundle show g0 --format text
+gens-profile-legacy-json	gens	profile show legacy --format json
+gens-profile-list-json	gens	profile list --format json
+gens-fragment-list-json	gens	fragment list --format json
+gens-command-list-json	gens	command list --format json
+gens-mcp-show	gens	mcp server show m --format json
+# Malformed bundles are skipped with a warning, never read around (fault_tolerance.feature)
+bad-bundle-list-json	bad	bundle list --format json
+bad-show-newer	bad	bundle show newer
+bad-show-unknownkey	bad	bundle show unknownkey
+bad-show-empty	bad	bundle show empty
+bad-show-notint	bad	bundle show notint
+bad-show-inline	bad	bundle show inline
+bad-show-malformed	bad	bundle show malformed
+bad-show-badhook	bad	bundle show badhook
+bad-show-strayside	bad	bundle show strayside
+bad-fragment-show	bad	fragment show newer#fragments/f
+# Profile resolution (core/profiles/profiles.go, composite/select.go)
+prof-run-top	prof	run --dry-run -p top --format json
+prof-run-excl-parent	prof	run --dry-run -p excl-parent --format json
+prof-run-excl-child	prof	run --dry-run -p excl-child --format json
+prof-run-cycle-a	prof	run --dry-run -p cycle-a --format json
+prof-run-selfish	prof	run --dry-run -p selfish --format json
+prof-run-orphan	prof	run --dry-run -p orphan --format json
+prof-run-orphan-degraded	prof	run --dry-run --degraded -p orphan --format json
+prof-run-llm-override	prof	run --dry-run -p llm-override --format json
+prof-run-llm-inherit	prof	run --dry-run -p llm-inherit --format json
+prof-run-bookend	prof	run --dry-run -p bookend --format json
+prof-run-missing-bundle	prof	run --dry-run -p missing-bundle --format json
+prof-run-missing-bundle-degraded	prof	run --dry-run --degraded -p missing-bundle --format json
+prof-run-missing-fragment	prof	run --dry-run -p missing-fragment --format json
+prof-run-missing-fragment-degraded	prof	run --dry-run --degraded -p missing-fragment --format json
+prof-run-mustache	prof	run --dry-run -p mustache --format json
+prof-run-pinned	prof	run --dry-run -p pinned --format json
+prof-run-pinned-degraded	prof	run --dry-run --degraded -p pinned --format json
+prof-run-deep-0	prof	run --dry-run -p deep-0 --format json
+prof-run-deep-1	prof	run --dry-run -p deep-1 --format json
+prof-run-deep-2	prof	run --dry-run -p deep-2 --format json
+prof-run-ok-0	prof	run --dry-run -p ok-0 --format json
+prof-run-default-json	prof	run --dry-run --format json
+prof-profile-list-json	prof	profile list --format json
+prof-profile-show-top-json	prof	profile show top --format json
+prof-context-top	prof	run --dry-run -p top -t nosuch --format json
+# Configuration: schema 8 and older, layering, strict decode (cli/config.feature, fault_tolerance.feature)
+cfg-v8-show-json	cfg/v8	config show --format json
+cfg-v8-bundle-list	cfg/v8	bundle list --format json
+cfg-v7-show-json	cfg/v7	config show --format json
+cfg-v7-bundle-list	cfg/v7	bundle list --format json
+cfg-v7-only-essence-show-json	cfg/v7-only-essence	config show --format json
+cfg-v7-only-essence-bundle-list	cfg/v7-only-essence	bundle list --format json
+cfg-unstamped-show-json	cfg/unstamped	config show --format json
+cfg-unstamped-bundle-list	cfg/unstamped	bundle list --format json
+cfg-older-show-json	cfg/older	config show --format json
+cfg-older-bundle-list	cfg/older	bundle list --format json
+cfg-newer-show-json	cfg/newer	config show --format json
+cfg-newer-bundle-list	cfg/newer	bundle list --format json
+cfg-notint-show-json	cfg/notint	config show --format json
+cfg-notint-bundle-list	cfg/notint	bundle list --format json
+cfg-badyaml-show-json	cfg/badyaml	config show --format json
+cfg-badyaml-bundle-list	cfg/badyaml	bundle list --format json
+cfg-unknownkey-show-json	cfg/unknownkey	config show --format json
+cfg-unknownkey-bundle-list	cfg/unknownkey	bundle list --format json
+cfg-inline-profiles-show-json	cfg/inline-profiles	config show --format json
+cfg-inline-profiles-bundle-list	cfg/inline-profiles	bundle list --format json
+cfg-bad-agent-key-show-json	cfg/bad-agent-key	config show --format json
+cfg-bad-agent-key-bundle-list	cfg/bad-agent-key	bundle list --format json
+cfg-bad-enum-show-json	cfg/bad-enum	config show --format json
+cfg-bad-enum-bundle-list	cfg/bad-enum	bundle list --format json
+cfg-bad-delegation-show-json	cfg/bad-delegation	config show --format json
+cfg-bad-delegation-bundle-list	cfg/bad-delegation	bundle list --format json
+cfg-engineless-agent-show-json	cfg/engineless-agent	config show --format json
+cfg-engineless-agent-bundle-list	cfg/engineless-agent	bundle list --format json
+cfg-native-mcp-show-json	cfg/native-mcp	config show --format json
+cfg-native-mcp-bundle-list	cfg/native-mcp	bundle list --format json
+cfg-retired-turn-cap-show-json	cfg/retired-turn-cap	config show --format json
+cfg-retired-turn-cap-bundle-list	cfg/retired-turn-cap	bundle list --format json
+cfg-layers-show-json	cfg/layers	config show --format json
+cfg-layers-bundle-list	cfg/layers	bundle list --format json
+cfg-layers-empty-companions-show-json	cfg/layers-empty-companions	config show --format json
+cfg-layers-empty-companions-bundle-list	cfg/layers-empty-companions	bundle list --format json
+cfg-v8-show-text	cfg/v8	config show --format text
+cfg-v8-show-raw-json	cfg/v8	config show --raw --format json
+cfg-v7-show-text	cfg/v7	config show --format text
+cfg-v7-show-raw-json	cfg/v7	config show --raw --format json
+cfg-layers-show-text	cfg/layers	config show --format text
+cfg-layers-show-raw-json	cfg/layers	config show --raw --format json
+cfg-unknownkey-degraded-show-json	cfg/unknownkey	--degraded config show --format json
+cfg-bad-enum-degraded-show-json	cfg/bad-enum	--degraded config show --format json
+cfg-engineless-agent-degraded-show-json	cfg/engineless-agent	--degraded config show --format json
+cfg-v8-section-delegation-json	cfg/v8	config show delegation --format json
+cfg-v8-section-delegation-text	cfg/v8	config show delegation --format text
+cfg-v8-section-agents-text	cfg/v8	config show agents --format text
+cfg-v8-agent-show-json	cfg/v8	agent show dev --format json
+cfg-layers-agent-list-json	cfg/layers	agent list --format json
+cfg-layers-companion-list-json	cfg/layers	companion list --format json
+cfg-layers-set-json	cfg/layers	--config-set companions=zzz config show companions --format json
+# Nothing there: no content directory at all, and an empty one (empty_listing_hint, cli/agent.feature)
+empty-bundle-list-text	empty	bundle list --format text
+empty-bundle-list-json	empty	bundle list --format json
+empty-fragment-list-json	empty	fragment list --format json
+empty-command-list-text	empty	command list --format text
+empty-skill-list-text	empty	skill list --format text
+empty-profile-list-text	empty	profile list --format text
+empty-profile-list-json	empty	profile list --format json
+empty-agent-list-text	empty	agent list --format text
+empty-agent-list-json	empty	agent list --format json
+empty-companion-list-text	empty	companion list --format text
+empty-mcp-server-list-json	empty	mcp server list --format json
+empty-search-json	empty	search --local x --format json
+empty-fragment-premises-text	empty	fragment premises --format text
+empty-fragment-premises-json	empty	fragment premises --format json
+empty-run---dry-run-json	empty	run --dry-run --format json
+empty-run---dry-run-text	empty	run --dry-run --format text
+empty-llm-list-json	empty	llm list --format json
+empty-config-show-json	empty	config show --format json
+emptybundles-bundle-list-text	emptybundles	bundle list --format text
+emptybundles-bundle-list-json	emptybundles	bundle list --format json
+emptybundles-fragment-list-json	emptybundles	fragment list --format json
+emptybundles-command-list-text	emptybundles	command list --format text
+emptybundles-skill-list-text	emptybundles	skill list --format text
+emptybundles-profile-list-text	emptybundles	profile list --format text
+emptybundles-profile-list-json	emptybundles	profile list --format json
+emptybundles-agent-list-text	emptybundles	agent list --format text
+emptybundles-agent-list-json	emptybundles	agent list --format json
+emptybundles-companion-list-text	emptybundles	companion list --format text
+emptybundles-mcp-server-list-json	emptybundles	mcp server list --format json
+emptybundles-search-json	emptybundles	search --local x --format json
+emptybundles-fragment-premises-text	emptybundles	fragment premises --format text
+emptybundles-fragment-premises-json	emptybundles	fragment premises --format json
+emptybundles-run---dry-run-json	emptybundles	run --dry-run --format json
+emptybundles-run---dry-run-text	emptybundles	run --dry-run --format text
+emptybundles-llm-list-json	emptybundles	llm list --format json
+emptybundles-config-show-json	emptybundles	config show --format json
+# No project here (configload/appdir.go: no .ctxloom up the path, so the home's config alone)
+noproject-bundle-list-text	noproject	CTXLOOM_ROOT= bundle list --format text
+noproject-bundle-list-json	noproject	CTXLOOM_ROOT= bundle list --format json
+noproject-config-show-editor-json	noproject	CTXLOOM_ROOT= config show editor --format json
+noproject-profile-list-text	noproject	CTXLOOM_ROOT= profile list --format text
+noproject-agent-list-text	noproject	CTXLOOM_ROOT= agent list --format text
+noproject-skill-list-text	noproject	CTXLOOM_ROOT= skill list --format text
+noproject-command-list-text	noproject	CTXLOOM_ROOT= command list --format text
+noproject-run-dry-text	noproject	CTXLOOM_ROOT= run --dry-run --format json

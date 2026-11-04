@@ -1,0 +1,17 @@
+{
+  "query": "golang",
+  "local": [
+    {
+      "type": "fragment",
+      "name": "golang",
+      "tags": [
+        "sample",
+        "go"
+      ],
+      "source": "demo",
+      "match": "name"
+    }
+  ],
+  "remote": [],
+  "count": 1
+}

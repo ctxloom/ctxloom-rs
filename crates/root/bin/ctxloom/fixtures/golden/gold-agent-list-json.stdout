@@ -1,0 +1,9 @@
+[
+  {
+    "name": "default",
+    "profiles": [
+      "golden-auto"
+    ],
+    "permissions": {}
+  }
+]

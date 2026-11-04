@@ -1,0 +1,8 @@
+Agents (2):
+  developer (llm: claude-code)
+    profiles: dev
+    runtime: host
+  reviewer (llm: big)
+    profiles: base, dev
+    runtime: container-rootless
+    permissions: claude-code={mode=plan}

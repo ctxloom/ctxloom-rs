@@ -1,0 +1,58 @@
+{
+  "resolved": {
+    "workspace": "none",
+    "runtime": "host"
+  },
+  "environment": {
+    "runtime": "host",
+    "reach": "loopback"
+  },
+  "llm": "claude-code",
+  "backend": "claude-code",
+  "profiles": [
+    "ok-0"
+  ],
+  "fragments": [
+    "ctxloom+local:b#fragments/b1",
+    "ctxloom+local:b#fragments/b2"
+  ],
+  "context": "FRAG-b1 {{who}} {{greeting}}\n\n---\n\nFRAG-b2",
+  "delivery": [
+    {
+      "kind": "context",
+      "approach": "system-prompt",
+      "root": "session-home",
+      "unsafe": false
+    },
+    {
+      "kind": "mcp",
+      "approach": "mcp-config",
+      "root": "session-home",
+      "unsafe": false
+    },
+    {
+      "kind": "settings",
+      "approach": "settings",
+      "root": "session-home",
+      "unsafe": false
+    },
+    {
+      "kind": "hooks",
+      "approach": "settings-hooks",
+      "root": "session-home",
+      "unsafe": false
+    },
+    {
+      "kind": "commands",
+      "approach": "commands-dir",
+      "root": "session-home",
+      "unsafe": false
+    }
+  ],
+  "engine_home": {
+    "mode": "session",
+    "unsafe": false
+  },
+  "tokens": 11,
+  "findings": []
+}

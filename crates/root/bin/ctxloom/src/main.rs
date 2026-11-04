@@ -6,7 +6,7 @@
 use std::io::{self, IsTerminal};
 use std::process::ExitCode;
 
-use ctxloom_cli::{Catalog, Context, Services};
+use ctxloom_cli::{Catalog, Context, Extension, Services};
 
 /// The binary's en-US catalog: every crate's own.
 fn catalog() -> Result<Catalog, angzarr_presentation::CatalogError> {
@@ -14,13 +14,24 @@ fn catalog() -> Result<Catalog, angzarr_presentation::CatalogError> {
         ctxloom_cli::EN_US,
         ctxloom_store_sqlite::EN_US,
         ctxloom_lib::EN_US,
+        angzarr_yaml::EN_US,
+        library::EN_US,
+        library_application::EN_US,
+        content_fs::EN_US,
+        config_files::EN_US,
     ])
 }
 
-/// What the test commands call, over the default wiring.
-struct Wired;
+/// What the commands call, over the default wiring.
+struct Wired {
+    library: ctxloom_lib::LibraryCommands,
+}
 
 impl Services for Wired {
+    fn extension(&mut self) -> &mut dyn Extension {
+        &mut self.library
+    }
+
     #[cfg(feature = "test-support")]
     fn session_name(&mut self) -> String {
         ctxloom_lib::session_name()
@@ -54,6 +65,10 @@ impl Services for Wired {
     fn diagnostic_samples(&self) -> Vec<Box<dyn angzarr_diagnostic::Diagnostic>> {
         let mut all = ctxloom_store_sqlite::diagnostic_samples();
         all.extend(ctxloom_lib::diagnostic_samples());
+        all.extend(library::diagnostic_samples());
+        all.extend(library_application::diagnostic_samples());
+        all.extend(content_fs::diagnostic_samples());
+        all.extend(config_files::diagnostic_samples());
         all
     }
 }
@@ -76,7 +91,9 @@ fn main() -> ExitCode {
         std::env::args_os(),
         &context,
         &catalog,
-        &mut Wired,
+        &mut Wired {
+            library: ctxloom_lib::LibraryCommands::new(),
+        },
         &mut stdout.lock(),
         &mut stderr.lock(),
     ))

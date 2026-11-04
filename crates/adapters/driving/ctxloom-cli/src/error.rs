@@ -35,6 +35,8 @@ pub enum CliError {
     /// What a service behind a test command said.
     #[cfg(feature = "test-support")]
     Service(Box<dyn Diagnostic>),
+    /// What an extension's command said: its own diagnostic and exit code.
+    Extension(crate::extension::Failure),
 }
 
 impl CliError {
@@ -49,6 +51,7 @@ impl CliError {
             CliError::TestFindings { .. } => 3,
             #[cfg(feature = "test-support")]
             CliError::Service(_) => 1,
+            CliError::Extension(failure) => failure.exit,
         }
     }
 
@@ -81,6 +84,7 @@ impl Diagnostic for CliError {
             CliError::TestFindings { .. } => code!("test-findings"),
             #[cfg(feature = "test-support")]
             CliError::Service(cause) => cause.code(),
+            CliError::Extension(failure) => failure.cause.code(),
         }
     }
 
@@ -105,6 +109,7 @@ impl Diagnostic for CliError {
             CliError::TestFindings { count } => vec![("count", (*count).into())],
             #[cfg(feature = "test-support")]
             CliError::Service(cause) => cause.args(),
+            CliError::Extension(failure) => failure.cause.args(),
         }
     }
 }

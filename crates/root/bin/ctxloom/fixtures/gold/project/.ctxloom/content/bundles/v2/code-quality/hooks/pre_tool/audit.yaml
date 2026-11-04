@@ -1,0 +1,4 @@
+tool: file_edit
+type: command
+command: audit-log record
+async: true

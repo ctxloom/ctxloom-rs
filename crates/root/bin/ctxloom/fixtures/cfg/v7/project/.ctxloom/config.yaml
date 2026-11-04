@@ -1,0 +1,5 @@
+schema_version: 7
+config:
+  use_distilled: false
+  essence_max_chars: 4096
+workspace: none

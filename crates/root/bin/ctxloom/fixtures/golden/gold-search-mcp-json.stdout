@@ -1,0 +1,13 @@
+{
+  "query": "postgres",
+  "local": [
+    {
+      "type": "mcp_server",
+      "name": "postgres",
+      "source": "mcp-postgres",
+      "match": "name"
+    }
+  ],
+  "remote": [],
+  "count": 1
+}

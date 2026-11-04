@@ -1,0 +1,13 @@
+[
+  {
+    "name": "demo",
+    "ref": "ctxloom+local:demo",
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/demo/bundle.yaml",
+    "version": "1.0.0",
+    "fragment_count": 1,
+    "command_count": 0,
+    "mcp_count": 0,
+    "profile_count": 0,
+    "held": false
+  }
+]

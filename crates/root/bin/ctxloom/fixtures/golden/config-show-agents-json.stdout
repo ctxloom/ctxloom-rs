@@ -1,0 +1,22 @@
+{
+  "developer": {
+    "llm": "claude-code",
+    "profiles": [
+      "dev"
+    ],
+    "runtime": "host"
+  },
+  "reviewer": {
+    "llm": "big",
+    "permissions": {
+      "claude-code": {
+        "mode": "plan"
+      }
+    },
+    "profiles": [
+      "base",
+      "dev"
+    ],
+    "runtime": "container-rootless"
+  }
+}

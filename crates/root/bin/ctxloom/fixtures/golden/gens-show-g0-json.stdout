@@ -1,0 +1,29 @@
+{
+  "name": "g0",
+  "path": "{PROJECT}/.ctxloom/content/bundles/v2/g0/bundle.yaml",
+  "version": "1.0.0",
+  "description": "generation 0",
+  "fragments": {
+    "f": {
+      "tags": [
+        "gen0"
+      ],
+      "preview": "BODY-g0",
+      "distilled": false,
+      "no_distill": false
+    }
+  },
+  "commands": {
+    "p": {
+      "description": "prompt 0",
+      "preview": "PROMPT-g0",
+      "distilled": false,
+      "no_distill": false
+    }
+  },
+  "mcp": {
+    "m": {
+      "command": "server-g0"
+    }
+  }
+}

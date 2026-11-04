@@ -1,0 +1,3 @@
+notes: Read-only connection to the app database.
+installation: brew install mcp-postgres
+content_hash: sha256:1111111111111111111111111111111111111111111111111111111111111111

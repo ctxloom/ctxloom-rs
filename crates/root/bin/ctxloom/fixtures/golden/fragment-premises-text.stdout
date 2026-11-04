@@ -1,0 +1,20 @@
+# Conditional guidance
+
+Some of this project's guidance applies CONDITIONALLY. Each entry gives a
+fragment's NAME and the PREMISE under which it applies. Load any your
+context does not already carry.
+
+Match against WHAT YOU ARE ABOUT TO DO -- the next action, not the whole
+conversation behind you. Take each premise ON ITS OWN and ask whether it
+describes that action; you are not picking the single best match, and
+several premises often apply at once.
+
+When it is a BORDERLINE call, include it. An unnecessary fragment costs a
+little context; one you withhold is never learned to exist and cannot be
+asked for.
+
+Select on the premise, not on the name. Then call the ctxloom
+`assemble_context` tool with the names you chose (the `bundles` argument)
+and follow what it returns.
+
+- demo#fragments/golang: when editing Go code

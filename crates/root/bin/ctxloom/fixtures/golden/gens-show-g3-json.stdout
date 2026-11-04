@@ -1,0 +1,29 @@
+{
+  "name": "g3",
+  "path": "{PROJECT}/.ctxloom/content/bundles/v2/g3/bundle.yaml",
+  "version": "1.0.3",
+  "description": "generation 3",
+  "fragments": {
+    "f": {
+      "tags": [
+        "gen3"
+      ],
+      "preview": "BODY-g3",
+      "distilled": false,
+      "no_distill": false
+    }
+  },
+  "commands": {
+    "p": {
+      "description": "prompt 3",
+      "preview": "PROMPT-g3",
+      "distilled": false,
+      "no_distill": false
+    }
+  },
+  "mcp": {
+    "m": {
+      "command": "server-g3"
+    }
+  }
+}

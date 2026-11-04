@@ -1,0 +1,6 @@
+schema_version: 8
+profiles:
+  definitions:
+    dev:
+      bundles:
+        - demo

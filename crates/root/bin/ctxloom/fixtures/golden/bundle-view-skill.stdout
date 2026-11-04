@@ -1,0 +1,5 @@
+{
+  "bundle": "demo",
+  "path": "skills/reviewer",
+  "content": "# Skill: reviewer\ntags:\n  - quality\n"
+}

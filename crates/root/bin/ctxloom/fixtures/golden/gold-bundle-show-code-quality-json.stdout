@@ -1,0 +1,67 @@
+{
+  "name": "code-quality",
+  "path": "{PROJECT}/.ctxloom/content/bundles/v2/code-quality/bundle.yaml",
+  "version": "1.0.0",
+  "description": "golden corpus code-quality",
+  "fragments": {
+    "solid": {
+      "tags": [
+        "go",
+        "design"
+      ],
+      "preview": "# SOLID",
+      "distilled": true,
+      "no_distill": false
+    },
+    "tricky": {
+      "tags": [
+        "edge-case"
+      ],
+      "preview": "Body with a horizontal rule below.",
+      "distilled": false,
+      "no_distill": true
+    }
+  },
+  "commands": {
+    "review": {
+      "tags": [
+        "review"
+      ],
+      "description": "Review a diff against the project's standards",
+      "preview": "Review the staged diff.",
+      "distilled": false,
+      "no_distill": false
+    }
+  },
+  "mcp": {
+    "postgres": {
+      "command": "mcp-postgres",
+      "args": [
+        "--readonly"
+      ],
+      "env": {
+        "PGDATABASE": "app",
+        "PGHOST": "localhost",
+        "PGPORT": "5432"
+      },
+      "notes": "Read-only connection to the app database.",
+      "installation": "brew install mcp-postgres"
+    }
+  },
+  "skills": {
+    "code-reviewer": {
+      "tags": [
+        "review"
+      ],
+      "notes": "Wraps the house review checklist."
+    }
+  },
+  "profiles": [
+    "strict"
+  ],
+  "hooks": [
+    "pre_tool/0",
+    "pre_tool/1",
+    "session_start/0"
+  ]
+}

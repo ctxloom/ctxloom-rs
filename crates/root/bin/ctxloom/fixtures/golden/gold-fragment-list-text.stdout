@@ -1,0 +1,19 @@
+Fragments (12):
+
+  code-quality:
+    - solid [go, design]
+    - tricky [edge-case]
+
+  ctxloom-project:
+    - commit-timeouts [ctxloom, git, workflow]
+    - conditional-guidance [ctxloom, workflow]
+    - config-hierarchy [ctxloom, config]
+    - dind-in-agent-cells [ctxloom, container, isolation]
+    - fail-loud-launch [ctxloom, workflow, trust]
+    - green-is-not-passing [ctxloom, testing]
+    - tool-intent-and-finding [ctxloom, workflow]
+    - turn-gates [ctxloom, testing, workflow]
+
+  premised:
+    - always [golden]
+    - sometimes [golden]

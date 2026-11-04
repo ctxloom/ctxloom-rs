@@ -1,0 +1,7 @@
+Profiles (2):
+  base
+    base profile
+    from bundle: ctxloom+local:project, 1 bundles
+  dev (default)
+    dev profile
+    from bundle: ctxloom+local:project, parents: base, 1 bundles

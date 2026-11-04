@@ -1,0 +1,15 @@
+description: golden uncurated
+bundles:
+  - code-quality
+  - ctxloom-project
+  - premised
+fragments:
+  - name: ctxloom-project#fragments/turn-gates
+    priority: 5
+  - code-quality#fragments/solid
+  - name: code-quality#fragments/tricky
+    priority: -3
+  - premised#fragments/always
+  - premised#fragments/sometimes
+variables:
+  project: golden

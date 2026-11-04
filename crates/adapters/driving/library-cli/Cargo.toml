@@ -1,0 +1,26 @@
+[package]
+name = "library-cli"
+version = "0.1.0"
+description = "The library commands (config, bundle, fragment, command, skill, profile, agent, llm, mcp, companion, search, context, run --dry-run): arguments in, answers out, no logic"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+angzarr-presentation.workspace = true
+clap.workspace = true
+library-application.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+library-application = { workspace = true, features = ["test-support"] }
+angzarr-presentation = { workspace = true, features = ["test-support"] }
+
+[features]
+test-support = ["library-application/test-support"]
+
+[lints]
+workspace = true

@@ -1,0 +1,62 @@
+agents:
+  dev:
+    driving: oneshot
+    env:
+      - ALPHA
+    env_host: false
+    llm: claude-code
+    permissions:
+      approver: human
+      claude-code:
+        mode: plan
+    profiles:
+      - p1
+    runtime: host
+auth: login
+companions:
+  - acme
+  - beta
+config:
+  silence_unsupported: true
+  statusline: false
+  use_distilled: false
+default_agent: dev
+delegation:
+  concurrency: 3
+  depth: 2
+  idle_timeout: 5m
+editor:
+  args:
+    - -u
+    - NONE
+  command: vim
+isolation_base: ctxloom
+isolation_engines:
+  - claude-code
+isolation_images:
+  claude-code: example.com/img:1
+isolation_memory_limit: 4g
+isolation_pids_limit: "512"
+llm:
+  configs:
+    claude-code:
+      model: opus
+      type: claude-code
+  defaults:
+    primary: claude-code
+non_tty_format: json
+output_dir: /var/out
+runtime: host
+schema_version: 8
+session_purge_age: 90d
+session_reap_age: 30d
+session_transcript_retention: 365d
+shell_timeout:
+  default: 30s
+  max: 1h
+sync:
+  auto_sync: false
+ui:
+  list_window: 7d
+  prefix_key: ctrl-b
+workspace: worktree

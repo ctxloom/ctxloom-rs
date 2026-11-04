@@ -1,0 +1,5 @@
+{
+  "concurrency": 3,
+  "depth": 2,
+  "idle_timeout": "5m"
+}

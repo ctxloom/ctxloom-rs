@@ -1,0 +1,108 @@
+=== Environment ===
+runtime: host, reach: loopback
+=== LLM ===
+claude-code (claude-code)
+
+=== Profiles ===
+  golden-auto
+
+=== Fragments Loaded ===
+  ctxloom+local:code-quality#fragments/tricky
+  ctxloom+local:premised#fragments/always
+  ctxloom+local:ctxloom-project#fragments/conditional-guidance
+  ctxloom+local:ctxloom-project#fragments/tool-intent-and-finding
+  ctxloom+local:code-quality#fragments/solid
+
+=== Delivery ===
+  context → session-home via system-prompt
+  mcp → session-home via mcp-config
+  settings → session-home via settings
+  hooks → session-home via settings-hooks
+  commands → session-home via commands-dir
+  skills → session-home via skills-dir
+  engine-home → session
+
+=== Assembled Context (~802 tokens) ===
+Body with a horizontal rule below.
+
+---
+
+And a literal mustache pair: {{not_a_template}} plus {{triple}}.
+
+---
+
+---
+
+Project golden: always on.
+
+---
+
+# Not all of this project's guidance is in your context
+
+CONDITIONAL fragments each carry a PREMISE (the situation they apply to) and
+are not loaded at launch. You have only the unconditional ones; the rest exist,
+and nothing fires when one becomes relevant. This fragment has no premise: it
+is the pointer to the ones you cannot see.
+
+**Why pulled, not pushed.** Assembled context is delivered once, at launch,
+and an in-process subagent inherits it wholesale. With no per-agent scoping, a
+pushed index fits nobody and never reaches a child ctxloom did not mediate. A
+catalog you ASK for has neither problem, and is answered at the only moment
+the answer means anything: when you have something to match against. The cost:
+an agent that does not know to ask never learns those fragments exist.
+
+**Ask.** `ctxloom fragment premises` lists every premised fragment, its
+condition, and the instruction for deciding between them. Over MCP the same
+menu is the `ctxloom://fragments` resource (each entry: its premise and the
+qualified ref to quote back); bodies come from `ctxloom://fragments/{name}`.
+Judge the premise, not the name: read the guidance the listing ships rather
+than guessing from a title.
+
+**Load.** `ctxloom fragment show <qualified-ref>`, or over MCP call
+`assemble_context` with the chosen names in its `bundles` argument.
+
+**When.** When you are about to ACT and this corpus might hold a rule about
+that action — not once at session start, and not against the conversation
+behind you. Ask again later in a long session: what you are about to do has
+changed, so the answer has too.
+
+---
+
+# Say what you are looking for, and what you found
+
+Two short statements per tool call — not narration, but the only part of a
+tool interaction that survives compaction:
+
+- BEFORE: what you are trying to learn or change.
+- AFTER: what you actually learned, including "nothing" and "not what I
+  expected", which are results.
+
+**Why it is a rule.** Compaction reduces tool RESULTS to their shape
+(`[2,431 bytes, 47 lines]`): a truncated grep is neither the information nor
+a summary of it, and the content can be re-derived by asking again. What
+cannot be re-derived is what you were trying to find out and what the answer
+changed; omit it and the essence records only that a command ran. Measured on
+this project's transcripts: tool traffic is 50-69% of a session; Bash's
+required `description` covers the BEFORE half (100% of 1,286 calls), but the
+AFTER half follows only 12% of results. That gap is the entire cost.
+
+Weak: "Let me check the config." Strong: "Checking whether the byte cap
+applies per-argument or to the whole object — it decides whether eliding one
+key buys anything."
+
+Weak: "Done." (the result's shape already said that). Strong: "It caps the
+whole object, so eliding the payload should free budget for the path — but
+210 of 210 paths were already visible, so it does not."
+
+A finding that overturns what you expected is the most valuable thing you can
+write. Say it plainly and carry on.
+
+---
+
+SOLID: SRP, OCP, LSP, ISP, DIP.
+
+=== Prompt ===
+(interactive mode)
+
+=== Context File ===
+Would write to: {PROJECT}/.ctxloom/cache/context/[hash].md

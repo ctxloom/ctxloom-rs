@@ -1,0 +1,54 @@
+{
+  "definition": {
+    "name": "developer",
+    "llm": "claude-code",
+    "profiles": [
+      "dev"
+    ],
+    "runtime": "host",
+    "permissions": {}
+  },
+  "resolved": {
+    "name": "developer",
+    "llm": "claude-code",
+    "profiles": [
+      "dev"
+    ],
+    "label": "claude-code",
+    "backend": "claude-code",
+    "model": "opus",
+    "context": "STYLE-A\n\n---\n\nRULES-ONE\n\n---\n\nRULES-TWO\n\n---\n\nshort form\n\n---\n\n# Example Fragment\n\nAdd your content here. Hello World.",
+    "fragments": [
+      "ctxloom+local:style#fragments/a",
+      "ctxloom+local:rules#fragments/one",
+      "ctxloom+local:rules#fragments/two",
+      "ctxloom+local:demo#fragments/dist",
+      "ctxloom+local:demo#fragments/example"
+    ],
+    "runtime": "host",
+    "permissions": {},
+    "effectivePermissions": "acceptEdits",
+    "approver": "human",
+    "engine_home": "session"
+  },
+  "requirements": [
+    {
+      "command": "git",
+      "sources": [
+        {
+          "kind": "bundle",
+          "ref": "demo"
+        }
+      ]
+    },
+    {
+      "command": "tree-sitter",
+      "sources": [
+        {
+          "kind": "mcp",
+          "ref": "tree-sitter"
+        }
+      ]
+    }
+  ]
+}

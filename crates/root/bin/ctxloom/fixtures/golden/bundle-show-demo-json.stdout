@@ -1,0 +1,81 @@
+{
+  "name": "demo",
+  "path": "{PROJECT}/.ctxloom/content/bundles/v2/demo/bundle.yaml",
+  "version": "1.2.0",
+  "author": "someone",
+  "description": "demo bundle",
+  "tags": [
+    "sample"
+  ],
+  "notes": "human notes",
+  "fragments": {
+    "dist": {
+      "tags": [
+        "distilled"
+      ],
+      "preview": "long form of distilled",
+      "distilled": true,
+      "no_distill": false
+    },
+    "example": {
+      "tags": [
+        "example",
+        "house"
+      ],
+      "preview": "# Example Fragment",
+      "distilled": false,
+      "no_distill": false
+    },
+    "golang": {
+      "tags": [
+        "go"
+      ],
+      "preview": "GO-RULES-BODY",
+      "distilled": false,
+      "no_distill": false,
+      "premise": "when editing Go code"
+    },
+    "testing": {
+      "preview": "# testing",
+      "distilled": false,
+      "no_distill": false
+    }
+  },
+  "commands": {
+    "review": {
+      "tags": [
+        "review"
+      ],
+      "description": "Review code",
+      "preview": "COMMAND-BODY-review",
+      "distilled": false,
+      "no_distill": false
+    }
+  },
+  "mcp": {
+    "remote": {
+      "command": ""
+    },
+    "tree-sitter": {
+      "command": "tree-sitter",
+      "args": [
+        "--stdio"
+      ],
+      "env": {
+        "LOG": "debug"
+      },
+      "notes": "parse trees",
+      "installation": "npm i tree-sitter"
+    }
+  },
+  "skills": {
+    "reviewer": {
+      "tags": [
+        "quality"
+      ]
+    }
+  },
+  "hooks": [
+    "pre_tool/0"
+  ]
+}

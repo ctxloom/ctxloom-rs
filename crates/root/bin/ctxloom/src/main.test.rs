@@ -180,6 +180,18 @@ mod format;
 #[path = "ids.test.rs"]
 mod ids;
 
+#[path = "library.test.rs"]
+mod library;
+
+#[path = "library_cli.test.rs"]
+mod library_cli;
+
+#[path = "library_config.test.rs"]
+mod library_config;
+
+#[path = "library_parity.test.rs"]
+mod library_parity;
+
 #[path = "usage.test.rs"]
 mod usage;
 

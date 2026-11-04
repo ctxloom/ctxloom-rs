@@ -1,0 +1,5 @@
+schema_version: 8
+agents:
+  developer:
+    profiles: [dev]
+    auth: login

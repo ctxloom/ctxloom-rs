@@ -1,0 +1,6 @@
+{
+  "bundle": "demo",
+  "path": "fragments/dist",
+  "distilled": true,
+  "content": "# (distilled version)\nshort form\n"
+}

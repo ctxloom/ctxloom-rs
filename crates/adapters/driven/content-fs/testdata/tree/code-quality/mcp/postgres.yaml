@@ -1,0 +1,7 @@
+command: mcp-postgres
+args:
+  - --readonly
+env:
+  PGDATABASE: app
+  PGHOST: localhost
+  PGPORT: "5432"

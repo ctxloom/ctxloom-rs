@@ -1,0 +1,70 @@
+[
+  {
+    "name": "dist",
+    "tags": [
+      "sample",
+      "distilled"
+    ],
+    "bundle": "demo",
+    "ref": "demo#fragments/dist",
+    "remote": "",
+    "bundle_label": "demo"
+  },
+  {
+    "name": "example",
+    "tags": [
+      "sample",
+      "example",
+      "house"
+    ],
+    "bundle": "demo",
+    "ref": "demo#fragments/example",
+    "remote": "",
+    "bundle_label": "demo"
+  },
+  {
+    "name": "golang",
+    "tags": [
+      "sample",
+      "go"
+    ],
+    "bundle": "demo",
+    "ref": "demo#fragments/golang",
+    "remote": "",
+    "bundle_label": "demo"
+  },
+  {
+    "name": "testing",
+    "tags": [
+      "sample"
+    ],
+    "bundle": "demo",
+    "ref": "demo#fragments/testing",
+    "remote": "",
+    "bundle_label": "demo"
+  },
+  {
+    "name": "one",
+    "tags": [],
+    "bundle": "rules",
+    "ref": "rules#fragments/one",
+    "remote": "",
+    "bundle_label": "rules"
+  },
+  {
+    "name": "two",
+    "tags": [],
+    "bundle": "rules",
+    "ref": "rules#fragments/two",
+    "remote": "",
+    "bundle_label": "rules"
+  },
+  {
+    "name": "a",
+    "tags": [],
+    "bundle": "style",
+    "ref": "style#fragments/a",
+    "remote": "",
+    "bundle_label": "style"
+  }
+]

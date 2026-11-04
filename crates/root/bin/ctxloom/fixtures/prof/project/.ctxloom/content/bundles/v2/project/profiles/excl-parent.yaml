@@ -1,0 +1,4 @@
+bundles: [a, b]
+exclude_fragments: [b1]
+exclude_mcp: [m1]
+deny_tools: [Task]

@@ -1,0 +1,13 @@
+Agent: developer
+Engine (declared): claude-code
+Runtime: host
+Profiles:
+  - dev
+Resolved llm: claude-code (backend: claude-code, model: opus)
+Resolved permissions: acceptEdits
+Headless posture: acceptEdits, approver human — asks go to the root's approvals modal; denied at once when the root is unattended (one-shot, --plain-terminal, headless)
+Resolved config home: session
+Composed fragments: 5
+Requires:
+  - git (bundle demo)
+  - tree-sitter (mcp tree-sitter)

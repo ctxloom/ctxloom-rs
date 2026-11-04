@@ -1,0 +1,5 @@
+{
+  "bundle": "project",
+  "path": "profiles/dev",
+  "content": "# Profile: dev\ndescription: dev profile\nparents:\n  - base\ntags:\n  - team\nselect_tags:\n  - house\nllm: claude-fast\nbundles:\n  - demo\nfragments:\n  - name: style#fragments/a\n    priority: 5\nvariables:\n  tone: casual\nexclude_fragments:\n  - testing\n"
+}

@@ -1,0 +1,13 @@
+{
+  "query": "review",
+  "local": [
+    {
+      "type": "command",
+      "name": "review",
+      "source": "demo",
+      "match": "name"
+    }
+  ],
+  "remote": [],
+  "count": 1
+}

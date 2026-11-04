@@ -1,0 +1,5 @@
+{
+  "bundle": "demo",
+  "path": "commands/review",
+  "content": "COMMAND-BODY-review\n"
+}

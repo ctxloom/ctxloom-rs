@@ -1,0 +1,13 @@
+dev:
+  llm: claude-code
+  profiles:
+    - p1
+  runtime: host
+  permissions:
+    approver: human
+    claude-code:
+      mode: plan
+  driving: oneshot
+  env_host: false
+  env:
+    - ALPHA

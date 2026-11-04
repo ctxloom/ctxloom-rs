@@ -1,0 +1,31 @@
+[
+  {
+    "name": "base",
+    "display_name": "base",
+    "description": "base profile",
+    "bundles": [
+      "rules"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/base.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "dev",
+    "display_name": "dev",
+    "description": "dev profile",
+    "parents": [
+      "base"
+    ],
+    "tags": [
+      "team"
+    ],
+    "bundles": [
+      "demo"
+    ],
+    "default": true,
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/dev.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  }
+]

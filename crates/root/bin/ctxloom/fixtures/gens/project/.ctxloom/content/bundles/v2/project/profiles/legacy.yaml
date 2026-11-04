@@ -1,0 +1,6 @@
+description: spelled the old way
+bundles:
+  - g0
+  - https://github.com/acme/repo@bundles/tools
+parents:
+  - https://github.com/acme/repo@bundles/base

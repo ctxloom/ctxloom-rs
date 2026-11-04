@@ -1,0 +1,6 @@
+Profile: golden-curated
+Path: {PROJECT}/.ctxloom/content/bundles/v2/project/profiles/golden-curated.yaml
+Bundle: ctxloom+local:project
+Description: golden curated
+Parents:
+  - golden-auto

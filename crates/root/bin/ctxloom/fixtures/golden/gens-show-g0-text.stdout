@@ -1,0 +1,16 @@
+Bundle: g0
+Version: 1.0.0
+Description: generation 0
+Path: {PROJECT}/.ctxloom/content/bundles/v2/g0/bundle.yaml
+
+MCP Servers (1):
+  - m
+      Command: server-g0
+
+Fragments (1):
+  - f [gen0]
+      BODY-g0
+
+Commands (1):
+  - p
+      prompt 0

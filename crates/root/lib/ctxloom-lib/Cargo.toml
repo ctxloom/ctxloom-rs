@@ -9,6 +9,14 @@ publish.workspace = true
 
 [dependencies]
 angzarr-diagnostic.workspace = true
+angzarr-presentation.workspace = true
+clap.workspace = true
+config-files.workspace = true
+content-fs.workspace = true
+ctxloom-cli.workspace = true
+ctxloom-ports.workspace = true
+library-application.workspace = true
+library-cli.workspace = true
 ctxloom-store-sqlite.workspace = true
 file-system.workspace = true
 # taskloom's harp ids and the Names port they implement, by commit.
@@ -23,7 +31,7 @@ harp-core.workspace = true
 
 [features]
 # `diagnostic_samples`, for other crates' catalog tests.
-test-support = ["ctxloom-store-sqlite/test-support"]
+test-support = ["ctxloom-store-sqlite/test-support", "ctxloom-cli/test-support"]
 
 [lints]
 workspace = true

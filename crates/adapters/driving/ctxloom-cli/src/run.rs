@@ -12,6 +12,7 @@ use serde::Serialize;
 
 use crate::commands::{command, Cli, Verb, PROG};
 use crate::error::CliError;
+use crate::extension::{Call, Extension};
 
 /// What the command line reads from the process besides its arguments.
 #[derive(Clone, Debug)]
@@ -22,8 +23,11 @@ pub struct Context {
     pub stdout_is_terminal: bool,
 }
 
-/// What the test commands call on the wiring. Empty in a release build.
+/// What the commands call on the wiring.
 pub trait Services {
+    /// The commands another crate owns, joined to this command line.
+    fn extension(&mut self) -> &mut dyn Extension;
+
     /// A newly minted session id.
     #[cfg(feature = "test-support")]
     fn session_name(&mut self) -> String;
@@ -52,11 +56,19 @@ pub fn run(
     err: &mut dyn Write,
 ) -> u8 {
     let args: Vec<OsString> = args.into_iter().collect();
-    let command = command(&context.version);
+    let nouns = services.extension().nouns();
+    let names: Vec<String> = nouns.iter().map(|n| n.get_name().to_string()).collect();
+    let command = command(&context.version, nouns);
     let matches = match command.clone().try_get_matches_from(&args) {
         Ok(matches) => matches,
         Err(e) => return refused(e, &command, &args, context, catalog, out, err),
     };
+    if let Some(noun) = matches
+        .subcommand_name()
+        .filter(|name| names.iter().any(|n| n == name))
+    {
+        return extended(noun, &matches, &args, context, catalog, services, out, err);
+    }
     let Ok(cli) = Cli::from_arg_matches(&matches) else {
         return 2;
     };
@@ -65,8 +77,6 @@ pub fn run(
         Err(e) => return report(&e, asked_format(&args, context), catalog, err),
     };
     let _ = cli.globals.verbose;
-    #[cfg(not(feature = "test-support"))]
-    let _ = services;
     let answered = match cli.command {
         Some(Verb::Version) => version(context, format, out),
         #[cfg(feature = "test-support")]
@@ -76,6 +86,48 @@ pub fn run(
     match answered {
         Ok(()) => 0,
         Err(e) => report(&e, format, catalog, err),
+    }
+}
+
+/// Run a command an extension owns.
+#[allow(clippy::too_many_arguments)]
+fn extended(
+    noun: &str,
+    matches: &clap::ArgMatches,
+    args: &[OsString],
+    context: &Context,
+    catalog: &Catalog,
+    services: &mut impl Services,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> u8 {
+    let asked = matches.get_one::<String>("format").map(String::as_str);
+    let explicit_format = match asked
+        .map(|value| {
+            value
+                .parse::<Format>()
+                .map_err(|e| CliError::Format { value: e.value })
+        })
+        .transpose()
+    {
+        Ok(format) => format,
+        Err(e) => return report(&e, asked_format(args, context), catalog, err),
+    };
+    let call = Call {
+        matches,
+        explicit_format,
+        default_format: Format::choose(false, None, context.stdout_is_terminal),
+        stdout_is_terminal: context.stdout_is_terminal,
+        degraded: matches.get_flag("degraded"),
+        no_companions: matches.get_flag("no_companions"),
+        config_set: matches
+            .get_many::<String>("config_set")
+            .map(|values| values.cloned().collect())
+            .unwrap_or_default(),
+    };
+    match services.extension().run(noun, &call, catalog, out, err) {
+        Ok(code) => code,
+        Err(failure) => report(&CliError::Extension(failure), call.format(), catalog, err),
     }
 }
 

@@ -1,0 +1,3 @@
+schema_version: 7
+config:
+  essence_max_chars: 4096

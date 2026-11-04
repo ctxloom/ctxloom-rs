@@ -1,0 +1,13 @@
+{
+  "query": "tree",
+  "local": [
+    {
+      "type": "mcp_server",
+      "name": "tree-sitter",
+      "source": "tree-sitter",
+      "match": "name"
+    }
+  ],
+  "remote": [],
+  "count": 1
+}

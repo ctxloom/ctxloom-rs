@@ -1,0 +1,25 @@
+{
+  "query": "",
+  "local": [
+    {
+      "type": "fragment",
+      "name": "always",
+      "tags": [
+        "golden"
+      ],
+      "source": "premised",
+      "match": "name"
+    },
+    {
+      "type": "fragment",
+      "name": "sometimes",
+      "tags": [
+        "golden"
+      ],
+      "source": "premised",
+      "match": "name"
+    }
+  ],
+  "remote": [],
+  "count": 2
+}

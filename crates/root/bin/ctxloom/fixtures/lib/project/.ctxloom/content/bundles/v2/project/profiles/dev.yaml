@@ -1,0 +1,17 @@
+description: dev profile
+parents:
+  - base
+llm: claude-fast
+bundles:
+  - demo
+fragments:
+  - name: style#fragments/a
+    priority: 5
+exclude_fragments:
+  - testing
+variables:
+  tone: casual
+select_tags:
+  - house
+tags:
+  - team

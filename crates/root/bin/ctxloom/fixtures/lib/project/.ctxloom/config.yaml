@@ -1,0 +1,35 @@
+schema_version: 8
+agents:
+  developer:
+    llm: claude-code
+    profiles:
+      - dev
+    runtime: host
+  reviewer:
+    llm: big
+    profiles:
+      - base
+      - dev
+    runtime: container-rootless
+    permissions:
+      claude-code:
+        mode: plan
+default_agent: developer
+llm:
+  configs:
+    claude-code:
+      type: claude-code
+      model: opus
+      role: primary
+    claude-fast:
+      type: claude-code
+      model: haiku
+      role: fast
+    big:
+      type: mock
+      model: o1
+  defaults:
+    primary: claude-code
+    fast: claude-fast
+config:
+  use_distilled: true

@@ -1,0 +1,23 @@
+[package]
+name = "config-files"
+version = "0.1.0"
+description = "The ConfigFiles port over the file-system seam: the home and project config.yaml layers"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+ctxloom-ports.workspace = true
+file-system.workspace = true
+
+[dev-dependencies]
+file-system = { workspace = true, features = ["test-support"] }
+os.workspace = true
+
+[features]
+test-support = ["ctxloom-ports/test-support"]
+
+[lints]
+workspace = true

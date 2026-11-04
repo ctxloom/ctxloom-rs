@@ -1,0 +1,5 @@
+command: tree-sitter
+args:
+  - --stdio
+env:
+  LOG: debug

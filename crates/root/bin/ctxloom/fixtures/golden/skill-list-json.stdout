@@ -1,0 +1,12 @@
+[
+  {
+    "name": "demo/reviewer",
+    "description": "SKILL-MARKER",
+    "tags": [
+      "sample",
+      "quality"
+    ],
+    "source": "demo",
+    "file_count": 2
+  }
+]

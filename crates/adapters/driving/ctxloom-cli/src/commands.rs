@@ -24,6 +24,18 @@ pub struct Globals {
     /// Accepted by every command; changes no output
     #[arg(short = 'v', long, global = true, action = ArgAction::Count)]
     pub verbose: u8,
+    /// Degrade instead of failing: downgrade fatal startup findings (broken
+    /// config, unresolvable profiles or bundles) to warnings
+    #[arg(long, global = true)]
+    pub degraded: bool,
+    /// Run no registered companion: contribute none of their commands,
+    /// hooks, MCP servers or context
+    #[arg(long, global = true)]
+    pub no_companions: bool,
+    /// Override a config value for this invocation, repeatable (e.g.
+    /// --config-set llm.defaults.primary=big)
+    #[arg(long = "config-set", global = true, value_name = "PATH=VALUE", action = ArgAction::Append)]
+    pub config_set: Vec<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -71,9 +83,9 @@ pub enum TestVerb {
 /// The command with its version flag (`--version`, long only: `-v` is
 /// verbose), and with no `help` command anywhere: help is `-h` and
 /// `--help`, and a group given no command prints its own.
-pub fn command(version: &str) -> Command {
+pub fn command(version: &str, nouns: Vec<Command>) -> Command {
     use clap::CommandFactory;
-    without_help_command(
+    let mut command = without_help_command(
         Cli::command()
             .version(version.to_string())
             .disable_version_flag(true)
@@ -84,7 +96,13 @@ pub fn command(version: &str) -> Command {
                     .help("Print the ctxloom version")
                     .action(ArgAction::Version),
             ),
-    )
+    );
+    // An extension's nouns arrive shaped: a group that lists when bare must not
+    // be made to print its help.
+    for noun in nouns {
+        command = command.subcommand(noun);
+    }
+    command
 }
 
 fn without_help_command(command: Command) -> Command {

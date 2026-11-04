@@ -1,0 +1,13 @@
+[
+  {
+    "name": "review",
+    "tags": [
+      "sample",
+      "review"
+    ],
+    "bundle": "demo",
+    "ref": "demo#commands/review",
+    "remote": "",
+    "bundle_label": "demo"
+  }
+]

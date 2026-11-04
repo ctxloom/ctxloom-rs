@@ -49,8 +49,17 @@ the architecture; there is no other table of crates.
 - `root/lib`: the composition root's wiring as a library (`ctxloom-lib`).
 - `root/bin`: the `ctxloom` binary, the composition root.
 
-Today (slice S0) there is no core crate yet: `ctxloom-store-sqlite` (driven),
-`ctxloom-cli` (driving), `ctxloom-lib` (wiring) and the `ctxloom` binary.
+Today: slice S0's `ctxloom-store-sqlite` (driven), `ctxloom-cli` (driving),
+`ctxloom-lib` (wiring) and the `ctxloom` binary; and slice S1's library read
+side: `library` (read model: references, bundles, profiles, composite
+selection, the premise index, the layered config), `ctxloom-ports` (the
+content and config ports), `library-application` (every library query),
+`content-fs` and `config-files` (driven), and `library-cli` (driving). The
+whole command line is parsed by `ctxloom-cli`; a crate that owns more nouns
+joins it through its `Extension` seam (`ctxloom-lib` wires `library-cli`
+in).
+
+Divergence from Go: a config whose `schema_version` is newer, older or unreadable is refused (exit 2, D15 strict decode); Go warns and continues.
 
 `crates/core/clippy.toml` holds the core's purity rules (no I/O, clock, env,
 threads or hash-ordered collections) and reaches every core crate, because

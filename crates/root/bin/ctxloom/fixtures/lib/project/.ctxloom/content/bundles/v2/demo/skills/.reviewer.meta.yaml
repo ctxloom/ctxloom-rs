@@ -1,0 +1,4 @@
+tags:
+  - quality
+executable:
+  - scripts/run.sh

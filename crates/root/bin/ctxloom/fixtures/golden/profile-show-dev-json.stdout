@@ -1,0 +1,23 @@
+{
+  "name": "dev",
+  "description": "dev profile",
+  "llm": "claude-fast",
+  "parents": [
+    "base"
+  ],
+  "tags": [
+    "team"
+  ],
+  "bundles": [
+    "demo"
+  ],
+  "variables": {
+    "tone": "casual"
+  },
+  "exclude_fragments": [
+    "testing"
+  ],
+  "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/dev.yaml",
+  "bundle": "ctxloom+local:project",
+  "default": true
+}

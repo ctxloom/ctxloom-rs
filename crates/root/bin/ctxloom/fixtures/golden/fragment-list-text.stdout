@@ -1,0 +1,14 @@
+Fragments (7):
+
+  demo:
+    - dist [sample, distilled]
+    - example [sample, example, house]
+    - golang [sample, go]
+    - testing [sample]
+
+  rules:
+    - one
+    - two
+
+  style:
+    - a

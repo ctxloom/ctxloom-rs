@@ -1,0 +1,8 @@
+bundles: [a]
+fragments:
+  - name: b#fragments/b1
+    priority: 9
+  - name: c#fragments/c1
+    priority: 4
+  - name: d#fragments/d1
+    priority: 1

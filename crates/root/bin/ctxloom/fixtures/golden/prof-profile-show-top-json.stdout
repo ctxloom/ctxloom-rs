@@ -1,0 +1,13 @@
+{
+  "name": "top",
+  "parents": [
+    "left",
+    "right"
+  ],
+  "bundles": [
+    "a"
+  ],
+  "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/top.yaml",
+  "bundle": "ctxloom+local:project",
+  "default": true
+}

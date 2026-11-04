@@ -1,0 +1,29 @@
+{
+  "name": "g1",
+  "path": "{PROJECT}/.ctxloom/content/bundles/v2/g1/bundle.yaml",
+  "version": "1.0.1",
+  "description": "generation 1",
+  "fragments": {
+    "f": {
+      "tags": [
+        "gen1"
+      ],
+      "preview": "BODY-g1",
+      "distilled": false,
+      "no_distill": false
+    }
+  },
+  "commands": {
+    "p": {
+      "description": "prompt 1",
+      "preview": "PROMPT-g1",
+      "distilled": false,
+      "no_distill": false
+    }
+  },
+  "mcp": {
+    "m": {
+      "command": "server-g1"
+    }
+  }
+}

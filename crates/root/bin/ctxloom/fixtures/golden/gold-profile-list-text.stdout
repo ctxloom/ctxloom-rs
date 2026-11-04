@@ -1,0 +1,10 @@
+Profiles (3):
+  ctxloom+local:code-quality#profiles/strict
+    Strict review profile
+    from bundle: ctxloom+local:code-quality, parents: base, 1 bundles
+  golden-auto (default)
+    golden uncurated
+    from bundle: ctxloom+local:project, 3 bundles
+  golden-curated
+    golden curated
+    from bundle: ctxloom+local:project, parents: golden-auto

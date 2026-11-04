@@ -1,0 +1,6 @@
+MCP Server: tree-sitter
+Bundle: ctxloom+local:demo
+Command: tree-sitter
+Args: --stdio
+Environment:
+  LOG=debug

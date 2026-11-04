@@ -1,0 +1,19 @@
+{
+  "name": "tree-sitter",
+  "found": true,
+  "entries": [
+    {
+      "name": "tree-sitter",
+      "command": "tree-sitter",
+      "args": [
+        "--stdio"
+      ],
+      "env": {
+        "LOG": "debug"
+      },
+      "source": "ctxloom+local:demo",
+      "notes": "parse trees",
+      "installation": "npm i tree-sitter"
+    }
+  ]
+}

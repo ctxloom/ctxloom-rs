@@ -1,0 +1,44 @@
+[
+  {
+    "name": "ctxloom+local:code-quality#profiles/strict",
+    "display_name": "strict",
+    "description": "Strict review profile",
+    "parents": [
+      "base"
+    ],
+    "tags": [
+      "review"
+    ],
+    "bundles": [
+      "code-quality#fragments/solid"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/code-quality/profiles/strict.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:code-quality"
+  },
+  {
+    "name": "golden-auto",
+    "display_name": "golden-auto",
+    "description": "golden uncurated",
+    "bundles": [
+      "code-quality",
+      "ctxloom-project",
+      "premised"
+    ],
+    "default": true,
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/golden-auto.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "golden-curated",
+    "display_name": "golden-curated",
+    "description": "golden curated",
+    "parents": [
+      "golden-auto"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/golden-curated.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  }
+]

@@ -1,0 +1,12 @@
+demo#skills/reviewer
+
+description: SKILL-MARKER
+
+
+# reviewer
+
+body
+
+Files (2):
+  0644  sha256:5a88a1eb69a032b68569b840821888c75ffb2bb0f17ecbfc73296ff320faab17  SKILL.md
+  0644  sha256:299001868fb8c02fd431c336c6d058f5558c5dff5b5af5e6fe04b870a6a9cbba  scripts/run.sh

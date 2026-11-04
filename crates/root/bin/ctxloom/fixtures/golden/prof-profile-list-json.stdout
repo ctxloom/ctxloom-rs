@@ -1,0 +1,1186 @@
+[
+  {
+    "name": "bookend",
+    "display_name": "bookend",
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/bookend.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "bottom",
+    "display_name": "bottom",
+    "description": "bottom of the diamond",
+    "bundles": [
+      "d"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/bottom.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "cycle-a",
+    "display_name": "cycle-a",
+    "parents": [
+      "cycle-b"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/cycle-a.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "cycle-b",
+    "display_name": "cycle-b",
+    "parents": [
+      "cycle-a"
+    ],
+    "bundles": [
+      "b"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/cycle-b.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-0",
+    "display_name": "deep-0",
+    "parents": [
+      "deep-1"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-0.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-1",
+    "display_name": "deep-1",
+    "parents": [
+      "deep-2"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-1.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-10",
+    "display_name": "deep-10",
+    "parents": [
+      "deep-11"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-10.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-11",
+    "display_name": "deep-11",
+    "parents": [
+      "deep-12"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-11.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-12",
+    "display_name": "deep-12",
+    "parents": [
+      "deep-13"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-12.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-13",
+    "display_name": "deep-13",
+    "parents": [
+      "deep-14"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-13.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-14",
+    "display_name": "deep-14",
+    "parents": [
+      "deep-15"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-14.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-15",
+    "display_name": "deep-15",
+    "parents": [
+      "deep-16"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-15.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-16",
+    "display_name": "deep-16",
+    "parents": [
+      "deep-17"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-16.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-17",
+    "display_name": "deep-17",
+    "parents": [
+      "deep-18"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-17.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-18",
+    "display_name": "deep-18",
+    "parents": [
+      "deep-19"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-18.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-19",
+    "display_name": "deep-19",
+    "parents": [
+      "deep-20"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-19.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-2",
+    "display_name": "deep-2",
+    "parents": [
+      "deep-3"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-2.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-20",
+    "display_name": "deep-20",
+    "parents": [
+      "deep-21"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-20.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-21",
+    "display_name": "deep-21",
+    "parents": [
+      "deep-22"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-21.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-22",
+    "display_name": "deep-22",
+    "parents": [
+      "deep-23"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-22.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-23",
+    "display_name": "deep-23",
+    "parents": [
+      "deep-24"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-23.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-24",
+    "display_name": "deep-24",
+    "parents": [
+      "deep-25"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-24.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-25",
+    "display_name": "deep-25",
+    "parents": [
+      "deep-26"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-25.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-26",
+    "display_name": "deep-26",
+    "parents": [
+      "deep-27"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-26.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-27",
+    "display_name": "deep-27",
+    "parents": [
+      "deep-28"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-27.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-28",
+    "display_name": "deep-28",
+    "parents": [
+      "deep-29"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-28.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-29",
+    "display_name": "deep-29",
+    "parents": [
+      "deep-30"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-29.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-3",
+    "display_name": "deep-3",
+    "parents": [
+      "deep-4"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-3.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-30",
+    "display_name": "deep-30",
+    "parents": [
+      "deep-31"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-30.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-31",
+    "display_name": "deep-31",
+    "parents": [
+      "deep-32"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-31.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-32",
+    "display_name": "deep-32",
+    "parents": [
+      "deep-33"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-32.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-33",
+    "display_name": "deep-33",
+    "parents": [
+      "deep-34"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-33.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-34",
+    "display_name": "deep-34",
+    "parents": [
+      "deep-35"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-34.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-35",
+    "display_name": "deep-35",
+    "parents": [
+      "deep-36"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-35.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-36",
+    "display_name": "deep-36",
+    "parents": [
+      "deep-37"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-36.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-37",
+    "display_name": "deep-37",
+    "parents": [
+      "deep-38"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-37.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-38",
+    "display_name": "deep-38",
+    "parents": [
+      "deep-39"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-38.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-39",
+    "display_name": "deep-39",
+    "parents": [
+      "deep-40"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-39.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-4",
+    "display_name": "deep-4",
+    "parents": [
+      "deep-5"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-4.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-40",
+    "display_name": "deep-40",
+    "parents": [
+      "deep-41"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-40.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-41",
+    "display_name": "deep-41",
+    "parents": [
+      "deep-42"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-41.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-42",
+    "display_name": "deep-42",
+    "parents": [
+      "deep-43"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-42.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-43",
+    "display_name": "deep-43",
+    "parents": [
+      "deep-44"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-43.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-44",
+    "display_name": "deep-44",
+    "parents": [
+      "deep-45"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-44.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-45",
+    "display_name": "deep-45",
+    "parents": [
+      "deep-46"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-45.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-46",
+    "display_name": "deep-46",
+    "parents": [
+      "deep-47"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-46.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-47",
+    "display_name": "deep-47",
+    "parents": [
+      "deep-48"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-47.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-48",
+    "display_name": "deep-48",
+    "parents": [
+      "deep-49"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-48.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-49",
+    "display_name": "deep-49",
+    "parents": [
+      "deep-50"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-49.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-5",
+    "display_name": "deep-5",
+    "parents": [
+      "deep-6"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-5.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-50",
+    "display_name": "deep-50",
+    "parents": [
+      "deep-51"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-50.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-51",
+    "display_name": "deep-51",
+    "parents": [
+      "deep-52"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-51.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-52",
+    "display_name": "deep-52",
+    "parents": [
+      "deep-53"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-52.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-53",
+    "display_name": "deep-53",
+    "parents": [
+      "deep-54"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-53.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-54",
+    "display_name": "deep-54",
+    "parents": [
+      "deep-55"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-54.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-55",
+    "display_name": "deep-55",
+    "parents": [
+      "deep-56"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-55.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-56",
+    "display_name": "deep-56",
+    "parents": [
+      "deep-57"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-56.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-57",
+    "display_name": "deep-57",
+    "parents": [
+      "deep-58"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-57.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-58",
+    "display_name": "deep-58",
+    "parents": [
+      "deep-59"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-58.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-59",
+    "display_name": "deep-59",
+    "parents": [
+      "deep-60"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-59.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-6",
+    "display_name": "deep-6",
+    "parents": [
+      "deep-7"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-6.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-60",
+    "display_name": "deep-60",
+    "parents": [
+      "deep-61"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-60.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-61",
+    "display_name": "deep-61",
+    "parents": [
+      "deep-62"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-61.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-62",
+    "display_name": "deep-62",
+    "parents": [
+      "deep-63"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-62.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-63",
+    "display_name": "deep-63",
+    "parents": [
+      "deep-64"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-63.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-64",
+    "display_name": "deep-64",
+    "parents": [
+      "deep-65"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-64.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-65",
+    "display_name": "deep-65",
+    "parents": [
+      "deep-66"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-65.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-66",
+    "display_name": "deep-66",
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-66.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-7",
+    "display_name": "deep-7",
+    "parents": [
+      "deep-8"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-7.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-8",
+    "display_name": "deep-8",
+    "parents": [
+      "deep-9"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-8.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "deep-9",
+    "display_name": "deep-9",
+    "parents": [
+      "deep-10"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/deep-9.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "excl-child",
+    "display_name": "excl-child",
+    "parents": [
+      "excl-parent"
+    ],
+    "bundles": [
+      "c"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/excl-child.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "excl-parent",
+    "display_name": "excl-parent",
+    "bundles": [
+      "a",
+      "b"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/excl-parent.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "left",
+    "display_name": "left",
+    "parents": [
+      "bottom"
+    ],
+    "bundles": [
+      "b"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/left.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "llm-inherit",
+    "display_name": "llm-inherit",
+    "parents": [
+      "bottom"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/llm-inherit.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "llm-override",
+    "display_name": "llm-override",
+    "parents": [
+      "bottom"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/llm-override.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "missing-bundle",
+    "display_name": "missing-bundle",
+    "bundles": [
+      "a",
+      "does-not-exist"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/missing-bundle.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "missing-fragment",
+    "display_name": "missing-fragment",
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/missing-fragment.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "mustache",
+    "display_name": "mustache",
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/mustache.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "ok-0",
+    "display_name": "ok-0",
+    "parents": [
+      "ok-1"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/ok-0.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "ok-1",
+    "display_name": "ok-1",
+    "parents": [
+      "ok-2"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/ok-1.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "ok-10",
+    "display_name": "ok-10",
+    "bundles": [
+      "b"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/ok-10.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "ok-2",
+    "display_name": "ok-2",
+    "parents": [
+      "ok-3"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/ok-2.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "ok-3",
+    "display_name": "ok-3",
+    "parents": [
+      "ok-4"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/ok-3.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "ok-4",
+    "display_name": "ok-4",
+    "parents": [
+      "ok-5"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/ok-4.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "ok-5",
+    "display_name": "ok-5",
+    "parents": [
+      "ok-6"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/ok-5.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "ok-6",
+    "display_name": "ok-6",
+    "parents": [
+      "ok-7"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/ok-6.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "ok-7",
+    "display_name": "ok-7",
+    "parents": [
+      "ok-8"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/ok-7.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "ok-8",
+    "display_name": "ok-8",
+    "parents": [
+      "ok-9"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/ok-8.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "ok-9",
+    "display_name": "ok-9",
+    "parents": [
+      "ok-10"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/ok-9.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "orphan",
+    "display_name": "orphan",
+    "parents": [
+      "ghost",
+      "bottom"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/orphan.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "pinned",
+    "display_name": "pinned",
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/pinned.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "right",
+    "display_name": "right",
+    "parents": [
+      "bottom"
+    ],
+    "bundles": [
+      "c"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/right.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "selfish",
+    "display_name": "selfish",
+    "parents": [
+      "selfish"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/selfish.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  },
+  {
+    "name": "top",
+    "display_name": "top",
+    "parents": [
+      "left",
+      "right"
+    ],
+    "bundles": [
+      "a"
+    ],
+    "default": true,
+    "path": "{PROJECT}/.ctxloom/content/bundles/v2/project/profiles/top.yaml",
+    "is_remote": false,
+    "bundle": "ctxloom+local:project"
+  }
+]

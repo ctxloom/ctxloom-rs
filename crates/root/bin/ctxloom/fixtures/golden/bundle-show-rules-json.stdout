@@ -1,0 +1,18 @@
+{
+  "name": "rules",
+  "path": "{PROJECT}/.ctxloom/content/bundles/v2/rules/bundle.yaml",
+  "version": "0.1.0",
+  "description": "team rules",
+  "fragments": {
+    "one": {
+      "preview": "RULES-ONE",
+      "distilled": false,
+      "no_distill": false
+    },
+    "two": {
+      "preview": "RULES-TWO",
+      "distilled": false,
+      "no_distill": false
+    }
+  }
+}
