@@ -1,5 +1,5 @@
 [package]
-name = "setup-cli"
+name = "surface-cli"
 version = "0.1.0"
 description = "The setup commands as a driving adapter (S9): manage, materialize and the hidden util config-write, arguments in and answers out"
 edition.workspace = true

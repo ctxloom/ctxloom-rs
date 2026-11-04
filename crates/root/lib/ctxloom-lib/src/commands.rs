@@ -190,7 +190,7 @@ impl Extension for Commands {
             })
             .collect();
         nouns.extend(deps_cli::nouns());
-        nouns.extend(setup_cli::nouns());
+        nouns.extend(surface_cli::nouns());
         nouns
     }
 
@@ -213,7 +213,7 @@ impl Extension for Commands {
             exit: 1,
         })?;
         if SETUP_NOUNS.contains(&noun) {
-            let inner = setup_cli::Call {
+            let inner = surface_cli::Call {
                 matches: call.matches,
                 explicit_format: call.explicit_format,
                 default_format: call.default_format,
@@ -222,7 +222,7 @@ impl Extension for Commands {
                 no_companions: call.no_companions,
                 config_set: call.config_set.clone(),
             };
-            return setup_cli::run(&wired.setup, noun, &inner, catalog, out, err).map_err(|f| {
+            return surface_cli::run(&wired.setup, noun, &inner, catalog, out, err).map_err(|f| {
                 Failure {
                     cause: f.cause,
                     exit: f.exit,

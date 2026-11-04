@@ -95,7 +95,7 @@ setup-application = { path = "crates/core/application/setup-application" }
 surface-files = { path = "crates/adapters/driven/surface-files" }
 engine-claude = { path = "crates/adapters/driven/engine-claude" }
 engine-mock = { path = "crates/adapters/driven/engine-mock" }
-setup-cli = { path = "crates/adapters/driving/setup-cli" }
+surface-cli = { path = "crates/adapters/driving/surface-cli" }
 
 # HTTP for forge-github (owner, 2026-11-04): the blocking client, so the
 # synchronous CLI holds no runtime of its own, and the TLS stack chosen below.

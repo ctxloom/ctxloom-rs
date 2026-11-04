@@ -546,7 +546,7 @@ dependencies = [
  "sessions",
  "sessions-application",
  "setup-application",
- "setup-cli",
+ "surface-cli",
  "surface-files",
  "surface-ports",
  "system",
@@ -2519,7 +2519,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "setup-cli"
+name = "surface-cli"
 version = "0.1.0"
 dependencies = [
  "angzarr-diagnostic",
