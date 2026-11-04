@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use angzarr_embedded::v1::{CommandBook, Cover};
-use run_ports::{DeadLetters, Edge};
+use run_ports::Edge;
 
 use crate::error::AppError;
 use crate::identity::Identity;
@@ -73,21 +73,21 @@ pub enum Recorded {
 }
 
 /// Records facts on the caller's own streams.
-pub struct Facts<E: Edge, D: DeadLetters> {
+pub struct Facts<E: Edge> {
     edge: Arc<E>,
-    dead: Arc<D>,
 }
 
-impl<E: Edge, D: DeadLetters> Facts<E, D> {
-    pub fn new(edge: Arc<E>, dead: Arc<D>) -> Facts<E, D> {
-        Facts { edge, dead }
+impl<E: Edge> Facts<E> {
+    pub fn new(edge: Arc<E>) -> Facts<E> {
+        Facts { edge }
     }
 
-    /// Record `fact` on a stream `who` owns. A fact answered with a rejection
-    /// (a bug: a fact cannot be refused) is filed with the dead letters and
-    /// comes back as the refusal.
+    /// Record `fact` on a stream `who` owns. The answer is the kernel's: a fact it
+    /// dead-letters (a handler bug, a race lost to the cap, or a rejection, which
+    /// the kernel since 7873207 treats as its handler's bug) is `Parked`, and the
+    /// letter is the kernel's, kept in the store; this crate files none.
     pub async fn record(&self, who: &Identity, fact: AgentFact) -> Result<Recorded, AppError> {
-        let _ = (&self.edge, &self.dead, who, fact);
+        let _ = (&self.edge, who, fact);
         todo!("S5 stub")
     }
 }

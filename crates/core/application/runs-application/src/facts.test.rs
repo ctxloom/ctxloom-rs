@@ -7,7 +7,7 @@ use run_ports::Edge;
 use angzarr_embedded::v1::{DeliveryOutcome, Uuid};
 
 use crate::fakes::{fact_book, uuid, World, SESSION_ME};
-use crate::{AgentFact, AppError, Facts, Identity, Recorded};
+use crate::{AgentFact, Facts, Identity, Recorded};
 
 fn identity() -> Identity {
     Identity {
@@ -148,7 +148,7 @@ fn a_fact_is_sent_as_a_fact_body_with_its_external_id() {
 #[tokio::test]
 async fn a_fact_on_the_callers_own_run_is_applied_and_again_is_duplicate() {
     let world = World::new().await;
-    let facts = Facts::new(Arc::clone(&world.edge), Arc::clone(&world.dead));
+    let facts = Facts::new(Arc::clone(&world.edge));
     let who = &world.me.identity;
     assert_eq!(facts.record(who, exited()).await, Ok(Recorded::Applied));
     let before = world.edge.pages(&who.run_cover()).await.len();
@@ -161,7 +161,7 @@ async fn a_fact_on_the_callers_own_run_is_applied_and_again_is_duplicate() {
 #[tokio::test]
 async fn an_inbox_fact_lands_on_the_callers_session_and_not_its_run() {
     let world = World::new().await;
-    let facts = Facts::new(Arc::clone(&world.edge), Arc::clone(&world.dead));
+    let facts = Facts::new(Arc::clone(&world.edge));
     let who = &world.me.identity;
     world
         .edge
@@ -197,7 +197,7 @@ async fn an_inbox_fact_lands_on_the_callers_session_and_not_its_run() {
 #[tokio::test]
 async fn a_fact_at_the_race_cap_is_parked_and_asked_once() {
     let world = World::new().await;
-    let facts = Facts::new(Arc::clone(&world.edge), Arc::clone(&world.dead));
+    let facts = Facts::new(Arc::clone(&world.edge));
     let who = &world.me.identity;
     let before = world.edge.pages(&who.run_cover()).await.len();
     world.edge.lose_every_race();
@@ -210,27 +210,29 @@ async fn a_fact_at_the_race_cap_is_parked_and_asked_once() {
     assert_eq!(world.edge.pages(&who.run_cover()).await.len(), before);
 }
 
-// NEW-DESIGN (the task's scope 5: "a fact answered with a rejection is
-// dead-lettered"): a fact cannot be refused, so a rejection is a bug. It is
-// filed with the dead letters (external id, stream, code) and returned.
-// Provoked with a fact for a run that holds no stream: a mismatched identity.
+// NEW-DESIGN, owner ruling 2026-11-04 (S5 review Q5, keep + re-pin to
+// angzarr-embedded ffc58aa, which contains 7873207: "a fact answered with a
+// rejection is dead-lettered"). The kernel, not this crate, dead-letters a fact
+// it cannot take: the answer is `Parked`, nothing is persisted on the stream,
+// and the kernel's own letter about the run's stream is readable from the
+// store (`DeadLetterStore`). A markup `#[handles_fact]` cannot return a
+// rejection, so the case is provoked the way it can happen, a write that loses
+// every race; the kernel treats a bare handler's rejection the same way.
+// Replaces the earlier test that expected `Err(Refused)` and a `DeadLetters` port.
 #[tokio::test]
-async fn a_fact_answered_with_a_rejection_is_dead_lettered() {
+async fn a_fact_the_kernel_dead_letters_is_parked_and_its_letter_is_in_the_store() {
     let world = World::new().await;
-    let facts = Facts::new(Arc::clone(&world.edge), Arc::clone(&world.dead));
-    let stray = Identity {
-        run: Uuid::from_bytes([0x42; 16]),
-        ..world.me.identity.clone()
-    };
-    let result = facts.record(&stray, turn_started(1)).await;
-    assert!(
-        matches!(result, Err(AppError::Refused { .. })),
-        "{result:?}"
+    let facts = Facts::new(Arc::clone(&world.edge));
+    let who = &world.me.identity;
+    assert!(world.edge.dead_letters(&who.run_cover()).await.is_empty());
+    world.edge.lose_every_race();
+    assert_eq!(
+        facts.record(who, turn_started(1)).await,
+        Ok(Recorded::Parked)
     );
-    let filed = world.dead.filed();
-    assert_eq!(filed.len(), 1);
-    assert_eq!(filed[0].external_id, turn_started(1).external_id(&stray));
-    assert_eq!(filed[0].stream, stray.run_cover());
+    let letters = world.edge.dead_letters(&who.run_cover()).await;
+    assert_eq!(letters.len(), 1, "the kernel's own dead letter");
+    assert_eq!(letters[0].stream, who.run_cover());
 }
 
 // NEW-DESIGN: the answer maps the spec's three outcomes and no others.

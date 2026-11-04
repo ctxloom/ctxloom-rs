@@ -4,13 +4,13 @@
 //! rules are `runs-application`'s, over a kernel double.
 
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use angzarr_embedded::testing::{Fault, FaultyStore, MemoryStore};
 use angzarr_embedded::v1::{Cover, Uuid};
 use angzarr_embedded::{CommandBookExt, Failure, KernelError, Malformed};
 use embedded_edge::EmbeddedEdge;
-use run_ports::{Arrival, DeadFact, DeadLetters, Edge, Token, TokenSource, Unserved};
+use run_ports::{Arrival, Edge, Token, TokenSource, Unserved};
 use runs_application::{
     Admission, AgentFact, AppError, Credential, EnqueueRequest, Enqueuer, Facts, Gate, Identity,
     Recorded, RunsGate, Why,
@@ -19,15 +19,6 @@ use runs_application::{
 use crate::{run_id, InProcessCore};
 
 const SESSION: &str = "5f0c7a52-1111-5111-8111-000000000001";
-
-#[derive(Default)]
-struct Dead(Mutex<Vec<DeadFact>>);
-
-impl DeadLetters for Dead {
-    fn file(&self, fact: DeadFact) {
-        self.0.lock().unwrap().push(fact);
-    }
-}
 
 #[derive(Default)]
 struct Counting(AtomicU32);
@@ -129,7 +120,7 @@ fn the_run_domains_root_is_the_id_the_library_derives() {
 #[tokio::test]
 async fn a_fact_is_applied_and_again_duplicate_over_app_serve_in() {
     let world = World::new().await;
-    let facts = Facts::new(world.edge(), Arc::new(Dead::default()));
+    let facts = Facts::new(world.edge());
     assert_eq!(
         facts.record(&world.identity, exited()).await,
         Ok(Recorded::Applied)
@@ -175,7 +166,7 @@ async fn an_unknown_domain_is_hidden_and_answered_like_a_missing_one() {
 #[tokio::test]
 async fn a_fact_at_the_race_cap_is_parked_over_app_serve_in() {
     let world = World::new().await;
-    let facts = Facts::new(world.edge(), Arc::new(Dead::default()));
+    let facts = Facts::new(world.edge());
     let before = world
         .edge()
         .events(&world.identity.run_cover(), 0)
@@ -203,7 +194,7 @@ async fn a_fact_at_the_race_cap_is_parked_over_app_serve_in() {
 #[tokio::test]
 async fn the_token_is_refused_once_the_runs_end_is_recorded() {
     let world = World::new().await;
-    let facts = Facts::new(world.edge(), Arc::new(Dead::default()));
+    let facts = Facts::new(world.edge());
     facts.record(&world.identity, exited()).await.unwrap();
     let admission = Admission::new(world.edge());
     let book = exited().book(&world.identity);

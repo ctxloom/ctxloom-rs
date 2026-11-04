@@ -1,6 +1,6 @@
 //! The test doubles the use cases share: an [`Edge`] over the kernel and an
 //! in-memory store (so a fact is APPLIED, DUPLICATE or PARKED by the kernel's
-//! own rules, not the double's), a dead-letter log, and a counting token
+//! own rules, not the double's), and a counting token
 //! source. The real edge over `App::serve_in` is `ctxloom-lib`'s `core_link`
 //! test.
 //!
@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
+use angzarr_embedded::angzarr_ports::{DeadLetter, DeadLetterStore};
 use angzarr_embedded::markup::DomainMessage;
 use angzarr_embedded::testing::{Fault, FaultyStore, MemoryStore, Samples};
 use angzarr_embedded::v1::{
@@ -22,7 +23,7 @@ use angzarr_embedded::{
     Answered, Any, Failure, Handled, Kernel, OnRetryable, Registry, Rejected, Sampled, StoreError,
     StreamRef,
 };
-use run_ports::{Arrival, DeadFact, DeadLetters, Edge, Token, TokenSource, Unserved};
+use run_ports::{Arrival, Edge, Token, TokenSource, Unserved};
 use sha2::{Digest, Sha256};
 
 use crate::{Credential, Identity};
@@ -83,6 +84,14 @@ impl KernelEdge {
     /// Every page of a stream, as the store holds it.
     pub(crate) async fn pages(&self, cover: &Cover) -> Vec<EventPage> {
         self.events(cover, 0).await.unwrap()
+    }
+
+    /// The dead letters the kernel kept about `cover`'s stream, in the store.
+    pub(crate) async fn dead_letters(&self, cover: &Cover) -> Vec<DeadLetter> {
+        let stream = StreamRef::try_from(cover).unwrap();
+        DeadLetterStore::dead_letters(&self.store, stream)
+            .await
+            .unwrap()
     }
 
     fn admits(&self, domain: &str, arrival: Arrival) -> bool {
@@ -150,21 +159,6 @@ impl Edge for KernelEdge {
     }
 }
 
-#[derive(Default)]
-pub(crate) struct DeadLog(Mutex<Vec<DeadFact>>);
-
-impl DeadLog {
-    pub(crate) fn filed(&self) -> Vec<DeadFact> {
-        self.0.lock().unwrap().clone()
-    }
-}
-
-impl DeadLetters for DeadLog {
-    fn file(&self, fact: DeadFact) {
-        self.0.lock().unwrap().push(fact);
-    }
-}
-
 /// Tokens `[1; 32]`, `[2; 32]`, ...
 #[derive(Default)]
 pub(crate) struct CountingSource(AtomicU32);
@@ -229,7 +223,6 @@ pub(crate) struct Party {
 
 pub(crate) struct World {
     pub(crate) edge: Arc<KernelEdge>,
-    pub(crate) dead: Arc<DeadLog>,
     pub(crate) me: Party,
     pub(crate) other: Party,
 }
@@ -241,12 +234,7 @@ impl World {
         let edge = Arc::new(KernelEdge::new());
         let me = World::party(&edge, SESSION_ME, "amber-swift-owl", 0, 1).await;
         let other = World::party(&edge, SESSION_OTHER, "calm-otter-dawn", 0, 2).await;
-        World {
-            edge,
-            dead: Arc::new(DeadLog::default()),
-            me,
-            other,
-        }
+        World { edge, me, other }
     }
 
     /// A child (depth 2) of `me`'s tree, with a run of its own.

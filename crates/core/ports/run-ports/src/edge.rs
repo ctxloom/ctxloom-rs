@@ -58,18 +58,3 @@ pub trait Edge: Send + Sync {
         from: u64,
     ) -> impl Future<Output = Result<Vec<EventPage>, StoreError>> + Send;
 }
-
-/// A fact the core could not take, as the dead-letter sink files it.
-#[derive(Clone, Debug, PartialEq)]
-pub struct DeadFact {
-    pub external_id: String,
-    pub stream: Cover,
-    /// The refusal's code.
-    pub code: String,
-}
-
-/// Where a fact answered with a rejection goes (a fact cannot be refused, so
-/// a rejection is a bug to be read, not retried).
-pub trait DeadLetters: Send + Sync {
-    fn file(&self, fact: DeadFact);
-}
