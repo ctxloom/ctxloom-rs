@@ -830,3 +830,69 @@ fn test_a_dry_run_prints_its_sections_and_names_the_empty_ones() {
         "=== LLM ===\nclaude-code (claude-code)\n\n=== Profiles ===\n(no profiles)\n\n=== Fragments Loaded ===\n(no fragments)\n\n=== Assembled Context (~7 tokens) ===\n(no context)\n\n=== Prompt ===\n(interactive mode)\n"
     );
 }
+
+fn found(remote: &str, name: &str, tags: &[&str]) -> library_application::RemoteFound {
+    library_application::RemoteFound {
+        remote: remote.to_string(),
+        name: name.to_string(),
+        kind: "bundle".to_string(),
+        tags: tags.iter().map(ToString::to_string).collect(),
+        description: String::new(),
+        author: String::new(),
+        pull_ref: String::new(),
+    }
+}
+
+fn remote_only(hits: Vec<library_application::RemoteFound>) -> library_application::SearchResults {
+    library_application::SearchResults {
+        query: "q".to_string(),
+        local: Vec::new(),
+        count: hits.len() as u64,
+        remote: hits,
+        hidden_local: 0,
+    }
+}
+
+// The remote table: columns as wide as the widest entry, tags cut at twenty
+// characters.
+#[test]
+fn test_remote_search_results_are_a_table_as_wide_as_its_entries() {
+    let results = remote_only(vec![
+        found("origin", "kit", &["go", "tdd"]),
+        found(
+            "a-longer-remote",
+            "a-longer-bundle-name",
+            &["exactly-twenty-chars"],
+        ),
+        found("o", "n", &["exactly-twenty-one-chr"]),
+    ]);
+    let table = "Remote:\n  Type     \u{2502} Remote          \u{2502} Name                 \u{2502} Tags\n  \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{253c}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{253c}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{253c}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\n  bundle   \u{2502} origin          \u{2502} kit                  \u{2502} go, tdd\n  bundle   \u{2502} a-longer-remote \u{2502} a-longer-bundle-name \u{2502} exactly-twenty-chars\n  bundle   \u{2502} o               \u{2502} n                    \u{2502} exactly-twenty-on...\n\nUse one: add its ref to a profile (ctxloom profile create/modify), then ctxloom deps pull\n";
+    assert_eq!(
+        shown(|out| search(out, &results)),
+        format!("Results (3):\n\n{table}")
+    );
+    let mixed = SearchResults {
+        local: vec![hit("fragment", &[], "")],
+        count: 4,
+        ..results
+    };
+    assert_eq!(
+        shown(|out| search(out, &mixed)),
+        format!("Results (4):\n\nFragments:\n  - n\n\n{table}")
+    );
+}
+
+#[test]
+fn test_local_results_alone_have_no_remote_section() {
+    let results = SearchResults {
+        query: st("n"),
+        local: vec![hit("fragment", &[], "")],
+        remote: Vec::new(),
+        count: 1,
+        hidden_local: 0,
+    };
+    assert_eq!(
+        shown(|out| search(out, &results)),
+        "Results (1):\n\nFragments:\n  - n\n"
+    );
+}

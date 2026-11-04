@@ -465,12 +465,28 @@ pub struct SearchHit {
     pub r#match: String,
 }
 
+/// One bundle a remote publishes, as a search found it.
+#[derive(Clone, Debug, Serialize)]
+pub struct RemoteFound {
+    pub remote: String,
+    pub name: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+    #[serde(skip_serializing_if = "no_items")]
+    pub tags: Vec<String>,
+    #[serde(skip_serializing_if = "no_text")]
+    pub description: String,
+    #[serde(skip_serializing_if = "no_text")]
+    pub author: String,
+    pub pull_ref: String,
+}
+
 /// What `search` answers.
 #[derive(Clone, Debug, Serialize)]
 pub struct SearchResults {
     pub query: String,
     pub local: Vec<SearchHit>,
-    pub remote: Vec<SearchHit>,
+    pub remote: Vec<RemoteFound>,
     pub count: u64,
     #[serde(skip_serializing_if = "is_zero")]
     pub hidden_local: u64,

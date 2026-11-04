@@ -168,6 +168,9 @@ pub(crate) fn repo_root() -> PathBuf {
 #[path = "catalog.test.rs"]
 mod catalog;
 
+#[path = "deps.test.rs"]
+mod deps;
+
 #[path = "errors.test.rs"]
 mod errors;
 

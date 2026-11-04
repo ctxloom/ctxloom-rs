@@ -3,7 +3,7 @@
 use crate::agents::Served;
 use crate::error::{AppError, Notice};
 use crate::project::{Library, Outcome, Project};
-use crate::views::{SearchHit, SearchResults};
+use crate::views::{RemoteFound, SearchHit, SearchResults};
 use crate::Flags;
 
 /// The most local results a search answers.
@@ -51,9 +51,20 @@ impl Project {
                 })
             }
         };
-        if request.remote && !request.local {
+        // The scopes: neither flag (or both) searches both sources.
+        let local_scope = !request.remote || request.local;
+        let remote_scope = !request.local || request.remote;
+        // Bundles are how content is distributed: they exist upstream only.
+        let remote_wanted = remote_scope && matches!(request.kind.as_str(), "" | "bundle");
+        if remote_wanted && request.remote && !request.local && self.remotes.is_none() {
             return Err(AppError::SearchRemote);
         }
+        let remote = if remote_wanted && !request.query.is_empty() {
+            self.search_remote(&request.query)
+        } else {
+            Vec::new()
+        };
+        let types: Vec<&str> = if local_scope { types } else { Vec::new() };
         let query = request.query.to_lowercase();
         let mut hits = Vec::new();
         for kind in &types {
@@ -79,11 +90,49 @@ impl Project {
         }
         Ok(SearchResults {
             query: request.query.clone(),
-            count: hits.len() as u64,
+            count: (hits.len() + remote.len()) as u64,
             local: hits,
-            remote: Vec::new(),
+            remote,
             hidden_local: hidden as u64,
         })
+    }
+
+    /// What the remotes publish whose name or description holds the query;
+    /// what could not be searched is said, and the search goes on.
+    fn search_remote(&mut self, query: &str) -> Vec<RemoteFound> {
+        let Some(remotes) = self.remotes.clone() else {
+            return Vec::new();
+        };
+        match remotes.search(query) {
+            Ok(found) => {
+                self.notices.extend(
+                    found
+                        .warnings
+                        .into_iter()
+                        .map(|w| Notice::text(format!("remote search: {w}"))),
+                );
+                found
+                    .hits
+                    .into_iter()
+                    .map(|hit| RemoteFound {
+                        remote: hit.remote,
+                        name: hit.name,
+                        kind: "bundle".to_string(),
+                        tags: hit.tags,
+                        description: hit.description,
+                        author: hit.author,
+                        pull_ref: hit.pull_ref,
+                    })
+                    .collect()
+            }
+            Err(cause) => {
+                self.notices.push(Notice::text(format!(
+                    "remote search error: {}",
+                    cause.code()
+                )));
+                Vec::new()
+            }
+        }
     }
 
     fn find_fragments(&self, query: &str, tags: &[String]) -> Vec<SearchHit> {

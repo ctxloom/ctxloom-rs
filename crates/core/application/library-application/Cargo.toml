@@ -11,6 +11,7 @@ publish.workspace = true
 angzarr-diagnostic.workspace = true
 angzarr-yaml.workspace = true
 ctxloom-ports.workspace = true
+deps-ports.workspace = true
 library.workspace = true
 serde.workspace = true
 serde_json.workspace = true

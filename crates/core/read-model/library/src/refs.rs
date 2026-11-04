@@ -638,9 +638,11 @@ pub fn repository_key(raw: &str) -> Option<String> {
     let base = raw.find('#').map_or(raw, |i| &raw[..i]);
     if has_scheme(base) {
         let parts = Parts::parse(base).ok()?;
+        let path = parts.repo_path.trim_end_matches('/');
+        let path = path.strip_suffix(".git").unwrap_or(path);
         return match parts.class {
-            SourceClass::Git => Some(format!("{}{}", parts.host, parts.repo_path)),
-            SourceClass::File => Some(format!("file://{}", parts.repo_path)),
+            SourceClass::Git => Some(format!("{}{path}", parts.host)),
+            SourceClass::File => Some(format!("file://{path}")),
             _ => None,
         };
     }

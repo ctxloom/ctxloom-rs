@@ -1,0 +1,25 @@
+[package]
+name = "deps"
+version = "0.1.0"
+description = "The dependency read model (S3): the remote registry, the lockfile, version constraints, the closure's pins and the plans over them (pure)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+angzarr-yaml.workspace = true
+# The reference grammar: a bundle's address, its repository's identity.
+library.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+angzarr-presentation = { workspace = true, features = ["test-support"] }
+
+[features]
+# `diagnostic_samples`, for other crates' catalog tests.
+test-support = []
+
+[lints]
+workspace = true

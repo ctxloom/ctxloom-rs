@@ -1,10 +1,12 @@
 //! A project opened: its configuration and its bundles, read.
 
 use std::collections::BTreeMap;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use ctxloom_ports::{ConfigFiles, ContentRepo, Executables, Source};
-use library::catalog::{Catalog, Entry};
+use deps_ports::RemoteLibrary;
+use library::catalog::{Catalog, Entry, RemoteOrigin};
 use library::tree;
 use library::BundleError;
 
@@ -25,6 +27,7 @@ pub struct Library {
     binaries: Arc<dyn Executables>,
     pub(crate) environ: Vec<(String, String)>,
     pub(crate) ports: Option<WritePorts>,
+    remotes: Option<Rc<dyn RemoteLibrary>>,
 }
 
 /// A project opened.
@@ -36,6 +39,7 @@ pub struct Project {
     pub(crate) binaries: Arc<dyn Executables>,
     pub(crate) environ: Vec<(String, String)>,
     pub(crate) ports: Option<WritePorts>,
+    pub(crate) remotes: Option<Rc<dyn RemoteLibrary>>,
     pub(crate) flags: Flags,
     /// The project has a bundles directory.
     pub(crate) has_root: bool,
@@ -59,6 +63,7 @@ impl Library {
             binaries,
             environ,
             ports: None,
+            remotes: None,
         }
     }
 
@@ -66,6 +71,14 @@ impl Library {
     /// scaffold, an editor and a companion probe.
     pub fn with_write_ports(mut self, ports: WritePorts) -> Library {
         self.ports = Some(ports);
+        self
+    }
+
+    /// The library reading the remotes too: the bundles installed from them
+    /// join the project's, a short reference is spelled out, and a search
+    /// reaches what they publish.
+    pub fn with_remotes(mut self, remotes: Rc<dyn RemoteLibrary>) -> Library {
+        self.remotes = Some(remotes);
         self
     }
 
@@ -147,14 +160,16 @@ impl Library {
                 }
             }
         }
+        let origins = self.installed(&mut entries, notices);
         Ok(Project {
             config,
-            catalog: Catalog::new(entries),
+            catalog: Catalog::new(entries).with_origins(origins),
             content: Arc::clone(&self.content),
             files: Arc::clone(&self.files),
             binaries: Arc::clone(&self.binaries),
             environ: self.environ.clone(),
             ports: self.ports.clone(),
+            remotes: self.remotes.clone(),
             flags: flags.clone(),
             has_root,
             unreadable,
@@ -163,7 +178,69 @@ impl Library {
     }
 }
 
+impl Library {
+    /// The bundles installed from remotes, read and added to `entries`; where
+    /// each came from, by the name it is known by. One that cannot be read is
+    /// skipped and said.
+    fn installed(
+        &self,
+        entries: &mut Vec<Entry>,
+        notices: &mut Vec<Notice>,
+    ) -> BTreeMap<String, RemoteOrigin> {
+        let mut origins = BTreeMap::new();
+        let Some(remotes) = &self.remotes else {
+            return origins;
+        };
+        let installed = match remotes.installed() {
+            Ok(installed) => installed,
+            Err(cause) => {
+                notices.push(Notice::RemotesUnreadable {
+                    cause: angzarr_diagnostic::Report::of(&*cause),
+                });
+                return origins;
+            }
+        };
+        for bundle in installed {
+            let manifest = format!("{}/bundle.yaml", bundle.path);
+            match tree::read_tree(&bundle.name, &bundle.files) {
+                Ok(read) => {
+                    origins.insert(
+                        bundle.name.clone(),
+                        RemoteOrigin {
+                            reference: bundle.reference,
+                            url: bundle.url,
+                            sha: bundle.sha,
+                            files: bundle.files,
+                            executable: bundle.executable,
+                        },
+                    );
+                    entries.push(Entry {
+                        name: bundle.name,
+                        manifest_path: manifest,
+                        bundle: read,
+                    });
+                }
+                Err(cause) => notices.push(Notice::BundleSkipped {
+                    dir: bundle.path,
+                    manifest,
+                    cause,
+                }),
+            }
+        }
+        origins
+    }
+}
+
 impl Project {
+    /// A reference with a registered remote's name spelled out
+    /// (`origin/demo#profiles/dev`); any other as it is.
+    pub(crate) fn spelled_out(&self, reference: &str) -> String {
+        match &self.remotes {
+            Some(remotes) => remotes.canonical(reference, &|base| self.catalog.is_local(base)),
+            None => reference.to_string(),
+        }
+    }
+
     /// Whether the configuration came from the home alone (no project).
     pub(crate) fn no_project(&self) -> bool {
         self.config.source == Source::Home

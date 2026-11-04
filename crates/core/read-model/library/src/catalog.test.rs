@@ -221,3 +221,66 @@ fn test_a_listing_name_that_looks_like_a_scheme_is_still_found() {
     let cat = catalog_of(&[("ctxloom+odd", "version: \"1.0\"\n")]);
     assert_eq!(cat.lookup("ctxloom+odd").unwrap().name, "ctxloom+odd");
 }
+
+fn origin(reference: &str) -> RemoteOrigin {
+    RemoteOrigin {
+        reference: reference.to_string(),
+        url: "file:///srv/o.git".to_string(),
+        sha: "a".repeat(40),
+        files: std::collections::BTreeMap::new(),
+        executable: std::collections::BTreeSet::new(),
+    }
+}
+
+const KIT: &str = "ctxloom+file:///srv/o.git//bundles/kit";
+const OTHER: &str = "ctxloom+file:///srv/o.git//bundles/other";
+
+fn installed_catalog() -> Catalog {
+    catalog_of(&[
+        ("alpha", ALPHA),
+        ("origin/kit", BETA),
+        ("origin/other", BETA),
+    ])
+    .with_origins(
+        [
+            ("origin/kit".to_string(), origin(KIT)),
+            ("origin/other".to_string(), origin(OTHER)),
+        ]
+        .into(),
+    )
+}
+
+// A bundle installed from a remote is told apart from the project's own.
+#[test]
+fn test_an_installed_bundle_has_an_origin_and_is_not_local() {
+    let cat = installed_catalog();
+    assert_eq!(
+        cat.origin("origin/kit").map(|o| o.reference.as_str()),
+        Some(KIT)
+    );
+    assert!(cat.origin("alpha").is_none());
+    assert!(cat.origin("ghost").is_none());
+    assert!(cat.is_local("alpha"));
+    assert!(!cat.is_local("origin/kit"));
+    assert!(!cat.is_local("ghost"));
+    assert!(catalog_of(&[("alpha", ALPHA)]).origin("alpha").is_none());
+}
+
+// An installed bundle is found by its canonical reference, whatever version
+// the reference asks for, and by no other.
+#[test]
+fn test_an_installed_bundle_is_found_by_its_canonical_reference() {
+    let cat = installed_catalog();
+    assert_eq!(cat.lookup(KIT).expect("kit").name, "origin/kit");
+    assert_eq!(cat.lookup(OTHER).expect("other").name, "origin/other");
+    assert_eq!(
+        cat.lookup("ctxloom+file:///srv/o.git//bundles/kit@v1.0.0")
+            .expect("kit at a version")
+            .name,
+        "origin/kit"
+    );
+    assert!(cat
+        .lookup("ctxloom+file:///srv/o.git//bundles/ghost")
+        .is_err());
+    assert!(catalog_of(&[("alpha", ALPHA)]).lookup(KIT).is_err());
+}

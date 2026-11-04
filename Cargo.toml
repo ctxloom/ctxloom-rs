@@ -81,6 +81,13 @@ library = { path = "crates/core/read-model/library" }
 library-application = { path = "crates/core/application/library-application" }
 library-cli = { path = "crates/adapters/driving/library-cli" }
 ctxloom-lib = { path = "crates/root/lib/ctxloom-lib" }
+deps = { path = "crates/core/read-model/deps" }
+pin-changes = { path = "crates/core/read-model/pin-changes" }
+deps-ports = { path = "crates/core/ports/deps-ports" }
+deps-application = { path = "crates/core/application/deps-application" }
+remote-git = { path = "crates/adapters/driven/remote-git" }
+deps-files = { path = "crates/adapters/driven/deps-files" }
+deps-cli = { path = "crates/adapters/driving/deps-cli" }
 ctxloom-store-sqlite = { path = "crates/adapters/driven/ctxloom-store-sqlite" }
 
 clap = { version = "4.5", features = ["derive", "string"] }

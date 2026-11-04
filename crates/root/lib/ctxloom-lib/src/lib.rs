@@ -8,6 +8,7 @@
 //! - [`Wiring`]: the process's home and filesystem, and the project stores
 //!   opened over them.
 
+mod commands;
 mod error;
 mod library;
 #[cfg(feature = "test-support")]
@@ -32,6 +33,7 @@ use sessions_application::{
 use system::System;
 use uuid::Uuid;
 
+pub use commands::Commands;
 #[cfg(any(test, feature = "test-support"))]
 pub use error::diagnostic_samples;
 pub use error::{LibError, EN_US};

@@ -18,6 +18,8 @@ fn catalog() -> Result<Catalog, angzarr_presentation::CatalogError> {
         angzarr_yaml::EN_US,
         library::EN_US,
         library_application::EN_US,
+        deps::EN_US,
+        deps_application::EN_US,
         content_fs::EN_US,
         config_files::EN_US,
         editor_process::EN_US,
@@ -28,8 +30,8 @@ fn catalog() -> Result<Catalog, angzarr_presentation::CatalogError> {
 /// What the commands call, over the default wiring.
 #[derive(Default)]
 struct Wired {
-    /// The library commands, wired when one first needs the home.
-    library: ctxloom_lib::LibraryCommands,
+    /// Every command of the program, wired when one first needs the home.
+    library: ctxloom_lib::Commands,
     /// The sessions use cases, built when a command first needs them.
     sessions: Option<ctxloom_lib::Sessions>,
 }
@@ -118,6 +120,8 @@ impl Services for Wired {
         all.extend(ctxloom_lib::diagnostic_samples());
         all.extend(library::diagnostic_samples());
         all.extend(library_application::diagnostic_samples());
+        all.extend(deps::diagnostic_samples());
+        all.extend(deps_application::diagnostic_samples());
         all.extend(content_fs::diagnostic_samples());
         all.extend(config_files::diagnostic_samples());
         all.extend(editor_process::diagnostic_samples());

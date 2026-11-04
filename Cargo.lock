@@ -445,6 +445,8 @@ dependencies = [
  "ctxloom-cli",
  "ctxloom-lib",
  "ctxloom-store-sqlite",
+ "deps",
+ "deps-application",
  "editor-process",
  "file-lock",
  "harp-core",
@@ -488,6 +490,10 @@ dependencies = [
  "ctxloom-cli",
  "ctxloom-ports",
  "ctxloom-store-sqlite",
+ "deps-application",
+ "deps-cli",
+ "deps-files",
+ "deps-ports",
  "editor-process",
  "file-lock",
  "file-system",
@@ -499,6 +505,7 @@ dependencies = [
  "os",
  "ports",
  "project-registry",
+ "remote-git",
  "session-files",
  "session-ports",
  "sessions",
@@ -560,6 +567,64 @@ dependencies = [
  "darling_core",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "deps"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "angzarr-presentation",
+ "angzarr-yaml",
+ "library",
+ "serde",
+]
+
+[[package]]
+name = "deps-application"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "angzarr-presentation",
+ "ctxloom-ports",
+ "deps",
+ "deps-ports",
+ "library",
+ "pin-changes",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "deps-cli"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "angzarr-presentation",
+ "angzarr-yaml",
+ "clap",
+ "deps",
+ "deps-application",
+ "pin-changes",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "deps-files"
+version = "0.1.0"
+dependencies = [
+ "deps",
+ "deps-ports",
+ "file-system",
+ "os",
+]
+
+[[package]]
+name = "deps-ports"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
 ]
 
 [[package]]
@@ -1250,6 +1315,7 @@ dependencies = [
  "angzarr-presentation",
  "angzarr-yaml",
  "ctxloom-ports",
+ "deps-ports",
  "library",
  "serde",
  "serde_json",
@@ -1505,6 +1571,15 @@ dependencies = [
  "fixedbitset",
  "hashbrown 0.15.5",
  "indexmap",
+]
+
+[[package]]
+name = "pin-changes"
+version = "0.1.0"
+dependencies = [
+ "library",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1811,6 +1886,17 @@ name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
+
+[[package]]
+name = "remote-git"
+version = "0.1.0"
+dependencies = [
+ "deps",
+ "deps-ports",
+ "file-system",
+ "os",
+ "tempfile",
+]
 
 [[package]]
 name = "rsa"

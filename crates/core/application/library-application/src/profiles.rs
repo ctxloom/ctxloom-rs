@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 
+use angzarr_diagnostic::Diagnostic;
 use library::findings::Finding;
 use library::profile::{self, LoadError, Profile, ProfileSource, ResolvedProfile};
 use library::ProfileError;
@@ -30,12 +31,18 @@ impl Library {
 /// The profiles the project's local bundles ship, by their canonical key.
 pub(crate) struct Profiles {
     pub(crate) by_key: BTreeMap<String, (Profile, String)>,
+    /// The repository a remote profile was shipped in, by its key: it may
+    /// name only that repository's content.
+    sources: BTreeMap<String, String>,
 }
 
 impl ProfileSource for Profiles {
     fn load(&self, key: &str) -> Result<Profile, LoadError> {
         match self.by_key.get(key) {
-            Some((profile, _)) => Ok(profile.clone()),
+            Some((profile, _)) => {
+                self.own_repository(key, profile)?;
+                Ok(profile.clone())
+            }
             None if key.starts_with("ctxloom+local:") => Err(LoadError::LocalNotFound {
                 name: key.to_string(),
             }),
@@ -47,6 +54,28 @@ impl ProfileSource for Profiles {
 
     fn keys(&self) -> Vec<String> {
         self.by_key.keys().cloned().collect()
+    }
+}
+
+impl Profiles {
+    /// A remote profile that names content outside its own repository is
+    /// refused: registering a remote admits that repository's content, never
+    /// whatever its profiles name.
+    fn own_repository(&self, key: &str, profile: &Profile) -> Result<(), LoadError> {
+        let Some(url) = self.sources.get(key) else {
+            return Ok(());
+        };
+        profile
+            .check_own_repo(url)
+            .map_err(|cause| LoadError::Unreadable {
+                name: key.to_string(),
+                detail: match cause {
+                    ProfileError::CrossRepo { reference, .. } => format!(
+                    "a remote profile may refer only to bundles in its own repository: {reference}"
+                ),
+                    other => other.code().to_string(),
+                },
+            })
     }
 }
 
@@ -68,19 +97,39 @@ fn display_name(key: &str) -> String {
 impl Project {
     pub(crate) fn profiles(&self) -> Profiles {
         let mut by_key = BTreeMap::new();
+        let mut sources = BTreeMap::new();
         for entry in self.catalog.entries() {
             let dir = entry
                 .manifest_path
                 .strip_suffix("/bundle.yaml")
                 .unwrap_or(&entry.manifest_path);
+            let origin = self.catalog.origin(&entry.name);
+            let bundle_key = origin.map_or_else(
+                || format!("ctxloom+local:{}", entry.name),
+                |origin| origin.reference.clone(),
+            );
             for (name, profile) in &entry.bundle.profiles {
-                let key = format!("ctxloom+local:{}#profiles/{name}", entry.name);
+                let key = format!("{bundle_key}#profiles/{name}");
                 let mut profile = profile.clone();
                 profile.name = key.clone();
+                if let (Some(origin), Some(remotes)) = (origin, &self.remotes) {
+                    // A remote profile's short references are its own
+                    // repository's, at the commit it was read at.
+                    let within = |r: &String| remotes.within(r, &origin.url, &origin.sha);
+                    profile.bundles = profile.bundles.iter().map(within).collect();
+                    profile.parents = profile.parents.iter().map(within).collect();
+                    profile.commands = profile.commands.iter().map(within).collect();
+                    profile.skills = profile.skills.iter().map(within).collect();
+                    profile.bundle_items = profile.bundle_items.iter().map(within).collect();
+                    for fragment in &mut profile.fragments {
+                        fragment.name = within(&fragment.name);
+                    }
+                    sources.insert(key.clone(), origin.url.clone());
+                }
                 by_key.insert(key, (profile, format!("{dir}/profiles/{name}.yaml")));
             }
         }
-        Profiles { by_key }
+        Profiles { by_key, sources }
     }
 
     /// The canonical keys of the profiles the default agent composes.
@@ -108,7 +157,7 @@ impl Project {
                 bundles: p.bundles.clone(),
                 default: defaults.contains(key),
                 path: path.clone(),
-                is_remote: false,
+                is_remote: profiles.sources.contains_key(key),
                 bundle: key
                     .split_once("#profiles/")
                     .map(|(b, _)| b.to_string())
@@ -130,12 +179,15 @@ impl Project {
 
     fn profile_show(&self, ask: &str) -> Result<ProfileShow, AppError> {
         let profiles = self.profiles();
-        let key = profile::canonical_key(ask).map_err(AppError::cause)?;
+        let key = profile::canonical_key(&self.spelled_out(ask)).map_err(AppError::cause)?;
         let Some((found, path)) = profiles.by_key.get(&key) else {
             return Err(AppError::cause(ProfileError::NotFound {
                 name: ask.to_string(),
             }));
         };
+        if let Some(url) = profiles.sources.get(&key) {
+            found.check_own_repo(url).map_err(AppError::cause)?;
+        }
         let defaults = self.default_keys(&profiles);
         Ok(ProfileShow {
             name: ask_name(&key),
@@ -166,8 +218,8 @@ impl Project {
         let profiles = self.profiles();
         let mut out = Vec::with_capacity(names.len());
         for name in names {
-            let mut resolved =
-                profile::resolve(&profiles, name, findings).map_err(|cause| AppError::Compose {
+            let mut resolved = profile::resolve(&profiles, &self.spelled_out(name), findings)
+                .map_err(|cause| AppError::Compose {
                     profile: name.clone(),
                     cause: Box::new(cause),
                 })?;

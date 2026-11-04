@@ -56,3 +56,7 @@ mod tests;
 #[cfg(test)]
 #[path = "behaviour.test.rs"]
 mod behaviour;
+
+#[cfg(test)]
+#[path = "remotes.test.rs"]
+mod remotes;

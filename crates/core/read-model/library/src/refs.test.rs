@@ -487,3 +487,33 @@ fn test_a_fetch_address_is_respelled_canonically_and_keys_by_repository() {
     ));
     assert!(!same_repository("ctxloom+local:x", "ctxloom+local:x"));
 }
+
+// S3: a canonical reference to a repository whose path ends ".git" (Go keeps
+// it in the reference) keys as the URL of the same repository does, so a
+// remote profile's reference to its own repository is not refused for it.
+#[test]
+fn test_a_canonical_reference_keys_like_the_url_of_its_repository() {
+    for (reference, url) in [
+        ("ctxloom+file:///srv/r.git//bundles/x", "file:///srv/r.git"),
+        ("ctxloom+file:///srv/r//bundles/x", "file:///srv/r.git"),
+        (
+            "ctxloom+git://github.com/o/r.git//bundles/x",
+            "https://github.com/o/r",
+        ),
+        (
+            "ctxloom+git://github.com/o/r//bundles/x",
+            "https://github.com/o/r.git",
+        ),
+    ] {
+        assert_eq!(
+            repository_key(reference),
+            repository_key(url),
+            "{reference}"
+        );
+        assert!(same_repository(reference, url), "{reference}");
+    }
+    assert!(!same_repository(
+        "ctxloom+file:///srv/r.git//bundles/x",
+        "file:///srv/other.git"
+    ));
+}

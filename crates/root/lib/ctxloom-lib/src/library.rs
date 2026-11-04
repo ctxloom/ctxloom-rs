@@ -4,6 +4,7 @@
 
 use std::io::Write;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use angzarr_presentation::Catalog;
@@ -12,6 +13,7 @@ use config_files::{find_app_dir, ConfigFilesFs, ScaffoldFs, Surroundings};
 use content_fs::{ContentFs, UserFilesFs};
 use ctxloom_cli::{Call, Extension, Failure};
 use ctxloom_ports::Executables;
+use deps_ports::RemoteLibrary;
 use editor_process::ProcessEditor;
 use file_system::{Fs, Kind};
 use library_application::{Library, WritePorts};
@@ -40,6 +42,8 @@ impl Executables for PathSearch {
 #[derive(Default)]
 pub struct LibraryCommands {
     library: Option<Library>,
+    /// What the library reads of the remotes, where the program has them.
+    remotes: Option<Rc<dyn RemoteLibrary>>,
 }
 
 impl LibraryCommands {
@@ -47,9 +51,15 @@ impl LibraryCommands {
         LibraryCommands::default()
     }
 
+    /// The library reading the remotes too.
+    pub fn with_remotes(mut self, remotes: Rc<dyn RemoteLibrary>) -> LibraryCommands {
+        self.remotes = Some(remotes);
+        self
+    }
+
     fn wired(&mut self) -> Result<&Library, LibError> {
         if self.library.is_none() {
-            self.library = Some(build()?);
+            self.library = Some(build(self.remotes.clone())?);
         }
         Ok(self
             .library
@@ -58,7 +68,7 @@ impl LibraryCommands {
     }
 }
 
-fn build() -> Result<Library, LibError> {
+fn build(remotes: Option<Rc<dyn RemoteLibrary>>) -> Result<Library, LibError> {
     let wiring = Wiring::from_process()?;
     let fs = wiring.fs();
     let home = wiring.home().to_path_buf();
@@ -85,13 +95,17 @@ fn build() -> Result<Library, LibError> {
         editor: Arc::new(ProcessEditor::new(Arc::clone(&fs), &around.temp_root)),
         probe: Arc::new(ProcessProbe::standard()),
     };
-    Ok(Library::new(
+    let library = Library::new(
         Arc::new(content),
         Arc::new(files),
         Arc::new(binaries),
         environ,
     )
-    .with_write_ports(ports))
+    .with_write_ports(ports);
+    Ok(match remotes {
+        Some(remotes) => library.with_remotes(remotes),
+        None => library,
+    })
 }
 
 impl Extension for LibraryCommands {

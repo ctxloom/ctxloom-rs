@@ -57,6 +57,8 @@ library-application-notice-finding =
        *[other] { "" }
     }
 library-application-notice-finding-fix = { $remedy }
+library-application-notice-remotes-unreadable = the dependencies installed from remotes cannot be read: { $cause }
+library-application-notice-remotes-unreadable-fix = fix or delete the lockfile, then run `ctxloom deps pull`
 library-application-notice-bundle-skipped = skipping bundle { $manifest }: bundles: reading the tree at { $dir }: { $cause }
 library-application-notice-bundle-skipped-fix = fix or remove the bundle file
 library-application-config-newer = { $path }: ctxloom config: schema_version { $found }: written by a newer format than this binary reads; upgrade the binary (this binary reads up to { $current })

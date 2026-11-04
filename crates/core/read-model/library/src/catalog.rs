@@ -21,10 +21,27 @@ pub struct Entry {
     pub bundle: Bundle,
 }
 
+/// Where an installed remote bundle came from.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct RemoteOrigin {
+    /// Its version-less canonical reference.
+    pub reference: String,
+    /// The repository's address.
+    pub url: String,
+    /// The commit it is pinned at.
+    pub sha: String,
+    /// Its files, by path relative to the bundle.
+    pub files: std::collections::BTreeMap<String, Vec<u8>>,
+    /// The ones committed executable.
+    pub executable: std::collections::BTreeSet<String>,
+}
+
 /// The bundles of a project.
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
 pub struct Catalog {
     entries: Vec<Entry>,
+    /// The entries installed from remotes, by name.
+    origins: std::collections::BTreeMap<String, RemoteOrigin>,
 }
 
 /// A fragment or command as a listing shows it.
@@ -73,7 +90,32 @@ impl Catalog {
     /// A catalog of `entries`, listed by name.
     pub fn new(mut entries: Vec<Entry>) -> Catalog {
         entries.sort_by(|a, b| a.name.cmp(&b.name));
-        Catalog { entries }
+        Catalog {
+            entries,
+            origins: std::collections::BTreeMap::new(),
+        }
+    }
+
+    /// Say which of the entries are bundles installed from remotes, by name:
+    /// each is also found by its canonical reference.
+    pub fn with_origins(
+        mut self,
+        origins: std::collections::BTreeMap<String, RemoteOrigin>,
+    ) -> Catalog {
+        self.origins = origins;
+        self
+    }
+
+    /// Where the entry `name` was installed from; none for a bundle of this
+    /// project.
+    pub fn origin(&self, name: &str) -> Option<&RemoteOrigin> {
+        self.origins.get(name)
+    }
+
+    /// Whether `name` is a bundle of this project (not one installed from a
+    /// remote).
+    pub fn is_local(&self, name: &str) -> bool {
+        !self.origins.contains_key(name) && self.entries.iter().any(|e| e.name == name)
     }
 
     /// Every bundle, by name.
@@ -96,7 +138,7 @@ impl Catalog {
                 .ok_or_else(not_found);
         }
         if has_scheme(ask) && Parts::parse(ask).is_ok() {
-            return Err(not_found());
+            return self.installed(ask).ok_or_else(not_found);
         }
         let mut by_listing = Vec::new();
         let mut by_declared = Vec::new();
@@ -124,6 +166,17 @@ impl Catalog {
                     .join(", "),
             }),
         }
+    }
+
+    /// The entry installed from the remote bundle `ask` is a reference to.
+    fn installed(&self, ask: &str) -> Option<&Entry> {
+        let (canonical, _) = refs::bundle_ref_and_version(ask).ok()?;
+        let name = self
+            .origins
+            .iter()
+            .find(|(_, origin)| origin.reference == canonical)
+            .map(|(name, _)| name)?;
+        self.entries.iter().find(|e| e.name == *name)
     }
 
     /// Every fragment of every bundle, bundles by name, fragments by name.

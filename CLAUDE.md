@@ -191,6 +191,36 @@ findings. `-h` works at every depth, there is no `help` command, an unknown
 verb says "Did you mean" and lists the verbs, `-v` is accepted everywhere
 and changes no output.
 
+## Remotes and dependencies (slice S3)
+
+Crates: `deps` and `pin-changes` (core/read-model: addresses, references,
+registry, lock, constraints, the pull/upgrade/reconcile decisions, the pin
+disclosure), `deps-ports` (`Remotes`, `DepsFiles`, `RemoteLibrary`),
+`deps-application`, `remote-git` (the git CLI with `GIT_*` scrubbed, clones
+under `.ctxloom/cache/repos`, read from commits only, never a checkout),
+`deps-files` (remotes.yaml, lock.yaml and the installed trees under
+`.ctxloom/cache/bundles/<segments>/<bundle>/<sha>/`; it stands where the plan
+named `content-fs` for these files), `deps-cli`. `ctxloom-lib`'s `Commands`
+composes them with the library: it merges `bundle push|move` into the
+library's `bundle` noun and owns `remote` and `deps`.
+
+- Evidence rule: content is removed upstream only on a not-found from a
+  repository proven readable this run; an unreachable remote keeps everything.
+- Lock schema 3 has no timestamps and rewrites byte-identically at unchanged
+  pins; a corrupt lock is refused, never overwritten; an empty lock never
+  replaces a populated one. Registry schema 1: unstamped is refused
+  ("schema_version 0"), unknown keys survive a rewrite.
+- Installed remote bundles join the library's catalog as `<remote>/<bundle>`
+  and by canonical reference (`Catalog::origins`).
+- Go parity kept: `.git` stays in canonical references; remote profiles may
+  name only their own repository. Divergences: the default is cleared when
+  its remote is removed (Go keeps it); an unstamped registry is refused;
+  `materialize` is `context assemble`.
+- Not built (no crate admitted): semver ranges (exact versions only), the
+  forge API (`forge-github`, `remote discover`, `bundle push --pr`). The
+  withheld red tests for them are `#[ignore]`d in `bundle_remote.test.rs`.
+  angzarr-yaml cannot read Go's `? key` form for lock keys over 128 bytes.
+
 ## Use `just`
 
 `just build`, `just test` (cargo-nextest, required: a missing nextest fails

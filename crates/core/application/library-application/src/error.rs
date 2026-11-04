@@ -354,6 +354,8 @@ pub enum Notice {
     ConfigKeyless { path: String },
     /// A `CTXLOOM_ROOT` that names no directory.
     RootIgnored { root: String },
+    /// The dependencies installed from remotes could not be read.
+    RemotesUnreadable { cause: angzarr_diagnostic::Report },
 }
 
 impl Notice {
@@ -387,6 +389,7 @@ impl Diagnostic for Notice {
             Notice::BundleSkipped { .. } => code!("notice-bundle-skipped"),
             Notice::ConfigKeyless { .. } => code!("notice-config-keyless"),
             Notice::RootIgnored { .. } => code!("notice-root-ignored"),
+            Notice::RemotesUnreadable { .. } => code!("notice-remotes-unreadable"),
         }
     }
 
@@ -409,6 +412,9 @@ impl Diagnostic for Notice {
                 vec![("path", path.as_str().into())]
             }
             Notice::RootIgnored { root } => vec![("root", root.as_str().into())],
+            Notice::RemotesUnreadable { cause } => {
+                vec![("cause", Arg::Nested(Box::new(cause.clone())))]
+            }
         }
     }
 }
@@ -560,6 +566,9 @@ fn notice_samples() -> Vec<Box<dyn Diagnostic>> {
         }),
         Box::new(Notice::RootIgnored {
             root: s("/nowhere"),
+        }),
+        Box::new(Notice::RemotesUnreadable {
+            cause: angzarr_diagnostic::Report::of(&BundleError::NoManifest { bundle: s("demo") }),
         }),
     ]
 }

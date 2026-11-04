@@ -1,0 +1,19 @@
+[package]
+name = "pin-changes"
+version = "0.1.0"
+description = "The pin-change disclosure (S3): what moving, or first making, a pin brings in; every item, every file, what hooks and MCP servers run before and after"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The tree reader, and the digest an env value is fingerprinted with.
+library.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

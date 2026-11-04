@@ -232,10 +232,13 @@ impl Project {
         let mut out = Vec::new();
         let mut withheld = Vec::new();
         for entry in self.catalog.entries() {
-            let executable = self
-                .content
-                .executable_files(&entry.name)
-                .map_err(AppError::Cause)?;
+            let executable = match self.catalog.origin(&entry.name) {
+                Some(origin) => origin.executable.clone(),
+                None => self
+                    .content
+                    .executable_files(&entry.name)
+                    .map_err(AppError::Cause)?,
+            };
             for (name, skill) in &entry.bundle.skills {
                 match load_skill(&entry.name, &entry.bundle.tags, name, skill, &executable) {
                     Ok(loaded) => out.push(loaded),

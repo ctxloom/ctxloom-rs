@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use library::catalog::Entry;
+use library::catalog::{Entry, RemoteOrigin};
 use library::model::Bundle;
 use library::refs::{self, ItemKind};
 use library::tree;
@@ -33,11 +33,14 @@ impl Library {
     }
 }
 
-fn row(entry: &Entry) -> BundleRow {
+fn row(entry: &Entry, origin: Option<&RemoteOrigin>) -> BundleRow {
     let bundle = &entry.bundle;
     BundleRow {
         name: entry.name.clone(),
-        reference: format!("ctxloom+local:{}", entry.name),
+        reference: origin.map_or_else(
+            || format!("ctxloom+local:{}", entry.name),
+            |o| o.reference.clone(),
+        ),
         path: entry.manifest_path.clone(),
         version: bundle.version.clone(),
         description: bundle.description.clone(),
@@ -53,7 +56,12 @@ fn row(entry: &Entry) -> BundleRow {
 impl Project {
     fn bundle_list(&self) -> BundleList {
         BundleList {
-            rows: self.catalog.entries().iter().map(row).collect(),
+            rows: self
+                .catalog
+                .entries()
+                .iter()
+                .map(|entry| row(entry, self.catalog.origin(&entry.name)))
+                .collect(),
             no_root: !self.has_root,
             hint: self.listing_hint(),
         }
@@ -91,10 +99,13 @@ impl Project {
         let (name, item_path) = ask.split_once('#').unwrap_or((ask, ""));
         let entry = self.bundle(name)?;
         if item_path.is_empty() {
-            let files = self
-                .content
-                .read_tree(&entry.name)
-                .map_err(AppError::Cause)?;
+            let files = match self.catalog.origin(&entry.name) {
+                Some(origin) => origin.files.clone(),
+                None => self
+                    .content
+                    .read_tree(&entry.name)
+                    .map_err(AppError::Cause)?,
+            };
             return Ok(BundleView {
                 bundle: name.to_string(),
                 path: String::new(),

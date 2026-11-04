@@ -6,7 +6,7 @@ use std::io::{self, Write};
 
 use library_application::{
     AgentRow, AgentShow, BundleList, BundleRow, BundleShow, BundleView, CompanionRow, DryRun,
-    ItemList, ItemShow, LlmRow, McpList, McpShow, Premises, ProfileList, ProfileShow,
+    ItemList, ItemShow, LlmRow, McpList, McpShow, Premises, ProfileList, ProfileShow, RemoteFound,
     SearchResults, SkillList, SkillShow,
 };
 
@@ -707,7 +707,60 @@ pub fn search(out: &mut dyn Write, results: &SearchResults) -> io::Result<()> {
             writeln!(out)?;
         }
     }
+    if !results.remote.is_empty() {
+        if !results.local.is_empty() {
+            writeln!(out)?;
+        }
+        remote_table(out, &results.remote)?;
+    }
     Ok(())
+}
+
+/// What the remotes publish, as a table whose Remote and Name columns are as
+/// wide as their widest entry, so a name is never cut.
+fn remote_table(out: &mut dyn Write, hits: &[RemoteFound]) -> io::Result<()> {
+    let remote_width = hits
+        .iter()
+        .map(|h| h.remote.chars().count())
+        .max()
+        .unwrap_or(0)
+        .max("Remote".len());
+    let name_width = hits
+        .iter()
+        .map(|h| f(&h.name).chars().count())
+        .max()
+        .unwrap_or(0)
+        .max("Name".len());
+    let row = |kind: &str, remote: &str, name: &str, tags: &str| {
+        format!(
+            "  {kind:<8} \u{2502} {remote:<remote_width$} \u{2502} {name:<name_width$} \u{2502} {tags}"
+        )
+    };
+    let rule = |width: usize| "\u{2500}".repeat(width);
+    writeln!(out, "Remote:")?;
+    writeln!(out, "{}", row("Type", "Remote", "Name", "Tags"))?;
+    writeln!(
+        out,
+        "  {}\u{253c}{}\u{253c}{}\u{253c}{}",
+        rule(9),
+        rule(remote_width + 2),
+        rule(name_width + 2),
+        rule(12)
+    )?;
+    for hit in hits {
+        let tags = f(&hit.tags.join(", "));
+        let tags = if tags.chars().count() > 20 {
+            format!("{}...", tags.chars().take(17).collect::<String>())
+        } else {
+            tags
+        };
+        writeln!(out, "{}", row(&hit.kind, &hit.remote, &f(&hit.name), &tags))?;
+    }
+    writeln!(out)?;
+    writeln!(
+        out,
+        "Use one: add its ref to a profile (ctxloom profile create/modify), then ctxloom deps pull"
+    )
 }
 
 /// `run --dry-run`: the sections this build can show.

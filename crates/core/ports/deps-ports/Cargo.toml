@@ -1,0 +1,14 @@
+[package]
+name = "deps-ports"
+version = "0.1.0"
+description = "The ports the dependency commands need from outside (S3): the git remotes, the project's registry, lock and installed trees, and what the library reads of them"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+
+[lints]
+workspace = true
