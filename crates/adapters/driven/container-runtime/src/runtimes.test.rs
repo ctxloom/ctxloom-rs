@@ -14,6 +14,21 @@ fn script(dir: &Path, name: &str, body: &str) {
     let path = dir.join(name);
     std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    // Another test thread forking while the file was open for writing leaves
+    // it "text file busy" for a moment; wait that out so a spawn is honest.
+    for _ in 0..200 {
+        match std::process::Command::new(&path).spawn() {
+            Ok(mut child) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return;
+            }
+            Err(e) if e.raw_os_error() == Some(26) => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(_) => return,
+        }
+    }
 }
 
 fn runtimes(dirs: &[&Path]) -> HostRuntimes {
