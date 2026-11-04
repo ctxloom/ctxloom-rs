@@ -102,3 +102,27 @@ fn test_a_skill_in_no_group_has_no_mates() {
         "context=;notice=\n"
     );
 }
+
+// The hooks run degraded: a config the strict load refuses (an unknown key)
+// must not silence the nudge or the mates.
+#[test]
+fn test_the_hooks_answer_from_a_config_that_a_strict_load_would_refuse() {
+    let nudged = world("schema_version: 8\nbogus_key: 1\n");
+    let out = nudged.setup.session_start("claude-code", "{}").unwrap();
+    assert!(
+        out.contains("notice=ctxloom: this project has profiles"),
+        "{out}"
+    );
+
+    let strict_refused: &'static str =
+        Box::leak(format!("{CONFIG}bogus_key: 1\n").into_boxed_str());
+    let mates = world(strict_refused);
+    let out = mates
+        .setup
+        .skill_mates("claude-code", r#"{"skill":"admit"}"#)
+        .unwrap();
+    assert!(
+        out.contains("linked skills not yet invoked this session: unattended"),
+        "{out}"
+    );
+}

@@ -320,3 +320,204 @@ fn test_a_fatal_finding_refuses_the_delivery_unless_degraded() {
     };
     assert_eq!(w.setup.materialize(&r).unwrap().value.status, "applied");
 }
+
+mod pinned {
+    use surface_ports::EngineSurfaces;
+
+    use super::*;
+    use crate::fakes::{world, world_of, Engine, Wire, World, CONFIG as CONFIG_DEV};
+
+    fn mock_only() -> Vec<Box<dyn EngineSurfaces>> {
+        vec![Box::new(Engine {
+            name: "mock",
+            kinds: vec![Kind::Context],
+            wire: Wire,
+            rides_launch: false,
+        })]
+    }
+
+    fn named(done: &MaterializeResult) -> Vec<String> {
+        outcome(done, "mock")
+            .not_carried
+            .iter()
+            .map(|n| n.surface.clone())
+            .collect()
+    }
+
+    /// A project whose only bundle is bare, under `config`.
+    fn bare(config: &'static str, profile: &'static str) -> World {
+        world_of(
+            config,
+            vec![(
+                "project",
+                vec![
+                    ("bundle.yaml", "schema_version: 4\nversion: 1.0.0\n"),
+                    ("fragments/f.md", "BODY"),
+                    ("profiles/dev.yaml", profile),
+                ],
+            )],
+            mock_only(),
+        )
+    }
+
+    const CFG: &str = "schema_version: 8\nagents:\n  default:\n    llm: mock\n    profiles: [dev]\ndefault_agent: default\nllm:\n  configs:\n    mock:\n      type: mock\n";
+    const CFG_NO_HUD: &str = "schema_version: 8\nconfig:\n  statusline: false\nagents:\n  default:\n    llm: mock\n    profiles: [dev]\ndefault_agent: default\nllm:\n  configs:\n    mock:\n      type: mock\n";
+
+    #[test]
+    fn a_bare_project_names_only_what_it_carries_items_for() {
+        // ctxloom's own hooks always ride; the HUD is on by default.
+        let done = bare(CFG, "bundles: []\n")
+            .setup
+            .materialize(&request(&["mock"]))
+            .unwrap()
+            .value;
+        assert_eq!(named(&done), ["settings", "hooks"]);
+    }
+
+    #[test]
+    fn settings_are_named_for_either_the_hud_or_denied_tools_alone() {
+        let neither = bare(CFG_NO_HUD, "bundles: []\n")
+            .setup
+            .materialize(&request(&["mock"]))
+            .unwrap()
+            .value;
+        assert_eq!(named(&neither), ["hooks"]);
+        let denied = bare(CFG_NO_HUD, "bundles: []\ndeny_tools: [Bash]\n")
+            .setup
+            .materialize(&request(&["mock"]))
+            .unwrap()
+            .value;
+        assert_eq!(named(&denied), ["settings", "hooks"]);
+    }
+
+    #[test]
+    fn mcp_commands_and_skills_are_named_when_the_project_has_them() {
+        let done = world(CONFIG_DEV)
+            .setup
+            .materialize(&request(&["mock"]))
+            .unwrap()
+            .value;
+        let names = named(&done);
+        for kind in ["mcp", "settings", "hooks", "commands", "skills"] {
+            assert!(names.contains(&kind.to_string()), "{kind}: {names:?}");
+        }
+    }
+
+    fn riding() -> Vec<Box<dyn EngineSurfaces>> {
+        vec![
+            Box::new(Engine {
+                name: "rides",
+                kinds: Kind::ALL.to_vec(),
+                wire: Wire,
+                rides_launch: true,
+            }),
+            Box::new(Engine::all("stays")),
+        ]
+    }
+
+    fn wrote(done: &MaterializeResult, engine: &str) -> Vec<String> {
+        outcome(done, engine).wrote
+    }
+
+    #[test]
+    fn leaving_the_launch_context_drops_context_only_for_engines_that_ride_it() {
+        let w = world_of(CONFIG_DEV, crate::fakes::bundles(), riding());
+        let mut r = request(&["rides", "stays"]);
+        r.leave_launch_context = true;
+        let done = w.setup.materialize(&r).unwrap().value;
+        assert!(!wrote(&done, "rides").contains(&"context".to_string()));
+        assert!(wrote(&done, "rides").contains(&"hooks".to_string()));
+        assert!(wrote(&done, "stays").contains(&"context".to_string()));
+    }
+
+    #[test]
+    fn an_engine_that_rides_the_launch_still_gets_context_unless_asked_not_to() {
+        let w = world_of(CONFIG_DEV, crate::fakes::bundles(), riding());
+        let done = w.setup.materialize(&request(&["rides"])).unwrap().value;
+        assert!(wrote(&done, "rides").contains(&"context".to_string()));
+    }
+
+    #[test]
+    fn the_result_names_the_profiles_delivered_and_the_release_none() {
+        let w = world(CONFIG_DEV);
+        let done = w.setup.materialize(&request(&["mock"])).unwrap().value;
+        assert_eq!(done.profiles, ["dev"]);
+        let mut named = request(&["mock"]);
+        named.profiles = vec!["dev".to_string()];
+        assert_eq!(w.setup.materialize(&named).unwrap().value.profiles, ["dev"]);
+        let mut release = request(&["mock"]);
+        release.release = true;
+        let released = w.setup.materialize(&release).unwrap().value;
+        assert!(released.profiles.is_empty());
+        assert_eq!(released.engines[0].engine, "mock");
+    }
+
+    #[test]
+    fn only_a_delivery_to_a_missing_target_creates_it() {
+        let w = world(CONFIG_DEV);
+        w.store
+            .state()
+            .targets
+            .insert("/p/out".into(), Inspected::Missing);
+        let mut dry = request(&["mock"]);
+        dry.dry_run = true;
+        assert!(!w.setup.materialize(&dry).unwrap().value.created);
+        assert!(
+            w.setup
+                .materialize(&request(&["mock"]))
+                .unwrap()
+                .value
+                .created
+        );
+        let existing = world(CONFIG_DEV);
+        assert!(
+            !existing
+                .setup
+                .materialize(&request(&["mock"]))
+                .unwrap()
+                .value
+                .created
+        );
+    }
+
+    #[test]
+    fn a_kind_is_written_when_delivered_and_in_a_dry_run_only_when_it_would_change() {
+        let w = world(CONFIG_DEV);
+        w.setup.materialize(&request(&["mock"])).unwrap();
+        // Delivered again unchanged: still written.
+        let again = w.setup.materialize(&request(&["mock"])).unwrap().value;
+        assert_eq!(wrote(&again, "mock"), ["context"]);
+        // A dry run of the same: nothing would change.
+        let mut dry = request(&["mock"]);
+        dry.dry_run = true;
+        let planned = w.setup.materialize(&dry).unwrap().value;
+        assert!(wrote(&planned, "mock").is_empty(), "{planned:?}");
+    }
+
+    #[test]
+    fn a_refusal_over_a_finding_names_the_finding() {
+        let w = world(CONFIG_DEV);
+        let mut r = request(&["claude-code"]);
+        r.profiles = vec!["broken".to_string()];
+        let SetupError::Refused { findings } = w.setup.materialize(&r).unwrap_err() else {
+            panic!("refused")
+        };
+        assert!(
+            findings.contains("failed to load bundle \"absent\""),
+            "{findings}"
+        );
+    }
+
+    #[test]
+    fn one_engine_failing_of_two_is_partial() {
+        let w = world(CONFIG_DEV);
+        w.store.state().refuse_path = Some("claude-code/settings".to_string());
+        let done = w
+            .setup
+            .materialize(&request(&["claude-code", "mock"]))
+            .unwrap()
+            .value;
+        assert_eq!(done.failures.len(), 1);
+        assert_eq!(done.status, "partial");
+    }
+}
