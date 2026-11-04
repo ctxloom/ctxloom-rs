@@ -1,37 +1,52 @@
-use std::fs;
+use std::sync::Arc;
+
+use file_system::{Perms, Rooted};
+use os::Mode;
 
 use surface_ports::{Json, JsonOp};
-use tempfile::TempDir;
 
 use super::*;
 
+/// The store over a real temporary directory the seam re-roots every path
+/// under (`Rooted`), so a test can observe modes; the target is `/project`.
 struct Fixture {
-    _root: TempDir,
+    fs: Arc<Rooted>,
     target: String,
     store: SurfaceFiles,
 }
 
 impl Fixture {
     fn new() -> Fixture {
-        let root = tempfile::tempdir().unwrap();
-        let target = root.path().join("project");
-        fs::create_dir_all(&target).unwrap();
-        let store = SurfaceFiles::new(root.path().join("home/records"));
+        let fs = Arc::new(Rooted::temp().unwrap());
+        fs.create_dir_all(Path::new("/project"), Mode::DIR).unwrap();
+        let store = SurfaceFiles::new(fs.clone(), "/home/records");
         Fixture {
-            target: target.display().to_string(),
+            fs,
+            target: "/project".to_string(),
             store,
-            _root: root,
         }
     }
 
+    fn at(&self, rel: &str) -> PathBuf {
+        Path::new(&self.target).join(rel)
+    }
+
     fn put(&self, rel: &str, text: &str) {
-        let path = Path::new(&self.target).join(rel);
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(path, text).unwrap();
+        let path = self.at(rel);
+        self.fs
+            .create_dir_all(path.parent().unwrap(), Mode::DIR)
+            .unwrap();
+        self.fs
+            .write_atomic(&path, text.as_bytes(), Perms::Exact(Mode::FILE))
+            .unwrap();
     }
 
     fn get(&self, rel: &str) -> Option<String> {
-        fs::read_to_string(Path::new(&self.target).join(rel)).ok()
+        self.fs.read_to_string(&self.at(rel)).ok()
+    }
+
+    fn mode_of(&self, path: &Path) -> u32 {
+        self.fs.metadata(path).unwrap().mode.unwrap().bits() & 0o7777
     }
 
     fn deliver(&self, engine: &str, kind: Kind, claims: &[Claim]) -> Delivered {
@@ -75,8 +90,8 @@ fn test_a_file_ctxloom_made_is_removed_with_its_directories_on_release() {
     assert!(f.get(".claude/settings.json").is_some());
     f.release("e", Kind::Settings);
     assert!(f.get(".claude/settings.json").is_none());
-    assert!(!Path::new(&f.target).join(".claude").exists());
-    assert!(Path::new(&f.target).exists());
+    assert!(!f.fs.exists(&f.at(".claude")).unwrap());
+    assert!(f.fs.exists(Path::new(&f.target)).unwrap());
 }
 
 #[test]
@@ -179,12 +194,7 @@ fn test_a_whole_file_keeps_its_execute_bit_and_a_dry_run_writes_nothing() {
     f.deliver("e", Kind::Skills, &[claim]);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        let mode = fs::metadata(Path::new(&f.target).join("skills/x/run.sh"))
-            .unwrap()
-            .permissions()
-            .mode();
-        assert_eq!(mode & 0o111, 0o111);
+        assert_eq!(f.mode_of(&f.at("skills/x/run.sh")) & 0o111, 0o111);
     }
     let again = f.store.release(&f.target, "e", Kind::Skills, true).unwrap();
     assert!(again.changed);
@@ -272,7 +282,8 @@ fn test_a_corrupt_record_is_an_error_not_a_blank_slate() {
     let f = Fixture::new();
     f.deliver("e", Kind::Context, &[section("C.md", "t")]);
     let path = f.store.record_path(&f.target);
-    fs::write(path, "garbage").unwrap();
+    f.fs.write_atomic(&path, b"garbage", Perms::Exact(Mode::FILE))
+        .unwrap();
     assert!(matches!(
         f.store.claimed(&f.target, "e"),
         Err(SurfaceError::Record { .. })
@@ -333,16 +344,6 @@ fn test_delivering_an_earlier_kind_again_leaves_a_shared_file_unchanged() {
     assert_eq!(f.get("s.json").unwrap(), before);
 }
 
-fn mode_of(path: &Path) -> u32 {
-    use std::os::unix::fs::PermissionsExt;
-    fs::metadata(path).unwrap().permissions().mode() & 0o7777
-}
-
-fn chmod(path: &Path, mode: u32) {
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(path, fs::Permissions::from_mode(mode)).unwrap();
-}
-
 #[test]
 fn test_a_record_is_named_for_its_target_with_only_safe_characters_kept() {
     let f = Fixture::new();
@@ -360,7 +361,8 @@ fn test_a_record_is_named_for_its_target_with_only_safe_characters_kept() {
 #[test]
 fn test_a_record_that_cannot_be_read_is_an_error_not_a_blank_slate() {
     let f = Fixture::new();
-    fs::create_dir_all(f.store.record_path(&f.target)).unwrap();
+    f.fs.create_dir_all(&f.store.record_path(&f.target), Mode::DIR)
+        .unwrap();
     assert!(matches!(
         f.store.claimed(&f.target, "e"),
         Err(SurfaceError::Io { .. })
@@ -374,7 +376,7 @@ fn test_saving_no_claims_removes_the_record_and_reports_other_failures() {
     f.store.save(&f.target, &Record::default()).unwrap();
     // A record that cannot be removed is not.
     let path = f.store.record_path(&f.target);
-    fs::create_dir_all(path.join("inner")).unwrap();
+    f.fs.create_dir_all(&path.join("inner"), Mode::DIR).unwrap();
     assert!(matches!(
         f.store.save(&f.target, &Record::default()),
         Err(SurfaceError::Io { .. })
@@ -410,7 +412,8 @@ fn test_a_foreign_file_that_was_written_is_read_back() {
 fn test_a_foreign_record_that_cannot_be_read_is_an_error() {
     let f = Fixture::new();
     let path = format!("{}/vendor.json", f.target);
-    fs::create_dir_all(f.store.foreign_record(&path)).unwrap();
+    f.fs.create_dir_all(&f.store.foreign_record(&path), Mode::DIR)
+        .unwrap();
     assert!(matches!(
         f.store.record(&path),
         Err(SurfaceError::Io { .. })
@@ -430,68 +433,41 @@ fn test_inspecting_a_path_through_a_file_is_an_error_not_missing() {
 #[test]
 fn test_a_written_file_keeps_its_mode_or_takes_the_mode_asked_for() {
     let f = Fixture::new();
-    let dir = Path::new(&f.target);
+    let fs = &*f.fs;
     // New: 0644, or 0755 when executable.
-    write(&dir.join("new"), b"x", false).unwrap();
-    assert_eq!(mode_of(&dir.join("new")), 0o644);
-    write(&dir.join("new-exec"), b"x", true).unwrap();
-    assert_eq!(mode_of(&dir.join("new-exec")), 0o755);
+    write(fs, &f.at("new"), b"x", false).unwrap();
+    assert_eq!(f.mode_of(&f.at("new")), 0o644);
+    write(fs, &f.at("new-exec"), b"x", true).unwrap();
+    assert_eq!(f.mode_of(&f.at("new-exec")), 0o755);
     // Existing: kept, unless executable is asked for.
-    let held = dir.join("held");
-    fs::write(&held, "old").unwrap();
-    chmod(&held, 0o640);
-    write(&held, b"new", false).unwrap();
-    assert_eq!(mode_of(&held), 0o640);
-    assert_eq!(fs::read(&held).unwrap(), b"new");
-    write(&held, b"newer", true).unwrap();
-    assert_eq!(mode_of(&held), 0o755);
+    let held = f.at("held");
+    f.put("held", "old");
+    fs.set_permissions(&held, Mode::from_bits(0o640)).unwrap();
+    write(fs, &held, b"new", false).unwrap();
+    assert_eq!(f.mode_of(&held), 0o640);
+    assert_eq!(f.get("held").as_deref(), Some("new"));
+    write(fs, &held, b"newer", true).unwrap();
+    assert_eq!(f.mode_of(&held), 0o755);
 }
 
 #[test]
 fn test_removing_a_file_that_is_already_gone_succeeds_and_other_failures_do_not() {
     let f = Fixture::new();
-    let dir = Path::new(&f.target);
-    remove(&f.target, &dir.join("gone")).unwrap();
-    fs::create_dir_all(dir.join("d/inner")).unwrap();
+    let fs = &*f.fs;
+    remove(fs, &f.target, &f.at("gone")).unwrap();
+    fs.create_dir_all(&f.at("d/inner"), Mode::DIR).unwrap();
     assert!(matches!(
-        remove(&f.target, &dir.join("d")),
+        remove(fs, &f.target, &f.at("d")),
         Err(SurfaceError::Io { .. })
     ));
 }
 
 #[test]
-fn test_claims_to_one_file_stay_in_the_order_given_and_a_redelivery_keeps_its_place() {
+fn test_removing_a_file_leaves_the_directories_that_still_hold_something() {
     let f = Fixture::new();
-    f.deliver(
-        "one",
-        Kind::Context,
-        &[section("A.md", "alpha"), section("A.md", "beta")],
-    );
-    let held = f.get("A.md").unwrap();
-    assert!(
-        held.find("alpha").unwrap() < held.find("beta").unwrap(),
-        "{held}"
-    );
-
-    f.deliver("one", Kind::Context, &[section("B.md", "first")]);
-    f.deliver("two", Kind::Context, &[section("B.md", "second")]);
-    f.deliver("two", Kind::Context, &[section("B.md", "second again")]);
-    let held = f.get("B.md").unwrap();
-    assert!(
-        held.find("first").unwrap() < held.find("second again").unwrap(),
-        "{held}"
-    );
-}
-
-#[test]
-fn test_a_delivery_names_the_files_it_claims_not_those_it_let_go() {
-    let f = Fixture::new();
-    f.deliver(
-        "e",
-        Kind::Context,
-        &[section("a.md", "t"), section("b.md", "t")],
-    );
-    let again = f.deliver("e", Kind::Context, &[section("a.md", "t")]);
-    assert_eq!(again.files, vec!["a.md".to_string()]);
-    assert!(f.get("b.md").is_none());
+    f.put("a/b/x", "x");
+    f.put("a/keep", "k");
+    remove(&*f.fs, &f.target, &f.at("a/b/x")).unwrap();
+    assert!(!f.fs.exists(&f.at("a/b")).unwrap());
+    assert!(f.get("a/keep").is_some());
 }

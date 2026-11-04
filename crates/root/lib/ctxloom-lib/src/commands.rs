@@ -158,7 +158,10 @@ fn build_setup(deps: Rc<Deps>) -> Result<Setup, LibError> {
         }
         ctxloom_ports::Source::Home => cwd.clone(),
     };
-    let files = Arc::new(SurfaceFiles::new(home.join(".ctxloom/records")));
+    let files = Arc::new(SurfaceFiles::new(
+        Arc::clone(&fs),
+        home.join(".ctxloom/records"),
+    ));
     let library = crate::library::build(Some(deps.clone()))?;
     Ok(Setup::new(
         library,
