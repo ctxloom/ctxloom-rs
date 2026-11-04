@@ -245,6 +245,18 @@ pub trait ProjectCache {
     fn remove(&self, rel: &str) -> Result<(), Failure>;
 }
 
+/// Whether `name` is a slash-separated relative path of plain segments: not
+/// empty, not absolute, and no empty, `.` or `..` segment, so it cannot climb
+/// out of the directory it is joined to. An adapter adds what its own
+/// filesystem also refuses (a backslash, a NUL).
+pub fn is_plain_relative(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with('/')
+        && !name
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+}
+
 #[cfg(test)]
 #[path = "lib.test.rs"]
 mod tests;

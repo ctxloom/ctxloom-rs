@@ -65,12 +65,7 @@ fn whole(path: &str, doc: &Json) -> Claim {
 
 /// A name that is safe to make a path of.
 fn safe(name: &str) -> bool {
-    !name.is_empty()
-        && !name.starts_with('/')
-        && !name.contains('\\')
-        && !name
-            .split('/')
-            .any(|p| p.is_empty() || p == "." || p == "..")
+    ctxloom_ports::is_plain_relative(name) && !name.contains('\\')
 }
 
 /// The hook as the mock's native hook file spells it.
