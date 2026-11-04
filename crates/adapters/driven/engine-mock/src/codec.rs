@@ -60,6 +60,8 @@ impl HookCodec for Codec {
         Ok(format!("{{{}}}\n", parts.join(",")))
     }
 
+    // `Vec::new()` and `vec![]` are the same value.
+    #[cfg_attr(test, mutants::skip)]
     fn invoked_skills(&self, _transcript: &str) -> Vec<String> {
         Vec::new()
     }
