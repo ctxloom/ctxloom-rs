@@ -77,8 +77,8 @@ tree still reads, then hands the changes to the port; a refused write has
 written nothing. A config write replaces the section it owns whole, never
 heals a file that does not parse. `loadout --format yaml` is the one yaml
 output; its prose is withheld until the owner rules (D24, D8).
-Skill zips are written and read by `library::write::archive` over flate2 and
-crc32fast (already in the lock); a zip crate is not used.
+Skill zips are written and read by `library::write::archive` over the `zip`
+crate (deflate only, default features off) and crc32fast.
 
 Slice S4 (sessions) adds:
 
