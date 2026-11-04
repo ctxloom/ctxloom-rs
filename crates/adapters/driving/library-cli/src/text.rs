@@ -4,6 +4,7 @@
 
 use std::io::{self, Write};
 
+use angzarr_presentation::text;
 use library_application::{
     AgentRow, AgentShow, BundleList, BundleRow, BundleShow, BundleView, CompanionRow, DryRun,
     ItemList, ItemShow, LlmRow, McpList, McpShow, Premises, ProfileList, ProfileShow, RemoteFound,
@@ -721,19 +722,21 @@ pub fn search(out: &mut dyn Write, results: &SearchResults) -> io::Result<()> {
 fn remote_table(out: &mut dyn Write, hits: &[RemoteFound]) -> io::Result<()> {
     let remote_width = hits
         .iter()
-        .map(|h| h.remote.chars().count())
+        .map(|h| text::width(&h.remote))
         .max()
         .unwrap_or(0)
-        .max("Remote".len());
+        .max(text::width("Remote"));
     let name_width = hits
         .iter()
-        .map(|h| f(&h.name).chars().count())
+        .map(|h| text::width(&f(&h.name)))
         .max()
         .unwrap_or(0)
-        .max("Name".len());
+        .max(text::width("Name"));
     let row = |kind: &str, remote: &str, name: &str, tags: &str| {
         format!(
-            "  {kind:<8} \u{2502} {remote:<remote_width$} \u{2502} {name:<name_width$} \u{2502} {tags}"
+            "  {kind:<8} \u{2502} {} \u{2502} {} \u{2502} {tags}",
+            text::pad(remote, remote_width),
+            text::pad(name, name_width)
         )
     };
     let rule = |width: usize| "\u{2500}".repeat(width);

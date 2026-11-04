@@ -375,6 +375,27 @@ fn test_the_table_cuts_a_long_description_and_never_a_name_and_escapes_the_rest(
     assert!(!out.contains('\u{1b}'), "{out:?}");
 }
 
+// Columns are counted in terminal width, so a wide character takes two.
+#[test]
+fn test_the_table_aligns_wide_characters_by_display_width() {
+    let fx = Fixture::new();
+    fx.forge.serves(vec![
+        forge_repo(
+            "a",
+            "\u{65e5}\u{672c}\u{8a9e}\u{306e}\u{540d}\u{524d}",
+            1,
+            "d",
+        ),
+        forge_repo("b", "ab", 2, "d"),
+    ]);
+    let out = go(&fx, &["remote", "discover"], TEXT).ok().out.clone();
+    assert!(
+        out.contains("\u{2502} a/\u{65e5}\u{672c}\u{8a9e}\u{306e}\u{540d}\u{524d} \u{2502}"),
+        "{out}"
+    );
+    assert!(out.contains("\u{2502} b/ab           \u{2502}"), "{out}");
+}
+
 #[test]
 fn test_remote_discover_json_is_the_repositories_the_count_and_the_errors() {
     let fx = two_repositories();
