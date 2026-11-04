@@ -33,7 +33,7 @@ use sessions_application::{
 use system::System;
 use uuid::Uuid;
 
-pub use commands::Commands;
+pub use commands::{engines, Commands, Hooks};
 #[cfg(any(test, feature = "test-support"))]
 pub use error::diagnostic_samples;
 pub use error::{LibError, EN_US};

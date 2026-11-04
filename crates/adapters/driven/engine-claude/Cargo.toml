@@ -1,0 +1,17 @@
+[package]
+name = "engine-claude"
+version = "0.1.0"
+description = "Claude Code's surface half (S9): the files it reads at rest (CLAUDE.md, .mcp.json, .claude/settings.json, commands, skills) as claims, and its hook wire"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+surface-ports.workspace = true
+
+[dev-dependencies]
+mutants.workspace = true
+
+[lints]
+workspace = true

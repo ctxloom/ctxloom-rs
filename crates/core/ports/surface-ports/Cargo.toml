@@ -1,0 +1,22 @@
+[package]
+name = "surface-ports"
+version = "0.1.0"
+description = "The ports an engine's native files and hook wire are reached through (S9): what an engine claims in each file, how the claims are delivered and released, and the hook codec"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+
+[dev-dependencies]
+angzarr-presentation = { workspace = true, features = ["test-support"] }
+mutants.workspace = true
+
+[features]
+# `diagnostic_samples`, for other crates' catalog tests.
+test-support = []
+
+[lints]
+workspace = true

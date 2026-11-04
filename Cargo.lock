@@ -487,6 +487,8 @@ dependencies = [
  "session-files",
  "sessions",
  "sessions-application",
+ "setup-application",
+ "surface-ports",
  "tempfile",
 ]
 
@@ -524,11 +526,14 @@ dependencies = [
  "deps-files",
  "deps-ports",
  "editor-process",
+ "engine-claude",
+ "engine-mock",
  "file-lock",
  "file-system",
  "forge-github",
  "harp-core",
  "harp-names",
+ "hook-cli",
  "library-application",
  "library-cli",
  "liveness",
@@ -540,6 +545,10 @@ dependencies = [
  "session-ports",
  "sessions",
  "sessions-application",
+ "setup-application",
+ "setup-cli",
+ "surface-files",
+ "surface-ports",
  "system",
  "tokio",
  "uuid",
@@ -723,6 +732,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "engine-claude"
+version = "0.1.0"
+dependencies = [
+ "mutants",
+ "surface-ports",
+]
+
+[[package]]
+name = "engine-mock"
+version = "0.1.0"
+dependencies = [
+ "mutants",
+ "surface-ports",
 ]
 
 [[package]]
@@ -2480,6 +2505,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "setup-application"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "angzarr-presentation",
+ "ctxloom-ports",
+ "library",
+ "library-application",
+ "serde",
+ "serde_json",
+ "surface-ports",
+]
+
+[[package]]
+name = "setup-cli"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "angzarr-presentation",
+ "clap",
+ "library-application",
+ "serde",
+ "serde_json",
+ "setup-application",
+]
+
+[[package]]
 name = "sha1"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2796,6 +2848,24 @@ name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
+
+[[package]]
+name = "surface-files"
+version = "0.1.0"
+dependencies = [
+ "mutants",
+ "surface-ports",
+ "tempfile",
+]
+
+[[package]]
+name = "surface-ports"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "angzarr-presentation",
+ "mutants",
+]
 
 [[package]]
 name = "syn"

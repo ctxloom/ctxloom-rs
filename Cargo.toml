@@ -90,6 +90,12 @@ deps-files = { path = "crates/adapters/driven/deps-files" }
 deps-cli = { path = "crates/adapters/driving/deps-cli" }
 forge-github = { path = "crates/adapters/driven/forge-github" }
 ctxloom-store-sqlite = { path = "crates/adapters/driven/ctxloom-store-sqlite" }
+surface-ports = { path = "crates/core/ports/surface-ports" }
+setup-application = { path = "crates/core/application/setup-application" }
+surface-files = { path = "crates/adapters/driven/surface-files" }
+engine-claude = { path = "crates/adapters/driven/engine-claude" }
+engine-mock = { path = "crates/adapters/driven/engine-mock" }
+setup-cli = { path = "crates/adapters/driving/setup-cli" }
 
 # HTTP for forge-github (owner, 2026-11-04): the blocking client, so the
 # synchronous CLI holds no runtime of its own, and the TLS stack chosen below.

@@ -450,7 +450,7 @@ pub(crate) fn mcp_target_fault(server: &McpServer) -> Option<String> {
 }
 
 /// A hook from its mapping.
-pub(crate) fn hook(item: &Value, event: &str, name: &str, path: &str) -> Result<Hook, BundleError> {
+pub fn hook(item: &Value, event: &str, name: &str, path: &str) -> Result<Hook, BundleError> {
     let tool = field(item, "tool", path)?;
     if !tool.is_empty() && !TOOL_CLASSES.contains(&tool.as_str()) {
         return Err(bad(

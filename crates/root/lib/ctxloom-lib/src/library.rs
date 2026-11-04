@@ -68,7 +68,7 @@ impl LibraryCommands {
     }
 }
 
-fn build(remotes: Option<Rc<dyn RemoteLibrary>>) -> Result<Library, LibError> {
+pub(crate) fn build(remotes: Option<Rc<dyn RemoteLibrary>>) -> Result<Library, LibError> {
     let wiring = Wiring::from_process()?;
     let fs = wiring.fs();
     let home = wiring.home().to_path_buf();

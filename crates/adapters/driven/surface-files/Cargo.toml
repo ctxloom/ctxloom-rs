@@ -1,0 +1,18 @@
+[package]
+name = "surface-files"
+version = "0.1.0"
+description = "Delivers an engine's claims on its native files under a directory and gives them back byte for byte, by an ownership record kept in the home (S9)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+surface-ports.workspace = true
+
+[dev-dependencies]
+mutants.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -34,6 +34,14 @@ pub trait Services {
     /// needs none (the statusline hook) works where there is no home.
     fn sessions(&mut self) -> Result<&mut Self::Sessions, Box<dyn Diagnostic>>;
 
+    /// The callbacks that answer through the engines' codecs, built when first
+    /// asked for. A build without the setup use cases answers none.
+    fn hooks(
+        &mut self,
+    ) -> Result<Option<Box<dyn hook_cli::HookService + '_>>, Box<dyn Diagnostic>> {
+        Ok(None)
+    }
+
     /// A newly minted session id.
     #[cfg(feature = "test-support")]
     fn session_name(&mut self) -> String;
@@ -248,6 +256,21 @@ fn hook_verb<S: Services>(
                 warn(warning, format, catalog, err);
             }
             out.write_all(outcome.stdout.as_bytes())
+        }
+        hook_cli::HookVerb::SessionStart | hook_cli::HookVerb::SkillMates => {
+            let engine = hook.engine.as_deref().unwrap_or(hook_cli::CLAUDE_CODE);
+            let hooks = services
+                .hooks()
+                .map_err(|error| CliError::Command { error, exit: 1 })?;
+            let answer = match (&hook.verb, hooks) {
+                (_, None) => Ok(String::new()),
+                (hook_cli::HookVerb::SessionStart, Some(hooks)) => {
+                    hooks.session_start(engine, &input)
+                }
+                (_, Some(hooks)) => hooks.skill_mates(engine, &input),
+            }
+            .map_err(|error| CliError::Command { error, exit: 1 })?;
+            out.write_all(answer.as_bytes())
         }
     };
     written.map_err(|e| CliError::Output {
