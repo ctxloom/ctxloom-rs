@@ -10,7 +10,8 @@ use run_ports::Token;
 use crate::fakes::World;
 use crate::Identity;
 use crate::{
-    owns, AgentFact, AgentRequest, Allowlist, AppError, Credential, Gate, Principal, RunsGate, Why,
+    owns, AgentRequest, Allowlist, AppError, Credential, Gate, ModelFact, Principal, RunnerFact,
+    RunsGate, Why,
 };
 
 /// The type URL of a domain message's wire form.
@@ -200,38 +201,46 @@ async fn an_identity_owns_its_own_run_and_session_and_nothing_else() {
 
 // NEW-DESIGN (listener plan section 11, risk "Allowlist drift": "ctxloom's own
 // test should assert every variant is allowlisted (S5)"), per principal (owner
-// ruling 2026-11-04, item 16): every AgentFact variant is on the list of its
-// AUTHOR, and the match below stops compiling when a variant is added without
-// being given an author here.
+// ruling 2026-11-04, item 16): every RunnerFact variant is on the runner's list
+// and every ModelFact variant on the model's. The author is the TYPE (owner
+// ruling 2026-11-04: the AgentFact split), so the exhaustive matches below
+// stop compiling when a variant is added without being sampled here.
 #[test]
-fn every_agent_fact_variant_is_on_its_authors_allowlist() {
-    let samples = AgentFact::samples();
-    for fact in &samples {
-        let author = match fact {
-            AgentFact::RunnerAttached(_)
-            | AgentFact::TurnStarted(_)
-            | AgentFact::TurnCompleted(_)
-            | AgentFact::TurnFailed(_)
-            | AgentFact::RunExited(_)
-            | AgentFact::MessageClaimed(_)
-            | AgentFact::MessageDelivered(_)
-            | AgentFact::MessageFailed(_)
-            | AgentFact::EngineSessionBound(_) => Principal::Runner,
-            AgentFact::SummaryReported(_) | AgentFact::FinalReported(_) => Principal::Model,
-        };
-        assert_eq!(fact.author(), author, "{}", fact.type_url());
+fn every_fact_variant_is_on_its_authors_allowlist() {
+    let runner = RunnerFact::samples();
+    for fact in &runner {
+        match fact {
+            RunnerFact::RunnerAttached(_)
+            | RunnerFact::TurnStarted(_)
+            | RunnerFact::TurnCompleted(_)
+            | RunnerFact::TurnFailed(_)
+            | RunnerFact::RunExited(_)
+            | RunnerFact::MessageClaimed(_)
+            | RunnerFact::MessageDelivered(_)
+            | RunnerFact::MessageFailed(_)
+            | RunnerFact::EngineSessionBound(_) => {}
+        }
         assert!(
-            Allowlist::of(author).permits_fact(&fact.type_url()),
-            "{} is not allowlisted for {author:?}",
+            Allowlist::of(Principal::Runner).permits_fact(&fact.type_url()),
+            "{} is not allowlisted for the runner",
             fact.type_url()
         );
     }
-    assert_eq!(samples.len(), 11, "one sample per variant");
-    assert_eq!(
-        Allowlist::runner().facts().len() + Allowlist::model().facts().len(),
-        samples.len(),
-        "nothing else is on either list"
-    );
+    let model = ModelFact::samples();
+    for fact in &model {
+        match fact {
+            ModelFact::SummaryReported(_) | ModelFact::FinalReported(_) => {}
+        }
+        assert!(
+            Allowlist::of(Principal::Model).permits_fact(&fact.type_url()),
+            "{} is not allowlisted for the model",
+            fact.type_url()
+        );
+    }
+    assert_eq!(runner.len(), 9, "one sample per runner variant");
+    assert_eq!(model.len(), 2, "one sample per model variant");
+    assert_eq!(Allowlist::runner().facts().len(), runner.len());
+    assert_eq!(Allowlist::model().facts().len(), model.len());
 }
 
 // NEW-DESIGN, owner ruling 2026-11-04 (item 16, fail closed): the two lists are
@@ -246,14 +255,14 @@ fn the_runner_and_model_allowlists_are_disjoint_and_the_model_may_only_claim() {
     for url in runner.facts() {
         assert!(!model.permits_fact(&url), "{url} is on both lists");
     }
-    for fact in AgentFact::samples() {
-        let on_model = model.permits_fact(&fact.type_url());
-        assert_eq!(
-            on_model,
-            matches!(
-                fact,
-                AgentFact::SummaryReported(_) | AgentFact::FinalReported(_)
-            ),
+    for fact in RunnerFact::samples() {
+        assert!(!model.permits_fact(&fact.type_url()), "{}", fact.type_url());
+        assert!(runner.permits_fact(&fact.type_url()), "{}", fact.type_url());
+    }
+    for fact in ModelFact::samples() {
+        assert!(model.permits_fact(&fact.type_url()), "{}", fact.type_url());
+        assert!(
+            !runner.permits_fact(&fact.type_url()),
             "{}",
             fact.type_url()
         );
@@ -266,7 +275,7 @@ fn the_runner_and_model_allowlists_are_disjoint_and_the_model_may_only_claim() {
 
 // NEW-DESIGN (D6: "facts must not open a path for arbitrary commands"): no
 // command of the domains is permitted as a fact, by either principal (the fact
-// lists are closed to the AgentFact types), and no AgentRequest has a wire
+// lists are closed to the fact types), and no AgentRequest has a wire
 // type on either.
 #[test]
 fn the_fact_allowlists_hold_no_command() {
@@ -286,7 +295,7 @@ fn the_fact_allowlists_hold_no_command() {
 }
 
 // NEW-DESIGN, owner ruling 2026-11-04 (S5 review Q3): the request kinds are a
-// closed type of their own, enumerable like AgentFact; the match stops
+// closed type of their own, enumerable like the facts; the match stops
 // compiling when a kind is added without being listed here. Item 16: the
 // closed type is the genuinely refusable asks only (spawn, send, stop, steer,
 // ask, summarize-request, pause, resume); reports and answers are facts, and

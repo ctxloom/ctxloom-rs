@@ -191,7 +191,7 @@ pub(crate) fn command_book(cover: Cover, message: impl DomainMessage) -> Command
     }
 }
 
-/// A fact as the listener delivers one, built here and not by `AgentFact`, so a
+/// A fact as the listener delivers one, built here and not by `RunnerFact`, so a
 /// fixture never depends on the code under test.
 pub(crate) fn fact_book(
     cover: Cover,

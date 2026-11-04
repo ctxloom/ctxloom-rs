@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use angzarr_diagnostic::{code, Arg, Diagnostic};
+use angzarr_embedded::{Failure, Rejected};
 use run_ports::Unserved;
 
 /// Why a credential did not identify. For the AUDIT only: the caller is told
@@ -33,6 +34,47 @@ pub enum AppError {
     },
     /// The store or kernel failed.
     Failed { reason: String },
+}
+
+impl AppError {
+    /// What a request the edge did not serve is: a hidden domain is a denial,
+    /// the kernel's own failure its refusal or failure.
+    pub(crate) fn from_unserved(unserved: Unserved) -> AppError {
+        match unserved {
+            Unserved::Failed(failure) => AppError::from_failure(failure),
+            hidden @ Unserved::Hidden { .. } => AppError::Denied(hidden),
+        }
+    }
+
+    /// A domain's refusal as its code and args; any other failure as its text.
+    pub(crate) fn from_failure(failure: Failure<Rejected>) -> AppError {
+        match failure {
+            Failure::Rejected(rejected) => {
+                let report = rejected.report();
+                AppError::Refused {
+                    code: report.code().to_string(),
+                    args: report
+                        .args()
+                        .into_iter()
+                        .map(|(name, arg)| (name.to_string(), arg_text(&arg)))
+                        .collect(),
+                }
+            }
+            other => AppError::Failed {
+                reason: other.to_string(),
+            },
+        }
+    }
+}
+
+/// An arg as text: a number or string as it is, a cause as its code.
+fn arg_text(arg: &Arg) -> String {
+    match arg {
+        Arg::Int(n) => n.to_string(),
+        Arg::Uint(n) => n.to_string(),
+        Arg::Str(s) => s.clone(),
+        Arg::Nested(cause) => cause.code().to_string(),
+    }
 }
 
 impl fmt::Display for AppError {

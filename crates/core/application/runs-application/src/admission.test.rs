@@ -10,7 +10,7 @@ use angzarr_embedded::{Failure, KernelError, Malformed};
 use run_ports::{Arrival, Unserved};
 
 use crate::fakes::{command_book, fact_book, World};
-use crate::{Admission, AgentFact, AgentRequest, AppError, Credential, Principal, Requested, Why};
+use crate::{Admission, AgentRequest, AppError, Credential, ModelFact, Requested, RunnerFact, Why};
 
 const ARRIVALS: [Arrival; 2] = [Arrival::Loopback, Arrival::Ip];
 
@@ -289,10 +289,7 @@ async fn the_models_credential_cannot_forge_a_runner_fact() {
             world.edge.pages(&run).await.len(),
             world.edge.pages(&session).await.len(),
         );
-        for fact in AgentFact::samples()
-            .into_iter()
-            .filter(|f| f.author() == Principal::Runner)
-        {
+        for fact in RunnerFact::samples() {
             let denied = admission
                 .admit(arrival, &world.me.model_credential, fact.book(who))
                 .await
@@ -322,10 +319,7 @@ async fn the_model_records_claims_and_the_runner_cannot() {
         let world = World::new().await;
         let admission = Admission::new(Arc::clone(&world.edge));
         let who = &world.me.identity;
-        for claim in AgentFact::samples()
-            .into_iter()
-            .filter(|f| f.author() == Principal::Model)
-        {
+        for claim in ModelFact::samples() {
             let answered = admission
                 .admit(arrival, &world.me.model_credential, claim.book(who))
                 .await

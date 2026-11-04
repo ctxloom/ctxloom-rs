@@ -1,9 +1,9 @@
 //! Admission: what the agent listener does with each arrival. The listener
-//! accepts only facts (the `AgentFact` allowlist), the closed AgentRequests,
+//! accepts only facts (the fact allowlists), the closed AgentRequests,
 //! and reads/feeds; a generic Command envelope is refused by construction
 //! (owner ruling 2026-11-04, S5 review Q3). A fact: identify; not a Command;
 //! allowlist; reach (the edge's exposure); owns; serve. A denial is answered as
-//! an unknown domain. STUBS.
+//! an unknown domain.
 
 use std::sync::Arc;
 

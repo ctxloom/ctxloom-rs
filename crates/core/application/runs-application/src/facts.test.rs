@@ -7,7 +7,7 @@ use run_ports::Edge;
 use angzarr_embedded::v1::{DeliveryOutcome, Uuid};
 
 use crate::fakes::{fact_book, uuid, World, SESSION_ME};
-use crate::{AgentFact, AppError, Facts, Identity, Principal, Recorded};
+use crate::{AppError, Facts, Identity, ModelFact, Principal, Recorded, RunnerFact};
 
 fn identity() -> Identity {
     Identity {
@@ -26,16 +26,16 @@ fn identity() -> Identity {
 
 const RUN: &str = "a1a1a1a1-0000-5000-8000-000000000001";
 
-fn turn_started(turn: u64) -> AgentFact {
-    AgentFact::TurnStarted(runs::TurnStarted { turn })
+fn turn_started(turn: u64) -> RunnerFact {
+    RunnerFact::TurnStarted(runs::TurnStarted { turn })
 }
 
-fn exited() -> AgentFact {
-    AgentFact::RunExited(runs::RunExited { code: 0, signal: 0 })
+fn exited() -> RunnerFact {
+    RunnerFact::RunExited(runs::RunExited { code: 0, signal: 0 })
 }
 
-fn delivered(id: &str) -> AgentFact {
-    AgentFact::MessageDelivered(sessions::DeliverMessage {
+fn delivered(id: &str) -> RunnerFact {
+    RunnerFact::MessageDelivered(sessions::DeliverMessage {
         message_id: id.to_string(),
         at_turn: 1,
     })
@@ -46,13 +46,13 @@ fn delivered(id: &str) -> AgentFact {
 #[test]
 fn turn_facts_are_identified_by_run_and_turn() {
     let who = identity();
-    let completed = AgentFact::TurnCompleted(runs::TurnCompleted {
+    let completed = RunnerFact::TurnCompleted(runs::TurnCompleted {
         turn: 4,
         native_key: String::new(),
         answer_ref: String::new(),
         exit_code: 0,
     });
-    let failed = AgentFact::TurnFailed(runs::TurnFailed {
+    let failed = RunnerFact::TurnFailed(runs::TurnFailed {
         turn: 4,
         class: runs::TurnFailureClass::EngineError,
         detail: String::new(),
@@ -74,7 +74,7 @@ fn turn_facts_are_identified_by_run_and_turn() {
 fn the_exit_and_the_attach_are_identified_by_the_run() {
     let who = identity();
     assert_eq!(exited().external_id(&who), format!("exit:{RUN}"));
-    let attached = AgentFact::RunnerAttached(runs::RunnerAttached {
+    let attached = RunnerFact::RunnerAttached(runs::RunnerAttached {
         runner_id: "r1".to_string(),
         protocol: "v1".to_string(),
     });
@@ -89,7 +89,7 @@ fn the_exit_and_the_attach_are_identified_by_the_run() {
 #[test]
 fn the_engine_session_bind_is_identified_by_session_and_native_id() {
     let who = identity();
-    let bound = AgentFact::EngineSessionBound(sessions::BindEngineSession {
+    let bound = RunnerFact::EngineSessionBound(sessions::BindEngineSession {
         native_id: "native-1".to_string(),
         transcript_path: "/t".to_string(),
         engine_version: None,
@@ -111,13 +111,13 @@ fn claims_are_identified_by_run_and_turn() {
         principal: Principal::Model,
         ..identity()
     };
-    let summary = AgentFact::SummaryReported(runs::SummaryReported {
+    let summary = ModelFact::SummaryReported(runs::SummaryReported {
         turn: 3,
         ordinal: 2,
         scope: "progress".to_string(),
         text_ref: "t".to_string(),
     });
-    let done = AgentFact::FinalReported(runs::FinalReported {
+    let done = ModelFact::FinalReported(runs::FinalReported {
         turn: 3,
         text_ref: "t".to_string(),
     });
@@ -131,11 +131,11 @@ fn claims_are_identified_by_run_and_turn() {
 #[test]
 fn inbox_facts_are_identified_by_session_and_message() {
     let who = identity();
-    let claimed = AgentFact::MessageClaimed(sessions::ClaimMessage {
+    let claimed = RunnerFact::MessageClaimed(sessions::ClaimMessage {
         message_id: "m7".to_string(),
         claimant: "runner".to_string(),
     });
-    let failed = AgentFact::MessageFailed(sessions::FailMessage {
+    let failed = RunnerFact::MessageFailed(sessions::FailMessage {
         message_id: "m7".to_string(),
         reason: "engine".to_string(),
     });
@@ -156,12 +156,19 @@ fn inbox_facts_are_identified_by_session_and_message() {
 #[test]
 fn a_fact_addresses_only_the_callers_own_run_or_session() {
     let who = identity();
-    for fact in AgentFact::samples() {
-        let cover = fact.cover(&who);
+    let covers = RunnerFact::samples()
+        .iter()
+        .map(|f| (f.type_url(), f.cover(&who)))
+        .chain(
+            ModelFact::samples()
+                .iter()
+                .map(|f| (f.type_url(), f.cover(&who))),
+        )
+        .collect::<Vec<_>>();
+    for (url, cover) in covers {
         assert!(
             cover == who.run_cover() || cover == who.session_cover(),
-            "{} addresses {cover:?}",
-            fact.type_url()
+            "{url} addresses {cover:?}"
         );
     }
     assert_eq!(turn_started(1).cover(&who), who.run_cover());
@@ -174,17 +181,21 @@ fn a_fact_addresses_only_the_callers_own_run_or_session() {
 fn a_fact_is_sent_as_a_fact_body_with_its_external_id() {
     use angzarr_embedded::v1::command_page::Body;
     let who = identity();
-    for fact in AgentFact::samples() {
-        let book = fact.book(&who);
+    let books = RunnerFact::samples()
+        .iter()
+        .map(|f| (f.type_url(), f.book(&who), f.external_id(&who)))
+        .chain(
+            ModelFact::samples()
+                .iter()
+                .map(|f| (f.type_url(), f.book(&who), f.external_id(&who))),
+        )
+        .collect::<Vec<_>>();
+    for (url, book, external_id) in books {
         let page = book.page.expect("a page");
-        assert!(
-            matches!(page.body, Some(Body::Fact(_))),
-            "{}",
-            fact.type_url()
-        );
+        assert!(matches!(page.body, Some(Body::Fact(_))), "{url}");
         assert_eq!(
             page.fact_origin.expect("an origin").external_id,
-            fact.external_id(&who)
+            external_id
         );
     }
 }
@@ -289,27 +300,44 @@ async fn a_fact_the_kernel_dead_letters_is_parked_and_its_letter_is_in_the_store
 async fn a_fact_of_the_other_principal_is_denied_and_nothing_is_sent() {
     let world = World::new().await;
     let facts = Facts::new(Arc::clone(&world.edge));
-    for fact in AgentFact::samples() {
-        let other = match fact.author() {
-            Principal::Runner => &world.me.model_identity,
-            Principal::Model => &world.me.identity,
-        };
-        let served = world.edge.served();
-        let run_before = world.edge.pages(&other.run_cover()).await.len();
-        let session_before = world.edge.pages(&other.session_cover()).await.len();
-        let denied = facts.record(other, fact.clone()).await.unwrap_err();
-        assert!(
-            matches!(denied, AppError::Denied(run_ports::Unserved::Hidden { .. })),
-            "{}",
-            fact.type_url()
-        );
-        assert_eq!(world.edge.served(), served, "{}", fact.type_url());
-        assert_eq!(world.edge.pages(&other.run_cover()).await.len(), run_before);
-        assert_eq!(
-            world.edge.pages(&other.session_cover()).await.len(),
-            session_before
-        );
+    // Defence in depth: the types keep a model call site from building a runner
+    // fact, yet a runner fact offered with the model's identity (and a claim
+    // with the runner's) is still hidden, and nothing is sent.
+    let runner_facts = RunnerFact::samples();
+    let claims = ModelFact::samples();
+    for fact in runner_facts {
+        let other = &world.me.model_identity;
+        denied_and_unwritten(&world, &facts, other, fact).await;
     }
+    for fact in claims {
+        let other = &world.me.identity;
+        denied_and_unwritten(&world, &facts, other, fact).await;
+    }
+}
+
+/// `fact` offered by `other`, who is not its author: hidden, nothing sent and
+/// nothing written to the run or the session.
+async fn denied_and_unwritten<F: crate::Fact>(
+    world: &World,
+    facts: &Facts<crate::fakes::KernelEdge>,
+    other: &Identity,
+    fact: F,
+) {
+    let served = world.edge.served();
+    let run_before = world.edge.pages(&other.run_cover()).await.len();
+    let session_before = world.edge.pages(&other.session_cover()).await.len();
+    let book = fact.book(other);
+    let denied = facts.record(other, fact).await.unwrap_err();
+    assert!(
+        matches!(denied, AppError::Denied(run_ports::Unserved::Hidden { .. })),
+        "{book:?}"
+    );
+    assert_eq!(world.edge.served(), served, "{book:?}");
+    assert_eq!(world.edge.pages(&other.run_cover()).await.len(), run_before);
+    assert_eq!(
+        world.edge.pages(&other.session_cover()).await.len(),
+        session_before
+    );
 }
 
 // NEW-DESIGN, owner ruling 2026-11-04 (item 16): claims are facts the MODEL
@@ -322,13 +350,13 @@ async fn a_claim_is_recorded_by_the_model_and_ends_nothing() {
     let facts = Facts::new(Arc::clone(&world.edge));
     let who = &world.me.model_identity;
     let claims = [
-        AgentFact::SummaryReported(runs::SummaryReported {
+        ModelFact::SummaryReported(runs::SummaryReported {
             turn: 1,
             ordinal: 0,
             scope: "progress".to_string(),
             text_ref: "t:1".to_string(),
         }),
-        AgentFact::FinalReported(runs::FinalReported {
+        ModelFact::FinalReported(runs::FinalReported {
             turn: 1,
             text_ref: "t:final".to_string(),
         }),
@@ -405,16 +433,19 @@ async fn every_agent_fact_applies_in_every_state() {
             }
             _ => {}
         }
-        for fact in AgentFact::samples() {
-            let who = match fact.author() {
-                Principal::Runner => &me.identity,
-                Principal::Model => &me.model_identity,
-            };
-            let outcome = facts.record(who, fact.clone()).await;
+        let mut outcomes = Vec::new();
+        for fact in RunnerFact::samples() {
+            let url = fact.type_url();
+            outcomes.push((url, facts.record(&me.identity, fact).await));
+        }
+        for fact in ModelFact::samples() {
+            let url = fact.type_url();
+            outcomes.push((url, facts.record(&me.model_identity, fact).await));
+        }
+        for (url, outcome) in outcomes {
             assert!(
                 matches!(outcome, Ok(Recorded::Applied | Recorded::Duplicate)),
-                "{} in state {state}: {outcome:?}",
-                fact.type_url()
+                "{url} in state {state}: {outcome:?}"
             );
         }
     }

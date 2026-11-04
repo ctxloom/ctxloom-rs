@@ -12,8 +12,8 @@ use angzarr_embedded::{CommandBookExt, Failure, KernelError, Malformed};
 use embedded_edge::EmbeddedEdge;
 use run_ports::{Arrival, Edge, Token, TokenSource, Unserved};
 use runs_application::{
-    Admission, AgentFact, AppError, Credential, EnqueueRequest, Enqueuer, Facts, Gate, Identity,
-    Recorded, RunsGate, Why,
+    Admission, AppError, Credential, EnqueueRequest, Enqueuer, Facts, Gate, Identity, Recorded,
+    RunnerFact, RunsGate, Why,
 };
 
 use crate::{run_id, InProcessCore};
@@ -108,8 +108,8 @@ impl World {
 
 use angzarr_embedded::v1::CommandBook;
 
-fn exited() -> AgentFact {
-    AgentFact::RunExited(runs::RunExited { code: 0, signal: 0 })
+fn exited() -> RunnerFact {
+    RunnerFact::RunExited(runs::RunExited { code: 0, signal: 0 })
 }
 
 // NEW-DESIGN (plan 6.2 "one code path": run_id in S4 and the run domain's

@@ -2,8 +2,8 @@
 //! only that.
 //!
 //! - [`Facts`]: the inbound fact port, narrow by construction (plan 4.2). The
-//!   closed [`AgentFact`] has no command in it; every variant addresses the
-//!   caller's own run or session, and its `external_id` is derived from its
+//!   closed [`RunnerFact`] and [`ModelFact`] have no command in them; every
+//!   variant addresses the caller's own run or session, and its `external_id` is derived from its
 //!   cause (plan 4.3).
 //! - [`AgentRequests`]: the agent's refusable asks, equally closed and
 //!   identity-stamped (D7). The MODEL principal's only.
@@ -37,7 +37,7 @@ pub use enqueue::{EnqueueRequest, Enqueued, Enqueuer};
 #[cfg(any(test, feature = "test-support"))]
 pub use error::diagnostic_samples;
 pub use error::{AppError, Why, EN_US};
-pub use facts::{AgentFact, Facts, Recorded};
+pub use facts::{Fact, Facts, ModelFact, Recorded, RunnerFact};
 pub use feeds::{Cursor, Feeds, Follow};
 pub use gate::{owns, Allowlist, Credential, Gate, RunsGate};
 pub use identity::{Identity, Principal, Role};
