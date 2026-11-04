@@ -1,7 +1,7 @@
-//! Go's `tests/acceptance/features/cli/deps.feature` (36 scenarios), ported:
-//! 32 here, the 4 of "Pull writes the project's engine files only with --yes"
-//! wait for S9's materialize (see `deps.test.rs`). Each test names its
-//! scenario. A scenario outline's Examples rows are the `FORMATS` loop.
+//! Go's `tests/acceptance/features/cli/deps.feature` (36 scenarios), ported,
+//! the 4 of "Pull writes the project's engine files only with --yes"
+//! included (the project refresh, which is S9's materialize). Each test names
+//! its scenario. A scenario outline's Examples rows are the `FORMATS` loop.
 //!
 //! plan supersedes Go: where a scenario reads `materialize dev --target out
 //! --backend claude-code` and its `out/CLAUDE.md`, the context is read from
@@ -550,4 +550,65 @@ fn test_a_corrupt_lockfile_is_refused_and_never_overwritten() {
             "{args:?} must leave the corrupt lock as it is"
         );
     }
+}
+
+// deps.feature: Rule "Pull writes the project's engine files only with --yes"
+
+// Scenario: A pull without --yes installs the closure and leaves the project's
+// engine files alone
+#[test]
+fn test_a_pull_without_yes_installs_the_closure_and_leaves_the_projects_engine_files_alone() {
+    let world = World::unpulled_dev();
+    let ran = world.run(&["deps", "pull", "--format", "text"]);
+    ran.succeeds()
+        .contains("Project refresh skipped")
+        .contains("ctxloom deps pull --yes")
+        .contains("ctxloom materialize --yes");
+    assert!(world.lock().contains("//bundles/demo"));
+    assert!(!world.project.exists(".claude/settings.json"));
+}
+
+// Scenario: A pull right after a --yes pull has no refresh to skip
+#[test]
+fn test_a_pull_right_after_a_yes_pull_has_no_refresh_to_skip() {
+    let world = World::unpulled_dev();
+    world
+        .run(&["deps", "pull", "--yes", "--format", "text"])
+        .succeeds();
+    world
+        .run(&["deps", "pull", "--format", "text"])
+        .succeeds()
+        .lacks("Project refresh skipped");
+}
+
+// Scenario: A refresh the project would refuse is named with its fix, and the
+// pull still succeeds
+#[test]
+fn test_a_refresh_the_project_would_refuse_is_named_with_its_fix_and_the_pull_still_succeeds() {
+    let world = World::unpulled_dev();
+    world
+        .run(&["deps", "pull", "--yes", "--format", "text"])
+        .succeeds();
+    world
+        .project
+        .write(".claude/settings.json", "{ this is not json\n");
+    world
+        .run(&["deps", "pull", "--format", "text"])
+        .succeeds()
+        .contains("Project refresh skipped")
+        .contains("hooks refused")
+        .contains("fix: ");
+}
+
+// Scenario: A pull with --yes also refreshes the project's engine files
+#[test]
+fn test_a_pull_with_yes_also_refreshes_the_projects_engine_files() {
+    let world = World::unpulled_dev();
+    world
+        .run(&["deps", "pull", "--yes", "--format", "text"])
+        .succeeds()
+        .lacks("Project refresh skipped");
+    world
+        .project
+        .file_contains(".claude/settings.json", "session-start");
 }

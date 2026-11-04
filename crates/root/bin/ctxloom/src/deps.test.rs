@@ -13,7 +13,7 @@
 //! scenarios that read what an assembly carries after a pull read it through
 //! `context assemble` (the same claim: what reaches the agent is the pinned
 //! content). The four scenarios of "Pull writes the project's engine files
-//! only with --yes" need materialize's engine files and wait for S9.
+//! only with --yes" read the engine files the project refresh writes.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
