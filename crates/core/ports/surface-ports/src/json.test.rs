@@ -88,3 +88,53 @@ fn test_members_are_read_set_and_removed() {
     assert!(!Json::Null.set("k", Json::Null));
     assert!(doc.get_mut("b").is_some());
 }
+
+#[test]
+fn test_every_number_form_comes_back_as_written() {
+    for digits in [
+        "0",
+        "-0",
+        "0.5",
+        "1E+2",
+        "-1.25e-3",
+        "123456789012345678901234567890",
+    ] {
+        let doc = Json::parse(digits).unwrap();
+        assert_eq!(doc, Json::Number(digits.to_string()));
+        assert_eq!(doc.pretty(), digits);
+    }
+}
+
+#[test]
+fn test_text_is_written_unescaped_beyond_quotes_backslashes_and_controls() {
+    assert_eq!(
+        Json::text("\u{e9}/<>&\u{7f}\u{1F600}").pretty(),
+        "\"\u{e9}/<>&\u{7f}\u{1F600}\""
+    );
+    assert_eq!(Json::text("\t\r\n\"\\").pretty(), r#""\t\r\n\"\\""#);
+}
+
+#[test]
+fn test_whitespace_around_a_document_is_allowed() {
+    assert_eq!(Json::parse(" \n\t[1] \r\n").unwrap().pretty(), "[\n  1\n]");
+}
+
+#[test]
+fn test_nested_documents_are_indented_per_level() {
+    let doc = Json::parse(r#"{"a":[{"b":[]},null,true,false],"c":{}}"#).unwrap();
+    assert_eq!(
+        doc.pretty(),
+        "{\n  \"a\": [\n    {\n      \"b\": []\n    },\n    null,\n    true,\n    false\n  ],\n  \"c\": {}\n}"
+    );
+}
+
+#[test]
+fn test_a_document_at_the_depth_limit_reads() {
+    let ok = "[".repeat(100) + &"]".repeat(100);
+    assert!(Json::parse(&ok).is_ok());
+}
+
+#[test]
+fn test_form_feed_and_backspace_are_written_as_unicode_escapes() {
+    assert_eq!(Json::text("\u{8}\u{c}").pretty(), "\"\\u0008\\u000c\"");
+}
