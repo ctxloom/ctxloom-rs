@@ -62,6 +62,31 @@ pub struct Plan {
 /// Decide the run's isolation, or refuse it. `degraded` is `--degraded`: it
 /// turns warnings into carrying on and nothing else.
 pub fn decide(demand: Demand, facts: &Facts, degraded: bool) -> Result<Plan, Finding> {
-    let _ = (demand, facts, degraded);
-    todo!("S11 new design: awaiting review")
+    // `--degraded` rescues no container refusal and changes no decision.
+    let _ = degraded;
+    if let Runtime::Container(demanded) = demand.runtime {
+        if facts.offers.is_empty() {
+            return Err(Finding::NoRuntime { demanded });
+        }
+        if !facts.offers.contains(&demanded) {
+            return Err(Finding::OwnershipMismatch {
+                demanded,
+                offered: facts.offers.clone(),
+            });
+        }
+        if !facts.image_available {
+            return Err(Finding::ImageUnavailable { demanded });
+        }
+    }
+    let (workspace, warnings) = match demand.workspace {
+        Workspace::Worktree if !facts.git_repository => {
+            (Workspace::None, vec![Warning::WorktreeUnavailable])
+        }
+        other => (other, Vec::new()),
+    };
+    Ok(Plan {
+        runtime: demand.runtime,
+        workspace,
+        warnings,
+    })
 }
