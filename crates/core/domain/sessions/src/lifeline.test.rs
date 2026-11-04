@@ -246,8 +246,11 @@ fn attach_then_die_with_mail_pending_exhausts_the_relaunch_budget() {
             break;
         }
     }
-    assert!(relaunches > 0, "the budget allows some relaunches");
-    assert!(relaunches <= RELAUNCH_BUDGET, "{relaunches} relaunches");
+    // Go: defaultMaxLaunchAttempts = 4 (launchgate.go); nextRelaunch authorises
+    // while `spent < max` with `spent = max(fails, relaunches)`, so exactly four
+    // relaunches in the attach-then-die loop (S5 review item 11, fact-checked).
+    assert_eq!(RELAUNCH_BUDGET, 4);
+    assert_eq!(relaunches, RELAUNCH_BUDGET);
     assert!(session.state().open_incarnation.is_none());
 }
 

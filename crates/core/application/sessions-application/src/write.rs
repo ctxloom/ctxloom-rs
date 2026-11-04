@@ -68,6 +68,17 @@ where
     ) -> Result<bool, AppError> {
         let command = command.into();
         let book = CommandBook::command_of(session_cover(&record.id)?, &command);
+        self.commit_book(project, record, book).await
+    }
+
+    /// Send `book` (a command, or a fact such as the bind) to the session.
+    async fn commit_book(
+        &mut self,
+        project: &Project,
+        record: &SessionRecord,
+        book: CommandBook,
+    ) -> Result<bool, AppError> {
+        let _ = record;
         let store = self.read.stores.open(project).await.map_err(failed)?;
         let command_id = self.clock.command_id();
         let mut runner = Runner {
@@ -109,17 +120,16 @@ where
             Err(AppError::NoSession { .. }) => return Ok(Bound::NoSuchSession),
             Err(other) => return Err(other),
         };
-        let changed = self
-            .commit(
-                &project,
-                &record,
-                BindEngineSession {
-                    native_id: request.native_id,
-                    transcript_path: request.transcript_path,
-                    engine_version: None,
-                },
-            )
-            .await?;
+        // The bind is a fact (owner ruling 2026-11-04, S5 review item 8).
+        let book = sessions::bind_book(
+            session_cover(&record.id)?,
+            &BindEngineSession {
+                native_id: request.native_id,
+                transcript_path: request.transcript_path,
+                engine_version: None,
+            },
+        );
+        let changed = self.commit_book(&project, &record, book).await?;
         Ok(match changed {
             true => Bound::Recorded {
                 dead_letters: std::mem::take(self.dead_letters),
@@ -398,7 +408,10 @@ where
 /// Whether `handled` recorded any event: a decision with none (a bind that
 /// changes nothing) is applied and empty.
 fn recorded(handled: &Handled) -> bool {
-    handled.books().iter().any(|book| !book.pages.is_empty())
+    // A fact answered DUPLICATE (a repeat bind, owner ruling 2026-11-04, S5
+    // review item 8) recorded nothing new, though it re-reads its events.
+    matches!(handled, Handled::Applied(_))
+        && handled.books().iter().any(|book| !book.pages.is_empty())
 }
 
 /// Where a session's output folder goes under the name `to`: beside itself.

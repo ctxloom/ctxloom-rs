@@ -172,7 +172,8 @@ fn every_agent_fact_variant_is_on_the_allowlist() {
             | AgentFact::RunExited(_)
             | AgentFact::MessageClaimed(_)
             | AgentFact::MessageDelivered(_)
-            | AgentFact::MessageFailed(_) => {}
+            | AgentFact::MessageFailed(_)
+            | AgentFact::EngineSessionBound(_) => {}
         }
         assert!(
             allowlist.permits_fact(&fact.type_url()),
@@ -180,7 +181,7 @@ fn every_agent_fact_variant_is_on_the_allowlist() {
             fact.type_url()
         );
     }
-    assert_eq!(samples.len(), 8, "one sample per variant");
+    assert_eq!(samples.len(), 9, "one sample per variant");
     assert_eq!(
         allowlist.facts().len(),
         samples.len(),

@@ -301,14 +301,22 @@ where
             Err(refusal) => return Err(refusal.into()),
         }
         let commands = commands(&project.id, harp, entry, keep_marker);
+        let commands: Vec<(&'static str, CommandBook)> = commands
+            .into_iter()
+            .map(|(step, input)| {
+                let book = match input {
+                    Input::Command(command) => {
+                        CommandBook::command_of(session_cover.clone(), &command)
+                    }
+                    Input::Bind(bind) => sessions::bind_book(session_cover.clone(), &bind),
+                };
+                (step, book)
+            })
+            .collect();
         let mut already = false;
         for (step, command) in commands {
             let handled = runner
-                .run::<SessionAggregate, SessionRejection, _>(
-                    store,
-                    CommandBook::command_of(session_cover.clone(), &command),
-                    &step_id(step),
-                )
+                .run::<SessionAggregate, SessionRejection, _>(store, command, &step_id(step))
                 .await??;
             if step == "mint" {
                 already = matches!(handled, Handled::Duplicate(..));
@@ -320,18 +328,35 @@ where
 
 /// The commands that make a Go session a session, in order, each named for
 /// its command id.
+/// One step of an import: a command, or the bind, which is a fact (owner
+/// ruling 2026-11-04, S5 review item 8).
+enum Input {
+    Command(SessionCommand),
+    Bind(BindEngineSession),
+}
+
+trait IntoInput {
+    fn into_input(self) -> Input;
+}
+
+impl<T: Into<SessionCommand>> IntoInput for T {
+    fn into_input(self) -> Input {
+        Input::Command(self.into())
+    }
+}
+
 fn commands(
     project_id: &str,
     harp: &str,
     entry: &GoEntry,
     keep_marker: bool,
-) -> Vec<(&'static str, SessionCommand)> {
+) -> Vec<(&'static str, Input)> {
     let origin = match entry.origin.as_str() {
         "agent" => Origin::Agent,
         "oneshot" => Origin::Oneshot,
         _ => Origin::Session,
     };
-    let mut commands: Vec<(&'static str, SessionCommand)> = vec![(
+    let mut commands: Vec<(&'static str, Input)> = vec![(
         "mint",
         MintSession {
             harp: harp.to_string(),
@@ -343,17 +368,16 @@ fn commands(
             started_at: Some(entry.started_at),
             depth: 0,
         }
-        .into(),
+        .into_input(),
     )];
     if !entry.session_id.is_empty() || !entry.transcript_path.is_empty() {
         commands.push((
             "bind",
-            BindEngineSession {
+            Input::Bind(BindEngineSession {
                 native_id: entry.session_id.clone(),
                 transcript_path: entry.transcript_path.clone(),
                 engine_version: Some(entry.engine_version.clone()).filter(|v| !v.is_empty()),
-            }
-            .into(),
+            }),
         ));
     }
     if !entry.rotations.is_empty() {
@@ -370,11 +394,11 @@ fn commands(
                     })
                     .collect(),
             }
-            .into(),
+            .into_input(),
         ));
     }
     if entry.keep || keep_marker {
-        commands.push(("keep", SetKept { kept: true }.into()));
+        commands.push(("keep", SetKept { kept: true }.into_input()));
     }
     if let Some(at) = entry.purged_at {
         commands.push((
@@ -384,11 +408,11 @@ fn commands(
                 bytes: 0,
                 at: Some(at),
             }
-            .into(),
+            .into_input(),
         ));
     }
     if let Some(at) = entry.ended_at {
-        commands.push(("end", RecordEnd { at }.into()));
+        commands.push(("end", RecordEnd { at }.into_input()));
     }
     commands
 }

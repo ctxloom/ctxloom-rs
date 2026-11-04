@@ -289,6 +289,46 @@ fn live(state: &SessionState) -> Result<&SessionState, SessionRejection> {
     Ok(state)
 }
 
+/// The book that records `bind` on the session stream `cover` names: a Fact
+/// body with `external_id` `bind:<session>:<native_id>` (plan 4.3), the session
+/// being the cover's root, so a repeat is answered DUPLICATE. A bind that names
+/// no native id is keyed by its transcript: `bind:<session>:path:<path>`.
+/// (Owner ruling 2026-11-04, S5 review item 8.)
+pub fn bind_book(
+    cover: angzarr_embedded::v1::Cover,
+    bind: &BindEngineSession,
+) -> angzarr_embedded::v1::CommandBook {
+    use angzarr_embedded::markup::DomainMessage;
+    use angzarr_embedded::v1::{command_page, CommandBook, CommandPage, Fact, FactOrigin};
+    let session = cover
+        .root
+        .as_ref()
+        .and_then(|root| uuid::Uuid::from_slice(&root.value).ok())
+        .map(|id| id.to_string())
+        .unwrap_or_default();
+    let key = if bind.native_id.is_empty() {
+        format!("path:{}", bind.transcript_path)
+    } else {
+        bind.native_id.clone()
+    };
+    CommandBook {
+        cover: Some(cover),
+        page: Some(CommandPage {
+            body: Some(command_page::Body::Fact(Fact {
+                payload: Some(
+                    angzarr_embedded::Any::from_msg(&bind.to_wire()).expect("a bind encodes"),
+                ),
+            })),
+            fact_origin: Some(FactOrigin {
+                external_id: format!("bind:{session}:{key}"),
+                description: String::new(),
+            }),
+            ..CommandPage::default()
+        }),
+        handling: None,
+    }
+}
+
 #[cfg(test)]
 #[path = "lib.test.rs"]
 mod tests;

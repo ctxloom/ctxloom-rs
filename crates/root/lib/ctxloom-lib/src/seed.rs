@@ -90,21 +90,12 @@ impl Wiring {
         let id = *uuid::Uuid::now_v7().as_bytes();
         let registry = sessions_application::registry();
         let registry = &registry;
-        let run = |at: Timestamp, command: SessionCommand| {
-            let book = CommandBook {
-                cover: Some(Cover {
-                    domain: SESSION_DOMAIN.to_string(),
-                    root: Some(Uuid::from_bytes(id)),
-                    edition: None,
-                }),
-                page: Some(CommandPage {
-                    body: Some(command_page::Body::Command(Command {
-                        payload: Some(command.to_any()),
-                    })),
-                    ..CommandPage::default()
-                }),
-                handling: None,
-            };
+        let session_cover = Cover {
+            domain: SESSION_DOMAIN.to_string(),
+            root: Some(Uuid::from_bytes(id)),
+            edition: None,
+        };
+        let run_book = |at: Timestamp, book: CommandBook| {
             let sampled = Sampled {
                 now: at,
                 command_id: System.command_id(),
@@ -116,6 +107,19 @@ impl Wiring {
                     .map(drop)
                     .map_err(|failure| seed_error(format!("{failure:?}")))
             }
+        };
+        let run = |at: Timestamp, command: SessionCommand| {
+            let book = CommandBook {
+                cover: Some(session_cover.clone()),
+                page: Some(CommandPage {
+                    body: Some(command_page::Body::Command(Command {
+                        payload: Some(command.to_any()),
+                    })),
+                    ..CommandPage::default()
+                }),
+                handling: None,
+            };
+            run_book(at, book)
         };
         let started = before(seed.started_ago);
         // The name first, as the real mint takes it (plan 3.1).
@@ -169,14 +173,17 @@ impl Wiring {
         )
         .await?;
         if let Some((native_id, transcript_path)) = &seed.native {
-            run(
+            // A bind is a fact (owner ruling 2026-11-04, S5 review item 8).
+            run_book(
                 before(seed.started_ago.saturating_sub(1)),
-                BindEngineSession {
-                    native_id: native_id.clone(),
-                    transcript_path: transcript_path.clone(),
-                    engine_version: None,
-                }
-                .into(),
+                sessions::bind_book(
+                    session_cover.clone(),
+                    &BindEngineSession {
+                        native_id: native_id.clone(),
+                        transcript_path: transcript_path.clone(),
+                        engine_version: None,
+                    },
+                ),
             )
             .await?;
         }

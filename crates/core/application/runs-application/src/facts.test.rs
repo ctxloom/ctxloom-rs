@@ -80,6 +80,26 @@ fn the_exit_and_the_attach_are_identified_by_the_run() {
     assert_eq!(attached.external_id(&who), format!("attach:{RUN}:r1"));
 }
 
+// NEW-DESIGN, owner ruling 2026-11-04 (S5 review item 8; plan 4.3 table
+// `bind:<session>:<native_id>`): the engine session bind is an AgentFact on the
+// caller's own session. The hook-cli `session-bind` hook reaches it through
+// the sessions use case, whose book is `sessions::bind_book` (hook-cli's own
+// code needs no change; its tests stay as they are).
+#[test]
+fn the_engine_session_bind_is_identified_by_session_and_native_id() {
+    let who = identity();
+    let bound = AgentFact::EngineSessionBound(sessions::BindEngineSession {
+        native_id: "native-1".to_string(),
+        transcript_path: "/t".to_string(),
+        engine_version: None,
+    });
+    assert_eq!(
+        bound.external_id(&who),
+        format!("bind:{SESSION_ME}:native-1")
+    );
+    assert_eq!(bound.cover(&who), who.session_cover());
+}
+
 // NEW-DESIGN (plan 4.3: the stable session id, not the harp, D5 Q1).
 #[test]
 fn inbox_facts_are_identified_by_session_and_message() {

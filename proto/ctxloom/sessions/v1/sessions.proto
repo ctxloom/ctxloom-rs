@@ -125,14 +125,19 @@ message MintSession {
 }
 
 // Record what the SessionStart hook bound: the engine's session id and
-// transcript. Go's BindSession: a repeat of the bound id records nothing;
-// a different id that names a transcript is a rotation; a different id
-// naming no transcript never displaces the binding; nothing at all
-// records nothing.
+// transcript. A FACT since the owner ruling of 2026-11-04 (S5 review item 8;
+// plan 3.1/4.2/4.3): it already happened, so it is recorded and never refused
+// (a stream holding no session, or a forgotten one, records nothing).
+// external_id `bind:<session>:<native_id>` (or, for a transcript-only bind,
+// `bind:<session>:path:<transcript_path>`), so a repeat is DUPLICATE.
+// Go's BindSession rules stand: a repeat of the bound id records nothing; a
+// different id that names a transcript is a rotation; a different id naming
+// no transcript never displaces the binding; nothing at all records nothing.
 message BindEngineSession {
   option (io.angzarr.v1.command) = {
     component: "ctxloom.sessions.v1.SessionState"
     emits: ["ctxloom.sessions.v1.EngineSessionBound"]
+    fact: true
   };
 
   string native_id = 1;

@@ -66,16 +66,13 @@ impl SessionAggregate {
         Ok((minted, lifeline::first_owed()))
     }
 
-    /// Bind the engine's session and transcript; `None` when it changes
-    /// nothing.
-    #[handles_cmd(BindEngineSession)]
-    fn bind(
-        &self,
-        cmd: BindEngineSession,
-        ctx: &Context,
-    ) -> Result<Option<EngineSessionBound>, Failed<SessionRejection>> {
+    /// Bind the engine's session and transcript: a FACT (owner ruling
+    /// 2026-11-04, S5 review item 8), so it is never refused; records nothing
+    /// when it changes nothing, or when the stream holds no live session.
+    #[handles_fact(BindEngineSession)]
+    fn bind(&self, fact: BindEngineSession, ctx: &Context) -> Record<Self> {
         let _ = ctx;
-        Ok(engine_bound(&self.session, &cmd)?)
+        Record::of(engine_bound(&self.session, &fact).ok().flatten())
     }
 
     /// Mark or unmark the transcript kept; `None` when it changes nothing.

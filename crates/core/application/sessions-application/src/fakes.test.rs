@@ -217,11 +217,6 @@ pub fn cover(id: u8) -> Cover {
 /// Run `command` on session `id`'s stream in `store` directly, as another
 /// process would, sampled at `seconds`.
 pub fn run(store: &MemoryStore, id: u8, seconds: i64, command: impl Into<SessionCommand>) {
-    let registry = crate::registry();
-    let sampled = Sampled {
-        now: Timestamp { seconds, nanos: 0 },
-        command_id: Uuid::from_bytes([(seconds % 251) as u8; 16]),
-    };
     let book = CommandBook {
         cover: Some(cover(id)),
         page: Some(CommandPage {
@@ -231,6 +226,16 @@ pub fn run(store: &MemoryStore, id: u8, seconds: i64, command: impl Into<Session
             ..CommandPage::default()
         }),
         handling: None,
+    };
+    run_book(store, seconds, book);
+}
+
+/// Send `book` to its session stream directly, sampled at `seconds`.
+fn run_book(store: &MemoryStore, seconds: i64, book: CommandBook) {
+    let registry = crate::registry();
+    let sampled = Sampled {
+        now: Timestamp { seconds, nanos: 0 },
+        command_id: Uuid::from_bytes([(seconds % 251) as u8; 16]),
     };
     ready(
         Kernel::new(&registry)
@@ -264,15 +269,18 @@ pub fn minted(store: &MemoryStore, id: u8, harp: &str, project_dir: &str, starte
 }
 
 pub fn bound(store: &MemoryStore, id: u8, at: i64, native_id: &str, transcript: &str) {
-    run(
+    // A bind is a fact (owner ruling 2026-11-04, S5 review item 8).
+    run_book(
         store,
-        id,
         at,
-        BindEngineSession {
-            native_id: native_id.to_string(),
-            transcript_path: transcript.to_string(),
-            engine_version: None,
-        },
+        sessions::bind_book(
+            cover(id),
+            &BindEngineSession {
+                native_id: native_id.to_string(),
+                transcript_path: transcript.to_string(),
+                engine_version: None,
+            },
+        ),
     );
 }
 

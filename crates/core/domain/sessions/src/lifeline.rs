@@ -10,10 +10,12 @@ use crate::{
     SessionState, StopOrdered, StopSession,
 };
 
-/// How many relaunches a session spends before it gives up, reset only when
-/// mail is consumed (a delivery), never by an attach. Go's `maxLaunchAttempts`
-/// (relaunch_budget_test.go); the value is an open question in the review.
-pub const RELAUNCH_BUDGET: u32 = 3;
+/// How many automatic relaunches a session spends before it gives up, reset
+/// only when mail is consumed (a delivery), never by an attach. Go's
+/// `defaultMaxLaunchAttempts = 4` (internal/core/coord/launchgate.go):
+/// `nextRelaunch` authorises while `spent < max`, so FOUR relaunches, then it
+/// refuses (owner fact check, S5 review item 11).
+pub const RELAUNCH_BUDGET: u32 = 4;
 
 /// The incarnation a mint owes: the first (owner ruling 2026-11-04, S5
 /// review Q1 (b)).

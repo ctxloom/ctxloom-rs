@@ -46,6 +46,16 @@ impl Project {
 
     /// Run `command` on the session stream `id`, then catch `index` up.
     fn run(&mut self, index: &mut Index, id: u8, command: impl Into<SessionCommand>) {
+        self.run_book(index, book(id, command.into().to_any()));
+    }
+
+    /// Record a bind, a fact since the owner ruling of 2026-11-04 (S5 review
+    /// item 8), as the hook delivers it.
+    fn bound(&mut self, index: &mut Index, id: u8, bind: sessions::BindEngineSession) {
+        self.run_book(index, sessions::bind_book(cover(id), &bind));
+    }
+
+    fn run_book(&mut self, index: &mut Index, book: CommandBook) {
         self.seconds += 1;
         let sampled = Sampled {
             now: Timestamp {
@@ -60,11 +70,7 @@ impl Project {
                     max_retries: 0,
                     ..OnRetryable::default()
                 })
-                .handle::<SessionAggregate, _>(
-                    &self.store,
-                    book(id, command.into().to_any()),
-                    &sampled,
-                ),
+                .handle::<SessionAggregate, _>(&self.store, book, &sampled),
         )
         .unwrap_or_else(|failure| panic!("{failure:?}"));
         self.catch_up(index);
@@ -171,8 +177,8 @@ fn a_record_is_the_session_its_events_fold() {
     let mut project = Project::new();
     let mut index = SessionIndex::catch_up();
     project.run(&mut index, FIRST, mint("amber-swift-owl"));
-    project.run(&mut index, FIRST, bind("id-1", "/t1"));
-    project.run(&mut index, FIRST, bind("id-2", "/t2"));
+    project.bound(&mut index, FIRST, bind("id-1", "/t1"));
+    project.bound(&mut index, FIRST, bind("id-2", "/t2"));
     project.run(&mut index, FIRST, SetKept { kept: true });
     project.run(
         &mut index,
@@ -280,8 +286,8 @@ fn a_native_id_resolves_through_the_current_binding_and_the_lineage() {
     let mut project = Project::new();
     let mut index = SessionIndex::catch_up();
     project.run(&mut index, FIRST, mint("amber-swift-owl"));
-    project.run(&mut index, FIRST, bind("id-1", "/t1"));
-    project.run(&mut index, FIRST, bind("id-2", "/t2"));
+    project.bound(&mut index, FIRST, bind("id-1", "/t1"));
+    project.bound(&mut index, FIRST, bind("id-2", "/t2"));
     project.run(&mut index, SECOND, mint("brisk-copper-moth"));
     let index = index.projector().index();
     assert_eq!(
@@ -344,7 +350,7 @@ fn a_fresh_index_catches_up_from_the_store() {
     let mut project = Project::new();
     let mut index = SessionIndex::catch_up();
     project.run(&mut index, FIRST, mint("amber-swift-owl"));
-    project.run(&mut index, FIRST, bind("id-1", "/t1"));
+    project.bound(&mut index, FIRST, bind("id-1", "/t1"));
     assert_eq!(records(&project.rebuilt()), records(&index));
 }
 
@@ -399,7 +405,7 @@ fn a_stream_purged_and_minted_again_starts_afresh() {
     let mut project = Project::new();
     let mut index = SessionIndex::catch_up();
     project.run(&mut index, FIRST, mint("amber-swift-owl"));
-    project.run(&mut index, FIRST, bind("id-1", "/t1"));
+    project.bound(&mut index, FIRST, bind("id-1", "/t1"));
     project.purge(FIRST);
     project.run(&mut index, FIRST, mint("bright-keen-hawk"));
     let [record] = records(&index).try_into().unwrap();

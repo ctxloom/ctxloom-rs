@@ -94,6 +94,29 @@ impl Session {
         }
     }
 
+    /// Record a bind as the hook delivers it: the fact book `bind_book` builds,
+    /// with its `bind:<session>:<native_id>` external id (owner ruling
+    /// 2026-11-04, S5 review item 8). A fact is never refused.
+    pub(crate) fn bound(&mut self, bind: BindEngineSession) -> Result<Vec<SessionEvent>, Said> {
+        let book = crate::bind_book(cover(), &bind);
+        // A repeat of the same id is answered DUPLICATE: nothing new recorded.
+        match self
+            .harness
+            .when_book(book)
+            .handled()
+            .expect("a fact is never refused")
+        {
+            angzarr_embedded::Handled::Applied(recorded) => Ok(recorded
+                .books()
+                .iter()
+                .filter(|book| book.cover.as_ref() == Some(&cover()))
+                .flat_map(|book| &book.pages)
+                .map(|page| SessionEvent::from_any(page.payload.as_ref().unwrap()).unwrap())
+                .collect()),
+            _ => Ok(Vec::new()),
+        }
+    }
+
     /// Record `fact` as the listener delivers one: a Fact body with its
     /// derived `external_id` (S5). The events it recorded, or none for a
     /// fact that records nothing.
@@ -239,7 +262,7 @@ fn a_mint_with_a_harp_that_cannot_be_a_name_is_refused_and_records_nothing() {
 fn a_bind_fills_the_pending_session() {
     let mut session = Session::minted();
     let events = session
-        .run(bind("session-uuid-123", "/tmp/transcript.jsonl"))
+        .bound(bind("session-uuid-123", "/tmp/transcript.jsonl"))
         .unwrap();
     let [SessionEvent::EngineSessionBound(bound)] = events.as_slice() else {
         panic!("one EngineSessionBound, not {events:?}");
@@ -256,9 +279,9 @@ fn a_bind_fills_the_pending_session() {
 #[test]
 fn a_bind_of_the_bound_id_records_nothing() {
     let mut session = Session::minted();
-    session.run(bind("uuid-1", "/t1")).unwrap();
+    session.bound(bind("uuid-1", "/t1")).unwrap();
     let before = session.pages().len();
-    let events = session.run(bind("uuid-1", "/t1")).unwrap();
+    let events = session.bound(bind("uuid-1", "/t1")).unwrap();
     assert!(events.is_empty());
     assert_eq!(session.pages().len(), before);
     assert!(
@@ -274,8 +297,8 @@ fn a_bind_of_the_bound_id_records_nothing() {
 #[test]
 fn a_bind_of_a_new_id_with_a_transcript_rotates_and_keeps_the_displaced_binding() {
     let mut session = Session::minted();
-    session.run(bind("first-id", "/orig")).unwrap();
-    let events = session.run(bind("second-id", "/new")).unwrap();
+    session.bound(bind("first-id", "/orig")).unwrap();
+    let events = session.bound(bind("second-id", "/new")).unwrap();
     let [SessionEvent::EngineSessionBound(bound)] = events.as_slice() else {
         panic!("one EngineSessionBound, not {events:?}");
     };
@@ -305,7 +328,7 @@ fn a_bind_of_a_new_id_with_a_transcript_rotates_and_keeps_the_displaced_binding(
 fn rotations_accumulate_oldest_first() {
     let mut session = Session::minted();
     for (id, path) in [("id-1", "/t1"), ("id-2", "/t2"), ("id-3", "/t3")] {
-        session.run(bind(id, path)).unwrap();
+        session.bound(bind(id, path)).unwrap();
     }
     let state = session.state();
     assert_eq!(state.native_id, "id-3");
@@ -323,9 +346,9 @@ fn rotations_accumulate_oldest_first() {
 #[test]
 fn a_bind_of_a_new_id_with_no_transcript_never_displaces_the_binding() {
     let mut session = Session::minted();
-    session.run(bind("first-id", "/orig")).unwrap();
+    session.bound(bind("first-id", "/orig")).unwrap();
     let before = session.pages().len();
-    let events = session.run(bind("stale-id", "")).unwrap();
+    let events = session.bound(bind("stale-id", "")).unwrap();
     assert!(events.is_empty());
     assert_eq!(session.pages().len(), before);
     let state = session.state();
@@ -340,7 +363,7 @@ fn a_bind_of_a_new_id_with_no_transcript_never_displaces_the_binding() {
 fn a_bind_naming_neither_an_id_nor_a_transcript_records_nothing() {
     let mut session = Session::minted();
     let before = session.pages().len();
-    assert!(session.run(bind("", "")).unwrap().is_empty());
+    assert!(session.bound(bind("", "")).unwrap().is_empty());
     assert_eq!(session.pages().len(), before);
 }
 
@@ -349,7 +372,7 @@ fn a_bind_naming_neither_an_id_nor_a_transcript_records_nothing() {
 #[test]
 fn a_bind_of_a_transcript_alone_binds_the_transcript() {
     let mut session = Session::minted();
-    session.run(bind("", "/t0")).unwrap();
+    session.bound(bind("", "/t0")).unwrap();
     let state = session.state();
     assert_eq!(state.native_id, "");
     assert_eq!(state.transcript_path, "/t0");
@@ -361,24 +384,60 @@ fn a_bind_of_a_transcript_alone_binds_the_transcript() {
 fn a_bind_records_the_engine_version_and_a_later_one_without_it_keeps_it() {
     let mut session = Session::minted();
     session
-        .run(BindEngineSession {
+        .bound(BindEngineSession {
             engine_version: Some("2.1.229 (Claude Code)".to_string()),
             ..bind("id-1", "/t1")
         })
         .unwrap();
     assert_eq!(session.state().engine_version, "2.1.229 (Claude Code)");
-    session.run(bind("id-2", "/t2")).unwrap();
+    session.bound(bind("id-2", "/t2")).unwrap();
     assert_eq!(session.state().engine_version, "2.1.229 (Claude Code)");
 }
 
-// Go: TestBindSession_UnknownHarpErrors.
+// Go: TestBindSession_UnknownHarpErrors. Updated per the owner ruling
+// 2026-11-04 (S5 review item 8): a bind is a fact now, never refused, so a
+// bind on a stream holding no session records nothing.
 #[test]
-fn a_bind_on_a_stream_holding_no_session_is_refused() {
+fn a_bind_on_a_stream_holding_no_session_records_nothing() {
     let mut session = Session::new();
+    assert!(session.bound(bind("uuid", "/t")).unwrap().is_empty());
+    assert!(session.pages().is_empty());
+}
+
+// NEW-DESIGN, owner ruling 2026-11-04 (S5 review item 8; plan 3.1/4.3): the
+// bind is a fact whose external_id is `bind:<session>:<native_id>`, recorded on
+// the event's meta, and the same bind again is answered DUPLICATE.
+#[test]
+fn a_bind_fact_carries_its_external_id_and_a_repeat_is_a_duplicate() {
+    let mut session = Session::minted();
+    session.bound(bind("uuid-1", "/t1")).unwrap();
+    let origin = session
+        .pages()
+        .last()
+        .and_then(|page| page.meta.clone())
+        .and_then(|meta| meta.fact)
+        .expect("the event records its fact origin");
     assert_eq!(
-        session.run(bind("uuid", "/t")).unwrap_err(),
-        said(&SessionRejection::NoSession)
+        origin.external_id,
+        "bind:07070707-0707-0707-0707-070707070707:uuid-1"
     );
+    let again = crate::bind_book(cover(), &bind("uuid-1", "/t1"));
+    let handled = session.harness.when_book(again).handled().unwrap();
+    assert!(matches!(handled, angzarr_embedded::Handled::Duplicate(..)));
+}
+
+// NEW-DESIGN (same ruling): a bind that names no native id is keyed by its
+// transcript, so two different transcript-only binds are not one id.
+#[test]
+fn a_transcript_only_bind_is_identified_by_its_transcript() {
+    let book = |path: &str| crate::bind_book(cover(), &bind("", path));
+    let id =
+        |b: angzarr_embedded::v1::CommandBook| b.page.unwrap().fact_origin.unwrap().external_id;
+    assert_eq!(
+        id(book("/t0")),
+        "bind:07070707-0707-0707-0707-070707070707:path:/t0"
+    );
+    assert_ne!(id(book("/t0")), id(book("/t1")));
 }
 
 // An engine version given empty never blanks the one held.
@@ -386,13 +445,13 @@ fn a_bind_on_a_stream_holding_no_session_is_refused() {
 fn a_bind_naming_an_empty_engine_version_keeps_the_one_held() {
     let mut session = Session::minted();
     session
-        .run(BindEngineSession {
+        .bound(BindEngineSession {
             engine_version: Some("2.1".to_string()),
             ..bind("id-1", "/t1")
         })
         .unwrap();
     session
-        .run(BindEngineSession {
+        .bound(BindEngineSession {
             engine_version: Some(String::new()),
             ..bind("id-2", "/t2")
         })
@@ -404,11 +463,11 @@ fn a_bind_naming_an_empty_engine_version_keeps_the_one_held() {
 #[test]
 fn a_repeat_of_a_transcript_only_bind_records_nothing() {
     let mut session = Session::minted();
-    session.run(bind("", "/t0")).unwrap();
+    session.bound(bind("", "/t0")).unwrap();
     let before = session.pages().len();
-    assert!(session.run(bind("", "/t0")).unwrap().is_empty());
+    assert!(session.bound(bind("", "/t0")).unwrap().is_empty());
     assert!(
-        session.run(bind("id-1", "")).unwrap().len() == 1,
+        session.bound(bind("id-1", "")).unwrap().len() == 1,
         "an id alone binds an unbound session"
     );
     assert_eq!(session.pages().len(), before + 1);
@@ -446,8 +505,8 @@ fn adopted(session: &mut Session, rotations: Vec<Rotation>) -> Vec<SessionEvent>
 #[test]
 fn an_adopted_rotation_is_ordered_by_when_it_rotated() {
     let mut session = Session::minted();
-    session.run(bind("id-2", "/t2")).unwrap();
-    session.run(bind("id-3", "/t3")).unwrap();
+    session.bound(bind("id-2", "/t2")).unwrap();
+    session.bound(bind("id-3", "/t3")).unwrap();
     adopted(&mut session, vec![rotation("id-1", "/t1", at(5))]);
     let state = session.state();
     let ids: Vec<&str> = state
@@ -463,8 +522,8 @@ fn an_adopted_rotation_is_ordered_by_when_it_rotated() {
 #[test]
 fn an_adopt_skips_what_the_lineage_already_holds() {
     let mut session = Session::minted();
-    session.run(bind("id-1", "/t1")).unwrap();
-    session.run(bind("id-2", "/t2")).unwrap();
+    session.bound(bind("id-1", "/t1")).unwrap();
+    session.bound(bind("id-2", "/t2")).unwrap();
     let events = adopted(
         &mut session,
         vec![
@@ -642,7 +701,11 @@ fn a_forgotten_session_is_gone_to_every_command() {
         harp: HARP.to_string(),
     });
     assert_eq!(session.run(ForgetSession {}).unwrap_err(), gone);
-    assert_eq!(session.run(bind("a", "/b")).unwrap_err(), gone);
+    // Updated per the owner ruling 2026-11-04 (S5 review item 8): a bind is a
+    // fact, so on a forgotten session it records nothing instead of refusing.
+    let pages = session.pages().len();
+    assert!(session.bound(bind("a", "/b")).unwrap().is_empty());
+    assert_eq!(session.pages().len(), pages);
     assert_eq!(session.run(SetKept { kept: true }).unwrap_err(), gone);
     assert_eq!(session.run(rename("other-name")).unwrap_err(), gone);
 }
@@ -707,8 +770,8 @@ fn the_state_round_trips_through_its_wire_form() {
     // Updated per the owner rulings 2026-11-04 (S5 review Q1, Q2): the wire
     // state now carries the lifeline, the inbox and the depth the mint records.
     let mut session = Session::minted();
-    session.run(bind("id-1", "/t1")).unwrap();
-    session.run(bind("id-2", "/t2")).unwrap();
+    session.bound(bind("id-1", "/t1")).unwrap();
+    session.bound(bind("id-2", "/t2")).unwrap();
     session.run(SetKept { kept: true }).unwrap();
     let state = session.state();
     let wire = sessions_proto::v1::SessionState::from(state.clone());

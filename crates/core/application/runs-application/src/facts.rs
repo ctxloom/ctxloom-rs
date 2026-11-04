@@ -3,9 +3,8 @@
 //! S5 carries the facts whose aggregates exist: the run's (attached, turn
 //! started / completed / failed, exited) and the session inbox's (claimed,
 //! delivered, failed). The plan's other variants (`RunPaused`, `RunResumed`,
-//! `ArtifactPublished`, `EngineSessionBound`, `ApprovalAsked`) arrive with
-//! their aggregates (S6, S9, S10); `EngineSessionBound` is S4's COMMAND
-//! `BindEngineSession` today (review question 8).
+//! `ArtifactPublished`, `ApprovalAsked`) arrive with their aggregates (S6, S9,
+//! S10). `EngineSessionBound` is in: S4's bind became a fact (item 8, RULED).
 
 use std::sync::Arc;
 
@@ -26,6 +25,9 @@ pub enum AgentFact {
     MessageClaimed(sessions::ClaimMessage),
     MessageDelivered(sessions::DeliverMessage),
     MessageFailed(sessions::FailMessage),
+    /// The SessionStart hook's bind, a fact since the owner ruling of
+    /// 2026-11-04 (S5 review item 8): `bind:<session>:<native_id>`.
+    EngineSessionBound(sessions::BindEngineSession),
 }
 
 impl AgentFact {
