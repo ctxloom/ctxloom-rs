@@ -1,0 +1,32 @@
+[package]
+name = "ctxloom"
+version = "0.1.0"
+description = "The ctxloom binary: the composition root (S0 holds the acceptance tests and an empty main)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+angzarr-presentation.workspace = true
+ctxloom-cli.workspace = true
+ctxloom-lib.workspace = true
+ctxloom-store-sqlite.workspace = true
+file-lock.workspace = true
+
+[features]
+# The test-only commands (`ctxloom test ...`): the exit ladder, the --format
+# matrix, the error envelope, every diagnostic, the id mints and the store
+# open, reached through the binary because S0 has no real command that does
+# them. Off in a release build; the acceptance tests build the binary with it.
+test-support = ["ctxloom-cli/test-support", "ctxloom-lib/test-support", "ctxloom-store-sqlite/test-support"]
+
+[dev-dependencies]
+# Already pinned in the workspace: the word lists the ids are checked against.
+harp-core.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

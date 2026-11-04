@@ -13,9 +13,6 @@ allow = [
   "AGPL-3.0-only",
   "Apache-2.0",
   "BSD-3-Clause",
-  # annals. EUPL-1.2's compatibility clause names AGPL-3.0, so EUPL code may
-  # be combined into this AGPL work.
-  "EUPL-1.2",
   "MIT",
   "Unicode-3.0",
   "Zlib",
@@ -38,14 +35,17 @@ unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = [
-  # angzarr's wire contract (angzarr-proto).
-  "https://github.com/angzarr-io/angzarr-project",
-  # angzarr-build: the Rust domain layer generated from protos (rust-cli).
-  "https://github.com/angzarr-io/angzarr-cli",
-  # annals: the event-sourcing kernel, its diagnostics and SQL store.
-  "https://github.com/benjaminabbitt/annals",
-  # harp-core: the word lists task and project ids are minted from.
+  # angzarr core's shared crates: angzarr-proto, angzarr-ports,
+  # angzarr-diagnostic, angzarr-presentation.
+  "https://github.com/angzarr-io/angzarr",
+  # os, file-system and file-lock: the platform crates.
+  "https://github.com/angzarr-io/angzarr-platform",
+  # angzarr-embedded: the in-app runtime and its SQLite store.
+  "https://github.com/angzarr-io/angzarr-embedded",
+  # angzarr-router, which angzarr-embedded runs handlers through.
+  "https://github.com/angzarr-io/angzarr-router",
+  # taskloom, by commit: harp-names and its ports.
+  "https://github.com/ctxloom/taskloom",
+  # harp-core: the word lists ids are minted from.
   "https://github.com/benjaminabbitt/harp",
-  # tagma: the tag grammar and query engine, and its Tag message.
-  "https://github.com/benjaminabbitt/tagma",
 ]

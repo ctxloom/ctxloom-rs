@@ -4,8 +4,7 @@
 # gives them ctxloom-rs's parameters and keeps its own recipes (`build`,
 # `lint`, `test-pkg`).
 # cargo-deny's duplicate-version warnings stay in target/logs/lint-deps.log,
-# not silenced in deny.toml: one (annals-diagnostic) is angzarr-build's own
-# annals pin, older than this workspace's.
+# not silenced in deny.toml.
 
 TOP := `git rev-parse --show-toplevel`
 

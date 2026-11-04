@@ -1,0 +1,28 @@
+[package]
+name = "ctxloom-store-sqlite"
+version = "0.1.0"
+description = "A project's ctxloom store: angzarr-store-sqlite's SQLite store at ~/.ctxloom/projects/<id>/ctxloom.db (D26)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+# The store: angzarr-store-sqlite, through angzarr-embedded's re-export (its
+# `sqlite` feature), at the rev the kernel is built with.
+angzarr-embedded = { workspace = true, features = ["sqlite"] }
+file-system.workspace = true
+os.workspace = true
+
+[dev-dependencies]
+file-system = { workspace = true, features = ["test-support"] }
+tokio = { workspace = true, features = ["macros"] }
+
+[features]
+# `diagnostic_samples`, for other crates' catalog tests: their dev-dependency
+# turns it on, and no build of a binary does.
+test-support = []
+
+[lints]
+workspace = true

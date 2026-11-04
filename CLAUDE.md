@@ -1,7 +1,15 @@
 # Introduction
-Note that this is a port of ctxloom into rust from golang, piece by piece, with architect review of each piece as its ported.
 
-We're starting with the highest risk pieces first and the smallest complete units that can derisk early.
+ctxloom-rs is the Rust ctxloom: a port of the Go ctxloom onto angzarr-embedded,
+slice by slice, with architect review of each slice as it is ported. The plan
+(`ctxloom-rs-port.plan.md`) is the source of the order and the decisions; a
+slice starts as red tests, committed red on `port/<slice>`, reviewed, then
+implemented green.
+
+The Rust taskloom is a separate repository. ctxloom reaches it as git
+dependencies pinned by commit (`harp-names` and the `ports` it implements,
+and later `tasks-lib`, linked in process), never by a path and never as a
+copy: this repository holds only ctxloom.
 
 # Working rules
 
@@ -20,6 +28,12 @@ Not inline `mod tests { ... }`, and not a `tests/` directory. The tests stay
 beside the code they test, but out of the source file, so reading the code
 does not mean reading its tests too.
 
+Acceptance tests drive the real binary: `crates/root/bin/ctxloom/src/*.test.rs`
+build it once (with its `test-support` feature, which turns on the hidden
+`ctxloom test ...` commands) and run it as a separate process in a temporary
+home. The red tests of a slice are committed red on its branch
+(`just test-commit` allows that off the default branch, never on it).
+
 ## Layout: a crate's directory is its role
 
 Every crate lives at `crates/<ring>/<role>/<crate>`. The ring and role are
@@ -31,13 +45,12 @@ the architecture; there is no other table of crates.
 - `core/ports`: traits the core needs from outside.
 - `core/application`: command and query handlers.
 - `adapters/driven`: port implementations (stores, clock, git).
-- `adapters/driving`: CLI, MCP, gRPC: translation only.
-- `root/bin`: binaries, the composition root.
+- `adapters/driving`: the CLI (and later gRPC, MCP): translation only.
+- `root/lib`: the composition root's wiring as a library (`ctxloom-lib`).
+- `root/bin`: the `ctxloom` binary, the composition root.
 
-ctxloom-rs is to produce several binaries (so far, `taskloom`), each a
-crate under `root/bin` that composes the same core, application and
-adapters. Below
-`root/bin`, a crate is named for its domain or role, never for a binary.
+Today (slice S0) there is no core crate yet: `ctxloom-store-sqlite` (driven),
+`ctxloom-cli` (driving), `ctxloom-lib` (wiring) and the `ctxloom` binary.
 
 `crates/core/clippy.toml` holds the core's purity rules (no I/O, clock, env,
 threads or hash-ordered collections) and reaches every core crate, because
@@ -49,79 +62,65 @@ and `just lint` refuses to run if they disagree.
 
 Dependencies point inward; a review refuses a change that breaks these:
 
-- The core depends on nothing outside it. A domain or read model links only
-  annals, annals-diagnostic, prost, its wire crate (generated over
-  angzarr-proto), and tagma's tagma-core (the tag grammar and query engine)
-  and tagma-proto (its `Tag` message): no I/O, async runtime or clock in
-  decide, apply or a projection. One read model links more:
-  `task-priority` evaluates the tag schema's priority formulas with
-  expr-lang (the Rust port of the language Go's taskloom evaluates them
-  in), which is computation and nothing else.
+- The core depends on nothing outside it: no I/O, async runtime or clock in
+  decide, apply or a projection.
 - A driven adapter sees only ports (and wire types), never a use case. A
   driving adapter sees only the application layer, never a domain's
-  internals. Adapters never depend on each other, with one exception:
-  driving adapters share the presentation crates, `presentation`
-  (domain-free; its tests keep it so) and a domain's own, such as
-  `tasks-presentation` (the task JSON the CLI and MCP server both write).
-- A domain never depends on a read model (the write side reads no
-  projection); a read model never depends on the application layer (a query
-  issues no command).
+  internals. Adapters never depend on each other, except that driving
+  adapters share angzarr core's `angzarr-presentation`, and a driven adapter
+  may use the platform crates (`os`, `file-system`, `file-lock`).
+- A domain never depends on a read model; a read model never depends on the
+  application layer.
 - Entities are aggregates; anything listed is a projector's read model,
-  never an aggregate. A UI watches one stream per watch; a list's cursor is
-  its projector's own sequence.
+  never an aggregate. There is no commit position, fork point or global
+  position anywhere (a test greps the sources for them).
 
-## Generated code is never committed
+## The pins: one of each
 
-Wire and domain types are generated into `OUT_DIR` by `angzarr-build` from
-`proto/`. A core crate's `build.rs` is one call (`angzarr_build::wire` or
-`angzarr_build::domain`): angzarr-build reads the build environment itself,
-so the core's clippy rules hold in build scripts too. Change the `.proto`,
-never generated output. A tag is tagma's message, `tagma.v1.Tag`, imported
-from tagma-proto's `PROTO_INCLUDE`; the generated domain layer gives it a
-domain `Tag` that converts to `tagma_core::Tag` and spells itself
-canonically.
+The lock holds ONE `angzarr-embedded`, `angzarr-proto`, `angzarr-ports` and
+`angzarr-diagnostic` (a test reads Cargo.lock). Every pin in `Cargo.toml` is
+a full commit. taskloom's `ports` is built on angzarr core 4d7ef357, so the
+angzarr-embedded pin is the rev built on that same core (9bd1d2c); moving to
+a newer embedded (and `angzarr-embedded-runner`) waits for taskloom to
+re-pin. The platform crates (`os`, `file-system`, `file-lock`) are
+angzarr-platform's, and `angzarr-presentation` and `angzarr-diagnostic` are
+angzarr core's, all `Apache-2.0 OR BSD-3-Clause`; this workspace is
+`AGPL-3.0-only`.
 
-## Storage is annals-store-sql, in annals for now
-
-The SQL store is `annals-store-sql` (feature `sqlite`), in the annals
-repository: backend-neutral statements, with each backend's execution and
-migrations behind a feature. It lives in annals until angzarr core's older
-SQL storage is brought onto it, and then moves to angzarr core. ctxloom
-writes no SQL of its own; a project's database is that crate's SQLite store,
-opened at `~/.ctxloom/projects/<project-id>/state.db`.
-
-Any store is held to annals' store contract (`annals::store_contract!` or
-`annals::async_store_contract!`), the checks `InMemoryStore` passes. Domain
-and projector tests run through annals' kernel over `InMemoryStore`, as the
-binary runs over SQLite.
-
-## Co-developing annals, angzarr-cli or tagma
-
-annals, angzarr-build (angzarr-cli's `rust-cli` branch) and tagma are git
-dependencies pinned by full commit in Cargo.toml, so a fresh clone builds
-with no sibling checkouts. To change one of them and this workspace
-together, `cp .cargo/local-deps.toml .cargo/config.toml`: a gitignored
-`[patch]` onto the sibling checkouts (annals at `../../annals`, angzarr-cli
-at `../../angzarr/angzarr-cli/main`, tagma at `../../kvtag`). CI, a fresh
-clone and the pre-commit gates never read it. Restore Cargo.lock before
+To change a sibling and this workspace together, `cp .cargo/local-deps.toml
+.cargo/config.toml` and add a `[patch]` for it: a gitignored override that CI,
+a fresh clone and the pre-commit gates never read. Restore Cargo.lock before
 committing, and land the change by pushing the sibling and bumping its rev.
+
+## Storage is angzarr-store-sqlite
+
+A project's store is angzarr-store-sqlite's `SqliteStore` (through
+angzarr-embedded's `sqlite` feature), opened at
+`~/.ctxloom/projects/<project-id>/ctxloom.db` by `ctxloom-store-sqlite`,
+beside taskloom's `state.db` and never the same file (D26). All file I/O goes
+through the `file-system` seam, so a test under a temporary home touches
+nothing else. ctxloom writes no SQL of its own.
 
 ## Errors are localizable: a code, args, and an en-US message
 
-Every error and rejection implements `annals_diagnostic::Diagnostic` with an
-English `Display` fallback. A new variant needs a stable code (prefixed with
-the crate's name), an en-US message in `locales/en-US/<crate>.ftl` using
-exactly its args, and a sample in the crate's `diagnostic_samples()`. The
-crate's catalog test checks messages and samples both ways.
+Every error implements `angzarr_diagnostic::Diagnostic`: a stable code
+prefixed with the crate's name (`code!`), named args, and an en-US message in
+`locales/en-US/messages.ftl` whose id is the full code and which uses exactly
+the args. An id ending `-fix` is the remedy of the code before it, printed as
+`  fix: ...` in text. A third party's text (the OS's, SQLite's) is the arg
+`ext_err_txt`, verbatim. Each crate with diagnostics exports `EN_US` (its name
+and its `.ftl`) and, under `test-support`, `diagnostic_samples()`; the
+binary's `catalog()` lists every crate's `EN_US`.
 
-Each crate with diagnostics exports its embedded en-US catalog as `EN_US`
-(its name and its `.ftl`). The composition root assembles the binary's
-catalog from every crate's `EN_US` (presentation's `Catalog`), and the
-driving adapters render with it: a diagnostic's catalog message in text,
-its `{code, args, message}` envelope in JSON. A new crate's `EN_US` joins
-the binary's catalog list (`catalog()` in its `main.rs`, beside annals'
-and annals-store-sql's), and its samples the binary's every-diagnostic
-catalog test.
+## The command line
+
+`--format` is `json` or `text` (json off a terminal); yaml, toml and markdown
+are refused like any unknown format, exit 2. Errors are `ctxloom: <message>`
+with an optional `  fix:` line in text, and the envelope `{code, args,
+message}` on stderr in json. Exit codes: 0, 1 failed, 2 refused, 3 fatal
+findings. `-h` works at every depth, there is no `help` command, an unknown
+verb says "Did you mean" and lists the verbs, `-v` is accepted everywhere
+and changes no output.
 
 ## Use `just`
 
@@ -129,12 +128,9 @@ catalog test.
 the gate), `just lint` (clippy, warnings denied) and `just lint-deps`
 (cargo-deny) are the checks. Every gate is terse: a pass prints one `ok
 <gate> (<scope>) <duration>` line; a failure prints `FAIL <gate>: <summary>
-(full log: target/logs/<gate>.log)` and only the relevant extract (failing
-tests' output, short clippy messages, the files rustfmt would change, deny's
-errors, the mutation verdict and survivors). Read the log for the rest;
-`VERBOSE=1 just <gate>` shows the full output. `just fmt` and `just
-fmt-check` cover this workspace's crates only, never annals, angzarr-build
-or tagma, whether pinned or patched onto local checkouts.
+(full log: target/logs/<gate>.log)` and only the relevant extract. Read the
+log for the rest; `VERBOSE=1 just <gate>` shows the full output. `just fmt`
+and `just fmt-check` cover this workspace's crates only.
 
 ## The pre-commit gates are in gates/; the justfile gives their parameters
 

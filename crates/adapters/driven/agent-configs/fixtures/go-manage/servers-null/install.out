@@ -1,5 +1,0 @@
-1
-taskloom: warning: "taskloom" does not resolve on this process's PATH: exec: "taskloom": executable file not found in $PATH
-  the registered MCP entry runs "taskloom", which the agent resolves against ITS OWN PATH at startup; install taskloom somewhere on that PATH or the server will not start
-taskloom: claude-code: failed to write $HOME/.claude.json: confpatch: apply ctxloom's changes to $HOME/.claude.json: hew: $HOME/.claude.json:/mcpServers/taskloom: HEW020 inexpressible
-  add: parent is not an object

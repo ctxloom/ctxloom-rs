@@ -1,4 +1,0 @@
-1
-taskloom: warning: "taskloom" does not resolve on this process's PATH: exec: "taskloom": executable file not found in $PATH
-  the registered MCP entry runs "taskloom", which the agent resolves against ITS OWN PATH at startup; install taskloom somewhere on that PATH or the server will not start
-taskloom: claude-code: failed to write $HOME/.claude.json: confpatch: the reversal computed for $HOME/.claude.json applies but does not restore the document it was derived from byte for byte, so ctxloom's entries could not be taken back out cleanly; refusing to write rather than store an undo that does not undo (the content is usually correct: compare the two images for a change of member ORDER or of LAYOUT, such as an edited container re-rendered onto one line)

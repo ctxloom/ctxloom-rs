@@ -1,0 +1,26 @@
+[package]
+name = "ctxloom-cli"
+version = "0.1.0"
+description = "The ctxloom command line: arguments parsed, answers rendered as json or text, errors as envelopes or words"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+angzarr-presentation.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+angzarr-presentation = { workspace = true, features = ["test-support"] }
+
+[features]
+# The test-only commands (`ctxloom test ...`), and `diagnostic_samples`, for
+# other crates' catalog tests. No release build turns it on.
+test-support = ["angzarr-presentation/test-support"]
+
+[lints]
+workspace = true

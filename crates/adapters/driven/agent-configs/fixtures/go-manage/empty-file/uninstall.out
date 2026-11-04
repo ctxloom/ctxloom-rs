@@ -1,2 +1,0 @@
-1
-taskloom: claude-code: failed to parse .mcp.json: unexpected end of JSON input - original backed up to $HOME/.claude.json.corrupt-<unix>; fix the JSON and re-run (refusing to write .claude.json to avoid deleting the MCP servers already in it)
