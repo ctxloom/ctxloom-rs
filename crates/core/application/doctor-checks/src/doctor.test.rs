@@ -180,3 +180,67 @@ fn without_a_project_the_marker_warns_and_project_files_are_not_read() {
     );
     assert_eq!(status(&report, "DOCTOR-CHECK-DEPS-a1"), Status::Warn);
 }
+
+const LAUNCHES: &str = r#"{"mcpServers":{"ctxloom":{"command":"ctxloom","args":["mcp","serve"]}}}"#;
+
+fn mcp_detail(mem: &Arc<Mem>) -> (Status, String) {
+    let report = doctor(mem, true).report(false);
+    let row = report
+        .checks
+        .iter()
+        .find(|c| c.marker == "DOCTOR-CHECK-MCP-INVOCATION-g7")
+        .unwrap();
+    (row.status, row.detail.clone())
+}
+
+// The files that register MCP servers: the project's `.mcp.json` and the
+// user's `~/.claude.json`, and only those.
+#[test]
+fn the_project_mcp_file_is_read() {
+    let mem = project();
+    mem.files
+        .lock()
+        .unwrap()
+        .insert("/work/.mcp.json".to_string(), LAUNCHES.to_string());
+    let (status, detail) = mcp_detail(&mem);
+    assert_eq!(status, Status::Warn);
+    assert!(detail.contains("from .mcp.json "), "{detail}");
+}
+
+#[test]
+fn the_user_mcp_file_is_read() {
+    let mem = project();
+    mem.files
+        .lock()
+        .unwrap()
+        .insert("/home/u/.claude.json".to_string(), LAUNCHES.to_string());
+    let (status, detail) = mcp_detail(&mem);
+    assert_eq!(status, Status::Warn);
+    assert!(detail.contains("from ~/.claude.json "), "{detail}");
+}
+
+#[test]
+fn without_a_project_only_the_user_mcp_file_is_read() {
+    let mem = Arc::new(Mem::default());
+    mem.files
+        .lock()
+        .unwrap()
+        .insert("/work/.mcp.json".to_string(), LAUNCHES.to_string());
+    assert_eq!(mcp_detail(&mem).0, Status::Ok);
+}
+
+#[test]
+fn a_report_fails_only_when_a_row_fails() {
+    let row = |status| crate::Check {
+        marker: "M",
+        name: "n",
+        status,
+        detail: String::new(),
+        remedy: String::new(),
+    };
+    let report = |statuses: &[Status]| crate::Report {
+        checks: statuses.iter().map(|s| row(*s)).collect(),
+    };
+    assert!(report(&[Status::Ok, Status::Fail]).failed());
+    assert!(!report(&[Status::Ok, Status::Warn, Status::Info]).failed());
+}

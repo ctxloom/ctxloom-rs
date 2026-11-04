@@ -172,6 +172,11 @@ fn test_ctxloom_own_callbacks_ride_every_package() {
     assert_eq!(own.len(), 2);
     let start = own.iter().find(|h| h.event == "session_start").unwrap();
     assert_eq!(start.hook.args, vec!["hook", "session-start"]);
+    assert_eq!(start.hook.event, "session_start");
+    assert_eq!(start.hook.name, "session-start");
+    assert_eq!(start.hook.command, "ctxloom");
+    assert_eq!(start.hook.kind, "command");
+    assert_eq!(start.hook.timeout, 15);
     let mates = own.iter().find(|h| h.event == "post_tool").unwrap();
     assert_eq!(
         (mates.hook.args[1].as_str(), mates.hook.tool.as_str()),
@@ -222,7 +227,14 @@ fn test_a_missing_bundle_is_fatal_unless_degraded() {
     let strict = setup
         .library()
         .package(&plain(), &PackageRequest::default());
-    assert_eq!(strict.result.unwrap().fatal.len(), 1);
+    let strict = strict.result.unwrap();
+    // Only the failing finding is fatal, never the warning beside it.
+    assert_eq!(strict.fatal.len(), 1);
+    assert!(
+        matches!(&strict.fatal[0], crate::Notice::Finding { text, .. } if text.starts_with("failed to load bundle")),
+        "{:?}",
+        strict.fatal
+    );
     let mut flags = plain();
     flags.degraded = true;
     let waived = setup.library().package(&flags, &PackageRequest::default());
@@ -242,4 +254,86 @@ fn test_named_profiles_replace_the_default_agents() {
         .result
         .unwrap();
     assert_eq!(p.profiles, vec!["dev".to_string()]);
+}
+
+#[test]
+fn test_the_engines_are_the_ones_this_build_knows() {
+    let names = setup().library().engine_names();
+    let known: Vec<String> = crate::ENGINES.iter().map(|e| e.to_string()).collect();
+    assert!(!known.is_empty());
+    assert_eq!(names, known);
+}
+
+#[test]
+fn test_distilled_forms_are_preferred_unless_the_config_says_not() {
+    assert!(package().use_distilled);
+    let off = Setup {
+        layers: &["schema_version: 8\nconfig:\n  use_distilled: false\n"],
+        ..setup()
+    };
+    let p = off
+        .library()
+        .package(&plain(), &PackageRequest::default())
+        .result
+        .unwrap();
+    assert!(!p.use_distilled);
+}
+
+fn packaged(
+    layer: &'static str,
+    bundles: &'static [(&str, &[(&str, &str)])],
+) -> crate::EnginePackage {
+    Setup {
+        bundles,
+        layers: &[layer],
+        ..Setup::default()
+    }
+    .library()
+    .package(&plain(), &PackageRequest::default())
+    .result
+    .expect("a package")
+}
+
+const NO_AGENTS: &str = "schema_version: 8\n";
+const AGENT_WITHOUT_PROFILES: &str =
+    "schema_version: 8\nagents:\n  a:\n    llm: mock\ndefault_agent: a\nllm:\n  configs:\n    mock:\n      type: mock\n";
+
+#[test]
+fn test_a_project_says_whether_it_has_agents_and_profiles_to_bind_them_to() {
+    let bare = packaged(NO_AGENTS, &[("project", &[ENVELOPE])]);
+    assert!(!bare.has_agents);
+    assert!(!bare.has_profiles);
+
+    // Agents, but no profile anywhere.
+    let agent = packaged(AGENT_WITHOUT_PROFILES, &[("project", &[ENVELOPE])]);
+    assert!(agent.has_agents);
+    assert!(!agent.has_profiles);
+
+    // A profile in a bundle, with no default agent profiles.
+    let in_bundle = packaged(
+        NO_AGENTS,
+        &[(
+            "project",
+            &[ENVELOPE, ("profiles/dev.yaml", "bundles: []\n")],
+        )],
+    );
+    assert!(!in_bundle.has_agents);
+    assert!(in_bundle.has_profiles);
+}
+
+#[test]
+fn test_the_statusline_choice_keeps_the_other_config_entries() {
+    let held = Setup {
+        layers: &["schema_version: 8\nconfig:\n  use_distilled: false\n  statusline: true\n"],
+        ..setup()
+    };
+    let (library, mem) = held.fixture();
+    library
+        .set_statusline(&plain(), false)
+        .result
+        .expect("written");
+    let config = mem.config(ctxloom_ports::Scope::Project).unwrap();
+    assert!(config.contains("use_distilled: false"), "{config}");
+    assert!(config.contains("statusline: false"), "{config}");
+    assert!(!config.contains("statusline: true"), "{config}");
 }
