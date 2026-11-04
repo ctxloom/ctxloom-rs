@@ -20,6 +20,8 @@ mod run;
 mod test_commands;
 
 pub use angzarr_presentation::Catalog;
+#[cfg(feature = "test-support")]
+pub use commands::SeedArgs;
 pub use commands::PROG;
 #[cfg(any(test, feature = "test-support"))]
 pub use error::diagnostic_samples;

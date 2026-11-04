@@ -10,21 +10,34 @@
 
 mod error;
 mod library;
+#[cfg(feature = "test-support")]
+mod seed;
 
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use ctxloom_store_sqlite::Stores;
+use ctxloom_store_sqlite::{SqliteStores, Stores};
 use file_system::{Fs, Os};
 use harp_names::HarpNames;
+use liveness::LockFiles;
 use ports::Names;
+use project_registry::{Environment, ProjectRegistry};
+use session_files::{GoDirs, SessionDirs};
+use sessions_application::{
+    AppError, BindRequest, Bound, ImportReport, ImportRequest, ImportService, Importer,
+    KeepRequest, Kept, ListQuery, Removal, RemoveRequest, RenameRequest, Renamed, SearchQuery,
+    Service, SessionService, ShowQuery, TranscriptQuery, TranscriptRow, View,
+};
+use system::System;
 use uuid::Uuid;
 
 #[cfg(any(test, feature = "test-support"))]
 pub use error::diagnostic_samples;
 pub use error::{LibError, EN_US};
 pub use library::LibraryCommands;
+#[cfg(feature = "test-support")]
+pub use seed::Seed;
 
 /// A newly minted session's harp: two adjectives and a noun.
 pub fn session_name() -> String {
@@ -39,6 +52,91 @@ pub fn run_id(session: &str, incarnation: u64) -> Result<Uuid, LibError> {
         detail: e.to_string(),
     })?;
     Ok(Uuid::new_v5(&namespace, incarnation.to_string().as_bytes()))
+}
+
+/// The sessions use cases over their default adapters: the project registry
+/// (taskloom's, so a project is the same one in both programs), the project's
+/// SQLite store, the session directories, the lock files, and the system's
+/// clock, ids and timer.
+pub type SessionUseCases =
+    Service<ProjectRegistry<HarpNames>, SqliteStores, SessionDirs, LockFiles, System, System>;
+
+/// The import over the same adapters, and Go's session directories.
+pub type ImportUseCase = Importer<ProjectRegistry<HarpNames>, SqliteStores, GoDirs, System, System>;
+
+/// Everything the `session` commands and the session hooks call: the sessions
+/// use cases and the import, one value to the command line.
+pub struct Sessions {
+    pub use_cases: SessionUseCases,
+    pub importer: ImportUseCase,
+}
+
+impl SessionService for Sessions {
+    async fn list(&mut self, query: ListQuery) -> Result<Vec<View>, AppError> {
+        self.use_cases.list(query).await
+    }
+
+    async fn search(&mut self, query: SearchQuery) -> Result<Vec<View>, AppError> {
+        self.use_cases.search(query).await
+    }
+
+    async fn show(&mut self, query: ShowQuery) -> Result<View, AppError> {
+        self.use_cases.show(query).await
+    }
+
+    async fn keep(&mut self, request: KeepRequest) -> Result<Kept, AppError> {
+        self.use_cases.keep(request).await
+    }
+
+    async fn remove(&mut self, request: RemoveRequest) -> Result<Removal, AppError> {
+        self.use_cases.remove(request).await
+    }
+
+    async fn rename(&mut self, request: RenameRequest) -> Result<Renamed, AppError> {
+        self.use_cases.rename(request).await
+    }
+
+    async fn transcripts(
+        &mut self,
+        query: TranscriptQuery,
+    ) -> Result<Vec<TranscriptRow>, AppError> {
+        self.use_cases.transcripts(query).await
+    }
+
+    async fn transcript(&mut self, harp: &str) -> Result<String, AppError> {
+        self.use_cases.transcript(harp).await
+    }
+
+    async fn bind(&mut self, request: BindRequest) -> Result<Bound, AppError> {
+        self.use_cases.bind(request).await
+    }
+}
+
+impl ImportService for Sessions {
+    async fn import(&mut self, request: ImportRequest) -> Result<ImportReport, AppError> {
+        self.importer.import(request).await
+    }
+}
+
+/// Every catalog the binary's diagnostics are rendered from, beside its
+/// frontends' own: angzarr's (the kernel's reasons, the store's), the
+/// platform's, taskloom's project registry's, and this program's adapters and
+/// use cases'.
+pub fn catalog_sources() -> Vec<angzarr_presentation::Source> {
+    let mut sources = vec![
+        EN_US,
+        angzarr_embedded::angzarr_proto::REASONS_EN_US,
+        angzarr_embedded::EN_US,
+        angzarr_embedded::angzarr_ports::EN_US,
+        angzarr_embedded::angzarr_store_sqlite::EN_US,
+        file_lock::EN_US,
+        file_system::EN_US,
+        project_registry::EN_US,
+        ctxloom_store_sqlite::EN_US,
+        session_files::EN_US,
+    ];
+    sources.extend(sessions_application::CATALOGS);
+    sources
 }
 
 /// The process's home and filesystem.
@@ -76,6 +174,38 @@ impl Wiring {
 
     pub(crate) fn home(&self) -> &std::path::Path {
         &self.home
+    }
+
+    /// The sessions use cases over the default adapters, in this process's
+    /// home and working directory, reading CTXLOOM_ROOT and CTXLOOM_PROJECT_ID
+    /// as the project registry does.
+    pub fn sessions(&self) -> Sessions {
+        let var = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty());
+        let environment = Environment {
+            home: Some(self.home.clone()),
+            root: var("CTXLOOM_ROOT").map(PathBuf::from),
+            project_id: var("CTXLOOM_PROJECT_ID").and_then(|v| v.into_string().ok()),
+        };
+        let registry =
+            || ProjectRegistry::new(Arc::clone(&self.fs), environment.clone(), HarpNames);
+        let stores = || SqliteStores::new(Arc::clone(&self.fs), self.home.clone());
+        Sessions {
+            use_cases: Service::new(
+                registry(),
+                stores(),
+                SessionDirs::new(Arc::clone(&self.fs), self.home.clone()),
+                LockFiles::new(Arc::clone(&self.fs), self.home.clone()),
+                System,
+                System,
+            ),
+            importer: Importer::new(
+                registry(),
+                stores(),
+                GoDirs::new(Arc::clone(&self.fs), self.home.clone()),
+                System,
+                System,
+            ),
+        }
     }
 
     /// `project`'s store opened (made, if need be) under the home; the path

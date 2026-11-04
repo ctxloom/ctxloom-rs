@@ -1,0 +1,25 @@
+[package]
+name = "hook-cli"
+version = "0.1.0"
+description = "The engine callbacks ctxloom installs (hidden `hook` commands): session-bind and the statusline hud, translating each engine's payloads"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+mutants.workspace = true
+
+
+[features]
+# `diagnostic_samples`, for other crates' catalog tests.
+test-support = []
+
+[lints]
+workspace = true

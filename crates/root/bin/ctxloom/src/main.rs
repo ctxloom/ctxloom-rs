@@ -10,26 +10,47 @@ use ctxloom_cli::{Catalog, Context, Extension, Services};
 
 /// The binary's en-US catalog: every crate's own.
 fn catalog() -> Result<Catalog, angzarr_presentation::CatalogError> {
-    Catalog::en_us(&[
+    let mut sources = ctxloom_lib::catalog_sources();
+    sources.extend([
         ctxloom_cli::EN_US,
-        ctxloom_store_sqlite::EN_US,
-        ctxloom_lib::EN_US,
+        session_cli::EN_US,
+        hook_cli::EN_US,
         angzarr_yaml::EN_US,
         library::EN_US,
         library_application::EN_US,
         content_fs::EN_US,
         config_files::EN_US,
-    ])
+    ]);
+    Catalog::en_us(&sources)
 }
 
 /// What the commands call, over the default wiring.
+#[derive(Default)]
 struct Wired {
+    /// The library commands, wired when one first needs the home.
     library: ctxloom_lib::LibraryCommands,
+    /// The sessions use cases, built when a command first needs them.
+    sessions: Option<ctxloom_lib::Sessions>,
 }
 
 impl Services for Wired {
+    type Sessions = ctxloom_lib::Sessions;
+
     fn extension(&mut self) -> &mut dyn Extension {
         &mut self.library
+    }
+
+    fn sessions(
+        &mut self,
+    ) -> Result<&mut ctxloom_lib::Sessions, Box<dyn angzarr_diagnostic::Diagnostic>> {
+        if self.sessions.is_none() {
+            let wiring = ctxloom_lib::Wiring::from_process().map_err(|e| Box::new(e) as _)?;
+            self.sessions = Some(wiring.sessions());
+        }
+        match self.sessions.as_mut() {
+            Some(sessions) => Ok(sessions),
+            None => unreachable!("built just above"),
+        }
     }
 
     #[cfg(feature = "test-support")]
@@ -62,6 +83,35 @@ impl Services for Wired {
     }
 
     #[cfg(feature = "test-support")]
+    fn seed_session(
+        &mut self,
+        seed: &ctxloom_cli::SeedArgs,
+    ) -> Result<String, Box<dyn angzarr_diagnostic::Diagnostic>> {
+        let native = match (&seed.native_id, &seed.native_transcript) {
+            (None, None) => None,
+            (id, transcript) => Some((
+                id.clone().unwrap_or_default(),
+                transcript.clone().unwrap_or_default(),
+            )),
+        };
+        let planted = ctxloom_lib::Wiring::from_process().and_then(|w| {
+            w.seed_session(&ctxloom_lib::Seed {
+                harp: seed.harp.clone(),
+                project: seed.project.clone(),
+                started_ago: seed.started_ago,
+                ended_ago: seed.ended_ago,
+                lock_free: seed.lock == "free",
+                transcript: seed.transcript,
+                keep: seed.keep,
+                oneshot: seed.oneshot,
+                native,
+                other_files: seed.other_file.clone(),
+            })
+        });
+        planted.map_err(|e| Box::new(e) as _)
+    }
+
+    #[cfg(feature = "test-support")]
     fn diagnostic_samples(&self) -> Vec<Box<dyn angzarr_diagnostic::Diagnostic>> {
         let mut all = ctxloom_store_sqlite::diagnostic_samples();
         all.extend(ctxloom_lib::diagnostic_samples());
@@ -69,6 +119,11 @@ impl Services for Wired {
         all.extend(library_application::diagnostic_samples());
         all.extend(content_fs::diagnostic_samples());
         all.extend(config_files::diagnostic_samples());
+        all.extend(session_cli::diagnostic_samples());
+        all.extend(hook_cli::diagnostic_samples());
+        all.extend(session_files::diagnostic_samples());
+        all.extend(sessions_application::diagnostic_samples());
+        all.extend(sessions::diagnostic_samples());
         all
     }
 }
@@ -91,9 +146,7 @@ fn main() -> ExitCode {
         std::env::args_os(),
         &context,
         &catalog,
-        &mut Wired {
-            library: ctxloom_lib::LibraryCommands::new(),
-        },
+        &mut Wired::default(),
         &mut stdout.lock(),
         &mut stderr.lock(),
     ))

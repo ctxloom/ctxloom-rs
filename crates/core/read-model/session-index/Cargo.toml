@@ -1,0 +1,26 @@
+[package]
+name = "session-index"
+version = "0.1.0"
+description = "The session index: the list and search rows, states, titles and the transcript retention rule, folded from a project's session streams"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-embedded.workspace = true
+sessions.workspace = true
+# Instants formatted for the rows: pure calendar arithmetic, no clock.
+time.workspace = true
+# The canonical transcript is JSON lines.
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+# The test support (block_on_ready), and the in-memory store the index's
+# tests run the kernel over.
+angzarr-embedded = { workspace = true, features = ["test-support"] }
+mutants.workspace = true
+
+[lints]
+workspace = true

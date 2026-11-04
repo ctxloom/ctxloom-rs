@@ -11,8 +11,13 @@ publish.workspace = true
 angzarr-diagnostic.workspace = true
 angzarr-presentation.workspace = true
 clap.workspace = true
+hook-cli.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+session-cli.workspace = true
+sessions-application.workspace = true
+# The runtime the hook's bind blocks on.
+tokio.workspace = true
 
 [dev-dependencies]
 angzarr-presentation = { workspace = true, features = ["test-support"] }

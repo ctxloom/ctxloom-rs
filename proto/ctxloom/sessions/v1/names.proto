@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+// The session-name claim (D5 Q1): one stream per (project, harp text), its
+// root derived from them (`ids::compute_root("session-names", ...)`), so a
+// harp is unique in a project because a stream is. A session takes its
+// name first (`ClaimName`), on a mint or a rename; a rename releases the
+// old one; a forgotten session's name is never released.
+package ctxloom.sessions.v1;
+
+import "io/angzarr/v1/options.proto";
+
+message NameClaimState {
+  option (io.angzarr.v1.component) = {
+    kind: COMPONENT_KIND_AGGREGATE
+    domain: "session-names"
+    name: "NameClaim"
+  };
+
+  string project_id = 1;
+  string harp = 2;
+  // The stable id of the session that holds the name; empty while free.
+  string session = 3;
+  // Whether the stream has history: a name once claimed is a stream with
+  // a past, free or held.
+  bool claimed = 4;
+}
+
+// Take the name for `session`. Refused `session-names-taken` while another
+// session holds it; the holder asking again records nothing.
+message ClaimName {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.sessions.v1.NameClaimState"
+    emits: ["ctxloom.sessions.v1.Claimed"]
+  };
+
+  string project_id = 1;
+  string harp = 2;
+  string session = 3;
+}
+
+// Give the name back. Refused unless `session` holds it.
+message ReleaseName {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.sessions.v1.NameClaimState"
+    emits: ["ctxloom.sessions.v1.Released"]
+  };
+
+  string session = 1;
+}
+
+message Claimed {
+  option (io.angzarr.v1.event) = {component: "ctxloom.sessions.v1.NameClaimState"};
+
+  string project_id = 1;
+  string harp = 2;
+  string session = 3;
+}
+
+message Released {
+  option (io.angzarr.v1.event) = {component: "ctxloom.sessions.v1.NameClaimState"};
+}

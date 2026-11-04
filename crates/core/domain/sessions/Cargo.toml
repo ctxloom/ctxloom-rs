@@ -1,0 +1,35 @@
+[package]
+name = "sessions"
+version = "0.1.0"
+description = "The sessions domain: one session per aggregate, and the session-name claims, decided and folded on angzarr-embedded"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The session aggregate on angzarr-embedded's markup (`SessionAggregate`).
+angzarr-embedded.workspace = true
+angzarr-diagnostic.workspace = true
+angzarr-embedded-macros.workspace = true
+# The generated domain layer names prost::Name and the wire types.
+prost.workspace = true
+sessions-proto.workspace = true
+uuid.workspace = true
+
+[build-dependencies]
+angzarr-build.workspace = true
+
+[dev-dependencies]
+# The aggregates' tests run the kernel over an in-memory store through
+# angzarr-embedded's test support (`testing::Harness`).
+angzarr-embedded = { workspace = true, features = ["test-support"] }
+mutants.workspace = true
+
+[features]
+# `diagnostic_samples`, for other crates' catalog tests: their
+# dev-dependency turns it on, and no build of a binary does.
+test-support = []
+
+[lints]
+workspace = true

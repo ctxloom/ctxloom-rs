@@ -21,6 +21,9 @@ pub enum LibError {
     NoRuntime { detail: String },
     /// The project's store would not open.
     Store(StoreOpenError),
+    /// The test-only seed could not plant a session.
+    #[cfg(feature = "test-support")]
+    Seed { detail: String },
 }
 
 impl fmt::Display for LibError {
@@ -38,6 +41,8 @@ impl Diagnostic for LibError {
             LibError::BadSession { .. } => code!("bad-session"),
             LibError::NoRuntime { .. } => code!("no-runtime"),
             LibError::Store(_) => code!("store"),
+            #[cfg(feature = "test-support")]
+            LibError::Seed { .. } => code!("seed"),
         }
     }
 
@@ -50,6 +55,8 @@ impl Diagnostic for LibError {
             ],
             LibError::NoRuntime { detail } => vec![("ext_err_txt", detail.as_str().into())],
             LibError::Store(cause) => vec![("error", Arg::Nested(Box::new(cause.clone())))],
+            #[cfg(feature = "test-support")]
+            LibError::Seed { detail } => vec![("ext_err_txt", detail.as_str().into())],
         }
     }
 }
@@ -72,5 +79,9 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
             path: "/home/u/.ctxloom/projects/p/ctxloom.db".to_string(),
             detail: "locked".to_string(),
         })),
+        #[cfg(feature = "test-support")]
+        Box::new(LibError::Seed {
+            detail: "no such project".to_string(),
+        }),
     ]
 }

@@ -26,6 +26,12 @@ pub enum CliError {
     Format { value: String },
     /// The answer could not be written out.
     Output { detail: String },
+    /// A command that failed in its own adapter or its use case: its
+    /// diagnostic, and the exit code it asks for.
+    Command {
+        error: Box<dyn Diagnostic>,
+        exit: u8,
+    },
     /// A test command that refuses.
     #[cfg(feature = "test-support")]
     TestRefused,
@@ -45,6 +51,7 @@ impl CliError {
         match self {
             CliError::Usage { .. } | CliError::UnknownVerb { .. } | CliError::Format { .. } => 2,
             CliError::Output { .. } => 1,
+            CliError::Command { exit, .. } => *exit,
             #[cfg(feature = "test-support")]
             CliError::TestRefused => 2,
             #[cfg(feature = "test-support")]
@@ -78,6 +85,7 @@ impl Diagnostic for CliError {
             CliError::UnknownVerb { .. } => code!("unknown-verb"),
             CliError::Format { .. } => code!("unknown-format"),
             CliError::Output { .. } => code!("output"),
+            CliError::Command { error, .. } => error.code(),
             #[cfg(feature = "test-support")]
             CliError::TestRefused => code!("test-refused"),
             #[cfg(feature = "test-support")]
@@ -103,6 +111,7 @@ impl Diagnostic for CliError {
                 ("choices", choices.as_str().into()),
             ],
             CliError::Format { value } => vec![("value", value.as_str().into())],
+            CliError::Command { error, .. } => error.args(),
             #[cfg(feature = "test-support")]
             CliError::TestRefused => Vec::new(),
             #[cfg(feature = "test-support")]
@@ -161,3 +170,7 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(CliError::TestFindings { count: 1 }),
     ]
 }
+
+#[cfg(test)]
+#[path = "error.test.rs"]
+mod tests;

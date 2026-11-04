@@ -1,0 +1,258 @@
+syntax = "proto3";
+
+// A session is the conversation: one aggregate whose stream root is a
+// stable id minted at creation (plan 3.1, D5 Q1/Q4), in its project's
+// store. The harp is only its name. Go's session sidecar
+// (`~/.ctxloom/sessions/<harp>/session.yaml`) is folded here event by
+// event: the mint, the engine binding and its rotations, keep, rename,
+// purge, forget and adopt. Lineage, the inbox, the lifeline and grants
+// arrive with the slices that need them (S5 to S10).
+package ctxloom.sessions.v1;
+
+import "google/protobuf/timestamp.proto";
+import "io/angzarr/v1/options.proto";
+
+// The session, folded from its events. Derived values (its title, its
+// state now) are computed when read, never stored: the title is the first
+// prompt of its transcript, and the state is `Liveness`'s.
+message SessionState {
+  option (io.angzarr.v1.component) = {
+    kind: COMPONENT_KIND_AGGREGATE
+    domain: "sessions"
+    name: "Session"
+  };
+
+  // The harp: the session's name, which a rename changes.
+  string harp = 1;
+  string project_id = 2;
+  // The project directory that launched it (Go's project_dir).
+  string project_dir = 3;
+  // Where its readable outputs go, recorded absolute at the mint.
+  string output_dir = 4;
+  string engine = 5;
+  Origin origin = 6;
+  // The engine's own session key and transcript for the current binding;
+  // empty until bound.
+  string native_id = 7;
+  string transcript_path = 8;
+  string engine_version = 9;
+  // Every binding this session has displaced, oldest first.
+  repeated Rotation rotations = 10;
+  bool kept = 11;
+  google.protobuf.Timestamp started_at = 12;
+  // When its last run ended (Go's ended_at); absent until recorded.
+  optional google.protobuf.Timestamp ended_at = 13;
+  // When a purge destroyed its transcript; absent until one did.
+  optional google.protobuf.Timestamp purged_at = 14;
+  // Forgotten sessions keep their stream (and so their name, plan 3.1).
+  bool forgotten = 15;
+}
+
+// Who a session was minted for (Go's Origin): an empty origin reads as a
+// human's session.
+enum Origin {
+  ORIGIN_UNSPECIFIED = 0;
+  // A human's session: a depth-0 run that is not a one-shot.
+  ORIGIN_SESSION = 1;
+  // A delegated child's session.
+  ORIGIN_AGENT = 2;
+  // An internal one-shot (a distiller, a probe).
+  ORIGIN_ONESHOT = 3;
+}
+
+// One displaced binding of a session: the native id and vendor
+// transcript it was bound to before a later bind replaced it.
+message Rotation {
+  string native_id = 1;
+  string transcript_path = 2;
+  // Absent: the page's `recorded_at` is the instant. Present (an adopted or
+  // imported rotation): the instant the binding really rotated.
+  optional google.protobuf.Timestamp rotated_at = 3;
+}
+
+// region commands
+
+// Create the session in the stream its caller chose (the cover's root is
+// the stable id). Refused on a stream that has history. The harp is minted
+// by the caller (minting is random, and decide is deterministic); the
+// name's claim is taken first, by the application (plan 3.1).
+message MintSession {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.sessions.v1.SessionState"
+    emits: ["ctxloom.sessions.v1.SessionMinted"]
+  };
+
+  string harp = 1;
+  string project_id = 2;
+  string project_dir = 3;
+  string output_dir = 4;
+  string engine = 5;
+  Origin origin = 6;
+  // Left out: the page's `recorded_at`. The importer gives Go's started_at.
+  optional google.protobuf.Timestamp started_at = 7;
+}
+
+// Record what the SessionStart hook bound: the engine's session id and
+// transcript. Go's BindSession: a repeat of the bound id records nothing;
+// a different id that names a transcript is a rotation; a different id
+// naming no transcript never displaces the binding; nothing at all
+// records nothing.
+message BindEngineSession {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.sessions.v1.SessionState"
+    emits: ["ctxloom.sessions.v1.EngineSessionBound"]
+  };
+
+  string native_id = 1;
+  string transcript_path = 2;
+  optional string engine_version = 3;
+}
+
+// Mark (kept) or unmark the session's transcript as never reclaimable.
+// Records nothing when it changes nothing.
+message SetKept {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.sessions.v1.SessionState"
+    emits: ["ctxloom.sessions.v1.KeptChanged"]
+  };
+
+  bool kept = 1;
+}
+
+// Rename the session. The harp must be one a human may choose (Go's
+// ValidateRename). The output dir moves as an effect; the new path is
+// recorded with the name.
+message RenameSession {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.sessions.v1.SessionState"
+    emits: ["ctxloom.sessions.v1.RenamedTo"]
+  };
+
+  string harp = 1;
+  // The output dir after the move; empty when the session has none.
+  string output_dir = 2;
+}
+
+// Record that a purge destroyed the session's transcript (a fact, from
+// the reclaim effect).
+message RecordPurge {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.sessions.v1.SessionState"
+    emits: ["ctxloom.sessions.v1.SessionPurged"]
+  };
+
+  uint64 files = 1;
+  uint64 bytes = 2;
+  // Left out: the page's `recorded_at`.
+  optional google.protobuf.Timestamp at = 3;
+}
+
+// `session remove --yes`: the index entry goes. The stream stays.
+message ForgetSession {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.sessions.v1.SessionState"
+    emits: ["ctxloom.sessions.v1.SessionForgotten"]
+  };
+}
+
+// Seed rotations the store never recorded (`session adopt --yes`). Each
+// whose native id is the current binding or already in the lineage is
+// skipped; the lineage stays ordered by rotation instant.
+message AdoptRotations {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.sessions.v1.SessionState"
+    emits: ["ctxloom.sessions.v1.SessionAdopted"]
+  };
+
+  repeated Rotation rotations = 1;
+}
+
+// Record when the session's last run ended. PROVISIONAL: the importer's
+// record of Go's ended_at; the run slice's IncarnationEnded supersedes it
+// (plan 9, an open question).
+message RecordEnd {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.sessions.v1.SessionState"
+    emits: ["ctxloom.sessions.v1.EndRecorded"]
+  };
+
+  google.protobuf.Timestamp at = 1;
+}
+
+// endregion commands
+
+// region events
+
+// An event carries the values the session holds after it, not the change
+// that led there: apply assigns them and computes nothing. An event's
+// instant is its page's `EventMeta.recorded_at`, which apply is handed.
+
+message SessionMinted {
+  option (io.angzarr.v1.event) = {component: "ctxloom.sessions.v1.SessionState"};
+
+  string harp = 1;
+  string project_id = 2;
+  string project_dir = 3;
+  string output_dir = 4;
+  string engine = 5;
+  Origin origin = 6;
+  // Written only when the command gave one (the importer): else the
+  // session's start is the page's `recorded_at`.
+  optional google.protobuf.Timestamp started_at = 7;
+}
+
+// The binding the session holds after a bind. A bind that displaced an
+// earlier binding (the plan's EngineSessionRotated: an engine's /clear
+// starts a new transcript under a live process) carries it in `displaced`,
+// which joins the lineage at the page's `recorded_at`. One event, because
+// a command's handler records one event type (the markup has no either-or
+// shape).
+message EngineSessionBound {
+  option (io.angzarr.v1.event) = {component: "ctxloom.sessions.v1.SessionState"};
+
+  string native_id = 1;
+  string transcript_path = 2;
+  string engine_version = 3;
+  // The binding this one displaced; absent for the first bind.
+  optional Rotation displaced = 4;
+}
+
+message KeptChanged {
+  option (io.angzarr.v1.event) = {component: "ctxloom.sessions.v1.SessionState"};
+
+  bool kept = 1;
+}
+
+message RenamedTo {
+  option (io.angzarr.v1.event) = {component: "ctxloom.sessions.v1.SessionState"};
+
+  string harp = 1;
+  string output_dir = 2;
+}
+
+message SessionPurged {
+  option (io.angzarr.v1.event) = {component: "ctxloom.sessions.v1.SessionState"};
+
+  uint64 files = 1;
+  uint64 bytes = 2;
+  optional google.protobuf.Timestamp at = 3;
+}
+
+message SessionForgotten {
+  option (io.angzarr.v1.event) = {component: "ctxloom.sessions.v1.SessionState"};
+}
+
+message SessionAdopted {
+  option (io.angzarr.v1.event) = {component: "ctxloom.sessions.v1.SessionState"};
+
+  // The rotations adopted, those new to the lineage only.
+  repeated Rotation rotations = 1;
+}
+
+message EndRecorded {
+  option (io.angzarr.v1.event) = {component: "ctxloom.sessions.v1.SessionState"};
+
+  google.protobuf.Timestamp at = 1;
+}
+
+// endregion events

@@ -19,6 +19,11 @@ ctxloom-store-sqlite.workspace = true
 file-lock.workspace = true
 library.workspace = true
 library-application.workspace = true
+hook-cli.workspace = true
+session-cli.workspace = true
+session-files.workspace = true
+sessions-application.workspace = true
+sessions.workspace = true
 
 [features]
 # The test-only commands (`ctxloom test ...`): the exit ladder, the --format
@@ -33,6 +38,11 @@ test-support = [
     "library-application/test-support",
     "content-fs/test-support",
     "config-files/test-support",
+    "hook-cli/test-support",
+    "session-cli/test-support",
+    "session-files/test-support",
+    "sessions/test-support",
+    "sessions-application/test-support",
 ]
 
 [dev-dependencies]

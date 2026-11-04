@@ -1,0 +1,16 @@
+[package]
+name = "session-ports"
+version = "0.1.0"
+description = "The ports the sessions application needs from outside beyond taskloom's ports and angzarr-ports' stores: a project's store, a session's liveness lock, its files, and Go's session directories"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+angzarr-embedded.workspace = true
+ports.workspace = true
+
+[lints]
+workspace = true

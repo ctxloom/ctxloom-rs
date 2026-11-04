@@ -3,12 +3,12 @@
 use std::ffi::OsString;
 use std::io::Write;
 
-#[cfg(feature = "test-support")]
 use angzarr_diagnostic::Diagnostic;
 use angzarr_presentation::{write_json, Catalog, Format};
 use clap::error::{ContextKind, ContextValue, ErrorKind};
 use clap::{Command, FromArgMatches};
 use serde::Serialize;
+use sessions_application::{BindRequest, ImportService, SessionService};
 
 use crate::commands::{command, Cli, Verb, PROG};
 use crate::error::CliError;
@@ -27,6 +27,12 @@ pub struct Context {
 pub trait Services {
     /// The commands another crate owns, joined to this command line.
     fn extension(&mut self) -> &mut dyn Extension;
+    /// The sessions use cases (`session` and the hooks that bind a session).
+    type Sessions: SessionService + ImportService;
+
+    /// The sessions use cases, built when first asked for: a command that
+    /// needs none (the statusline hook) works where there is no home.
+    fn sessions(&mut self) -> Result<&mut Self::Sessions, Box<dyn Diagnostic>>;
 
     /// A newly minted session id.
     #[cfg(feature = "test-support")]
@@ -39,6 +45,13 @@ pub trait Services {
     /// A project's store, opened under the home: where its database is.
     #[cfg(feature = "test-support")]
     fn open_store(&mut self, project: &str) -> Result<String, Box<dyn Diagnostic>>;
+
+    /// Plant a session (`ctxloom test seed-session`); its stable id.
+    #[cfg(feature = "test-support")]
+    fn seed_session(
+        &mut self,
+        seed: &crate::commands::SeedArgs,
+    ) -> Result<String, Box<dyn Diagnostic>>;
 
     /// One value of every diagnostic the binary can raise besides this
     /// crate's own.
@@ -79,6 +92,8 @@ pub fn run(
     let _ = cli.globals.verbose;
     let answered = match cli.command {
         Some(Verb::Version) => version(context, format, out),
+        Some(Verb::Session(session)) => sessions(&session, format, services, catalog, out, err),
+        Some(Verb::Hook(hook)) => hook_verb(&hook, format, services, catalog, out, err),
         #[cfg(feature = "test-support")]
         Some(Verb::Test(verb)) => crate::test_commands::run(verb, format, catalog, services, out),
         None => Ok(()),
@@ -129,6 +144,118 @@ fn extended(
         Ok(code) => code,
         Err(failure) => report(&CliError::Extension(failure), call.format(), catalog, err),
     }
+}
+
+/// `session ...`: the command run on the sessions use cases, its notices and
+/// dead letters said beside its answer.
+fn sessions<S: Services>(
+    session: &session_cli::Session,
+    format: Format,
+    services: &mut S,
+    catalog: &Catalog,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<(), CliError> {
+    let service = services
+        .sessions()
+        .map_err(|error| CliError::Command { error, exit: 1 })?;
+    match session_cli::run(session, service, format, out) {
+        Ok(done) => {
+            for line in &done.lines {
+                let _ = writeln!(err, "{PROG}: {line}");
+            }
+            for notice in &done.notices {
+                warn(&**notice, format, catalog, err);
+            }
+            Ok(())
+        }
+        Err(failure) => {
+            for line in &failure.lines {
+                let _ = writeln!(err, "{PROG}: {line}");
+            }
+            Err(CliError::Command {
+                error: failure.error,
+                exit: failure.exit,
+            })
+        }
+    }
+}
+
+/// What binds a session for the hook: the sessions use case, blocked on.
+struct Bind<'a, S> {
+    services: &'a mut S,
+}
+
+impl<S: Services> hook_cli::Binding for Bind<'_, S> {
+    fn bind(
+        &mut self,
+        harp: &str,
+        native_id: &str,
+        transcript_path: &str,
+    ) -> Result<(), Box<dyn Diagnostic>> {
+        let service = self.services.sessions()?;
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .map_err(|e| -> Box<dyn Diagnostic> {
+                Box::new(CliError::Output {
+                    detail: e.to_string(),
+                })
+            })?;
+        runtime
+            .block_on(service.bind(BindRequest {
+                project: None,
+                harp: harp.to_string(),
+                native_id: native_id.to_string(),
+                transcript_path: transcript_path.to_string(),
+            }))
+            .map(drop)
+            .map_err(|e| -> Box<dyn Diagnostic> { Box::new(e) })
+    }
+}
+
+/// `hook ...`: an engine's callback. Stdout is the engine's input and only
+/// that; what a hook can foresee going wrong it warns of on the diagnostic
+/// channel and still succeeds.
+fn hook_verb<S: Services>(
+    hook: &hook_cli::Hook,
+    format: Format,
+    services: &mut S,
+    catalog: &Catalog,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<(), CliError> {
+    // Some engines report a failed hook if stdin is closed before the payload
+    // is read, so it is read to the end first.
+    let input = std::io::read_to_string(std::io::stdin()).unwrap_or_default();
+    let harp = std::env::var("CTXLOOM_SESSION_HARP").unwrap_or_default();
+    let written = match hook.verb {
+        hook_cli::HookVerb::Hud => out.write_all(hook_cli::hud(&input, &harp, 0).as_bytes()),
+        hook_cli::HookVerb::SessionBind => {
+            let outcome = hook_cli::session_bind(
+                hook.engine.as_deref(),
+                &input,
+                &harp,
+                &mut Bind { services },
+            )
+            .map_err(|error| CliError::Command { error, exit: 1 })?;
+            for warning in &outcome.warnings {
+                warn(warning, format, catalog, err);
+            }
+            out.write_all(outcome.stdout.as_bytes())
+        }
+    };
+    written.map_err(|e| CliError::Output {
+        detail: e.to_string(),
+    })
+}
+
+/// Say `notice` on `err` in `format` and carry on: a warning, not an error.
+fn warn(notice: &dyn Diagnostic, format: Format, catalog: &Catalog, err: &mut dyn Write) {
+    let _ = match format {
+        Format::Json => write_json(err, &catalog.envelope(notice)),
+        Format::Text => writeln!(err, "{PROG}: {}", catalog.message(notice)),
+    };
 }
 
 /// The format `--format` asks for, else the terminal's.

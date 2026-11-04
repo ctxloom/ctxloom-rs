@@ -1,0 +1,10 @@
+schema_version: 2
+session_id: 9a1c0d1e-2222-4222-8222-000000000002
+backend: claude-code
+project_dir: /work/proj
+output_dir: /home/u/Documents/ctxloom/proj/brisk-copper-moth
+started_at: 2026-05-02T08:30:00.481Z
+ended_at: 2026-05-02T09:00:00Z
+transcript_path: /home/u/.claude/projects/proj/9a1c0d1e-2222.jsonl
+keep: true
+source_entries: 3

@@ -1,0 +1,9 @@
+schema_version: 1
+session_id: 9a1c0d1e-1111-4111-8111-000000000001
+backend: claude-code
+project_dir: /work/proj
+output_dir: /home/u/Documents/ctxloom/proj/amber-swift-owl
+started_at: 2026-04-10T00:00:00Z
+ended_at: 2026-04-10T01:00:00Z
+transcript_path: /home/u/.claude/projects/proj/9a1c0d1e.jsonl
+source_entries: 12

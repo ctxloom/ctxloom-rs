@@ -11,6 +11,11 @@ use angzarr_diagnostic::Diagnostic;
 
 use angzarr_presentation::Format;
 use clap::{Arg, Command};
+use sessions_application::{
+    AppError, BindRequest, Bound, ImportReport, ImportRequest, ImportService, KeepRequest, Kept,
+    ListQuery, Removal, RemoveRequest, RenameRequest, Renamed, SearchQuery, SessionService,
+    ShowQuery, TranscriptQuery, TranscriptRow, View,
+};
 
 use super::*;
 
@@ -53,9 +58,62 @@ impl Extension for Fake {
     }
 }
 
-struct Wire(Fake);
+/// No sessions: a command line test of an extension never reaches them.
+struct NoSessions;
+
+impl SessionService for NoSessions {
+    async fn list(&mut self, _: ListQuery) -> Result<Vec<View>, AppError> {
+        unreachable!("no session command is run here")
+    }
+
+    async fn search(&mut self, _: SearchQuery) -> Result<Vec<View>, AppError> {
+        unreachable!("no session command is run here")
+    }
+
+    async fn show(&mut self, _: ShowQuery) -> Result<View, AppError> {
+        unreachable!("no session command is run here")
+    }
+
+    async fn keep(&mut self, _: KeepRequest) -> Result<Kept, AppError> {
+        unreachable!("no session command is run here")
+    }
+
+    async fn remove(&mut self, _: RemoveRequest) -> Result<Removal, AppError> {
+        unreachable!("no session command is run here")
+    }
+
+    async fn rename(&mut self, _: RenameRequest) -> Result<Renamed, AppError> {
+        unreachable!("no session command is run here")
+    }
+
+    async fn transcripts(&mut self, _: TranscriptQuery) -> Result<Vec<TranscriptRow>, AppError> {
+        unreachable!("no session command is run here")
+    }
+
+    async fn transcript(&mut self, _: &str) -> Result<String, AppError> {
+        unreachable!("no session command is run here")
+    }
+
+    async fn bind(&mut self, _: BindRequest) -> Result<Bound, AppError> {
+        unreachable!("no session command is run here")
+    }
+}
+
+impl ImportService for NoSessions {
+    async fn import(&mut self, _: ImportRequest) -> Result<ImportReport, AppError> {
+        unreachable!("no session command is run here")
+    }
+}
+
+struct Wire(Fake, NoSessions);
 
 impl Services for Wire {
+    type Sessions = NoSessions;
+
+    fn sessions(&mut self) -> Result<&mut NoSessions, Box<dyn angzarr_diagnostic::Diagnostic>> {
+        Ok(&mut self.1)
+    }
+
     fn extension(&mut self) -> &mut dyn Extension {
         &mut self.0
     }
@@ -102,7 +160,7 @@ fn go_in(terminal: bool, answer: Result<u8, u8>, line: &[&str]) -> Ran {
         args,
         &context,
         &catalog,
-        &mut Wire(Fake { answer }),
+        &mut Wire(Fake { answer }, NoSessions),
         &mut out,
         &mut err,
     );
@@ -172,8 +230,12 @@ fn test_an_unknown_verb_says_did_you_mean_and_lists_the_verbs() {
     assert_eq!(ran.code, 2);
     assert!(ran
         .err
-        .starts_with("ctxloom: unknown command versoin for ctxloom: Did you mean one of version"));
-    assert!(ran.err.contains("demo"));
+        .starts_with("ctxloom: unknown command versoin for ctxloom: Did you mean one of "));
+    // the verbs: an extension's noun, `version`, and the commands other
+    // slices own (`session`; `hook` is hidden)
+    for verb in ["demo", "version", "session"] {
+        assert!(ran.err.contains(verb), "{verb} is listed: {}", ran.err);
+    }
     assert!(ran
         .err
         .ends_with("  fix: run ctxloom -h for its commands\n"));
@@ -291,7 +353,7 @@ fn test_an_unwritable_answer_is_a_failure() {
         ["ctxloom", "version"].map(OsString::from),
         &context,
         &catalog,
-        &mut Wire(Fake { answer: Ok(0) }),
+        &mut Wire(Fake { answer: Ok(0) }, NoSessions),
         &mut Broken,
         &mut err,
     );

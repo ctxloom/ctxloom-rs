@@ -23,11 +23,19 @@ publish = false
 # are not pinned here, except angzarr-diagnostic, the coded-error trait every
 # crate implements (the same core rev).
 angzarr-embedded = { git = "https://github.com/angzarr-io/angzarr-embedded", rev = "9bd1d2ccef26d20a7832dfb98fac3fd7afeec5da" }
+# The markup macros the hand-written domains use (`#[aggregate]`), at the same
+# embedded rev, so the lock holds one angzarr-embedded.
+angzarr-embedded-macros = { git = "https://github.com/angzarr-io/angzarr-embedded", rev = "9bd1d2ccef26d20a7832dfb98fac3fd7afeec5da" }
+# angzarr-build (angzarr-cli's markup domain layer): a build dependency of the
+# wire and domain crates, pinned by full commit, on angzarr core 4d7ef357 (the
+# rev the pins above share), as taskloom pins it.
+angzarr-build = { git = "https://github.com/angzarr-io/angzarr-cli", rev = "cdd2237244c702bc2144561825742a6782a4c6d1" }
 angzarr-diagnostic = { git = "https://github.com/angzarr-io/angzarr", rev = "4d7ef3573aad114d789a9c30f9cd702d7bb5c213" }
+# angzarr-yaml, the one reader for every config and Go-written file (owner
+# ruling, 2026-10-31): versioned documents migrated on read, strict decode.
+angzarr-yaml = { git = "https://github.com/angzarr-io/angzarr", rev = "4d7ef3573aad114d789a9c30f9cd702d7bb5c213" }
 # Presentation at the driving edge (json or text, catalogs, envelopes).
 angzarr-presentation = { git = "https://github.com/angzarr-io/angzarr", rev = "4d7ef3573aad114d789a9c30f9cd702d7bb5c213" }
-# The one config reader (D15): strict YAML subset, versioned documents.
-angzarr-yaml = { git = "https://github.com/angzarr-io/angzarr", rev = "4d7ef3573aad114d789a9c30f9cd702d7bb5c213" }
 # The platform crates: os, the file-system seam, advisory locks.
 os = { git = "https://github.com/angzarr-io/angzarr-platform", rev = "656a780bbde168dfc61d7ea3cb119e96fa0766a2" }
 file-system = { git = "https://github.com/angzarr-io/angzarr-platform", rev = "656a780bbde168dfc61d7ea3cb119e96fa0766a2" }
@@ -37,9 +45,32 @@ file-lock = { git = "https://github.com/angzarr-io/angzarr-platform", rev = "656
 # f635c31 is taskloom's pushed main.
 harp-names = { git = "https://github.com/ctxloom/taskloom", rev = "f635c314c012dc4427f9732cb36a3da98a2d0f46" }
 ports = { git = "https://github.com/ctxloom/taskloom", rev = "f635c314c012dc4427f9732cb36a3da98a2d0f46" }
+# The kernel runner (retry, dead letters, typed refusals) every taskloom context
+# sends its commands through. It moved to angzarr-embedded as
+# `angzarr-embedded-runner` (ffc58aa); this pin predates that, so ctxloom takes
+# taskloom's until it re-pins (see the embedded-pin note above).
+kernel-runner = { git = "https://github.com/ctxloom/taskloom", rev = "f635c314c012dc4427f9732cb36a3da98a2d0f46" }
+# taskloom's system adapter: the clock, command ids, delay and jitter ports.
+system = { git = "https://github.com/ctxloom/taskloom", rev = "f635c314c012dc4427f9732cb36a3da98a2d0f46" }
+# taskloom's project identity (the work root, the `.project-id` marker and the
+# home registry of projects), read through, not copied (D2 (a)).
+project-registry = { git = "https://github.com/ctxloom/taskloom", rev = "f635c314c012dc4427f9732cb36a3da98a2d0f46" }
 # Harp's word lists, at taskloom's rev, so the lock holds one.
 harp-core = { git = "https://github.com/benjaminabbitt/harp", rev = "e27196f5a425ffcf8e443aab95d2bf085cd2b134" }
 
+# prost must be the version angzarr-proto generates for.
+prost = "0.14"
+prost-types = "0.14"
+
+sessions-application = { path = "crates/core/application/sessions-application" }
+session-ports = { path = "crates/core/ports/session-ports" }
+sessions-proto = { path = "crates/core/wire/sessions-proto" }
+sessions = { path = "crates/core/domain/sessions" }
+session-index = { path = "crates/core/read-model/session-index" }
+liveness = { path = "crates/adapters/driven/liveness" }
+session-files = { path = "crates/adapters/driven/session-files" }
+session-cli = { path = "crates/adapters/driving/session-cli" }
+hook-cli = { path = "crates/adapters/driving/hook-cli" }
 ctxloom-cli = { path = "crates/adapters/driving/ctxloom-cli" }
 config-files = { path = "crates/adapters/driven/config-files" }
 content-fs = { path = "crates/adapters/driven/content-fs" }
@@ -51,9 +82,13 @@ ctxloom-lib = { path = "crates/root/lib/ctxloom-lib" }
 ctxloom-store-sqlite = { path = "crates/adapters/driven/ctxloom-store-sqlite" }
 
 clap = { version = "4.5", features = ["derive", "string"] }
+# `#[mutants::skip]`, for a mutant judged equivalent: a dev-dependency, behind
+# `cfg_attr(test, ...)`, so it links nothing in a build.
+mutants = "0.0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"
+time = { version = "0.3", features = ["formatting", "parsing"] }
 tokio = { version = "1", features = ["rt", "time"] }
 uuid = { version = "1", features = ["v5", "v7"] }
 

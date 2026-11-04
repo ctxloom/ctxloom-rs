@@ -5,3 +5,4 @@ ctxloom-lib-no-home = there is no home directory: { $variable } is not set
 ctxloom-lib-bad-session = { $session } is not a session id: { $ext_err_txt }
 ctxloom-lib-no-runtime = cannot start a runtime to open the store: { $ext_err_txt }
 ctxloom-lib-store = cannot open the project store: { $error }
+ctxloom-lib-seed = the test seed could not plant the session: { $ext_err_txt }

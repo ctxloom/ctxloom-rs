@@ -40,6 +40,8 @@ allow-git = [
   "https://github.com/angzarr-io/angzarr",
   # os, file-system and file-lock: the platform crates.
   "https://github.com/angzarr-io/angzarr-platform",
+  # angzarr-cli's angzarr-build: the markup domain layer, a build dependency.
+  "https://github.com/angzarr-io/angzarr-cli",
   # angzarr-embedded: the in-app runtime and its SQLite store.
   "https://github.com/angzarr-io/angzarr-embedded",
   # angzarr-router, which angzarr-embedded runs handlers through.

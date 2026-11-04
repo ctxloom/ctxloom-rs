@@ -1,0 +1,32 @@
+[package]
+name = "session-cli"
+version = "0.1.0"
+description = "The `session` commands: list, search, show, edit, keep, remove and the transcripts, translated to the sessions application and rendered as json or text"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+angzarr-presentation.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+session-index.workspace = true
+sessions-application.workspace = true
+# The runtime a command blocks on (the kernel's backoff waits on its timer).
+tokio.workspace = true
+
+[dev-dependencies]
+mutants.workspace = true
+sessions = { workspace = true }
+sessions-application = { workspace = true, features = ["test-support"] }
+
+
+[features]
+# `diagnostic_samples`, for other crates' catalog tests.
+test-support = []
+
+[lints]
+workspace = true

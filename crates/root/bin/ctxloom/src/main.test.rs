@@ -35,7 +35,7 @@ use serde_json::Value;
 
 /// The `ctxloom` binary, built once per test run with its test-only
 /// commands.
-fn binary() -> &'static Path {
+pub(crate) fn binary() -> &'static Path {
     static BINARY: OnceLock<PathBuf> = OnceLock::new();
     BINARY.get_or_init(|| {
         // This test executable is <target>/<profile>/deps/ctxloom-<hash>.
@@ -78,7 +78,7 @@ pub(crate) struct Ran {
 }
 
 impl Ran {
-    fn of(output: Output) -> Ran {
+    pub(crate) fn of(output: Output) -> Ran {
         Ran {
             code: output.status.code().unwrap_or(-1),
             stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
@@ -177,6 +177,9 @@ mod exit;
 #[path = "format.test.rs"]
 mod format;
 
+#[path = "hook.test.rs"]
+mod hook;
+
 #[path = "ids.test.rs"]
 mod ids;
 
@@ -191,6 +194,9 @@ mod library_config;
 
 #[path = "library_parity.test.rs"]
 mod library_parity;
+
+#[path = "session.test.rs"]
+mod session;
 
 #[path = "usage.test.rs"]
 mod usage;

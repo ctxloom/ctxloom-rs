@@ -83,6 +83,10 @@ pub(crate) fn run(
                 .map_err(CliError::Service)?;
             output(writeln!(out, "{id}"))
         }
+        TestVerb::SeedSession(seed) => {
+            let id = services.seed_session(&seed).map_err(CliError::Service)?;
+            output(writeln!(out, "{id}"))
+        }
         TestVerb::OpenStore { project } => {
             let path = services.open_store(&project).map_err(CliError::Service)?;
             output(writeln!(out, "{path}"))

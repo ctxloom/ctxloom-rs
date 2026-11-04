@@ -1,0 +1,336 @@
+//! Run a `session` command against the application.
+
+use std::io::{self, Write};
+
+use angzarr_diagnostic::Diagnostic;
+use angzarr_presentation::{write_json, Format};
+use session_index::View;
+use sessions_application::{
+    dead_letter_line, AppError, DeadLetter, ImportRequest, ImportService, KeepRequest, ListQuery,
+    RemoveRequest, RemovedNothing, RenameRequest, SearchQuery, SessionService, ShowQuery, State,
+    TranscriptQuery, STATES,
+};
+
+use crate::render::{
+    conversation_text, import_text, removal_text, rows_text, show_text, transcripts_text, EditDoc,
+    ImportDoc, KeepDoc, RemovalDoc, Row, ShowDoc, TranscriptsDoc,
+};
+use crate::{
+    CliFault, EditArgs, ListArgs, RemoveArgs, Session, SessionVerb, Transcript, TranscriptListArgs,
+    TranscriptVerb,
+};
+
+/// A command that completed: what it says on the diagnostic channel besides
+/// its answer.
+#[derive(Debug, Default)]
+pub struct Done {
+    /// Notices (a report-only run ends with one), each a warning.
+    pub notices: Vec<Box<dyn Diagnostic>>,
+    /// Dead letters the kernel answered, loud lines for stderr: each almost
+    /// certainly marks a bug.
+    pub lines: Vec<String>,
+}
+
+/// A command that did not complete: why, its exit code, and the dead-letter
+/// lines to say beside it.
+#[derive(Debug)]
+pub struct Failure {
+    pub error: Box<dyn Diagnostic>,
+    pub exit: u8,
+    pub lines: Vec<String>,
+}
+
+/// Run `session`'s command on `service`, writing its answer to `out`.
+pub fn run<S: SessionService + ImportService>(
+    session: &Session,
+    service: &mut S,
+    format: Format,
+    out: &mut dyn Write,
+) -> Result<Done, Failure> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+        .map_err(|e| {
+            fault(CliFault::Runtime {
+                ext_err_txt: e.to_string(),
+            })
+        })?;
+    runtime.block_on(execute(session, service, format, out))
+}
+
+/// A fault of the command line itself.
+fn fault(fault: CliFault) -> Failure {
+    Failure {
+        exit: fault.exit_code(),
+        error: Box::new(fault),
+        lines: Vec::new(),
+    }
+}
+
+/// A use case's failure: its diagnostic, its exit code, and the dead letters
+/// its kernel calls answered.
+fn failure(error: AppError) -> Failure {
+    Failure {
+        exit: error.exit_code(),
+        lines: error
+            .dead_letters()
+            .iter()
+            .map(|l| dead_letter_line(&l.letter))
+            .collect(),
+        error: Box::new(error),
+    }
+}
+
+/// The answer written, or why it could not be.
+fn wrote(written: io::Result<()>) -> Result<(), Failure> {
+    written.map_err(|e| {
+        fault(CliFault::Output {
+            ext_err_txt: e.to_string(),
+        })
+    })
+}
+
+/// A `--state` word as a state; the word that is none is refused before
+/// anything is asked.
+fn state_of(word: Option<&String>) -> Result<Option<State>, Failure> {
+    let Some(word) = word else { return Ok(None) };
+    State::parse(word).map(Some).ok_or_else(|| {
+        fault(CliFault::BadState {
+            value: word.clone(),
+            states: STATES.join(", "),
+        })
+    })
+}
+
+fn dead_letters(letters: &[DeadLetter]) -> Done {
+    Done {
+        notices: Vec::new(),
+        lines: letters
+            .iter()
+            .map(|l| dead_letter_line(&l.letter))
+            .collect(),
+    }
+}
+
+/// A list of rows in `format`.
+fn rows(views: &[View], format: Format, out: &mut dyn Write) -> Result<Done, Failure> {
+    let written = match format {
+        Format::Json => {
+            let rows: Vec<Row> = views.iter().map(Row::of).collect();
+            write_json(out, &rows)
+        }
+        Format::Text => rows_text(views, out),
+    };
+    wrote(written)?;
+    Ok(Done::default())
+}
+
+async fn execute<S: SessionService + ImportService>(
+    session: &Session,
+    service: &mut S,
+    format: Format,
+    out: &mut dyn Write,
+) -> Result<Done, Failure> {
+    match &session.verb {
+        None => list(service, &ListArgs::default(), format, out).await,
+        Some(SessionVerb::List(args)) => list(service, args, format, out).await,
+        Some(SessionVerb::Search(args)) => {
+            let query = SearchQuery {
+                list: ListQuery {
+                    project: None,
+                    all: args.all,
+                    state: state_of(args.state.as_ref())?,
+                },
+                words: args.words.clone(),
+            };
+            let views = service.search(query).await.map_err(failure)?;
+            rows(&views, format, out)
+        }
+        Some(SessionVerb::Show(args)) => {
+            let view = service
+                .show(ShowQuery {
+                    project: None,
+                    harp: args.harp.clone(),
+                })
+                .await
+                .map_err(failure)?;
+            wrote(match format {
+                Format::Json => write_json(out, &ShowDoc::of(&view)),
+                Format::Text => show_text(&view, out),
+            })?;
+            Ok(Done::default())
+        }
+        Some(SessionVerb::Edit(args)) => edit(service, args, format, out).await,
+        Some(SessionVerb::Keep(args)) => {
+            let kept = service
+                .keep(KeepRequest {
+                    project: None,
+                    harp: args.harp.clone(),
+                    keep: !args.undo,
+                })
+                .await
+                .map_err(failure)?;
+            wrote(match format {
+                Format::Json => write_json(
+                    out,
+                    &KeepDoc {
+                        harp: kept.harp.clone(),
+                        kept: kept.kept,
+                    },
+                ),
+                Format::Text if kept.kept => writeln!(
+                    out,
+                    "{} is marked keep: its transcript is kept at any age",
+                    kept.harp
+                ),
+                Format::Text => writeln!(
+                    out,
+                    "{} is no longer marked keep: its transcript is reclaimable once session_transcript_retention has passed since it ended",
+                    kept.harp
+                ),
+            })?;
+            Ok(dead_letters(&kept.dead_letters))
+        }
+        Some(SessionVerb::Remove(args)) => remove(service, args, format, out).await,
+        Some(SessionVerb::Import) => {
+            let report = service.import(ImportRequest {}).await.map_err(failure)?;
+            wrote(match format {
+                Format::Json => write_json(out, &ImportDoc::of(&report)),
+                Format::Text => import_text(&report, out),
+            })?;
+            Ok(dead_letters(&report.dead_letters))
+        }
+        Some(SessionVerb::Transcript(transcript)) => {
+            transcripts(service, transcript, format, out).await
+        }
+    }
+}
+
+async fn list<S: SessionService>(
+    service: &mut S,
+    args: &ListArgs,
+    format: Format,
+    out: &mut dyn Write,
+) -> Result<Done, Failure> {
+    let query = ListQuery {
+        project: None,
+        all: args.all,
+        state: state_of(args.state.as_ref())?,
+    };
+    let views = service.list(query).await.map_err(failure)?;
+    rows(&views, format, out)
+}
+
+async fn edit<S: SessionService>(
+    service: &mut S,
+    args: &EditArgs,
+    format: Format,
+    out: &mut dyn Write,
+) -> Result<Done, Failure> {
+    // Read through `Option`, not emptiness: `--name ""` is a caller asking for
+    // an invalid name and must reach the validator.
+    let Some(to) = &args.name else {
+        return Err(fault(CliFault::EditNothing {
+            harp: args.harp.clone(),
+        }));
+    };
+    let renamed = service
+        .rename(RenameRequest {
+            project: None,
+            harp: args.harp.clone(),
+            to: to.clone(),
+        })
+        .await
+        .map_err(failure)?;
+    wrote(match format {
+        Format::Json => write_json(out, &EditDoc::of(&renamed)),
+        Format::Text => writeln!(out, "renamed {} \u{2192} {}", renamed.from, renamed.to),
+    })?;
+    Ok(dead_letters(&renamed.dead_letters))
+}
+
+async fn remove<S: SessionService>(
+    service: &mut S,
+    args: &RemoveArgs,
+    format: Format,
+    out: &mut dyn Write,
+) -> Result<Done, Failure> {
+    let removal = service
+        .remove(RemoveRequest {
+            project: None,
+            harp: args.harp.clone(),
+            yes: args.yes,
+            even_if_live: args.even_if_live,
+        })
+        .await
+        .map_err(failure)?;
+    wrote(match format {
+        Format::Json => write_json(out, &RemovalDoc::of(&removal)),
+        Format::Text => removal_text(&removal, out),
+    })?;
+    let mut done = dead_letters(&removal.dead_letters);
+    if let Some(refusal) = removal.refusal {
+        return Err(Failure {
+            error: Box::new(refusal),
+            exit: 2,
+            lines: done.lines,
+        });
+    }
+    if !args.yes {
+        let flag = if args.even_if_live {
+            " --even-if-live"
+        } else {
+            ""
+        };
+        done.notices.push(Box::new(RemovedNothing {
+            command: format!("ctxloom session remove {} --yes{flag}", args.harp),
+        }));
+    }
+    Ok(done)
+}
+
+async fn transcripts<S: SessionService>(
+    service: &mut S,
+    transcript: &Transcript,
+    format: Format,
+    out: &mut dyn Write,
+) -> Result<Done, Failure> {
+    match &transcript.verb {
+        None => transcript_list(service, &TranscriptListArgs::default(), format, out).await,
+        Some(TranscriptVerb::List(args)) => transcript_list(service, args, format, out).await,
+        Some(TranscriptVerb::Show(args)) => {
+            let text = service.transcript(&args.harp).await.map_err(failure)?;
+            wrote(match format {
+                Format::Json if text.ends_with('\n') => write!(out, "{text}"),
+                Format::Json => writeln!(out, "{text}"),
+                Format::Text => conversation_text(&text, out),
+            })?;
+            Ok(Done::default())
+        }
+    }
+}
+
+async fn transcript_list<S: SessionService>(
+    service: &mut S,
+    args: &TranscriptListArgs,
+    format: Format,
+    out: &mut dyn Write,
+) -> Result<Done, Failure> {
+    let rows = service
+        .transcripts(TranscriptQuery {
+            project: None,
+            all: args.all,
+            harp: args.harp.clone(),
+        })
+        .await
+        .map_err(failure)?;
+    wrote(match format {
+        Format::Json => write_json(out, &TranscriptsDoc::of(&rows)),
+        Format::Text => transcripts_text(&rows, out),
+    })?;
+    Ok(Done::default())
+}
+
+#[cfg(test)]
+#[path = "run.test.rs"]
+mod tests;

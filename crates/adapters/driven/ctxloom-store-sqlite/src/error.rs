@@ -67,3 +67,26 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(StoreOpenError::Open { path, detail }),
     ]
 }
+
+impl StoreOpenError {
+    /// The error as angzarr-ports' cause, its code and args: how the
+    /// angzarr-embedded store carries it in a `StoreError`.
+    pub fn cause(&self) -> angzarr_embedded::angzarr_ports::Cause {
+        use angzarr_embedded::angzarr_ports::{Arg as PortArg, Cause};
+        let code = match self {
+            StoreOpenError::CreateDir { .. } => code!("create-dir"),
+            StoreOpenError::Unplaced { .. } => code!("unplaced"),
+            StoreOpenError::Open { .. } => code!("open"),
+        };
+        let (StoreOpenError::CreateDir { path, detail }
+        | StoreOpenError::Unplaced { path, detail }
+        | StoreOpenError::Open { path, detail }) = self;
+        Cause::new(
+            code,
+            [
+                ("path", PortArg::Str(path.clone())),
+                ("ext_err_txt", PortArg::Str(detail.clone())),
+            ],
+        )
+    }
+}

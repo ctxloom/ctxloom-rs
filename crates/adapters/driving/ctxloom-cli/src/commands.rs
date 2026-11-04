@@ -43,6 +43,12 @@ pub enum Verb {
     /// Print the ctxloom version
     #[command(after_help = "Examples:\n  ctxloom version --format json")]
     Version,
+    /// Browse and manage your recorded sessions
+    #[command(after_help = "Examples:\n  ctxloom session list\n  ctxloom session search lockfile")]
+    Session(session_cli::Session),
+    /// Callbacks ctxloom installs into engines (not for people)
+    #[command(hide = true)]
+    Hook(hook_cli::Hook),
     /// Commands for the tests only
     #[cfg(feature = "test-support")]
     #[command(subcommand, hide = true)]
@@ -78,6 +84,47 @@ pub enum TestVerb {
         /// The project's id
         project: String,
     },
+    /// Plant a session in the cwd's project store, and the files a fixture
+    /// writes beside it; print its stable id
+    SeedSession(SeedArgs),
+}
+
+/// What `ctxloom test seed-session` plants (see the acceptance tests).
+#[cfg(feature = "test-support")]
+#[derive(Args, Debug, Clone, Default)]
+pub struct SeedArgs {
+    /// The session's name
+    pub harp: String,
+    /// Another project than the cwd's
+    #[arg(long)]
+    pub project: Option<String>,
+    /// Seconds ago it was minted
+    #[arg(long, default_value_t = 86_400)]
+    pub started_ago: u64,
+    /// Seconds ago its last run ended; left out, it never ended
+    #[arg(long)]
+    pub ended_ago: Option<u64>,
+    /// `free` makes its lock file with nothing holding it; `none` makes none
+    #[arg(long, default_value = "none")]
+    pub lock: String,
+    /// Record the canonical transcript Go's fixture records
+    #[arg(long)]
+    pub transcript: bool,
+    /// Mark its transcript kept
+    #[arg(long)]
+    pub keep: bool,
+    /// An internal one-shot's session
+    #[arg(long)]
+    pub oneshot: bool,
+    /// The engine's session it is bound to
+    #[arg(long)]
+    pub native_id: Option<String>,
+    /// The engine's transcript it is bound to
+    #[arg(long)]
+    pub native_transcript: Option<String>,
+    /// An authored file in the session directory
+    #[arg(long)]
+    pub other_file: Vec<String>,
 }
 
 /// The command with its version flag (`--version`, long only: `-v` is
@@ -105,6 +152,11 @@ pub fn command(version: &str, nouns: Vec<Command>) -> Command {
     command
 }
 
+/// The groups whose bare form runs their default verb rather than printing
+/// their usage (D28: "a bare namespace runs its default verb"; Go's
+/// `groupNodeDefault`). A group added by a later slice names itself here.
+pub const BARE_RUNS_DEFAULT: [&str; 2] = ["session", "transcript"];
+
 fn without_help_command(command: Command) -> Command {
     let names: Vec<String> = command
         .get_subcommands()
@@ -112,9 +164,10 @@ fn without_help_command(command: Command) -> Command {
         .collect();
     let mut command = command;
     if !names.is_empty() {
+        let bare_runs = BARE_RUNS_DEFAULT.contains(&command.get_name());
         command = command
             .disable_help_subcommand(true)
-            .arg_required_else_help(true);
+            .arg_required_else_help(!bare_runs);
     }
     for name in names {
         command = command.mut_subcommand(name, without_help_command);

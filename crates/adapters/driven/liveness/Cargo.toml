@@ -1,0 +1,20 @@
+[package]
+name = "liveness"
+version = "0.1.0"
+description = "A session's liveness, asked of its lock file (~/.ctxloom/sessions/<harp>.lock) through the file-system seam, as Go's sessionlock asks it"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+file-system.workspace = true
+os.workspace = true
+session-ports.workspace = true
+
+[dev-dependencies]
+file-system = { workspace = true, features = ["test-support"] }
+mutants.workspace = true
+
+[lints]
+workspace = true

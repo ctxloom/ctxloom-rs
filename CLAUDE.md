@@ -49,17 +49,62 @@ the architecture; there is no other table of crates.
 - `root/lib`: the composition root's wiring as a library (`ctxloom-lib`).
 - `root/bin`: the `ctxloom` binary, the composition root.
 
-Today: slice S0's `ctxloom-store-sqlite` (driven), `ctxloom-cli` (driving),
-`ctxloom-lib` (wiring) and the `ctxloom` binary; and slice S1's library read
-side: `library` (read model: references, bundles, profiles, composite
-selection, the premise index, the layered config), `ctxloom-ports` (the
-content and config ports), `library-application` (every library query),
-`content-fs` and `config-files` (driven), and `library-cli` (driving). The
-whole command line is parsed by `ctxloom-cli`; a crate that owns more nouns
-joins it through its `Extension` seam (`ctxloom-lib` wires `library-cli`
+Slice S0 made `ctxloom-store-sqlite` (driven), `ctxloom-cli` (driving),
+`ctxloom-lib` (wiring) and the `ctxloom` binary. Slice S1 (library read side)
+adds:
+
+- `core/read-model/library` (references, bundles, profiles, composite
+  selection, the premise index, the layered config);
+- `core/ports/ctxloom-ports` (the content and config ports);
+- `core/application/library-application` (every library query);
+- `adapters/driven/{content-fs, config-files}` and `adapters/driving/library-cli`.
+
+The whole command line is parsed by `ctxloom-cli`; a crate that owns more
+nouns joins it through its `Extension` seam (`ctxloom-lib` wires `library-cli`
 in).
 
-Divergence from Go: a config whose `schema_version` is newer, older or unreadable is refused (exit 2, D15 strict decode); Go warns and continues.
+Divergence from Go: a config whose `schema_version` is newer, older or unreadable is refused (exit 2, D15 strict decode); Go warns and continues. A `non_tty_format` of yaml, toml or markdown is refused (D28).
+
+Slice S4 (sessions) adds:
+
+- `core/wire/sessions-proto`, from `proto/ctxloom/sessions/v1`;
+- `core/domain/sessions` (hand-written markup, as taskloom's `tasks`: the
+  session aggregate and the `session-names` claim aggregate);
+- `core/read-model/session-index` (the rows, state, title, search, retention);
+- `core/ports/session-ports` (a project's store, `Liveness`, a session's
+  files, Go's session directories);
+- `core/application/sessions-application` (list, search, show, keep, remove,
+  bind, the transcripts; Go's `session.yaml` schema 1 to 3 read through
+  angzarr-yaml; the importer's types);
+- `adapters/driven/{liveness, session-files}` and, behind `ProjectStores`,
+  `ctxloom-store-sqlite`;
+- `adapters/driving/{session-cli, hook-cli}` (`hook` is hidden: `session-bind`
+  and `hud`).
+
+A session's state is its lock's verdict, never its end stamp; its title is the
+first prompt of its transcript; `hud` renders and records nothing. The
+kernel's retry is taskloom's `kernel-runner` (a git pin) until the embedded
+pin moves to `angzarr-embedded-runner`. Rows and refusals say what was not
+done and the command that would, in the message, so the json envelope carries
+it too. A crate's catalog is `locales/en-US/messages.ftl`, ids the full code.
+
+Names and ids are fixed by the owner's rulings (2026-11-03), and imported
+streams are rooted on them, so they never change:
+
+- a project's namespace is `UUIDv5(URL namespace, "ctxloom:project:" + project
+  id)` (`sessions::project_namespace`);
+- a name's claim stream root is `UUIDv5(project namespace, harp text)`
+  (`sessions::claim_root`, domain `session-names`);
+- an imported session's stable id is `UUIDv5(project namespace, harp text)`
+  (`sessions_application::imported_id`). Go's `run_ends[]` and `end_reason`
+  are NOT imported (they return with S10).
+
+A rename claims the new name, moves the output folder, records the name and
+frees the old one; a removed session's name stays claimed. The refusal code is
+`sessions-names-taken` (the crate-prefix rule).
+
+Deliberate divergence from Go: `session remove` takes `--even-if-live`, as its
+own refusal text already told the user to use.
 
 `crates/core/clippy.toml` holds the core's purity rules (no I/O, clock, env,
 threads or hash-ordered collections) and reaches every core crate, because
