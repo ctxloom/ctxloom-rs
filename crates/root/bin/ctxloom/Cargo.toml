@@ -56,6 +56,8 @@ test-support = [
 forge-github = { workspace = true, features = ["test-support"] }
 # Already pinned in the workspace: the word lists the ids are checked against.
 harp-core.workspace = true
+cucumber.workspace = true
+futures = "0.3"
 serde_json.workspace = true
 tempfile.workspace = true
 
