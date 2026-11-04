@@ -54,3 +54,35 @@ fn every_finding_exits_three() {
         assert_eq!(finding.exit_code(), 3);
     }
 }
+
+// The args are the catalog's inputs: the runtime in its own words.
+#[test]
+fn the_args_name_the_runtimes_in_their_own_words() {
+    use super::{Finding, Ownership};
+    use angzarr_diagnostic::Diagnostic;
+    let arg = |finding: &Finding| -> Vec<(String, String)> {
+        finding
+            .args()
+            .into_iter()
+            .map(|(n, a)| (n.to_string(), format!("{a:?}")))
+            .collect()
+    };
+    let none = arg(&Finding::NoRuntime {
+        demanded: Ownership::Rootless,
+    });
+    assert!(none[0].1.contains("container-rootless"), "{none:?}");
+    let image = arg(&Finding::ImageUnavailable {
+        demanded: Ownership::Rootful,
+    });
+    assert!(image[0].1.contains("container-rootful"), "{image:?}");
+    let mismatch = arg(&Finding::OwnershipMismatch {
+        demanded: Ownership::Rootless,
+        offered: vec![Ownership::Rootful, Ownership::Rootless],
+    });
+    assert!(
+        mismatch[1]
+            .1
+            .contains("container-rootful, container-rootless"),
+        "{mismatch:?}"
+    );
+}

@@ -99,3 +99,20 @@ fn every_matching_marker_is_reported() {
         );
     }
 }
+
+// The real machine reads the filesystem and the environment as they are.
+#[test]
+fn the_real_machine_reads_files_and_the_environment() {
+    use super::Real;
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("marker");
+    std::fs::write(&file, "contents").unwrap();
+    let file = file.display().to_string();
+    let missing = dir.path().join("missing").display().to_string();
+    assert!(Real.exists(&file));
+    assert!(!Real.exists(&missing));
+    assert_eq!(Real.read(&file).as_deref(), Some("contents"));
+    assert_eq!(Real.read(&missing), None);
+    assert!(!Real.var("PATH").is_empty());
+    assert_eq!(Real.var("CTXLOOM_SURELY_UNSET_VARIABLE"), "");
+}

@@ -8,7 +8,10 @@ use std::process::Command;
 
 use isolation_ports::{Prepared, Removal, Request, Safety, Standing, Workspaces};
 
-use super::{branch_of, checkout_name, sanitize, GitWorkspaces, EXCLUDE_HEADER};
+use super::{
+    branch_of, checkout_name, is_name, nested_under, same_path, sanitize, GitWorkspaces, Listed,
+    EXCLUDE_HEADER,
+};
 
 const PATTERNS: [&str; 5] = [
     ".ctxloom/cache/",
@@ -393,4 +396,188 @@ fn a_dirty_nested_worktree_keeps_its_parent_in_place() {
     let removal = f.adapter().remove(&parent.repo_dir, &parent.path);
     assert!(matches!(removal, Removal::Left(_)), "{removal:?}");
     assert!(inner.join("nested-wip.txt").exists());
+}
+
+fn exclude_of(f: &Fixture) -> String {
+    std::fs::read_to_string(f.project.join(".git/info/exclude")).unwrap()
+}
+
+#[test]
+fn a_directory_outside_git_says_it_is_not_a_repository() {
+    let f = Fixture::new();
+    let plain = f.home.join("plain");
+    std::fs::create_dir_all(&plain).unwrap();
+    let mut request = f.request("amber-quiet-heron", "reviewer");
+    request.project_dir = plain.display().to_string();
+    let why = match f.adapter().prepare(&request) {
+        Ok(Prepared::Unavailable(why)) => why,
+        other => panic!("{other:?}"),
+    };
+    assert!(why.starts_with("worktree isolation: "), "{why}");
+}
+
+#[test]
+fn a_branch_an_earlier_run_left_is_re_entered() {
+    let f = Fixture::new();
+    git(&f.project, &["branch", "ctxloom/reviewer"]);
+    let checkout = f.prepared("amber-quiet-heron", "reviewer");
+    assert_eq!(checkout.branch, "ctxloom/reviewer");
+    assert!(!checkout.reused, "the checkout is new; the branch is not");
+}
+
+#[test]
+fn a_checkout_registered_on_another_branch_is_refused() {
+    let f = Fixture::new();
+    let path = f.work_dir("amber-quiet-heron").join("ctxloom-wt-reviewer");
+    git(
+        &f.project,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "someone-elses",
+            &path.display().to_string(),
+        ],
+    );
+    let refused = f
+        .adapter()
+        .prepare(&f.request("amber-quiet-heron", "reviewer"))
+        .unwrap_err();
+    assert_eq!(refused.code(), "worktree-git-unadoptable");
+    assert!(refused.to_string().contains("someone-elses"), "{refused}");
+}
+
+#[test]
+fn the_exclude_block_starts_a_fresh_file_without_a_blank_line() {
+    let f = Fixture::new();
+    std::fs::write(f.project.join(".git/info/exclude"), "").unwrap();
+    f.prepared("amber-quiet-heron", "one");
+    assert!(
+        exclude_of(&f).starts_with(EXCLUDE_HEADER),
+        "{}",
+        exclude_of(&f)
+    );
+}
+
+#[test]
+fn the_exclude_block_follows_an_unterminated_line_on_a_line_of_its_own() {
+    let f = Fixture::new();
+    std::fs::write(f.project.join(".git/info/exclude"), "mine").unwrap();
+    f.prepared("amber-quiet-heron", "one");
+    assert!(
+        exclude_of(&f).starts_with(&format!("mine\n{EXCLUDE_HEADER}\n")),
+        "{}",
+        exclude_of(&f)
+    );
+}
+
+#[test]
+fn the_exclude_block_follows_a_terminated_line_with_no_blank_between() {
+    let f = Fixture::new();
+    std::fs::write(f.project.join(".git/info/exclude"), "mine\n").unwrap();
+    f.prepared("amber-quiet-heron", "one");
+    assert!(
+        exclude_of(&f).starts_with(&format!("mine\n{EXCLUDE_HEADER}\n")),
+        "{}",
+        exclude_of(&f)
+    );
+}
+
+// A path the repository tracks that the run will overwrite cannot merge back.
+#[test]
+fn a_tracked_config_path_is_marked_skip_worktree() {
+    let f = Fixture::new();
+    std::fs::write(f.project.join("CLAUDE.md"), "tracked").unwrap();
+    git(&f.project, &["add", "-A"]);
+    git(&f.project, &["commit", "-q", "-m", "tracked config"]);
+    let checkout = f.prepared("amber-quiet-heron", "reviewer");
+    let wt = Path::new(&checkout.path);
+    let flags = git(wt, &["ls-files", "-v", "CLAUDE.md"]);
+    assert!(flags.starts_with("S "), "{flags}");
+    std::fs::write(wt.join("CLAUDE.md"), "overwritten by the run").unwrap();
+    assert_eq!(git(wt, &["status", "--porcelain"]).trim(), "");
+}
+
+#[test]
+fn a_work_dir_that_cannot_be_read_is_an_error_for_its_own_session() {
+    let f = Fixture::new();
+    let work = f.work_dir("amber-quiet-heron");
+    std::fs::create_dir_all(work.parent().unwrap()).unwrap();
+    std::fs::write(&work, "not a directory").unwrap();
+    let error = f.adapter().scratch(Some("amber-quiet-heron")).unwrap_err();
+    assert_eq!(error.code(), "worktree-git-unreadable");
+}
+
+#[test]
+fn only_a_single_path_segment_names_a_session() {
+    for bad in ["", ".", "..", "a/b", "a\\b"] {
+        assert!(!is_name(bad), "{bad:?}");
+    }
+    assert!(is_name("amber-quiet-heron"));
+    let f = Fixture::new();
+    assert!(!f.adapter().session_known("..").unwrap());
+    assert!(f.adapter().scratch(Some("..")).unwrap().is_empty());
+}
+
+#[test]
+fn paths_are_the_same_when_equal_or_when_they_resolve_alike() {
+    let dir = tempfile::tempdir().unwrap();
+    let real = dir.path().join("real");
+    std::fs::create_dir(&real).unwrap();
+    let link = dir.path().join("link");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+    let gone = dir.path().join("gone");
+    assert!(same_path(&gone, &gone), "equal, though neither exists");
+    assert!(same_path(&real, &link));
+    assert!(!same_path(&real, &gone));
+}
+
+#[test]
+fn worktrees_nested_under_a_symlinked_target_are_found_by_their_resolved_paths() {
+    let dir = tempfile::tempdir().unwrap();
+    let real = dir.path().join("real");
+    std::fs::create_dir(&real).unwrap();
+    let link = dir.path().join("link");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+    let listed = vec![
+        Listed {
+            path: real.clone(),
+            branch: None,
+        },
+        Listed {
+            path: real.join("inner"),
+            branch: None,
+        },
+        Listed {
+            path: dir.path().join("elsewhere"),
+            branch: None,
+        },
+    ];
+    assert_eq!(nested_under(&listed, &link), vec![real.join("inner")]);
+}
+
+#[test]
+fn a_clean_nested_worktree_is_removed_with_its_parent() {
+    let f = Fixture::new();
+    let parent = f.prepared("amber-quiet-heron", "parent");
+    let inner = Path::new(&parent.path).join("inner");
+    git(
+        Path::new(&parent.path),
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "inner-branch",
+            &inner.display().to_string(),
+        ],
+    );
+    assert_eq!(
+        f.adapter().remove(&parent.repo_dir, &parent.path),
+        Removal::Removed
+    );
+    assert!(!inner.exists());
+    let listed = git(&f.project, &["worktree", "list", "--porcelain"]);
+    assert!(!listed.contains("inner"), "{listed}");
 }

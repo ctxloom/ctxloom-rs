@@ -366,3 +366,73 @@ fn build_and_prune_with_a_runtime_refuse_as_not_ported() {
     assert!(matches!(pruned, IsolationError::NotPorted { .. }));
     assert_eq!(pruned.exit_code(), 1);
 }
+
+fn machine_of(runtimes: &[(&str, bool)]) -> Machine {
+    Machine {
+        markers: Vec::new(),
+        runtimes: runtimes
+            .iter()
+            .map(|(name, reachable)| RuntimeFacts {
+                name: name.to_string(),
+                reachable: *reachable,
+            })
+            .collect(),
+        images: Vec::new(),
+    }
+}
+
+// Only a runtime that answers can build, and `--runtime` narrows to that one.
+#[test]
+fn build_considers_only_reachable_runtimes_narrowed_by_name() {
+    let files = Files::default();
+    let build = |runtimes: &[(&str, bool)], only: Option<&str>| {
+        containers(machine_of(runtimes), engines(), &files)
+            .build(Some("mock"), only)
+            .unwrap_err()
+    };
+    let down = [("docker", false)];
+    assert!(matches!(build(&down, None), IsolationError::NoBuildRuntime));
+    let mixed = [("docker", false), ("podman", true)];
+    assert!(matches!(
+        build(&mixed, Some("docker")),
+        IsolationError::NoBuildRuntime
+    ));
+    assert!(matches!(
+        build(&mixed, Some("podman")),
+        IsolationError::NotPorted { .. }
+    ));
+    assert!(matches!(
+        build(&mixed, None),
+        IsolationError::NotPorted { .. }
+    ));
+}
+
+// The check names an installed runtime whose daemon is down, and probes nothing.
+#[test]
+fn check_of_a_runtime_whose_daemon_is_down_says_so_and_probes_no_image() {
+    let files = Files::default();
+    let report = containers(machine_of(&[("docker", false)]), engines(), &files)
+        .check(Some("mock"))
+        .unwrap();
+    assert_eq!(report.runtime, "docker");
+    assert!(!report.reachable);
+    assert_eq!(
+        report.shared_fs,
+        "unprobed: the docker daemon did not answer"
+    );
+    assert!(report.image.is_empty());
+    assert!(!report.image_present);
+    assert_eq!(report.guidance.len(), 1);
+}
+
+// The use-case trait delegates to the real operations.
+#[test]
+fn the_container_use_trait_delegates() {
+    use super::ContainerUse;
+    let files = Files::default();
+    let c = containers(podman(), engines(), &files);
+    assert!(matches!(
+        ContainerUse::build(&c, Some("mock"), None),
+        Err(IsolationError::NotPorted { .. })
+    ));
+}

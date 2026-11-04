@@ -69,6 +69,9 @@ impl HostRuntimes {
 }
 
 impl ContainerRuntimes for HostRuntimes {
+    // The real machine's markers: what they are depends on where the tests run
+    // (a clean host has none), so no hermetic test can pin the result.
+    #[cfg_attr(test, mutants::skip)]
     fn in_container(&self) -> Vec<String> {
         crate::markers_from(&crate::Real)
     }

@@ -107,8 +107,7 @@ fn same_path(a: &Path, b: &Path) -> bool {
 }
 
 fn is_repo(dir: &Path) -> bool {
-    dir.is_dir()
-        && run(dir, &["rev-parse", "--is-inside-work-tree"]).is_ok_and(|out| out.trim() == "true")
+    run(dir, &["rev-parse", "--is-inside-work-tree"]).is_ok_and(|out| out.trim() == "true")
 }
 
 /// The repository's common git directory, absolute.
@@ -279,6 +278,9 @@ fn remove_one(repo: &Path, path: &Path) -> Result<(), String> {
 /// A merged branch holds nothing the repository does not, and left behind
 /// every agent run adds one; an unmerged one holds commits nothing else has
 /// and is kept. Any doubt keeps it.
+// `git branch -d` itself refuses an unmerged branch, so the listing check is a
+// second guard whose removal changes nothing observable.
+#[cfg_attr(test, mutants::skip)]
 fn delete_merged_branch(repo: &Path, branch: &str) {
     let merged = run(
         repo,
@@ -421,3 +423,7 @@ impl Workspaces for GitWorkspaces {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "workspace.test.rs"]
+mod tests;

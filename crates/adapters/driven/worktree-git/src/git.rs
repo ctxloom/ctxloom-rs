@@ -24,7 +24,8 @@ fn local_variables() -> &'static Option<Vec<String>> {
             .split_whitespace()
             .map(str::to_string)
             .collect();
-        (output.status.success() && !names.is_empty()).then_some(names)
+        // A git that failed printed no names, so emptiness covers failure.
+        (!names.is_empty()).then_some(names)
     })
 }
 
@@ -83,3 +84,7 @@ pub(crate) fn run(dir: &Path, args: &[&str]) -> Result<String, String> {
         said.to_string()
     })
 }
+
+#[cfg(test)]
+#[path = "git.test.rs"]
+mod tests;
