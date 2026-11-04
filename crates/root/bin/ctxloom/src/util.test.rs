@@ -1,6 +1,6 @@
-//! Go's `cli/util.feature` (release/0.7), ported (S9): `util config-write`,
-//! which merges a JSON patch into a foreign config file. Each test names its
-//! scenario.
+//! Plain tests for what util.feature does not cover (the feature runs in
+//! `gherkin_surfaces.test.rs`): `util config-write`'s record reversal and
+//! its refusals, from Go's help text and the feature's opening paragraph.
 //!
 //! plan supersedes Go (8.2, "`util config-write` ... keep byte-for-byte"):
 //! ctxloom-rs reads and writes JSON documents (what every foreign file in
@@ -25,39 +25,6 @@ fn write(project: &Project, command: &str) -> super::Ran {
         ),
         &[],
     )
-}
-
-// util.feature: Scenario: A third write still replaces ctxloom's entry after
-// one field changed
-#[test]
-fn test_a_third_write_still_replaces_ctxloom_entry_after_one_field_changed() {
-    let project = Project::initialized();
-    project.write("vendor-tool.json", VENDOR);
-
-    write(&project, "/first/ctxloom").succeeds();
-    project.file_contains("vendor-tool.json", "/first/ctxloom");
-
-    write(&project, "/second/ctxloom").succeeds();
-    project.file_contains("vendor-tool.json", "/second/ctxloom");
-
-    write(&project, "/third/ctxloom").succeeds();
-    project.file_contains("vendor-tool.json", "/third/ctxloom");
-
-    project
-        .file_lacks("vendor-tool.json", "/first/ctxloom")
-        .file_lacks("vendor-tool.json", "/second/ctxloom")
-        .file_counts("vendor-tool.json", "/third/ctxloom", 1)
-        .file_contains("vendor-tool.json", "https://example.com/vendor.schema.json")
-        .file_contains("vendor-tool.json", "keep-me-verbatim")
-        .file_contains("vendor-tool.json", "vendor-server")
-        .file_contains("vendor-tool.json", "--serve");
-    // The args array was replaced, not appended to (util.feature's comment on
-    // the hew `Sel.Set` defect).
-    let doc = project.json_file("vendor-tool.json");
-    assert_eq!(
-        doc["servers"]["ctxloom"]["args"],
-        serde_json::json!(["mcp", "serve"])
-    );
 }
 
 // util.feature: "backs the file up before touching it, refuses rather than

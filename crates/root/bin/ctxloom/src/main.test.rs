@@ -234,6 +234,9 @@ mod library_write_skill;
 #[path = "session.test.rs"]
 mod session;
 
+#[path = "gherkin_surfaces.test.rs"]
+mod gherkin_surfaces;
+
 #[path = "manage.test.rs"]
 mod manage;
 

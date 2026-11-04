@@ -1,5 +1,5 @@
-//! Go's `cli/post_tool_hooks.feature` (release/0.7), ported (S9): `hook
-//! skill-mates`. Each test names its scenario.
+//! Plain tests for what post_tool_hooks.feature does not cover (the feature
+//! runs in `gherkin_surfaces.test.rs`): `hook skill-mates`.
 //!
 //! plan supersedes Go (8.4, "`--engine` on every callback"): the engine whose
 //! codec reads the payload and the transcript is the one the hook was
@@ -67,26 +67,6 @@ fn payload(project: &Project, tool: &str, input: &str) -> String {
     )
 }
 
-// post_tool_hooks.feature: Scenario: Completing one skill of a linked pair
-// names the other
-#[test]
-fn test_completing_one_skill_of_a_linked_pair_names_the_other() {
-    let project = nightly_project();
-    let ran = project.run_input(
-        &["hook", "skill-mates", "--engine", "claude-code"],
-        &payload(&project, "Skill", r#"{"skill":"admit","args":""}"#),
-        &[("CTXLOOM_SESSION_HARP", HARP)],
-    );
-    ran.succeeds();
-    assert!(
-        additional_context(&ran).contains(
-            "Skill admit completed; linked skills not yet invoked this session: unattended"
-        ),
-        "{}",
-        ran.said()
-    );
-}
-
 // post_tool_hooks.feature (a documented condition of skillsInvoked): a mate the
 // session has already invoked is not named again.
 #[test]
@@ -98,20 +78,6 @@ fn test_a_mate_the_session_already_invoked_is_not_named_again() {
         &["hook", "skill-mates", "--engine", "claude-code"],
         &payload(&project, "Skill", r#"{"skill":"admit","args":""}"#),
         &[("CTXLOOM_SESSION_HARP", HARP)],
-    );
-    ran.succeeds();
-    assert_eq!(additional_context(&ran), "");
-}
-
-// post_tool_hooks.feature: Scenario: A tool call that is not a skill is passed
-// over in silence
-#[test]
-fn test_a_tool_call_that_is_not_a_skill_is_passed_over_in_silence() {
-    let project = Project::initialized();
-    let ran = project.run_input(
-        &["hook", "skill-mates", "--engine", "claude-code"],
-        r#"{"session_id":"s","hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"ls"},"tool_response":"ok"}"#,
-        &[],
     );
     ran.succeeds();
     assert_eq!(additional_context(&ran), "");
