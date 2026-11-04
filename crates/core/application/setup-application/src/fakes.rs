@@ -283,7 +283,27 @@ pub(crate) struct World {
 /// The use cases over a library of `bundles()` and `config`, with the engines
 /// `claude-code` (every kind) and `mock` (context only).
 pub(crate) fn world(config: &'static str) -> World {
-    let owned = bundles();
+    world_of(
+        config,
+        bundles(),
+        vec![
+            Box::new(Engine::all("claude-code")),
+            Box::new(Engine {
+                name: "mock",
+                kinds: vec![Kind::Context],
+                wire: Wire,
+                rides_launch: false,
+            }),
+        ],
+    )
+}
+
+/// The same over bundles and engines of the test's own.
+pub(crate) fn world_of(
+    config: &'static str,
+    owned: Vec<(&'static str, Vec<(&'static str, &'static str)>)>,
+    engines: Vec<Box<dyn EngineSurfaces>>,
+) -> World {
     let trees: Vec<(&str, Vec<(&str, &str)>)> = owned;
     let slices: Vec<(&str, &[(&str, &str)])> =
         trees.iter().map(|(n, f)| (*n, f.as_slice())).collect();
@@ -295,15 +315,7 @@ pub(crate) fn world(config: &'static str) -> World {
     }
     .fixture();
     let store = Arc::new(Store::default());
-    let engines = Registry::new(vec![
-        Box::new(Engine::all("claude-code")),
-        Box::new(Engine {
-            name: "mock",
-            kinds: vec![Kind::Context],
-            wire: Wire,
-            rides_launch: false,
-        }),
-    ]);
+    let engines = Registry::new(engines);
     let setup = Setup::new(library, engines, store.clone(), mem.clone(), "/p", "/p");
     World { setup, store, mem }
 }

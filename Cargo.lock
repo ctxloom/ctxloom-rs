@@ -771,6 +771,7 @@ dependencies = [
  "deps",
  "deps-ports",
  "library",
+ "mutants",
  "pin-changes",
  "serde",
  "serde_json",

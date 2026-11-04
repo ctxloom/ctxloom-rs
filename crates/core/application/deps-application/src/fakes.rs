@@ -842,6 +842,8 @@ pub struct FakeRefresh {
 }
 
 impl crate::ProjectRefresh for FakeRefresh {
+    // A test double: the tests that use it are what hold it, not its own.
+    #[cfg_attr(test, mutants::skip)]
     fn refresh(
         &self,
         write: bool,

@@ -12,6 +12,8 @@ use crate::{Setup, SetupError};
 struct Files {
     files: Mutex<BTreeMap<String, Vec<u8>>>,
     records: Mutex<BTreeMap<String, String>>,
+    /// A disk that loses what it is given: every write leaves `{}`.
+    lossy: std::sync::atomic::AtomicBool,
 }
 
 impl ForeignFiles for Files {
@@ -19,6 +21,11 @@ impl ForeignFiles for Files {
         Ok(self.files.lock().unwrap().get(path).cloned())
     }
     fn write(&self, path: &str, bytes: &[u8]) -> Result<(), SurfaceError> {
+        let bytes = if self.lossy.load(std::sync::atomic::Ordering::SeqCst) {
+            b"{}".as_slice()
+        } else {
+            bytes
+        };
         self.files
             .lock()
             .unwrap()
@@ -179,4 +186,28 @@ fn test_a_record_ctxloom_cannot_read_stops_the_write() {
 fn test_a_build_without_foreign_files_says_so() {
     let err = world(CONFIG).setup.config_write(F, None, "{}").unwrap_err();
     assert!(matches!(err, SetupError::ConfigWrite { .. }));
+}
+
+// Payload verification: a write the disk did not keep is refused, not reported.
+#[test]
+fn test_a_write_the_file_does_not_hold_fails_verification() {
+    let files = Arc::new(Files::default());
+    files.lossy.store(true, std::sync::atomic::Ordering::SeqCst);
+    let err = setup(&files)
+        .config_write(F, None, r#"{"a": {"b": 1}}"#)
+        .unwrap_err();
+    let SetupError::ConfigWrite { .. } = err else {
+        panic!("{err:?}")
+    };
+    assert!(err.to_string().contains("verify"), "{err}");
+}
+
+// A file with nothing but whitespace is an empty document, not a corrupt one.
+#[test]
+fn test_a_blank_file_is_an_empty_document() {
+    let files = Arc::new(Files::default());
+    files.write(F, b" \n\t\n").unwrap();
+    let written = setup(&files).config_write(F, None, r#"{"a": 1}"#).unwrap();
+    assert!(!written.created);
+    assert!(text(&files).contains("\"a\": 1"));
 }
