@@ -287,3 +287,55 @@ fn a_session_already_emptied_is_untouched() {
     assert!(report.rows.is_empty());
     assert_eq!(report.untouched, 1);
 }
+
+// The purge is asked of the session the row is for, in the purge scope.
+#[test]
+fn the_purge_names_the_session_and_its_scope() {
+    let mut fake = Fake {
+        views: vec![view("amber-quiet-heron", State::Ended, 120, false)],
+        ..Fake::default()
+    };
+    ready(sweep(&mut fake, &request(true))).unwrap();
+    assert_eq!(
+        fake.asked,
+        vec![
+            ("amber-quiet-heron".to_string(), false, Scope::Purge),
+            ("amber-quiet-heron".to_string(), true, Scope::Purge),
+        ]
+    );
+}
+
+// Untouched needs both: nothing captured AND already purged.
+#[test]
+fn a_session_with_only_one_of_the_emptied_marks_is_still_decided() {
+    let mut uncaptured = view("amber-quiet-heron", State::Ended, 120, false);
+    uncaptured.captured = None;
+    let mut purged = view("brisk-quiet-heron", State::Ended, 120, false);
+    purged.record.purged_at = Some(at(NOW - 100 * DAY));
+    let mut fake = Fake {
+        views: vec![uncaptured, purged],
+        ..Fake::default()
+    };
+    let report = ready(sweep(&mut fake, &request(false))).unwrap();
+    assert_eq!(report.untouched, 0);
+    assert_eq!(report.rows.len(), 2);
+}
+
+// A session that ended exactly at the purge age is old enough.
+#[test]
+fn a_session_active_exactly_at_the_purge_age_is_purged() {
+    let mut fake = Fake {
+        views: vec![view("amber-quiet-heron", State::Ended, 90, false)],
+        ..Fake::default()
+    };
+    let report = ready(sweep(&mut fake, &request(false))).unwrap();
+    assert_eq!(report.rows[0].verdict, Verdict::Planned);
+}
+
+// The bytes of a row are written only when there are some.
+#[test]
+fn zero_bytes_are_skipped_and_others_are_not() {
+    assert!(crate::sweep::is_zero(&0));
+    assert!(!crate::sweep::is_zero(&1));
+    assert!(!crate::sweep::is_zero(&10));
+}

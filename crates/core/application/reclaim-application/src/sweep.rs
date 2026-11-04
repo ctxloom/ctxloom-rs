@@ -77,7 +77,7 @@ pub struct SweepRow {
     pub bytes: u64,
 }
 
-fn is_zero(n: &u64) -> bool {
+pub(crate) fn is_zero(n: &u64) -> bool {
     *n == 0
 }
 
