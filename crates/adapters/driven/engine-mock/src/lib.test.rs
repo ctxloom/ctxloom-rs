@@ -206,3 +206,202 @@ fn test_the_wiring_is_read_off_the_mock_files() {
         }
     );
 }
+
+#[test]
+fn test_only_a_name_that_stays_inside_is_safe_to_make_a_path_of() {
+    for ok in ["a", "a/b", "a.b", "a/b/c.md", "..a", ".hidden"] {
+        assert!(safe(ok), "{ok}");
+    }
+    for bad in [
+        "", "/a", "a\\b", "a//b", "a/", "/", "./a", "a/./b", "a/..", "../a", "a/../b",
+    ] {
+        assert!(!safe(bad), "{bad}");
+    }
+}
+
+#[test]
+fn test_a_bare_hook_is_written_as_a_command_hook_with_nothing_else() {
+    assert_eq!(
+        hook_json("mock", &Hook::default()),
+        Json::object([("type", Json::text("command"))])
+    );
+    // A zero or negative timeout is no timeout.
+    for timeout in [0, -1] {
+        let hook = Hook {
+            timeout,
+            ..Hook::default()
+        };
+        assert_eq!(
+            hook_json("mock", &hook),
+            Json::object([("type", Json::text("command"))])
+        );
+    }
+}
+
+#[test]
+fn test_every_field_of_a_hook_is_written_where_it_is_set() {
+    let hook = Hook {
+        kind: "prompt".into(),
+        command: "run".into(),
+        args: vec!["a".into(), "b".into()],
+        prompt: "p".into(),
+        timeout: 1,
+        tool: "shell".into(),
+        matcher: "Bash".into(),
+        ..Hook::default()
+    };
+    assert_eq!(
+        hook_json("mock", &hook),
+        Json::object([
+            ("type", Json::text("prompt")),
+            ("command", Json::text("run")),
+            ("args", Json::strings(["a", "b"])),
+            ("prompt", Json::text("p")),
+            ("timeout", Json::Number("1".into())),
+            ("tool", Json::text("shell")),
+            ("matcher", Json::text("Bash")),
+        ])
+    );
+    for (field, hook) in [
+        (
+            "command",
+            Hook {
+                command: "c".into(),
+                ..Hook::default()
+            },
+        ),
+        (
+            "prompt",
+            Hook {
+                prompt: "c".into(),
+                ..Hook::default()
+            },
+        ),
+        (
+            "tool",
+            Hook {
+                tool: "c".into(),
+                ..Hook::default()
+            },
+        ),
+        (
+            "matcher",
+            Hook {
+                matcher: "c".into(),
+                ..Hook::default()
+            },
+        ),
+    ] {
+        let doc = hook_json("mock", &hook);
+        let Json::Object(members) = doc else { panic!() };
+        assert_eq!(members.len(), 2, "{field}");
+    }
+}
+
+#[test]
+fn test_only_a_callback_is_given_the_engine_and_never_twice() {
+    let args = |doc: Json| doc.get("args").cloned();
+    let callback = Hook {
+        command: "ctxloom".into(),
+        args: vec!["hook".into(), "x".into()],
+        ..Hook::default()
+    };
+    assert_eq!(
+        args(hook_json("mock", &callback)),
+        Some(Json::strings(["hook", "x", "--engine", "mock"]))
+    );
+    let named = Hook {
+        args: vec!["hook".into(), "--engine".into(), "other".into()],
+        ..callback.clone()
+    };
+    assert_eq!(
+        args(hook_json("mock", &named)),
+        Some(Json::strings(["hook", "--engine", "other"]))
+    );
+    let foreign = Hook {
+        command: "other".into(),
+        args: vec!["hook".into()],
+        ..Hook::default()
+    };
+    assert_eq!(
+        args(hook_json("mock", &foreign)),
+        Some(Json::strings(["hook"]))
+    );
+    let bare = Hook {
+        command: "ctxloom".into(),
+        ..Hook::default()
+    };
+    assert_eq!(args(hook_json("mock", &bare)), None);
+}
+
+#[test]
+fn test_an_mcp_server_is_written_with_only_the_fields_it_has() {
+    let server = |name: &str, command: &str, args: &[&str], url: &str| surface_ports::McpServer {
+        name: name.into(),
+        command: command.into(),
+        args: args.iter().map(|s| s.to_string()).collect(),
+        url: url.into(),
+        ..Default::default()
+    };
+    let inputs = Inputs {
+        mcp: vec![
+            server("full", "run", &["a"], "http://x"),
+            server("cmd", "run", &[], ""),
+            server("args", "", &["a"], ""),
+            server("url", "", &[], "http://x"),
+            server("none", "", &[], ""),
+        ],
+        ..Inputs::default()
+    };
+    let planned = Mock::standard().plan(Kind::Mcp, &inputs).unwrap();
+    let Claim::Whole { bytes, .. } = &planned.claims[0] else {
+        panic!()
+    };
+    let doc = Json::parse(&String::from_utf8(bytes.clone()).unwrap()).unwrap();
+    let servers = doc.get("mcpServers").unwrap();
+    assert_eq!(
+        servers.get("full").unwrap(),
+        &Json::object([
+            ("command", Json::text("run")),
+            ("args", Json::strings(["a"])),
+            ("url", Json::text("http://x")),
+        ])
+    );
+    assert_eq!(
+        servers.get("cmd").unwrap(),
+        &Json::object([("command", Json::text("run"))])
+    );
+    assert_eq!(
+        servers.get("args").unwrap(),
+        &Json::object([("args", Json::strings(["a"]))])
+    );
+    assert_eq!(
+        servers.get("url").unwrap(),
+        &Json::object([("url", Json::text("http://x"))])
+    );
+    assert_eq!(servers.get("none").unwrap(), &Json::object::<&str>([]));
+}
+
+#[test]
+fn test_a_hook_file_is_ctxloom_wiring_only_for_the_bare_ctxloom_hook_command() {
+    let wired = |hooks: &str| {
+        Mock::standard()
+            .wiring(
+                &Files(BTreeMap::from([(
+                    ".mock/hooks.json".to_string(),
+                    hooks.as_bytes().to_vec(),
+                )])),
+                "t",
+            )
+            .unwrap()
+            .hooks_present
+    };
+    assert!(wired(
+        r#"{"e": [{"command": "ctxloom", "args": ["hook"]}]}"#
+    ));
+    assert!(!wired(
+        r#"{"e": [{"command": "ctxloom", "args": ["other"]}]}"#
+    ));
+    assert!(!wired(r#"{"e": [{"command": "other", "args": ["hook"]}]}"#));
+    assert!(!wired(r#"{"e": [{"command": "ctxloom"}]}"#));
+}

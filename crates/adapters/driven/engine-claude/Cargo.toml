@@ -8,6 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+ctxloom-ports.workspace = true
 surface-ports.workspace = true
 
 [dev-dependencies]

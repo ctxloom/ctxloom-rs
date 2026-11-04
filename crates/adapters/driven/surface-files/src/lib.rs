@@ -15,10 +15,12 @@
 mod record;
 mod render;
 
-use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
+use file_system::{Fs, Kind as FileKind, Perms};
+use os::Mode;
 use surface_ports::{
     Claim, Delivered, ForeignFiles, Inspected, Kind, Released, SurfaceError, SurfaceStore,
 };
@@ -27,14 +29,16 @@ use record::{FileRecord, Owned, Record};
 
 /// The store over the process's filesystem.
 pub struct SurfaceFiles {
+    fs: Arc<dyn Fs>,
     /// The home's `records/` directory.
     records: PathBuf,
 }
 
 impl SurfaceFiles {
-    /// A store keeping its records in `records`.
-    pub fn new(records: impl Into<PathBuf>) -> SurfaceFiles {
+    /// A store over `fs`, keeping its records in `records`.
+    pub fn new(fs: Arc<dyn Fs>, records: impl Into<PathBuf>) -> SurfaceFiles {
         SurfaceFiles {
+            fs,
             records: records.into(),
         }
     }
@@ -55,7 +59,7 @@ impl SurfaceFiles {
 
     fn load(&self, target: &str) -> Result<Record, SurfaceError> {
         let path = self.record_path(target);
-        match fs::read_to_string(&path) {
+        match self.fs.read_to_string(&path) {
             Ok(text) => Record::decode(&path.display().to_string(), &text),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Record::default()),
             Err(e) => Err(io_error(&path, &e)),
@@ -65,12 +69,12 @@ impl SurfaceFiles {
     fn save(&self, target: &str, record: &Record) -> Result<(), SurfaceError> {
         let path = self.record_path(target);
         if record.files.is_empty() {
-            return match fs::remove_file(&path) {
+            return match self.fs.remove_file(&path) {
                 Err(e) if e.kind() != io::ErrorKind::NotFound => Err(io_error(&path, &e)),
                 _ => Ok(()),
             };
         }
-        write(&path, record.encode(target).as_bytes(), false)
+        write(&*self.fs, &path, record.encode(target).as_bytes(), false)
     }
 }
 
@@ -97,8 +101,8 @@ fn below(target: &str, rel: &str) -> Result<PathBuf, SurfaceError> {
     Ok(Path::new(target).join(path))
 }
 
-fn read(path: &Path) -> Result<Option<Vec<u8>>, SurfaceError> {
-    match fs::read(path) {
+fn read(fs: &dyn Fs, path: &Path) -> Result<Option<Vec<u8>>, SurfaceError> {
+    match fs.read(path) {
         Ok(bytes) => Ok(Some(bytes)),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(io_error(path, &e)),
@@ -106,43 +110,30 @@ fn read(path: &Path) -> Result<Option<Vec<u8>>, SurfaceError> {
 }
 
 /// `bytes` written whole and atomically, its directories made; an existing
-/// file keeps its mode.
-fn write(path: &Path, bytes: &[u8], executable: bool) -> Result<(), SurfaceError> {
+/// file keeps its mode unless `executable` asks for 0755 (a new file is 0644).
+fn write(fs: &dyn Fs, path: &Path, bytes: &[u8], executable: bool) -> Result<(), SurfaceError> {
     let fail = |e: io::Error| io_error(path, &e);
     if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(fail)?;
+        fs.create_dir_all(dir, Mode::DIR).map_err(fail)?;
     }
-    let mut temp = path.as_os_str().to_owned();
-    temp.push(".ctxloom-tmp");
-    let temp = PathBuf::from(temp);
-    fs::write(&temp, bytes).map_err(fail)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mode = match fs::metadata(path) {
-            Ok(held) if !executable => held.permissions().mode() & 0o777,
-            _ if executable => 0o755,
-            _ => 0o644,
-        };
-        fs::set_permissions(&temp, fs::Permissions::from_mode(mode)).map_err(fail)?;
-    }
-    #[cfg(not(unix))]
-    let _ = executable;
-    fs::rename(&temp, path).map_err(|e| {
-        let _ = fs::remove_file(&temp);
-        fail(e)
-    })
+    let perms = if executable {
+        Perms::Exact(Mode::from_bits(0o755))
+    } else {
+        Perms::KeepOr(Mode::FILE)
+    };
+    fs.write_atomic(path, bytes, perms).map_err(fail)
 }
 
 /// A file removed, and the directories it leaves empty (never the target).
-fn remove(target: &str, path: &Path) -> Result<(), SurfaceError> {
-    match fs::remove_file(path) {
+fn remove(fs: &dyn Fs, target: &str, path: &Path) -> Result<(), SurfaceError> {
+    match fs.remove_file(path) {
         Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(io_error(path, &e)),
         _ => {}
     }
     let mut dir = path.parent();
     while let Some(d) = dir {
-        if d == Path::new(target) || fs::remove_dir(d).is_err() {
+        let empty = fs.read_dir(d).is_ok_and(|entries| entries.is_empty());
+        if d == Path::new(target) || !empty || fs.remove_dir_all(d).is_err() {
             break;
         }
         dir = d.parent();
@@ -162,16 +153,18 @@ impl SurfaceFiles {
     /// `dry`. `rec` is the file's record with the claims already changed;
     /// `prior` the claims it held before.
     fn settle(
+        &self,
         target: &str,
         rel: &str,
         mut rec: FileRecord,
         prior: &[Owned],
-        known: bool,
         dry: bool,
         left: &mut Vec<String>,
     ) -> Result<Settled, SurfaceError> {
+        // The file is known when the record already held claims in it.
+        let known = !prior.is_empty();
         let path = below(target, rel)?;
-        let current = read(&path)?;
+        let current = read(&*self.fs, &path)?;
         // What the file held before ctxloom's claims, unless somebody has
         // changed it since: then ctxloom's old entries are cut out of what it
         // holds now.
@@ -201,8 +194,8 @@ impl SurfaceFiles {
             };
             if !dry && changed {
                 match &base {
-                    Some(bytes) => write(&path, bytes, false)?,
-                    None => remove(target, &path)?,
+                    Some(bytes) => write(&*self.fs, &path, bytes, false)?,
+                    None => remove(&*self.fs, target, &path)?,
                 }
             }
             return Ok(Settled {
@@ -224,7 +217,7 @@ impl SurfaceFiles {
         });
         let changed = current.as_deref() != Some(bytes.as_slice());
         if !dry && changed {
-            write(&path, &bytes, executable)?;
+            write(&*self.fs, &path, &bytes, executable)?;
         }
         rec.written = bytes;
         Ok(Settled {
@@ -246,13 +239,21 @@ impl SurfaceFiles {
         let mut record = self.load(target)?;
         let mut touched: Vec<String> = Vec::new();
         let mut prior: std::collections::BTreeMap<String, Vec<Owned>> = Default::default();
+        // Where each file held the claims being replaced: they go back in
+        // that place, so that delivering a kind again leaves the file as it
+        // was, whichever kinds were delivered after it.
+        let mut slot: std::collections::BTreeMap<String, usize> = Default::default();
         for (rel, file) in &mut record.files {
             let before = file.claims.clone();
+            let first = before
+                .iter()
+                .position(|o| o.engine == engine && o.kind == kind);
             file.claims
                 .retain(|o| !(o.engine == engine && o.kind == kind));
             if file.claims.len() != before.len() {
                 touched.push(rel.clone());
                 prior.insert(rel.clone(), before);
+                slot.extend(first.map(|at| (rel.clone(), at)));
             }
         }
         for claim in claims {
@@ -267,26 +268,29 @@ impl SurfaceFiles {
                     Vec::new()
                 }
             });
-            file.claims.push(Owned {
-                engine: engine.to_string(),
-                kind,
-                claim: claim.clone(),
-            });
+            let at = slot
+                .get(&rel)
+                .map_or(file.claims.len(), |at| (*at).min(file.claims.len()));
+            file.claims.insert(
+                at,
+                Owned {
+                    engine: engine.to_string(),
+                    kind,
+                    claim: claim.clone(),
+                },
+            );
+            slot.insert(rel.clone(), at + 1);
             if !touched.contains(&rel) {
                 touched.push(rel);
             }
         }
-        let known: Vec<bool> = touched
-            .iter()
-            .map(|rel| prior.get(rel).is_some_and(|p| !p.is_empty()))
-            .collect();
         let mut left = Vec::new();
         let mut changed = false;
         let mut next = record.clone();
-        for (rel, known) in touched.iter().zip(known) {
+        for rel in &touched {
             let rec = record.files.get(rel).cloned().unwrap_or_default();
             let before = prior.get(rel).cloned().unwrap_or_default();
-            let settled = Self::settle(target, rel, rec, &before, known, dry, &mut left)?;
+            let settled = self.settle(target, rel, rec, &before, dry, &mut left)?;
             changed |= settled.changed;
             match settled.record {
                 Some(rec) => {
@@ -348,16 +352,16 @@ impl SurfaceStore for SurfaceFiles {
     }
 
     fn read(&self, target: &str, rel: &str) -> Result<Option<Vec<u8>>, SurfaceError> {
-        read(&below(target, rel)?)
+        read(&*self.fs, &below(target, rel)?)
     }
 
     fn read_absolute(&self, path: &str) -> Result<Option<Vec<u8>>, SurfaceError> {
-        read(Path::new(path))
+        read(&*self.fs, Path::new(path))
     }
 
     fn inspect(&self, target: &str) -> Result<Inspected, SurfaceError> {
-        match fs::metadata(target) {
-            Ok(meta) if meta.is_dir() => Ok(Inspected::Directory),
+        match self.fs.metadata(Path::new(target)) {
+            Ok(meta) if meta.kind == FileKind::Dir => Ok(Inspected::Directory),
             Ok(_) => Ok(Inspected::Other),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Inspected::Missing),
             Err(e) => Err(io_error(Path::new(target), &e)),
@@ -367,16 +371,16 @@ impl SurfaceStore for SurfaceFiles {
 
 impl ForeignFiles for SurfaceFiles {
     fn read(&self, path: &str) -> Result<Option<Vec<u8>>, SurfaceError> {
-        read(Path::new(path))
+        read(&*self.fs, Path::new(path))
     }
 
     fn write(&self, path: &str, bytes: &[u8]) -> Result<(), SurfaceError> {
-        write(Path::new(path), bytes, false)
+        write(&*self.fs, Path::new(path), bytes, false)
     }
 
     fn record(&self, path: &str) -> Result<Option<String>, SurfaceError> {
         let at = self.foreign_record(path);
-        match fs::read_to_string(&at) {
+        match self.fs.read_to_string(&at) {
             Ok(text) => Ok(Some(text)),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(io_error(&at, &e)),
@@ -385,7 +389,7 @@ impl ForeignFiles for SurfaceFiles {
 
     fn write_record(&self, path: &str, text: &str) -> Result<String, SurfaceError> {
         let at = self.foreign_record(path);
-        write(&at, text.as_bytes(), false)?;
+        write(&*self.fs, &at, text.as_bytes(), false)?;
         Ok(at.display().to_string())
     }
 }

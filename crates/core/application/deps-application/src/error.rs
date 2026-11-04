@@ -61,6 +61,9 @@ pub enum AppError {
     NotRemoteReference { reference: String },
     /// A clone that could not be read for a bundle.
     Unreadable { what: String, detail: String },
+    /// The project refresh a consented pull ran was refused or failed; the
+    /// pull itself landed.
+    RefreshAborted { detail: String },
 }
 
 impl AppError {
@@ -69,9 +72,11 @@ impl AppError {
         AppError::Cause(Box::new(error))
     }
 
-    /// The exit code: 1 failed, 2 refused before any state was read.
+    /// The exit code: 1 failed, 2 refused before any state was read, 3 the
+    /// project refresh was refused.
     pub fn exit_code(&self) -> u8 {
         match self {
+            AppError::RefreshAborted { .. } => 3,
             AppError::Required { .. }
             | AppError::DefaultNeedsName
             | AppError::PullRequestNeedsForge { .. }
@@ -114,6 +119,7 @@ impl Diagnostic for AppError {
             AppError::CloneNotRefreshed { .. } => code!("clone-not-refreshed"),
             AppError::NotRemoteReference { .. } => code!("not-remote-reference"),
             AppError::Unreadable { .. } => code!("unreadable"),
+            AppError::RefreshAborted { .. } => code!("refresh-aborted"),
         }
     }
 
@@ -125,6 +131,7 @@ impl Diagnostic for AppError {
                 ("detail", detail.as_str().into()),
             ],
             AppError::Required { what } => vec![("what", what.as_str().into())],
+            AppError::RefreshAborted { detail } => vec![("detail", detail.as_str().into())],
             AppError::NotRegistered { url } => vec![("url", url.as_str().into())],
             AppError::Conflict { text } => vec![("text", text.as_str().into())],
             AppError::PullFailed { count, refs } => {
@@ -318,6 +325,9 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(AppError::Unreadable {
             what: s("demo"),
             detail: s("no bundle.yaml"),
+        }),
+        Box::new(AppError::RefreshAborted {
+            detail: s("hooks: refusing to write .claude/settings.json"),
         }),
         Box::new(Notice::with_fix("fetch failed", "retry")),
         Box::new(Notice::unlisted(

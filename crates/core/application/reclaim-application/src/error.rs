@@ -84,3 +84,7 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         value: "soon".to_string(),
     })]
 }
+
+#[cfg(test)]
+#[path = "error.test.rs"]
+mod tests;

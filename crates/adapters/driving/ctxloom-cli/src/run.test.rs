@@ -20,8 +20,8 @@ use sessions_application::{
 use super::*;
 
 /// What the fake extension is told to answer.
-struct Fake {
-    answer: Result<u8, u8>,
+pub(crate) struct Fake {
+    pub(crate) answer: Result<u8, u8>,
 }
 
 impl Extension for Fake {
@@ -59,7 +59,7 @@ impl Extension for Fake {
 }
 
 /// No sessions: a command line test of an extension never reaches them.
-struct NoSessions;
+pub(crate) struct NoSessions;
 
 impl SessionService for NoSessions {
     async fn list(&mut self, _: ListQuery) -> Result<Vec<View>, AppError> {
@@ -107,7 +107,7 @@ impl ImportService for NoSessions {
     }
 }
 
-struct Wire(Fake, NoSessions);
+pub(crate) struct Wire(pub(crate) Fake, pub(crate) NoSessions);
 
 impl Services for Wire {
     type Sessions = NoSessions;
@@ -371,15 +371,7 @@ fn test_no_extension_adds_no_nouns_and_answers_success() {
     let mut none = NoExtension;
     assert!(none.nouns().is_empty());
     let matches = Command::new("x").get_matches_from(["x"]);
-    let call = Call {
-        matches: &matches,
-        explicit_format: None,
-        default_format: Format::Json,
-        stdout_is_terminal: false,
-        degraded: false,
-        no_companions: false,
-        config_set: Vec::new(),
-    };
+    let call = Call::new(&matches, None, Format::Json);
     let catalog = Catalog::en_us(&[crate::EN_US]).unwrap();
     let ran = none.run("x", &call, &catalog, &mut Vec::new(), &mut Vec::new());
     assert!(matches!(ran, Ok(0)));

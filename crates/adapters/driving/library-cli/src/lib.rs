@@ -12,15 +12,15 @@
 
 mod commands;
 pub mod inert;
-mod notices;
 mod text;
 mod write;
 
 use std::io::{self, Write};
 
 use angzarr_diagnostic::Diagnostic;
-use angzarr_presentation::{write_json, Catalog, Format};
+use angzarr_presentation::{Catalog, Format};
 use clap::ArgMatches;
+use cli_support::{flag, many, one, say_notices};
 use library_application::{
     AppError, AssembleRequest, ConfigShown, Flags, ItemKind, Library, Notice, RunRequest,
     SearchRequest,
@@ -32,35 +32,22 @@ pub use commands::nouns;
 /// The program's name, for the warnings.
 const PROG: &str = "ctxloom";
 
-/// One command, as this crate is asked to run it.
-pub struct Call<'a> {
-    /// The matches of the whole command line.
-    pub matches: &'a ArgMatches,
-    /// The `--format` the line gave, if any.
-    pub explicit_format: Option<Format>,
-    /// Text on a terminal, json off one.
-    pub default_format: Format,
-    pub stdout_is_terminal: bool,
-    pub degraded: bool,
-    pub no_companions: bool,
-    pub config_set: Vec<String>,
+pub use cli_support::{Call, Failure};
+
+/// An application error as the failure it ends the command in.
+trait IntoFailure {
+    fn into_failure(self) -> Failure;
 }
 
-/// Why a command did not complete, and its exit code.
-#[derive(Debug)]
-pub struct Failure {
-    pub cause: Box<dyn Diagnostic>,
-    pub exit: u8,
-}
-
-impl From<AppError> for Failure {
-    fn from(error: AppError) -> Failure {
-        let exit = error.exit_code();
-        Failure {
-            cause: Box::new(error),
-            exit,
-        }
+impl IntoFailure for AppError {
+    fn into_failure(self) -> Failure {
+        let exit = self.exit_code();
+        Failure::new(self, exit)
     }
+}
+
+fn failed(error: AppError) -> Failure {
+    error.into_failure()
 }
 
 /// Everything a command needs to answer.
@@ -107,7 +94,7 @@ pub fn run(
         .matches
         .subcommand()
         .filter(|(name, _)| *name == noun)
-        .ok_or_else(|| Failure::from(AppError::SearchNothing))?;
+        .ok_or_else(|| failed(AppError::SearchNothing))?;
     dispatch(&cx, noun, sub, out, err)
 }
 
@@ -185,12 +172,12 @@ fn answer<T>(
     err: &mut dyn Write,
     write: impl FnOnce(T, &mut dyn Write, &mut Vec<String>) -> io::Result<u8>,
 ) -> Result<u8, Failure> {
-    notices::say(&outcome.notices, PROG, cx.format, cx.catalog, err);
-    let value = outcome.result.map_err(Failure::from)?;
+    say_notices(&outcome.notices, PROG, cx.format, cx.catalog, err);
+    let value = outcome.result.map_err(failed)?;
     let mut inert = Vec::new();
     let code = write(value, out, &mut inert).map_err(output_failure)?;
     let said: Vec<Notice> = inert.into_iter().map(Notice::text).collect();
-    notices::say(&said, PROG, cx.format, cx.catalog, err);
+    say_notices(&said, PROG, cx.format, cx.catalog, err);
     Ok(code)
 }
 
@@ -221,45 +208,19 @@ impl Diagnostic for OutputFailure {
     }
 }
 
-/// Write `value` as json, or as `text` says.
+/// Write `value` as json, or as `text` says; the exit code is 0.
 fn emit<T: Serialize>(
     format: Format,
     out: &mut dyn Write,
     value: &T,
     text: impl FnOnce(&mut dyn Write) -> io::Result<()>,
 ) -> io::Result<u8> {
-    match format {
-        Format::Json => write_json(out, value)?,
-        Format::Text => text(out)?,
-    }
+    cli_support::emit(format, out, value, text)?;
     Ok(0)
 }
 
-fn flag(matches: &ArgMatches, name: &str) -> bool {
-    matches
-        .try_get_one::<bool>(name)
-        .ok()
-        .flatten()
-        .copied()
-        .unwrap_or(false)
-}
-
 fn text_arg(matches: &ArgMatches, name: &str) -> String {
-    matches
-        .try_get_one::<String>(name)
-        .ok()
-        .flatten()
-        .cloned()
-        .unwrap_or_default()
-}
-
-fn many_arg(matches: &ArgMatches, name: &str) -> Vec<String> {
-    matches
-        .try_get_many::<String>(name)
-        .ok()
-        .flatten()
-        .map(|values| values.cloned().collect())
-        .unwrap_or_default()
+    one(matches, name).unwrap_or_default()
 }
 
 fn config(
@@ -343,7 +304,7 @@ fn items(
                     command: format!("{kind} show"),
                     format: "json".to_string(),
                 }
-                .into());
+                .into_failure());
             }
             let outcome = cx.library.item_show(
                 &cx.flags,
@@ -495,7 +456,7 @@ fn search(
 ) -> Result<u8, Failure> {
     let request = SearchRequest {
         query: text_arg(sub, "query"),
-        tags: many_arg(sub, "tag"),
+        tags: many(sub, "tag"),
         kind: text_arg(sub, "type"),
         local: flag(sub, "local"),
         remote: flag(sub, "remote"),
@@ -513,9 +474,9 @@ fn context(
     err: &mut dyn Write,
 ) -> Result<u8, Failure> {
     let request = AssembleRequest {
-        profiles: many_arg(sub, "profile"),
-        fragments: many_arg(sub, "fragment"),
-        tags: many_arg(sub, "tag"),
+        profiles: many(sub, "profile"),
+        fragments: many(sub, "fragment"),
+        tags: many(sub, "tag"),
     };
     let outcome = cx.library.assemble(&cx.flags, &request);
     answer(cx, outcome, out, err, |assembled, out, _| {
@@ -532,25 +493,25 @@ fn run_command(
     err: &mut dyn Write,
 ) -> Result<u8, Failure> {
     if !flag(sub, "dry-run") {
-        return Err(AppError::RunNeedsDryRun.into());
+        return Err(AppError::RunNeedsDryRun.into_failure());
     }
     let mut prompt = text_arg(sub, "prompt");
     if prompt.is_empty() {
-        prompt = many_arg(sub, "prompt_words").join(" ");
+        prompt = many(sub, "prompt_words").join(" ");
     }
     let request = RunRequest {
         agent: text_arg(sub, "agent"),
         profile: text_arg(sub, "profile"),
-        fragments: many_arg(sub, "fragment"),
-        tags: many_arg(sub, "tag"),
+        fragments: many(sub, "fragment"),
+        tags: many(sub, "tag"),
         llm: text_arg(sub, "llm"),
         prompt,
         saved_command: text_arg(sub, "command"),
         workspace: text_arg(sub, "workspace"),
     };
     let outcome = cx.library.dry_run(&cx.flags, &request);
-    notices::say(&outcome.notices, PROG, cx.format, cx.catalog, err);
-    let previewed = outcome.result.map_err(Failure::from)?;
+    say_notices(&outcome.notices, PROG, cx.format, cx.catalog, err);
+    let previewed = outcome.result.map_err(failed)?;
     emit(cx.format, out, &previewed.plan, |out| {
         text::dry_run(out, &previewed.plan)
     })
@@ -558,7 +519,7 @@ fn run_command(
     if previewed.fatal.is_empty() {
         return Ok(0);
     }
-    Err(AppError::aborted(&previewed.fatal).into())
+    Err(AppError::aborted(&previewed.fatal).into_failure())
 }
 
 #[cfg(test)]

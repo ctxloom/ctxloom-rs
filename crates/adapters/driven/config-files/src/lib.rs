@@ -215,13 +215,7 @@ fn write_file(fs: &dyn Fs, path: &Path, bytes: &[u8], perms: Perms) -> Result<()
 impl ScaffoldFs {
     /// `rel` below the app dir, or why it is not a path below it.
     fn below(&self, rel: &str) -> Result<PathBuf, Failure> {
-        let bad = rel.is_empty()
-            || rel.starts_with('/')
-            || rel.contains('\0')
-            || rel
-                .split('/')
-                .any(|p| p.is_empty() || p == "." || p == "..");
-        if bad {
+        if !ctxloom_ports::is_plain_relative(rel) || rel.contains('\0') {
             return Err(Box::new(ConfigFileError::Write {
                 path: rel.to_string(),
                 detail: "not a path below the project's .ctxloom".to_string(),

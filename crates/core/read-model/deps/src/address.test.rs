@@ -222,3 +222,15 @@ fn test_an_address_that_is_not_an_owner_and_a_repository_names_none() {
         assert_eq!(owner_repo(url), None, "{url}");
     }
 }
+
+#[test]
+fn test_an_empty_owner_or_an_empty_repository_names_none() {
+    for url in [
+        "https://github.com//hub",
+        "https://github.com/acme/.git",
+        "https://github.com/acme//",
+        "https://github.com///",
+    ] {
+        assert_eq!(owner_repo(url), None, "{url}");
+    }
+}

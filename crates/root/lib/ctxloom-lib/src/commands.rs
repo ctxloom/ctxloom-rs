@@ -11,17 +11,16 @@ use std::sync::Arc;
 
 use angzarr_presentation::Catalog;
 use clap::Command;
-use config_files::{find_app_dir, Surroundings};
 use content_fs::ContentFs;
 use ctxloom_cli::{Call, Extension, Failure};
 use deps::forge;
 use deps::registry::Registry;
-use deps_application::Deps;
+use deps_application::{Deps, ProjectRefresh, Refresh, RefreshEngine, RefusedKind};
 use deps_files::ProjectFiles;
 use deps_ports::DepsFiles;
 use forge_github::GitHub;
 use remote_git::GitRemotes;
-use setup_application::{Puller, Setup};
+use setup_application::{MaterializeRequest, Puller, Setup};
 use surface_files::SurfaceFiles;
 use surface_ports::Registry as Engines;
 
@@ -36,13 +35,7 @@ const OWN_NOUNS: [&str; 2] = ["remote", "deps"];
 fn build_deps() -> Result<Deps, LibError> {
     let wiring = Wiring::from_process()?;
     let fs = wiring.fs();
-    let around = Surroundings {
-        root_env: std::env::var("CTXLOOM_ROOT").ok(),
-        cwd: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-        home: wiring.home().to_path_buf(),
-        temp_root: std::env::temp_dir(),
-    };
-    let app = find_app_dir(fs.as_ref(), &around);
+    let (_, app) = wiring.locate();
     let files = Arc::new(ProjectFiles::new(Arc::clone(&fs), app.path.clone()));
     Ok(Deps::new(
         Arc::new(
@@ -74,6 +67,60 @@ impl Puller for DepsPuller {
     }
 }
 
+/// The project refresh a consented pull ends with, through `materialize`:
+/// into the project's directory, with the context of an engine whose context
+/// rides the launch left alone. Without consent it is a dry run, and answers
+/// only what would change.
+struct SetupRefresh<'a> {
+    setup: &'a Setup,
+    flags: library_application::Flags,
+}
+
+impl ProjectRefresh for SetupRefresh<'_> {
+    fn refresh(&self, write: bool) -> Result<Refresh, Box<dyn angzarr_diagnostic::Diagnostic>> {
+        let done = self
+            .setup
+            .materialize(&MaterializeRequest {
+                yes: true,
+                dry_run: !write,
+                leave_launch_context: true,
+                flags: self.flags.clone(),
+                ..MaterializeRequest::default()
+            })
+            .map_err(|e| Box::new(e) as Box<dyn angzarr_diagnostic::Diagnostic>)?;
+        let result = done.value;
+        if write {
+            if let Some(first) = result.failures.into_iter().next() {
+                return Err(Box::new(first));
+            }
+            return Ok(Refresh {
+                target: result.target,
+                engines: Vec::new(),
+            });
+        }
+        Ok(Refresh {
+            target: result.target,
+            engines: result
+                .engines
+                .into_iter()
+                .map(|e| RefreshEngine {
+                    engine: e.engine,
+                    wrote: e.wrote,
+                    released: e.released,
+                    refused: e
+                        .refused
+                        .into_iter()
+                        .map(|r| RefusedKind {
+                            kind: r.kind,
+                            cause: Box::new(r.cause),
+                        })
+                        .collect(),
+                })
+                .collect(),
+        })
+    }
+}
+
 /// The engines composed in: claude first (the default), then the mock and its
 /// home-keyed variant.
 pub fn engines() -> Engines {
@@ -91,20 +138,17 @@ fn build_setup(deps: Rc<Deps>) -> Result<Setup, LibError> {
     let fs = wiring.fs();
     let home = wiring.home().to_path_buf();
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let around = Surroundings {
-        root_env: std::env::var("CTXLOOM_ROOT").ok(),
-        cwd: cwd.clone(),
-        home: home.clone(),
-        temp_root: std::env::temp_dir(),
-    };
-    let app = find_app_dir(fs.as_ref(), &around);
+    let (_, app) = wiring.locate();
     let project_dir = match app.source {
         ctxloom_ports::Source::Project => {
             app.path.parent().map_or_else(|| cwd.clone(), PathBuf::from)
         }
         ctxloom_ports::Source::Home => cwd.clone(),
     };
-    let files = Arc::new(SurfaceFiles::new(home.join(".ctxloom/records")));
+    let files = Arc::new(SurfaceFiles::new(
+        Arc::clone(&fs),
+        home.join(".ctxloom/records"),
+    ));
     let library = crate::library::build(Some(deps.clone()))?;
     Ok(Setup::new(
         library,
@@ -213,24 +257,13 @@ impl Commands {
         out: &mut dyn Write,
         err: &mut dyn Write,
     ) -> Result<u8, Failure> {
-        let wired = self.wired().map_err(|e| Failure {
-            cause: Box::new(e),
-            exit: 1,
-        })?;
+        let wired = self.wired().map_err(|e| Failure::new(e, 1))?;
         let uses = setup_cli::UseCases {
             cleaner: &wired.setup.cleaner,
             doctor: &wired.setup.doctor,
             init: &wired.setup.init,
         };
-        let inner = setup_cli::Call {
-            matches: call.matches,
-            explicit_format: call.explicit_format,
-            default_format: call.default_format,
-        };
-        setup_cli::run(&uses, noun, &inner, catalog, out, err).map_err(|f| Failure {
-            cause: f.cause,
-            exit: f.exit,
-        })
+        setup_cli::run(&uses, noun, call, catalog, out, err)
     }
 }
 
@@ -274,42 +307,24 @@ impl Extension for Commands {
             .and_then(|m| m.subcommand_name())
             .unwrap_or_default()
             .to_string();
-        let wired = self.wired().map_err(|e| Failure {
-            cause: Box::new(e),
-            exit: 1,
-        })?;
+        let wired = self.wired().map_err(|e| Failure::new(e, 1))?;
         if SURFACE_NOUNS.contains(&noun) {
-            let inner = surface_cli::Call {
-                matches: call.matches,
-                explicit_format: call.explicit_format,
-                default_format: call.default_format,
-                stdout_is_terminal: call.stdout_is_terminal,
-                degraded: call.degraded,
-                no_companions: call.no_companions,
-                config_set: call.config_set.clone(),
-            };
-            return surface_cli::run(&wired.surface, noun, &inner, catalog, out, err).map_err(
-                |f| Failure {
-                    cause: f.cause,
-                    exit: f.exit,
-                },
-            );
+            return surface_cli::run(&wired.surface, noun, call, catalog, out, err);
         }
         let ours =
             OWN_NOUNS.contains(&noun) || (noun == "bundle" && deps_cli::is_bundle_verb(&verb));
         if !ours {
             return wired.library.run(noun, call, catalog, out, err);
         }
-        let inner = deps_cli::Call {
-            matches: call.matches,
-            explicit_format: call.explicit_format,
-            default_format: call.default_format,
-            stdout_is_terminal: call.stdout_is_terminal,
+        let refresh = SetupRefresh {
+            setup: &wired.surface,
+            flags: library_application::Flags {
+                degraded: call.degraded,
+                config_set: call.config_set.clone(),
+                no_companions: call.no_companions,
+            },
         };
-        deps_cli::run(&wired.deps, noun, &inner, catalog, out, err).map_err(|f| Failure {
-            cause: f.cause,
-            exit: f.exit,
-        })
+        deps_cli::run(&wired.deps, &refresh, noun, call, catalog, out, err)
     }
 }
 

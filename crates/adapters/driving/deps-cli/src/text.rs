@@ -4,6 +4,7 @@
 
 use std::io::{self, Write};
 
+use angzarr_presentation::text;
 use deps_application::{
     Browsed, CheckReport, CheckedRef, DepsListing, Discovered, EditedRemote, HoldResult, Moved,
     PullReport, Pushed, RemoteListing, RemoveResult, UpgradeReport,
@@ -489,13 +490,13 @@ pub fn discovered(out: &mut dyn Write, found: &Discovered, query: &str) -> io::R
         .collect();
     let width = names
         .iter()
-        .map(|name| name.chars().count())
-        .fold("Repository".len(), usize::max);
+        .map(|name| text::width(name))
+        .fold(text::width("Repository"), usize::max);
     let rule = |n: usize| "\u{2500}".repeat(n);
     writeln!(
         out,
-        "  # \u{2502} Forge  \u{2502} {:<width$} \u{2502} Stars \u{2502} Description",
-        "Repository"
+        "  # \u{2502} Forge  \u{2502} {} \u{2502} Stars \u{2502} Description",
+        text::pad("Repository", width)
     )?;
     writeln!(
         out,
@@ -509,10 +510,10 @@ pub fn discovered(out: &mut dyn Write, found: &Discovered, query: &str) -> io::R
     for (at, (repo, name)) in found.repositories.iter().zip(&names).enumerate() {
         writeln!(
             out,
-            "{:>3} \u{2502} {:<6} \u{2502} {:<width$} \u{2502} {:>5} \u{2502} {}",
+            "{:>3} \u{2502} {:<6} \u{2502} {} \u{2502} {:>5} \u{2502} {}",
             at + 1,
             "GitHub",
-            name,
+            text::pad(name, width),
             repo.stars,
             field(&ellipsize(&repo.description, DESCRIPTION_CAP))
         )?;
@@ -562,3 +563,7 @@ pub fn moved(out: &mut dyn Write, moved: &Moved) -> io::Result<()> {
         writeln!(out, "Moved {} -> {}", moved.source, moved.dest)
     }
 }
+
+#[cfg(test)]
+#[path = "text.test.rs"]
+mod tests;

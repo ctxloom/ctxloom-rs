@@ -24,6 +24,7 @@ mod library;
 mod listing;
 mod publish;
 mod pull;
+mod refresh;
 mod registry;
 mod upgrade;
 mod views;
@@ -40,6 +41,7 @@ pub use discover::DiscoverRequest;
 pub use error::diagnostic_samples;
 pub use error::{AppError, Notice, EN_US};
 pub use publish::{MoveRequest, PushRequest};
+pub use refresh::{ProjectRefresh, Pulled, Refresh, RefreshEngine, RefusedKind};
 pub use registry::CreateRequest;
 pub use views::*;
 

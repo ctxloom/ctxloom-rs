@@ -267,3 +267,18 @@ fn test_set_values_are_taken_back_only_when_they_are_still_ours() {
     let theirs = unrender("settings.json", br#"{"env": {"A": "2"}}"#, &[&claim]).unwrap();
     assert!(text_of(theirs).contains("\"2\""));
 }
+
+#[test]
+fn test_cutting_a_pushed_value_out_removes_that_value_and_no_other() {
+    let claim = json_claim(vec![JsonOp::Push {
+        path: vec!["deny".into()],
+        value: Json::text("Edit"),
+    }]);
+    let held = br#"{"deny": ["Bash", "Edit", "Read"]}"#;
+    let back = text_of(unrender("settings.json", held, &[&claim]).unwrap());
+    let doc = Json::parse(&back).unwrap();
+    assert_eq!(
+        doc.get("deny").unwrap(),
+        &Json::Array(vec![Json::text("Bash"), Json::text("Read")])
+    );
+}

@@ -77,8 +77,8 @@ tree still reads, then hands the changes to the port; a refused write has
 written nothing. A config write replaces the section it owns whole, never
 heals a file that does not parse. `loadout --format yaml` is the one yaml
 output; its prose is withheld until the owner rules (D24, D8).
-Skill zips are written and read by `library::write::archive` over flate2 and
-crc32fast (already in the lock); a zip crate is not used.
+Skill zips are written and read by `library::write::archive` over the `zip`
+crate (deflate only, default features off) and crc32fast.
 
 Slice S4 (sessions) adds:
 
@@ -133,6 +133,9 @@ Dependencies point inward; a review refuses a change that breaks these:
 
 - The core depends on nothing outside it: no I/O, async runtime or clock in
   decide, apply or a projection.
+  Pure computation crates are allowed: `surface-ports` links serde_json (with
+  `arbitrary_precision`, so a number keeps the digits it was written in) for
+  its `Json` value's reader and writer.
 - A driven adapter sees only ports (and wire types), never a use case. A
   driving adapter sees only the application layer, never a domain's
   internals. Adapters never depend on each other, except that driving
@@ -247,7 +250,11 @@ taskloom and annals also copied; a change here does not reach them.
 lefthook runs the gates one at a time, stopping at the first failure, and
 shows each gate's pass line and any failure's extract. Gates 1 to 5 run in
 pre-commit; mutation (6) runs in no git hook: it runs by hand while tests
-are written and judged. A failing gate is a
+are written and judged, and is a REQUIRED close-out step: before a batch
+of work reaches the default branch, `just mutants-staged` runs over the whole
+batch's diff (staged against the batch's base) and passes. No hook enforces it
+(a fast-forward of `main` runs none), so merging without it is how 280
+survivors reached `main` once (2026-11-04). A failing gate is a
 finding: fix the cause and commit again; never `--no-verify`, and never
 weaken a gate to get through.
 

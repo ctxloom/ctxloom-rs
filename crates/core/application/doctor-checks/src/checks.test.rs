@@ -93,6 +93,11 @@ fn deps_want_git_and_an_identity() {
     assert_eq!(checks::deps(true, Some(identity)).status, Status::Ok);
     let half = "[user]\n\tname = A\n";
     assert_eq!(checks::deps(true, Some(half)).status, Status::Warn);
+    // Each key is needed on its own, and as a key with a value.
+    let only_email = "[user]\n\temail = a@b.c\n";
+    assert_eq!(checks::deps(true, Some(only_email)).status, Status::Warn);
+    let bare_name = "[user]\n\tname\n\temail = a@b.c\n";
+    assert_eq!(checks::deps(true, Some(bare_name)).status, Status::Warn);
     // The keys count only inside [user].
     let elsewhere = "[alias]\n\tname = x\n\temail = y\n";
     assert_eq!(checks::deps(true, Some(elsewhere)).status, Status::Warn);
@@ -126,6 +131,13 @@ fn the_stale_hooks_row_names_the_event_the_subcommand_and_the_fix() {
         .contains("SessionStart runs `ctxloom hook inject-context`"));
     assert_eq!(check.remedy, "ctxloom doctor --fix");
     assert_eq!(checks::stale_hooks(&[]).status, Status::Ok);
+    assert!(!check.detail.contains("entries in all"), "{}", check.detail);
+    for count in [2, 3] {
+        let many: Vec<_> = (0..count).map(|_| stale[0].clone()).collect();
+        assert!(checks::stale_hooks(&many)
+            .detail
+            .ends_with(&format!("; {count} entries in all")),);
+    }
 }
 
 #[test]

@@ -56,6 +56,10 @@ impl EngineSurfaces for Claude {
         true
     }
 
+    fn context_rides_launch(&self) -> bool {
+        true
+    }
+
     fn plan(&self, kind: Kind, inputs: &Inputs) -> Result<Planned, SurfaceError> {
         let mut planned = Planned::default();
         match kind {
