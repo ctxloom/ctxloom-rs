@@ -22,6 +22,7 @@ mod error;
 pub mod fakes;
 mod items;
 mod json;
+mod package;
 mod profiles;
 mod project;
 mod run;
@@ -41,6 +42,10 @@ pub use items::Kind as ItemKind;
 pub use library::write::loadout::DOCUMENT as LOADOUT;
 pub use library::write::mcp::McpPatch;
 pub use library::write::profile::ProfileEdit;
+pub use package::{
+    EnginePackage, PackageRequest, PackagedCommand, PackagedFile, PackagedHook, PackagedMcp,
+    PackagedSkill,
+};
 pub use project::{Library, Outcome};
 pub use run::{AssembleRequest, Previewed, RunRequest};
 pub use search::SearchRequest;

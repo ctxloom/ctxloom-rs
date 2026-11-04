@@ -1,0 +1,33 @@
+[package]
+name = "setup-cli"
+version = "0.1.0"
+description = "The setup commands (clean, doctor, init, init prompt): arguments in, answers out, no logic"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+angzarr-presentation.workspace = true
+cli-support.workspace = true
+clap.workspace = true
+deps-application.workspace = true
+doctor-checks.workspace = true
+init-application.workspace = true
+reclaim-application.workspace = true
+serde.workspace = true
+sessions-application.workspace = true
+
+[dev-dependencies]
+angzarr-presentation = { workspace = true, features = ["test-support"] }
+ctxloom-ports.workspace = true
+deps-application = { workspace = true, features = ["test-support"] }
+mutants.workspace = true
+
+[features]
+# `diagnostic_samples`, for other crates' catalog tests.
+test-support = []
+
+[lints]
+workspace = true

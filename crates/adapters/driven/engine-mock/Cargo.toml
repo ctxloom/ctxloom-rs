@@ -1,0 +1,18 @@
+[package]
+name = "engine-mock"
+version = "0.1.0"
+description = "The mock engine's surface half (S9): a registered engine with real surfaces of its own, every kind a file a test can read, and the home-keyed variant that carries context alone"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+ctxloom-ports.workspace = true
+surface-ports.workspace = true
+
+[dev-dependencies]
+mutants.workspace = true
+
+[lints]
+workspace = true

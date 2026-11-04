@@ -123,35 +123,12 @@ pub fn resolve(remote_url: &str, label: &str, registry: &Registry) -> Resolved {
 /// port, empty where it is the scheme's own. A different port is a different
 /// server, and must not be handed this forge's endpoint or token.
 fn server(url: &str) -> Option<(String, String)> {
-    let (scheme, rest) = url.split_once("://")?;
-    let authority = rest.split(['/', '?', '#']).next()?;
-    let authority = authority
-        .rsplit_once('@')
-        .map_or(authority, |(_, host)| host);
-    let (host, port) = match authority.rsplit_once(':') {
-        Some((host, port)) if !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) => {
-            (host, port)
-        }
-        _ => (authority, ""),
-    };
-    if host.is_empty() {
-        return None;
-    }
-    let host = host.to_ascii_lowercase();
+    let parsed = url::Url::parse(url).ok()?;
+    let host = parsed.host_str()?.to_ascii_lowercase();
     let host = host.strip_prefix("www.").unwrap_or(&host).to_string();
-    let own = match scheme {
-        "https" => "443",
-        "http" => "80",
-        _ => "",
-    };
-    Some((
-        host,
-        if port == own {
-            String::new()
-        } else {
-            port.to_string()
-        },
-    ))
+    // `Url` drops a special scheme's own port (443 for https, 80 for http).
+    let port = parsed.port().map(|p| p.to_string()).unwrap_or_default();
+    Some((host, port))
 }
 
 #[cfg(test)]

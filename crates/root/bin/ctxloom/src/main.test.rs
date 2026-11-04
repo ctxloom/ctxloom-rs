@@ -180,6 +180,9 @@ mod exit;
 #[path = "format.test.rs"]
 mod format;
 
+#[path = "gherkin.test.rs"]
+mod gherkin;
+
 #[path = "hook.test.rs"]
 mod hook;
 
@@ -230,6 +233,27 @@ mod library_write_skill;
 
 #[path = "session.test.rs"]
 mod session;
+
+#[path = "gherkin_surfaces.test.rs"]
+mod gherkin_surfaces;
+
+#[path = "manage.test.rs"]
+mod manage;
+
+#[path = "materialize.test.rs"]
+mod materialize;
+
+#[path = "post_tool_hooks.test.rs"]
+mod post_tool_hooks;
+
+#[path = "session_start.test.rs"]
+mod session_start;
+
+#[path = "surfaces.test.rs"]
+mod surfaces;
+
+#[path = "util.test.rs"]
+mod util;
 
 #[path = "usage.test.rs"]
 mod usage;

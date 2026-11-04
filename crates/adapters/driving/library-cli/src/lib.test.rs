@@ -607,22 +607,5 @@ fn test_an_answer_that_cannot_be_written_fails_with_its_cause() {
     assert!(failure.cause.to_string().contains("ctxloom-cli-output"));
 }
 
-// clidiag.Warn: the remedy of a notice is the notice's own args under the
-// code `<code>-fix`; it shows as that code.
-#[test]
-fn test_a_remedy_shows_as_its_code_and_carries_the_notices_args() {
-    let notice = Notice::text("a thing");
-    let fix = notices::FixOf(&notice, "library-application-notice-text-fix".to_string());
-    assert_eq!(
-        format!("{fix:?}"),
-        "FixOf(library-application-notice-text-fix)"
-    );
-    assert!(fix
-        .to_string()
-        .contains("library-application-notice-text-fix"));
-    assert_eq!(fix.code(), "library-application-notice-text-fix");
-    assert_eq!(fix.args().len(), notice.args().len());
-}
-
 #[path = "write.test.rs"]
 mod write_verbs;

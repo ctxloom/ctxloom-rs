@@ -11,6 +11,7 @@ publish.workspace = true
 angzarr-diagnostic.workspace = true
 angzarr-presentation.workspace = true
 angzarr-yaml.workspace = true
+cache-files.workspace = true
 config-files.workspace = true
 content-fs.workspace = true
 editor-process.workspace = true
@@ -22,7 +23,12 @@ library.workspace = true
 library-application.workspace = true
 deps.workspace = true
 deps-application.workspace = true
+init-application.workspace = true
+reclaim-application.workspace = true
+setup-cli.workspace = true
 hook-cli.workspace = true
+setup-application.workspace = true
+surface-ports.workspace = true
 session-cli.workspace = true
 session-files.workspace = true
 sessions-application.workspace = true
@@ -39,12 +45,18 @@ test-support = [
     "ctxloom-store-sqlite/test-support",
     "library/test-support",
     "library-application/test-support",
+    "cache-files/test-support",
+    "init-application/test-support",
+    "reclaim-application/test-support",
+    "setup-cli/test-support",
     "deps/test-support",
     "deps-application/test-support",
     "content-fs/test-support",
     "config-files/test-support",
     "editor-process/test-support",
     "hook-cli/test-support",
+    "setup-application/test-support",
+    "surface-ports/test-support",
     "session-cli/test-support",
     "session-files/test-support",
     "sessions/test-support",
@@ -56,6 +68,8 @@ test-support = [
 forge-github = { workspace = true, features = ["test-support"] }
 # Already pinned in the workspace: the word lists the ids are checked against.
 harp-core.workspace = true
+cucumber.workspace = true
+futures = "0.3"
 serde_json.workspace = true
 tempfile.workspace = true
 

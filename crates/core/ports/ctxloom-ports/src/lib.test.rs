@@ -46,3 +46,15 @@ fn test_a_put_file_is_plain() {
 fn test_a_config_source_ignores_no_root_unless_it_says_so() {
     assert_eq!(NoRootIgnored.ignored_root(), None);
 }
+
+#[test]
+fn test_a_plain_relative_name_has_only_plain_segments() {
+    for ok in ["a", "a/b", "a.b/c-d", ".hidden/x", "a..b"] {
+        assert!(is_plain_relative(ok), "{ok:?}");
+    }
+    for bad in [
+        "", "/", "/a", "a/", "a//b", ".", "..", "a/./b", "a/../b", "../a",
+    ] {
+        assert!(!is_plain_relative(bad), "{bad:?}");
+    }
+}

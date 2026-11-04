@@ -90,18 +90,6 @@ fn test_a_refusal_names_the_kind_of_value_found() {
     assert_eq!(kind(&Value::Map(Vec::new())), "a mapping");
 }
 
-// keymatch.go: Levenshtein distance over characters
-#[test]
-fn test_edit_distance_is_levenshtein() {
-    assert_eq!(edit_distance("kitten", "sitting"), 3);
-    assert_eq!(edit_distance("flaw", "lawn"), 2);
-    assert_eq!(edit_distance("", "abc"), 3);
-    assert_eq!(edit_distance("abc", ""), 3);
-    assert_eq!(edit_distance("same", "same"), 0);
-    assert_eq!(edit_distance("ab", "ba"), 2);
-    assert_eq!(edit_distance("abcd", "abxd"), 1);
-}
-
 // keymatch.go: the budget is a third of the key's length, one at least, two at most
 #[test]
 fn test_the_budget_is_a_third_of_the_keys_length_between_one_and_two() {

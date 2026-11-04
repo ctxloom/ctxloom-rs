@@ -23,6 +23,12 @@ fn catalog() -> Result<Catalog, angzarr_presentation::CatalogError> {
         content_fs::EN_US,
         config_files::EN_US,
         editor_process::EN_US,
+        surface_ports::EN_US,
+        setup_application::EN_US,
+        cache_files::EN_US,
+        init_application::EN_US,
+        reclaim_application::EN_US,
+        setup_cli::EN_US,
     ]);
     Catalog::en_us(&sources)
 }
@@ -54,6 +60,14 @@ impl Services for Wired {
             Some(sessions) => Ok(sessions),
             None => unreachable!("built just above"),
         }
+    }
+
+    fn hooks(
+        &mut self,
+    ) -> Result<Option<Box<dyn hook_cli::HookService + '_>>, Box<dyn angzarr_diagnostic::Diagnostic>>
+    {
+        let hooks = self.library.hooks().map_err(|e| Box::new(e) as _)?;
+        Ok(Some(Box::new(hooks)))
     }
 
     #[cfg(feature = "test-support")]
@@ -125,11 +139,17 @@ impl Services for Wired {
         all.extend(content_fs::diagnostic_samples());
         all.extend(config_files::diagnostic_samples());
         all.extend(editor_process::diagnostic_samples());
+        all.extend(surface_ports::diagnostic_samples());
+        all.extend(setup_application::diagnostic_samples());
         all.extend(session_cli::diagnostic_samples());
         all.extend(hook_cli::diagnostic_samples());
         all.extend(session_files::diagnostic_samples());
         all.extend(sessions_application::diagnostic_samples());
         all.extend(sessions::diagnostic_samples());
+        all.extend(cache_files::diagnostic_samples());
+        all.extend(init_application::diagnostic_samples());
+        all.extend(reclaim_application::diagnostic_samples());
+        all.extend(setup_cli::diagnostic_samples());
         all
     }
 }

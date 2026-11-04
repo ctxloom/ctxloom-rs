@@ -1,0 +1,29 @@
+[package]
+name = "surface-cli"
+version = "0.1.0"
+description = "The setup commands as a driving adapter (S9): manage, materialize and the hidden util config-write, arguments in and answers out"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+angzarr-presentation.workspace = true
+cli-support.workspace = true
+clap.workspace = true
+library-application.workspace = true
+serde.workspace = true
+setup-application.workspace = true
+
+[dev-dependencies]
+angzarr-presentation = { workspace = true, features = ["test-support"] }
+library-application = { workspace = true, features = ["test-support"] }
+serde_json.workspace = true
+surface-ports.workspace = true
+
+[features]
+test-support = ["setup-application/test-support"]
+
+[lints]
+workspace = true

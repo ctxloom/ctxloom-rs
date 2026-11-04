@@ -18,7 +18,7 @@ use sessions::{
 use crate::read::Reading;
 use crate::{
     failed, AppError, BindRequest, Bound, Class, DeadLetter, FilePlan, KeepRequest, Kept, PlanItem,
-    Refusal, Removal, RemoveRequest, RenameRequest, Renamed,
+    Refusal, Removal, RemoveRequest, RenameRequest, Renamed, Scope,
 };
 
 /// A write's way to its sessions and the kernel, borrowed from the service
@@ -278,9 +278,10 @@ where
             .find(request.project.as_deref(), &request.harp)
             .await?;
         let harp = record.harp.clone();
-        let plan = self.plan(&harp)?;
-        let refusal = self.refusal(&record, request.even_if_live)?;
+        let plan = self.plan(&harp, request.scope)?;
+        let refusal = self.refusal(&record, request.even_if_live, request.scope)?;
         let mut removal = Removal {
+            scope: request.scope,
             harp,
             applied: false,
             index_entry_removed: false,
@@ -322,30 +323,41 @@ where
                 .map_err(AppError::Files)?;
             removal.files.bytes_freed = freed;
         }
-        self.commit(&project, &record, ForgetSession {}).await?;
         removal.applied = true;
-        removal.index_entry_removed = true;
+        if request.scope == Scope::Remove {
+            self.commit(&project, &record, ForgetSession {}).await?;
+            removal.index_entry_removed = true;
+        }
         removal.dead_letters = std::mem::take(self.dead_letters);
         Ok(removal)
     }
 
     /// What removing `harp` would do to its files: the machine-written
     /// conversation destroyed, everything else named and left.
-    fn plan(&mut self, harp: &str) -> Result<FilePlan, AppError> {
+    fn plan(&mut self, harp: &str, scope: Scope) -> Result<FilePlan, AppError> {
         let survey = self.read.files.survey(harp).map_err(AppError::Files)?;
         let mut plan = FilePlan::default();
         for file in survey {
-            let machine = file.rel.starts_with("transcripts/") || file.rel.starts_with("native/");
-            let (class, action, reason, into) = if machine {
-                (Class::Machine, "destroy", None, &mut plan.destroy)
-            } else {
-                (
-                    Class::Authored,
-                    "keep",
-                    Some("authored: never destroyed".to_string()),
-                    &mut plan.keep,
-                )
-            };
+            let transcript = file.rel.starts_with("transcripts/");
+            let machine = transcript || file.rel.starts_with("native/");
+            let (class, action, reason, into) =
+                if machine && (transcript || scope != Scope::Transcript) {
+                    (Class::Machine, "destroy", None, &mut plan.destroy)
+                } else if machine {
+                    (
+                        Class::Machine,
+                        "keep",
+                        Some("not a transcript: `session purge` takes it".to_string()),
+                        &mut plan.keep,
+                    )
+                } else {
+                    (
+                        Class::Authored,
+                        "keep",
+                        Some("authored: never destroyed".to_string()),
+                        &mut plan.keep,
+                    )
+                };
             into.push(PlanItem {
                 path: file.path,
                 rel: file.rel,
@@ -365,17 +377,19 @@ where
         &mut self,
         record: &SessionRecord,
         even_if_live: bool,
+        scope: Scope,
     ) -> Result<Option<Refusal>, AppError> {
         let harp = record.harp.clone();
         let lock = self.read.liveness.lock_state(&harp);
         if lock != LockState::Free && !even_if_live {
             let reason = match lock {
-                LockState::Held => "its lock is held: the owner is running",
+                LockState::Held => "its lock is held: the owner is alive and running",
                 _ => "it has no lock to prove the owner ended",
             };
             return Ok(Some(Refusal::NotProvenDead {
                 harp,
                 reason: reason.to_string(),
+                verb: scope.verb().to_string(),
             }));
         }
         let last_active = self

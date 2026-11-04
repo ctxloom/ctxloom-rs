@@ -291,12 +291,7 @@ fn set_layer(state: &mut State, scope: Scope, text: &str) {
 
 /// A path as a bundle's file name below the tree: slash separated, no escape.
 fn clean(path: &str) -> Result<(), Failure> {
-    let bad = path.is_empty()
-        || path.starts_with('/')
-        || path
-            .split('/')
-            .any(|p| p.is_empty() || p == "." || p == "..");
-    if bad {
+    if !ctxloom_ports::is_plain_relative(path) {
         return fail(&format!("bad path {path}"));
     }
     Ok(())

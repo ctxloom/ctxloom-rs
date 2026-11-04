@@ -1,0 +1,20 @@
+[package]
+name = "doctor-checks"
+version = "0.1.0"
+description = "The deterministic setup checks behind `ctxloom doctor` (S12): the pure checks over file text, and the use case that reads the files and reports"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-yaml.workspace = true
+ctxloom-ports.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+mutants.workspace = true
+
+[lints]
+workspace = true

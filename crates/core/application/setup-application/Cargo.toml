@@ -1,0 +1,28 @@
+[package]
+name = "setup-application"
+version = "0.1.0"
+description = "The Setup inbound port (S9, surface half): manage install/uninstall/check/hooks/statusline/gitignore, materialize, and the session-start and skill-mates callbacks, over the library, the engines' surfaces and the surface store"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+ctxloom-ports.workspace = true
+library.workspace = true
+library-application.workspace = true
+serde.workspace = true
+surface-ports.workspace = true
+
+[dev-dependencies]
+angzarr-presentation = { workspace = true, features = ["test-support"] }
+library-application = { workspace = true, features = ["test-support"] }
+serde_json.workspace = true
+
+[features]
+# `diagnostic_samples`, for other crates' catalog tests.
+test-support = ["surface-ports/test-support"]
+
+[lints]
+workspace = true

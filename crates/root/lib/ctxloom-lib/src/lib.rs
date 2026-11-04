@@ -14,11 +14,13 @@ mod error;
 mod library;
 #[cfg(feature = "test-support")]
 mod seed;
+mod setup;
 
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use config_files::{find_app_dir, AppDir, Surroundings};
 use ctxloom_store_sqlite::{SqliteStores, Stores};
 use file_system::{Fs, Os};
 use harp_names::HarpNames;
@@ -32,9 +34,11 @@ use sessions_application::{
     Service, SessionService, ShowQuery, TranscriptQuery, TranscriptRow, View,
 };
 use system::System;
+
+use crate::library::PathSearch;
 use uuid::Uuid;
 
-pub use commands::Commands;
+pub use commands::{engines, Commands, Hooks};
 pub use core_link::InProcessCore;
 #[cfg(any(test, feature = "test-support"))]
 pub use error::diagnostic_samples;
@@ -178,6 +182,34 @@ impl Wiring {
 
     pub(crate) fn home(&self) -> &std::path::Path {
         &self.home
+    }
+
+    /// Where the process is: the root variable, the working directory, the
+    /// home and the temporary root.
+    pub(crate) fn surroundings(&self) -> Surroundings {
+        Surroundings {
+            root_env: std::env::var("CTXLOOM_ROOT").ok(),
+            cwd: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            home: self.home.clone(),
+            temp_root: std::env::temp_dir(),
+        }
+    }
+
+    /// The surroundings, and the app dir found in them.
+    pub(crate) fn locate(&self) -> (Surroundings, AppDir) {
+        let around = self.surroundings();
+        let app = find_app_dir(self.fs.as_ref(), &around);
+        (around, app)
+    }
+
+    /// The programs on the process's `PATH`, found through the filesystem.
+    pub(crate) fn path_search(&self) -> PathSearch {
+        PathSearch {
+            fs: Arc::clone(&self.fs),
+            dirs: std::env::var_os("PATH")
+                .map(|path| std::env::split_paths(&path).collect())
+                .unwrap_or_default(),
+        }
     }
 
     /// The sessions use cases over the default adapters, in this process's

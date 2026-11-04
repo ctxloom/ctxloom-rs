@@ -7,6 +7,7 @@ use angzarr_diagnostic::Diagnostic;
 use angzarr_presentation::{write_json, Catalog, Format};
 use clap::error::{ContextKind, ContextValue, ErrorKind};
 use clap::{Command, FromArgMatches};
+use cli_support::say_warning;
 use serde::Serialize;
 use sessions_application::{BindRequest, ImportService, SessionService};
 
@@ -33,6 +34,14 @@ pub trait Services {
     /// The sessions use cases, built when first asked for: a command that
     /// needs none (the statusline hook) works where there is no home.
     fn sessions(&mut self) -> Result<&mut Self::Sessions, Box<dyn Diagnostic>>;
+
+    /// The callbacks that answer through the engines' codecs, built when first
+    /// asked for. A build without the setup use cases answers none.
+    fn hooks(
+        &mut self,
+    ) -> Result<Option<Box<dyn hook_cli::HookService + '_>>, Box<dyn Diagnostic>> {
+        Ok(None)
+    }
 
     /// A newly minted session id.
     #[cfg(feature = "test-support")]
@@ -93,7 +102,17 @@ pub fn run(
     let answered = match cli.command {
         Some(Verb::Version) => version(context, format, out),
         Some(Verb::Session(session)) => sessions(&session, format, services, catalog, out, err),
-        Some(Verb::Hook(hook)) => hook_verb(&hook, format, services, catalog, out, err),
+        Some(Verb::Completion(args)) => {
+            let mut command = command.clone();
+            clap_complete::generate(args.shell, &mut command, PROG, out);
+            Ok(())
+        }
+        Some(Verb::Hook(hook)) => {
+            // Some engines report a failed hook if stdin is closed before the
+            // payload is read, so it is read to the end first.
+            let input = std::io::read_to_string(std::io::stdin()).unwrap_or_default();
+            hook_verb(&hook, &input, format, services, catalog, out, err)
+        }
         #[cfg(feature = "test-support")]
         Some(Verb::Test(verb)) => crate::test_commands::run(verb, format, catalog, services, out),
         None => Ok(()),
@@ -170,7 +189,7 @@ fn sessions<S: Services>(
                 let _ = writeln!(err, "{PROG}: {line}");
             }
             for notice in &done.notices {
-                warn(&**notice, format, catalog, err);
+                say_warning(&**notice, PROG, format, catalog, err);
             }
             Ok(())
         }
@@ -224,43 +243,48 @@ impl<S: Services> hook_cli::Binding for Bind<'_, S> {
 /// channel and still succeeds.
 fn hook_verb<S: Services>(
     hook: &hook_cli::Hook,
+    input: &str,
     format: Format,
     services: &mut S,
     catalog: &Catalog,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> Result<(), CliError> {
-    // Some engines report a failed hook if stdin is closed before the payload
-    // is read, so it is read to the end first.
-    let input = std::io::read_to_string(std::io::stdin()).unwrap_or_default();
     let harp = std::env::var("CTXLOOM_SESSION_HARP").unwrap_or_default();
     let written = match hook.verb {
-        hook_cli::HookVerb::Hud => out.write_all(hook_cli::hud(&input, &harp, 0).as_bytes()),
+        hook_cli::HookVerb::Hud => out.write_all(hook_cli::hud(input, &harp, 0).as_bytes()),
         hook_cli::HookVerb::SessionBind => {
             let outcome = hook_cli::session_bind(
                 hook.engine.as_deref(),
-                &input,
+                input,
                 &harp,
                 &mut Bind { services },
             )
             .map_err(|error| CliError::Command { error, exit: 1 })?;
             for warning in &outcome.warnings {
-                warn(warning, format, catalog, err);
+                say_warning(warning, PROG, format, catalog, err);
             }
             out.write_all(outcome.stdout.as_bytes())
+        }
+        hook_cli::HookVerb::SessionStart | hook_cli::HookVerb::SkillMates => {
+            let engine = hook.engine.as_deref().unwrap_or(hook_cli::CLAUDE_CODE);
+            let hooks = services
+                .hooks()
+                .map_err(|error| CliError::Command { error, exit: 1 })?;
+            let answer = match (&hook.verb, hooks) {
+                (_, None) => Ok(String::new()),
+                (hook_cli::HookVerb::SessionStart, Some(hooks)) => {
+                    hooks.session_start(engine, input)
+                }
+                (_, Some(hooks)) => hooks.skill_mates(engine, input),
+            }
+            .map_err(|error| CliError::Command { error, exit: 1 })?;
+            out.write_all(answer.as_bytes())
         }
     };
     written.map_err(|e| CliError::Output {
         detail: e.to_string(),
     })
-}
-
-/// Say `notice` on `err` in `format` and carry on: a warning, not an error.
-fn warn(notice: &dyn Diagnostic, format: Format, catalog: &Catalog, err: &mut dyn Write) {
-    let _ = match format {
-        Format::Json => write_json(err, &catalog.envelope(notice)),
-        Format::Text => writeln!(err, "{PROG}: {}", catalog.message(notice)),
-    };
 }
 
 /// The format `--format` asks for, else the terminal's.
@@ -419,3 +443,7 @@ fn text_error(error: &CliError, catalog: &Catalog, err: &mut dyn Write) -> std::
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "hook.test.rs"]
+mod hook_tests;

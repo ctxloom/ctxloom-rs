@@ -3,21 +3,24 @@
 use std::io::{self, Write};
 
 use angzarr_diagnostic::Diagnostic;
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use angzarr_presentation::{write_json, Format};
+use reclaim_application::{parse_age, ReclaimError, SweepRequest};
 use session_index::View;
 use sessions_application::{
     dead_letter_line, AppError, DeadLetter, ImportRequest, ImportService, KeepRequest, ListQuery,
-    RemoveRequest, RemovedNothing, RenameRequest, SearchQuery, SessionService, ShowQuery, State,
-    TranscriptQuery, STATES,
+    RemoveRequest, RemovedNothing, RenameRequest, Scope, SearchQuery, SessionService, ShowQuery,
+    State, Timestamp, TranscriptQuery, STATES,
 };
 
 use crate::render::{
-    conversation_text, import_text, removal_text, rows_text, show_text, transcripts_text, EditDoc,
-    ImportDoc, KeepDoc, RemovalDoc, Row, ShowDoc, TranscriptsDoc,
+    conversation_text, import_text, removal_text, rows_text, show_text, sweep_text,
+    transcripts_text, EditDoc, ImportDoc, KeepDoc, RemovalDoc, Row, ShowDoc, TranscriptsDoc,
 };
 use crate::{
-    CliFault, EditArgs, ListArgs, RemoveArgs, Session, SessionVerb, Transcript, TranscriptListArgs,
-    TranscriptVerb,
+    CliFault, EditArgs, ListArgs, RemoveArgs, Session, SessionVerb, SweepArgs, Transcript,
+    TranscriptListArgs, TranscriptVerb,
 };
 
 /// A command that completed: what it says on the diagnostic channel besides
@@ -191,7 +194,9 @@ async fn execute<S: SessionService + ImportService>(
             })?;
             Ok(dead_letters(&kept.dead_letters))
         }
-        Some(SessionVerb::Remove(args)) => remove(service, args, format, out).await,
+        Some(SessionVerb::Remove(args)) => remove(service, args, Scope::Remove, format, out).await,
+        Some(SessionVerb::Purge(args)) => remove(service, args, Scope::Purge, format, out).await,
+        Some(SessionVerb::Sweep(args)) => sweep(service, args, format, out).await,
         Some(SessionVerb::Import) => {
             let report = service.import(ImportRequest {}).await.map_err(failure)?;
             wrote(match format {
@@ -252,11 +257,13 @@ async fn edit<S: SessionService>(
 async fn remove<S: SessionService>(
     service: &mut S,
     args: &RemoveArgs,
+    scope: Scope,
     format: Format,
     out: &mut dyn Write,
 ) -> Result<Done, Failure> {
     let removal = service
         .remove(RemoveRequest {
+            scope,
             project: None,
             harp: args.harp.clone(),
             yes: args.yes,
@@ -283,10 +290,77 @@ async fn remove<S: SessionService>(
             ""
         };
         done.notices.push(Box::new(RemovedNothing {
-            command: format!("ctxloom session remove {} --yes{flag}", args.harp),
+            command: format!("ctxloom {} {} --yes{flag}", scope.verb(), args.harp),
         }));
     }
     Ok(done)
+}
+
+/// `session sweep`: report every session's fate, and with `--yes` act on
+/// exactly that.
+async fn sweep<S: SessionService>(
+    service: &mut S,
+    args: &SweepArgs,
+    format: Format,
+    out: &mut dyn Write,
+) -> Result<Done, Failure> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
+    let now = Timestamp {
+        seconds: now,
+        nanos: 0,
+    };
+    let purge_cutoff = args
+        .purge_older_than
+        .as_deref()
+        .map(|age| parse_age("--purge-older-than", age, now))
+        .transpose()
+        .map_err(reclaim_failure)?;
+    let report = reclaim_application::sweep(
+        service,
+        &SweepRequest {
+            all_projects: args.all_projects,
+            purge_cutoff,
+            yes: args.yes,
+        },
+    )
+    .await
+    .map_err(reclaim_failure)?;
+    wrote(match format {
+        Format::Json => write_json(out, &report),
+        Format::Text => sweep_text(&report, out),
+    })?;
+    let mut done = Done::default();
+    let failed = report.counts.get("failed").copied().unwrap_or(0);
+    if args.yes && failed > 0 {
+        return Err(fault(CliFault::SweepFailed { count: failed }));
+    }
+    if !args.yes {
+        let age = args
+            .purge_older_than
+            .as_ref()
+            .map(|age| format!(" --purge-older-than {age}"))
+            .unwrap_or_default();
+        let all = if args.all_projects {
+            " --all-projects"
+        } else {
+            ""
+        };
+        done.notices.push(Box::new(RemovedNothing {
+            command: format!("ctxloom session sweep{all}{age} --yes"),
+        }));
+    }
+    Ok(done)
+}
+
+/// A reclaim use case's failure: its diagnostic and exit code.
+fn reclaim_failure(error: ReclaimError) -> Failure {
+    Failure {
+        exit: error.exit_code(),
+        error: Box::new(error),
+        lines: Vec::new(),
+    }
 }
 
 async fn transcripts<S: SessionService>(
@@ -298,6 +372,9 @@ async fn transcripts<S: SessionService>(
     match &transcript.verb {
         None => transcript_list(service, &TranscriptListArgs::default(), format, out).await,
         Some(TranscriptVerb::List(args)) => transcript_list(service, args, format, out).await,
+        Some(TranscriptVerb::Purge(args)) => {
+            remove(service, args, Scope::Transcript, format, out).await
+        }
         Some(TranscriptVerb::Show(args)) => {
             let text = service.transcript(&args.harp).await.map_err(failure)?;
             wrote(match format {

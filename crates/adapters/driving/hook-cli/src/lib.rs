@@ -7,18 +7,24 @@
 //!   self-id marker as session-start context, then binds the engine's
 //!   session and transcript to the harp.
 //! - `hook hud`: the statusline. Rendering only; it records nothing.
+//! - `hook session-start`: the engine's SessionStart hook. Answers with the
+//!   session-start notices, never the project's context (S9).
+//! - `hook skill-mates`: the engine's PostToolUse hook. Names the linked skills
+//!   a just-completed skill leaves uninvoked this session (S9).
 //!
-//! `hook session-start`, `mail-drain`, `mail-peek`, `skill-mates` and
-//! `permission` arrive with the slices that need them (S1, S9, S10). The
-//! retired `turn-changed` is not a command.
+//! `mail-drain`, `mail-peek` and `permission` arrive with the slices that need
+//! them (S10). The retired `turn-changed` is not a command; `stamp-plan` is
+//! taskloom's (D17).
 //!
-//! Only the claude-code codec exists yet; each engine's codec is its
-//! adapter's (S9).
+//! Each engine's codec is its adapter's (S9): `session-start` and
+//! `skill-mates` reach it through the application ([`HookService`]), by the
+//! engine `--engine` names. `session-bind` still reads claude's payload here.
 
 mod bind;
 mod error;
 mod hud;
 
+use angzarr_diagnostic::Diagnostic;
 use clap::{Args, Subcommand};
 
 pub use bind::{marker, session_bind, session_start_reply, Binding, Outcome, CLAUDE_CODE};
@@ -46,4 +52,18 @@ pub enum HookVerb {
     SessionBind,
     /// Output a formatted statusline for the active agent's HUD (internal: the statusline command)
     Hud,
+    /// Deliver session-start notices to an AI tool's SessionStart hook (internal)
+    SessionStart,
+    /// Name a completed skill's linked skills not yet invoked (internal: the PostToolUse hook)
+    SkillMates,
+}
+
+/// What the new callbacks call: the application's answer to one payload, as
+/// the engine's own wire (one JSON line for stdout).
+pub trait HookService {
+    /// The answer to a SessionStart payload read by `engine`'s codec.
+    fn session_start(&self, engine: &str, payload: &str) -> Result<String, Box<dyn Diagnostic>>;
+
+    /// The answer to a PostToolUse payload read by `engine`'s codec.
+    fn skill_mates(&self, engine: &str, payload: &str) -> Result<String, Box<dyn Diagnostic>>;
 }

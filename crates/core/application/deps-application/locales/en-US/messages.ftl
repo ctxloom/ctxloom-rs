@@ -30,6 +30,8 @@ deps-application-empty-file = refusing to publish empty file { $path }: a 0-byte
 deps-application-empty-file-fix = put content in it or remove it from the bundle, then push again
 deps-application-clone-not-refreshed = the repository could not be fetched, so whether this reference is current is unknown: { $url }: { $detail }
 deps-application-not-remote-reference = reference has no repository URL: { $reference }
+deps-application-refresh-aborted = aborting project refresh: { $detail }
+deps-application-refresh-aborted-fix = the pull itself landed and wrote nothing into the project; fix what is named, then run `ctxloom deps pull --yes` again
 deps-application-unreadable = cannot read { $what }: { $detail }
 # The remedy is the fix's; the message names it so that it is an arg of both.
 deps-application-notice =

@@ -359,6 +359,29 @@ impl Config {
         self.text("config.use_distilled") != "false"
     }
 
+    /// Whether ctxloom manages the HUD statusline (`config.statusline`, on
+    /// unless turned off).
+    pub fn statusline(&self) -> bool {
+        self.text("config.statusline") != "false"
+    }
+
+    /// The engines the project's labels name (`llm.configs.<label>.type`),
+    /// each once, in label order.
+    pub fn configured_engines(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for label in self.label_names() {
+            let kind = self
+                .llm_entry(&label)
+                .and_then(|entry| entry.get("type"))
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if crate::agents::ENGINES.contains(&kind) && !out.iter().any(|e| e == kind) {
+                out.push(kind.to_string());
+            }
+        }
+        out
+    }
+
     /// The names under `companions`.
     pub fn companions(&self) -> Vec<String> {
         list_at(&self.value, "companions")

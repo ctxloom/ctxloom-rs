@@ -19,6 +19,7 @@ serde.workspace = true
 [dev-dependencies]
 angzarr-presentation = { workspace = true, features = ["test-support"] }
 serde_json.workspace = true
+mutants.workspace = true
 
 [features]
 # In-memory ports, and `diagnostic_samples`, for other crates' tests.

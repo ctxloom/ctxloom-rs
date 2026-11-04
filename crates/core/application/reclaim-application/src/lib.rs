@@ -1,0 +1,34 @@
+//! The reclaim use cases (S12): `ctxloom clean` (the project's regenerable
+//! cache) and `ctxloom session sweep` (every ended session of a project,
+//! decided by a fixed table; nothing is decided by a model). Both report
+//! first and act only on `yes`.
+//!
+//! The sweep acts through the sessions use cases (`session purge`), so it
+//! inherits every refusal they make: a session whose lock does not prove it
+//! dead, one marked keep, one whose transcript is within its retention. The
+//! scratch worktrees and the reclaim of the disposable members of old
+//! sessions are S11's and S6's: they are not decided here.
+
+mod age;
+mod clean;
+mod error;
+mod sweep;
+
+pub use age::parse_age;
+pub use clean::{CleanReport, CleanTarget, Cleaner, TARGETS};
+#[cfg(any(test, feature = "test-support"))]
+pub use error::diagnostic_samples;
+pub use error::{ReclaimError, EN_US};
+pub use sweep::{sweep, SweepReport, SweepRequest, SweepRow, Verdict};
+
+#[cfg(test)]
+#[path = "clean.test.rs"]
+mod clean_tests;
+
+#[cfg(test)]
+#[path = "sweep.test.rs"]
+mod sweep_tests;
+
+#[cfg(test)]
+#[path = "age.test.rs"]
+mod age_tests;

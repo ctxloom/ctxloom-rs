@@ -652,3 +652,151 @@ fn test_an_endpoint_that_names_no_token_variable_says_to_give_the_forge_one() {
     );
     assert!(stub.requests().is_empty());
 }
+
+// ------------------------------------------------- the adapter's own parts
+
+#[test]
+fn test_the_debug_form_says_whether_a_proxy_is_used_and_nothing_of_the_token() {
+    let with = GitHub::with_env(|_| Some(TOKEN.to_string()));
+    let shown = format!("{with:?}");
+    assert!(shown.contains("proxy: true"), "{shown}");
+    assert!(!shown.contains(TOKEN), "{shown}");
+    let without = format!("{:?}", with.without_proxy());
+    assert!(without.contains("proxy: false"), "{without}");
+}
+
+#[test]
+fn test_a_branch_name_is_made_new_by_the_clock() {
+    // After 2023-11-14 and before the year 2100: a real clock reading.
+    let now = unix_seconds();
+    assert!(now > 1_700_000_000 && now < 4_102_444_800, "{now}");
+}
+
+#[derive(Debug)]
+struct Layered(&'static str, Option<Box<Layered>>);
+
+impl std::fmt::Display for Layered {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.0)
+    }
+}
+
+impl std::error::Error for Layered {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.1.as_deref().map(|e| e as _)
+    }
+}
+
+#[test]
+fn test_an_error_and_every_cause_under_it_is_one_line() {
+    let error = Layered(
+        "outer",
+        Some(Box::new(Layered(
+            "middle",
+            Some(Box::new(Layered("root", None))),
+        ))),
+    );
+    assert_eq!(chain(&error), "outer: middle: root");
+    assert_eq!(chain(&Layered("alone", None)), "alone");
+}
+
+// A client built with its proxy on goes through the environment's proxy, and
+// one built without never does. The environment is the process's and is read
+// once, so each case runs in a process of its own: this test run again, told
+// which case it is.
+const PROXY_CASE: &str = "CTXLOOM_TEST_PROXY_CASE";
+
+fn search_through_environment_proxy(proxy: bool) -> bool {
+    let github = GitHub::with_env(|_| None);
+    let github = if proxy {
+        github
+    } else {
+        github.without_proxy()
+    };
+    let endpoint = Endpoint {
+        api_url: "http://github.invalid".to_string(),
+        token_vars: Vec::new(),
+    };
+    github.search_repositories(&endpoint, "", 1).is_ok()
+}
+
+#[test]
+fn test_the_proxy_of_the_environment_is_used_unless_the_client_is_made_without_one() {
+    if let Ok(case) = std::env::var(PROXY_CASE) {
+        // The child: report by exit status.
+        let reached = search_through_environment_proxy(case == "on");
+        assert_eq!(reached, case == "on", "case {case}");
+        return;
+    }
+    let me = std::env::current_exe().expect("this test binary");
+    let name = format!(
+        "{}::test_the_proxy_of_the_environment_is_used_unless_the_client_is_made_without_one",
+        module_path!().split_once("::").map_or("", |(_, rest)| rest)
+    );
+    for (case, reaches) in [("on", true), ("off", false)] {
+        let proxy = Stub::replying(200, r#"{"items": []}"#);
+        let out = std::process::Command::new(&me)
+            .args(["--exact", &name, "--nocapture"])
+            .env(PROXY_CASE, case)
+            .env("HTTP_PROXY", proxy.url())
+            .env("http_proxy", proxy.url())
+            .env_remove("NO_PROXY")
+            .env_remove("no_proxy")
+            .output()
+            .expect("the child test");
+        assert!(
+            out.status.success(),
+            "{case}: {}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert_eq!(proxy.requests().len(), usize::from(reaches), "{case}");
+    }
+}
+
+// ------------------------------------------------------------ the stub itself
+
+fn raw(stub: &Stub, request: &str) -> String {
+    use std::io::{Read, Write};
+    let address = stub.url().trim_start_matches("http://").to_string();
+    let mut stream = std::net::TcpStream::connect(address).expect("the stub");
+    stream.write_all(request.as_bytes()).expect("a request");
+    let mut answer = String::new();
+    stream.read_to_string(&mut answer).expect("an answer");
+    answer
+}
+
+#[test]
+fn test_the_stub_refuses_a_write_with_no_credentials_and_one_with_the_wrong_ones() {
+    let post = |auth: &str| {
+        format!("POST /repos/a/b/git/blobs HTTP/1.1\r\n{auth}Content-Length: 0\r\n\r\n")
+    };
+    let open = Stub::github(None, "");
+    assert!(raw(&open, &post("")).starts_with("HTTP/1.1 401"));
+    assert!(raw(&open, &post("Authorization: Bearer any\r\n")).starts_with("HTTP/1.1 201"));
+    let closed = Stub::github(Some("right"), "");
+    assert!(raw(&closed, &post("Authorization: Bearer wrong\r\n")).starts_with("HTTP/1.1 401"));
+    assert!(raw(&closed, &post("Authorization: Bearer right\r\n")).starts_with("HTTP/1.1 201"));
+}
+
+#[test]
+fn test_the_stub_decodes_percent_escapes_and_plus_in_a_query() {
+    let stub = Stub::replying(200, "{}");
+    raw(
+        &stub,
+        "GET /x?a=b%20c%2Fd%25&e=f+g&h=100%zz&i=%2f%41 HTTP/1.1\r\n\r\n",
+    );
+    let seen = &stub.requests()[0];
+    assert_eq!(seen.param("a").as_deref(), Some("b c/d%"));
+    assert_eq!(seen.param("e").as_deref(), Some("f g"));
+    assert_eq!(seen.param("h").as_deref(), Some("100%zz"));
+    assert_eq!(seen.param("i").as_deref(), Some("/A"));
+    assert_eq!(seen.param("missing"), None);
+}
+
+#[test]
+fn test_the_stub_answers_a_request_it_was_started_for() {
+    let stub = Stub::replying(200, "{}");
+    assert!(raw(&stub, "GET /x HTTP/1.1\r\n\r\n").starts_with("HTTP/1.1 200"));
+    assert_eq!(stub.lines(), vec!["GET /x".to_string()]);
+}

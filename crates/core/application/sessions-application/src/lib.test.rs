@@ -592,6 +592,81 @@ fn a_removal_destroys_the_transcript_and_the_index_entry_and_names_what_it_keeps
     );
 }
 
+// session.feature: "The sweep empties a session but does not unlist it"
+// (session purge): the conversation goes, the index entry stays.
+#[test]
+fn a_purge_empties_the_session_and_leaves_it_listed() {
+    let mut svc = service();
+    finished(&mut svc, 1, "amber-swift-owl");
+    let request = RemoveRequest {
+        scope: crate::Scope::Purge,
+        ..remove("amber-swift-owl", true)
+    };
+    let purged = ready(svc.remove(request)).unwrap();
+    assert!(purged.applied && !purged.index_entry_removed);
+    assert!(!svc.files.transcripts.contains_key("amber-swift-owl"));
+    assert_eq!(svc.harps(all()), ["amber-swift-owl"], "still listed");
+}
+
+// session.feature: "--yes destroys the transcript and leaves the output dir"
+// (session transcript purge): the transcripts alone, never native history.
+#[test]
+fn a_transcript_purge_takes_the_transcripts_and_names_the_native_history_it_leaves() {
+    let mut svc = service();
+    finished(&mut svc, 1, "amber-swift-owl");
+    svc.files.others.insert(
+        "amber-swift-owl".to_string(),
+        vec![("native/history.jsonl".to_string(), 12)],
+    );
+    let request = RemoveRequest {
+        scope: crate::Scope::Transcript,
+        ..remove("amber-swift-owl", false)
+    };
+    let plan = ready(svc.remove(request)).unwrap();
+    let destroy: Vec<&str> = plan.files.destroy.iter().map(|i| i.rel.as_str()).collect();
+    assert_eq!(destroy, ["transcripts/transcript.jsonl"]);
+    assert_eq!(plan.files.keep.len(), 1);
+    assert_eq!(plan.files.keep[0].rel, "native/history.jsonl");
+    assert!(plan.files.keep[0]
+        .reason
+        .as_deref()
+        .unwrap()
+        .contains("not a transcript"));
+}
+
+// session.feature: "A session running again is refused by the transcript's own
+// destroyer": the refusal names the command that was run.
+#[test]
+fn the_refusal_names_the_destroyer_that_was_run() {
+    let mut svc = service();
+    svc.seed(
+        HERE,
+        1,
+        "amber-swift-owl",
+        NOW - 70 * DAY,
+        Some(LockState::Held),
+    );
+    for (scope, verb) in [
+        (crate::Scope::Remove, "session remove"),
+        (crate::Scope::Purge, "session purge"),
+        (crate::Scope::Transcript, "session transcript purge"),
+    ] {
+        let request = RemoveRequest {
+            scope,
+            ..remove("amber-swift-owl", true)
+        };
+        match ready(svc.remove(request)).unwrap().refusal {
+            Some(Refusal::NotProvenDead {
+                verb: said, reason, ..
+            }) => {
+                assert_eq!(said, verb);
+                assert!(reason.contains("owner is alive"), "{reason}");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+}
+
 // session.feature: "A transcript within its retention is refused by every
 // destroyer" (session remove): refused, nothing destroyed, the plan shown.
 #[test]
