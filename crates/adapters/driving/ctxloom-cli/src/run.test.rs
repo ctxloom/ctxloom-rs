@@ -58,12 +58,13 @@ impl Extension for Fake {
     }
 }
 
-/// No sessions: a command line test of an extension never reaches them.
+/// No sessions: a command line test of an extension reaches none but `list`,
+/// which answers an empty set.
 pub(crate) struct NoSessions;
 
 impl SessionService for NoSessions {
     async fn list(&mut self, _: ListQuery) -> Result<Vec<View>, AppError> {
-        unreachable!("no session command is run here")
+        Ok(Vec::new())
     }
 
     async fn search(&mut self, _: SearchQuery) -> Result<Vec<View>, AppError> {
@@ -191,6 +192,14 @@ fn test_every_spelling_of_version_agrees() {
         (flag.code, flag.out.as_str()),
         (0, "ctxloom version 1.2.3\n")
     );
+}
+
+// `session list` is run on the sessions use case and its answer written out.
+#[test]
+fn test_a_session_command_is_run_on_the_sessions_use_case() {
+    let ran = go(&["session", "list", "--format", "json"]);
+    assert_eq!(ran.code, 0, "{}", ran.err);
+    assert_eq!(ran.out.trim(), "[]");
 }
 
 // help is an answer, not an error; a bare command prints its help.
