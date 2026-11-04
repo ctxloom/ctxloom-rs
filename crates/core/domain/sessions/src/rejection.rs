@@ -28,10 +28,6 @@ pub enum SessionRejection {
     NoClaim,
     /// A release by a session that does not hold the name.
     NotHolder { harp: String },
-    /// An incarnation owed while another is owed or running.
-    IncarnationOpen { incarnation: u64 },
-    /// An incarnation owed after a stop order.
-    Stopped,
     /// A stop ordered by a child (Go's I2); `depth` is the requester's.
     ChildCannotStop { depth: u64 },
     /// A message the inbox does not hold.
@@ -58,8 +54,6 @@ impl Diagnostic for SessionRejection {
             SessionRejection::NamesTaken { .. } => code!("names-taken"),
             SessionRejection::NoClaim => code!("no-claim"),
             SessionRejection::NotHolder { .. } => code!("not-holder"),
-            SessionRejection::IncarnationOpen { .. } => code!("incarnation-open"),
-            SessionRejection::Stopped => code!("stopped"),
             SessionRejection::ChildCannotStop { .. } => code!("child-cannot-stop"),
             SessionRejection::UnknownMessage { .. } => code!("unknown-message"),
             SessionRejection::AlreadyDelivered { .. } => code!("already-delivered"),
@@ -85,17 +79,12 @@ impl Diagnostic for SessionRejection {
                 ("limit", (*limit).into()),
                 ("length", (*length).into()),
             ],
-            SessionRejection::IncarnationOpen { incarnation } => {
-                vec![("incarnation", (*incarnation).into())]
-            }
             SessionRejection::ChildCannotStop { depth } => vec![("depth", (*depth).into())],
             SessionRejection::UnknownMessage { message_id }
             | SessionRejection::AlreadyDelivered { message_id } => {
                 vec![("message_id", message_id.as_str().into())]
             }
-            SessionRejection::NoSession | SessionRejection::NoClaim | SessionRejection::Stopped => {
-                Vec::new()
-            }
+            SessionRejection::NoSession | SessionRejection::NoClaim => Vec::new(),
         }
     }
 }
@@ -127,8 +116,6 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(SessionRejection::NamesTaken { harp: harp() }),
         Box::new(SessionRejection::NoClaim),
         Box::new(SessionRejection::NotHolder { harp: harp() }),
-        Box::new(SessionRejection::IncarnationOpen { incarnation: 1 }),
-        Box::new(SessionRejection::Stopped),
         Box::new(SessionRejection::ChildCannotStop { depth: 1 }),
         Box::new(SessionRejection::UnknownMessage {
             message_id: "m1".to_string(),

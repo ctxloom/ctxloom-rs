@@ -8,6 +8,10 @@ use crate::{
     SessionEvent, SessionRejection, SessionState, SteerWithdrawn, WithdrawSteer,
 };
 
+/// What mail arriving records: the arrival, then, by continuation on the state
+/// after it (like a relaunch), `IncarnationOwed{n+1, "mail"}` when no
+/// incarnation is open and the session is not stopped (owner ruling
+/// 2026-11-04, S5 review Q1).
 pub(crate) fn arrived(
     held: &SessionState,
     arrive: &RecordMessageArrived,

@@ -20,8 +20,8 @@ use crate::{
     adopted, end_recorded, engine_bound, forgotten, inbox, kept_changed, lifeline, purged, renamed,
     session_minted, AdoptRotations, BindEngineSession, ClaimMessage, DeliverMessage, EndRecorded,
     EngineSessionBound, FailMessage, ForgetSession, IncarnationEnded, IncarnationOwed, KeptChanged,
-    MessageArrived, MessageClaimed, MessageDelivered, MessageFailed, MintSession, OweIncarnation,
-    RecordEnd, RecordIncarnationEnded, RecordMessageArrived, RecordPurge, RenameSession, RenamedTo,
+    MessageArrived, MessageClaimed, MessageDelivered, MessageFailed, MintSession, RecordEnd,
+    RecordIncarnationEnded, RecordMessageArrived, RecordPurge, RenameSession, RenamedTo,
     SessionAdopted, SessionCommand, SessionEvent, SessionForgotten, SessionMinted, SessionPurged,
     SessionRejection, SessionState, SetKept, SteerWithdrawn, StopOrdered, StopSession,
     WithdrawSteer,
@@ -58,9 +58,12 @@ impl SessionAggregate {
         &self,
         cmd: MintSession,
         ctx: &Context,
-    ) -> Result<SessionMinted, Failed<SessionRejection>> {
+    ) -> Result<(SessionMinted, IncarnationOwed), Failed<SessionRejection>> {
         let taken = ctx.command.had_prior_events;
-        Ok(session_minted(&self.session, taken, &cmd)?)
+        let minted = session_minted(&self.session, taken, &cmd)?;
+        // Owner ruling 2026-11-04 (S5 review Q1 (b)): a new session owes its
+        // first incarnation in the same decision.
+        Ok((minted, lifeline::first_owed()))
     }
 
     /// Bind the engine's session and transcript; `None` when it changes
@@ -139,17 +142,6 @@ impl SessionAggregate {
     ) -> Result<EndRecorded, Failed<SessionRejection>> {
         let _ = ctx;
         Ok(end_recorded(&self.session, &cmd)?)
-    }
-
-    /// Owe the next incarnation (lifeline).
-    #[handles_cmd(OweIncarnation)]
-    fn owe_incarnation(
-        &self,
-        cmd: OweIncarnation,
-        ctx: &Context,
-    ) -> Result<IncarnationOwed, Failed<SessionRejection>> {
-        let _ = ctx;
-        Ok(lifeline::owed(&self.session, &cmd)?)
     }
 
     /// Order the session's runs to stop; refused from a child.

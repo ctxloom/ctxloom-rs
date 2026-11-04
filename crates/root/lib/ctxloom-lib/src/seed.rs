@@ -163,6 +163,7 @@ impl Wiring {
                     Origin::Session
                 },
                 started_at: Some(started),
+                depth: 0,
             }
             .into(),
         )

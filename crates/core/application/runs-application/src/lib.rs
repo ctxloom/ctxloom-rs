@@ -9,7 +9,7 @@
 //!   identity-stamped (D7).
 //! - [`Feeds`]: per-stream catch-up from a resume point, no cross-stream
 //!   position anywhere (plan 6).
-//! - [`Admission`]: credential to [`Identity`], the allowlist, `owns`, `stamp`,
+//! - [`Admission`]: credential to [`Identity`], the allowlist, `owns`,
 //!   then the edge. The LOCAL shape of the gate the upstream listener will
 //!   provide (embedded-listener.plan.md section 4); a stopgap SERVER is not
 //!   here and is not authorized.
@@ -34,7 +34,7 @@ pub use error::diagnostic_samples;
 pub use error::{AppError, Why, EN_US};
 pub use facts::{AgentFact, Facts, Recorded};
 pub use feeds::{Cursor, Feeds, Follow};
-pub use gate::{owns, Allowlist, BodyKind, Credential, Gate, RunsGate};
+pub use gate::{owns, Allowlist, Credential, Gate, RunsGate};
 pub use identity::{Identity, Role};
 pub use requests::{AgentRequest, AgentRequests, Requested};
 

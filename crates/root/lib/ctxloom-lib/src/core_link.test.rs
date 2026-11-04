@@ -63,6 +63,7 @@ impl World {
             engine: "claude-code".to_string(),
             origin: sessions::Origin::Session,
             started_at: None,
+            depth: 0,
         };
         let cover = Cover {
             domain: sessions::SESSION_DOMAIN.to_string(),
@@ -82,7 +83,6 @@ impl World {
                 session: SESSION.to_string(),
                 incarnation: 1,
                 mode: runs::RunMode::Interactive,
-                depth: 0,
             })
             .await
             .unwrap();

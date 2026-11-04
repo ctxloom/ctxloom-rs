@@ -278,6 +278,7 @@ impl World {
                 engine: "claude-code".to_string(),
                 origin: sessions::Origin::Session,
                 started_at: None,
+                depth,
             },
         ))
         .await
@@ -296,7 +297,6 @@ impl World {
                 incarnation: 1,
                 mode: runs::RunMode::Interactive,
                 credential_hash: Sha256::digest(token.as_bytes()).to_vec(),
-                depth,
             },
         ))
         .await

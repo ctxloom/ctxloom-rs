@@ -1,12 +1,12 @@
 //! The LOCAL shape of the upstream gate (embedded-listener.plan.md section 4):
-//! `identify`, the allowlist, `owns`, `stamp`. When angzarr-coordinator
+//! `identify`, the allowlist, `owns`. When angzarr-coordinator
 //! provides its `Gate`, this implements that and the local trait goes
 //! (review question 7). STUBS (S5 red).
 
 use std::future::Future;
 use std::sync::Arc;
 
-use angzarr_embedded::v1::{CommandBook, Cover, Uuid};
+use angzarr_embedded::v1::{Cover, Uuid};
 use run_ports::{Edge, Token};
 
 use crate::error::{AppError, Why};
@@ -20,34 +20,28 @@ pub struct Credential {
     pub run: Uuid,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BodyKind {
-    Command,
-    Fact,
-}
-
-/// The closed set of what an agent may SEND as: (body kind, type URL) pairs.
+/// The closed set of what an agent may SEND as a fact: the `AgentFact` type
+/// URLs and nothing else. Commands have no entry: the agent listener accepts no
+/// generic Command envelope of any type (owner ruling 2026-11-04, S5 review Q3);
+/// an agent's asks are the closed `AgentRequest` type, its own service.
 #[derive(Clone, Debug)]
 pub struct Allowlist {
     facts: Vec<String>,
-    commands: Vec<String>,
 }
 
 impl Allowlist {
-    /// What a runner may send: the closed `AgentFact` URLs as facts, the closed
-    /// `AgentRequest` URLs as commands (listener plan 4.5).
+    /// What a runner may send: the closed `AgentFact` URLs.
     pub fn agent() -> Allowlist {
         todo!("S5 stub")
     }
 
-    pub fn permits(&self, kind: BodyKind, type_url: &str) -> bool {
-        let _ = (&self.facts, &self.commands, kind, type_url);
+    pub fn permits_fact(&self, type_url: &str) -> bool {
+        let _ = (&self.facts, type_url);
         todo!("S5 stub")
     }
 
-    /// Every URL permitted as `kind`.
-    pub fn urls(&self, kind: BodyKind) -> Vec<String> {
-        let _ = kind;
+    /// Every URL permitted as a fact.
+    pub fn facts(&self) -> Vec<String> {
         todo!("S5 stub")
     }
 }
@@ -59,7 +53,8 @@ pub fn owns(identity: &Identity, cover: &Cover) -> bool {
     todo!("S5 stub")
 }
 
-/// The four duties of the gate (listener plan 4.1), against local shapes.
+/// The duties of the gate (listener plan 4.1) that remain on the fact path,
+/// against local shapes; `stamp` left with the Command envelope (Q3 ruling).
 pub trait Gate: Send + Sync {
     /// Credential to identity, reading current state: revocation is automatic
     /// because this runs per request and per stream open.
@@ -73,10 +68,6 @@ pub trait Gate: Send + Sync {
 
     /// Whether the identity owns `cover`.
     fn owns(&self, identity: &Identity, cover: &Cover) -> bool;
-
-    /// The book with the caller's identity stamped over any sender field in the
-    /// payload ("from the identity, never the payload").
-    fn stamp(&self, identity: &Identity, book: CommandBook) -> CommandBook;
 }
 
 /// The gate for runs: identifies by the run's own stream and its session.
@@ -103,11 +94,6 @@ impl<E: Edge> Gate for RunsGate<E> {
 
     fn owns(&self, identity: &Identity, cover: &Cover) -> bool {
         owns(identity, cover)
-    }
-
-    fn stamp(&self, identity: &Identity, book: CommandBook) -> CommandBook {
-        let _ = (identity, book);
-        todo!("S5 stub")
     }
 }
 

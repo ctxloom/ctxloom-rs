@@ -117,7 +117,6 @@ fn enqueue() -> EnqueueRun {
         incarnation: 1,
         mode: RunMode::Interactive,
         credential_hash: HASH.to_vec(),
-        depth: 0,
     }
 }
 
@@ -144,7 +143,6 @@ fn enqueue_records_the_session_incarnation_mode_and_the_hash_of_the_token() {
     assert_eq!(enqueued.session, SESSION);
     assert_eq!(enqueued.incarnation, 1);
     assert_eq!(enqueued.credential_hash, HASH.to_vec());
-    assert_eq!(enqueued.depth, 0);
     let state = run.state();
     assert_eq!(state.credential_hash, HASH.to_vec());
     assert!(!state.credential_revoked);

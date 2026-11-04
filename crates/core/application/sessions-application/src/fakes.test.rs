@@ -258,6 +258,7 @@ pub fn minted(store: &MemoryStore, id: u8, harp: &str, project_dir: &str, starte
             engine: "claude-code".to_string(),
             origin: Origin::Session,
             started_at: None,
+            depth: 0,
         },
     );
 }

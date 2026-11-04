@@ -1,4 +1,6 @@
-//! The agent's refusable asks (D7): equally closed, identity-stamped. S5
+//! The agent's refusable asks (D7): a CLOSED request type of their own (owner
+//! ruling 2026-11-04, S5 review Q3: a distinct service with a fixed request
+//! enum, not generic Command bodies), identity-stamped. S5
 //! carries one, the coordinator-only `Stop`, to prove the admission rule that a
 //! child cannot send a coordinator-only command; the others (`SendMessage`,
 //! `SpawnChild`, `Report`) arrive with their aggregates. STUBS (S5 red).
@@ -18,13 +20,9 @@ pub enum AgentRequest {
 }
 
 impl AgentRequest {
-    /// The type URL of the request's wire message.
-    pub fn type_url(&self) -> String {
-        todo!("S5 stub")
-    }
-
-    /// Every request's type URL (the allowlist's command list).
-    pub fn type_urls() -> Vec<String> {
+    /// One request of every kind (a test's way to enumerate the closed type).
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn samples() -> Vec<AgentRequest> {
         todo!("S5 stub")
     }
 }

@@ -10,7 +10,7 @@ use angzarr_embedded::{Failure, KernelError, Malformed};
 use run_ports::{Arrival, Unserved};
 
 use crate::fakes::{command_book, fact_book, World};
-use crate::{Admission, AppError, Credential, Why};
+use crate::{Admission, AgentRequest, AppError, Credential, Requested, Why};
 
 const ARRIVALS: [Arrival; 2] = [Arrival::Loopback, Arrival::Ip];
 
@@ -104,34 +104,97 @@ async fn an_unexposed_domain_is_hidden_the_same_as_a_missing_one() {
     }
 }
 
-// NEW-DESIGN (S5 plan red test: "A Command body on the agent listener is
-// refused"; D6). A command that is not one of the closed AgentRequests is
-// hidden, on the caller's own run too. (The plan's wording and the listener
-// plan's allowlist of AgentRequests as commands disagree: review question 3.)
+// NEW-DESIGN, owner ruling 2026-11-04 (S5 review Q3 (a)): the plan's red test
+// "A Command body on the agent listener is refused" holds as written. A
+// Command envelope of ANY type is hidden, on the caller's own streams too: a
+// non-request command, and the wire type of an AgentRequest itself.
 #[tokio::test]
-async fn a_command_body_that_is_not_an_agent_request_is_refused() {
+async fn a_command_envelope_of_any_type_is_refused_on_the_agent_listener() {
     for arrival in ARRIVALS {
         let world = World::new().await;
         let admission = Admission::new(Arc::clone(&world.edge));
-        let book = command_book(
-            world.me.identity.run_cover(),
-            runs::QueueTurn {
-                prompt_ref: "x".to_string(),
-                resume: false,
-            },
+        let run = world.me.identity.run_cover();
+        let session = world.me.identity.session_cover();
+        let books = [
+            command_book(
+                run.clone(),
+                runs::QueueTurn {
+                    prompt_ref: "x".to_string(),
+                    resume: false,
+                },
+            ),
+            command_book(
+                session.clone(),
+                sessions::StopSession {
+                    requester_depth: 0,
+                    reason: "as a generic command".to_string(),
+                },
+            ),
+        ];
+        for book in books {
+            let denied = admission
+                .admit(arrival, &world.me.credential, book)
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(denied, AppError::Denied(Unserved::Hidden { .. })),
+                "{arrival:?}"
+            );
+        }
+        assert_eq!(world.edge.pages(&run).await.len(), 1, "{arrival:?}");
+        assert!(!world.edge.pages(&session).await.is_empty());
+        assert_eq!(
+            world.edge.pages(&session).await.len(),
+            2,
+            "mint and owed only"
         );
-        let denied = admission
-            .admit(arrival, &world.me.credential, book)
+    }
+}
+
+// NEW-DESIGN, owner ruling 2026-11-04 (S5 review Q3 (b)): AgentRequest kinds
+// pass through their closed type, over both arrivals. The owner's stop is
+// applied; a child's is refused by the session with its code, and the
+// requester is the identity, never a field of the request (there is none to
+// forge, so the old forged-depth test is gone with the Command envelope).
+#[tokio::test]
+async fn agent_requests_pass_through_the_closed_request_type() {
+    for arrival in ARRIVALS {
+        let world = World::new().await;
+        let child = world.child().await;
+        let admission = Admission::new(Arc::clone(&world.edge));
+        for request in AgentRequest::samples() {
+            assert_eq!(
+                admission
+                    .request(arrival, &world.me.credential, request.clone())
+                    .await,
+                Ok(Requested::Applied),
+                "{arrival:?}"
+            );
+            let refused = admission
+                .request(arrival, &child.credential, request)
+                .await
+                .unwrap_err();
+            let AppError::Refused { code, .. } = refused else {
+                panic!("{arrival:?}: {refused:?}");
+            };
+            assert_eq!(code, "sessions-child-cannot-stop");
+        }
+    }
+}
+
+// NEW-DESIGN (same ruling): a request needs a valid credential like any other
+// arrival; a revoked token is refused before anything is sent.
+#[tokio::test]
+async fn an_agent_request_with_a_revoked_token_is_refused() {
+    let world = World::new().await;
+    let admission = Admission::new(Arc::clone(&world.edge));
+    world.end(&world.me).await;
+    for request in AgentRequest::samples() {
+        let refused = admission
+            .request(Arrival::Ip, &world.me.credential, request)
             .await
             .unwrap_err();
-        assert!(
-            matches!(denied, AppError::Denied(Unserved::Hidden { .. })),
-            "{arrival:?}"
-        );
-        assert_eq!(
-            world.edge.pages(&world.me.identity.run_cover()).await.len(),
-            1
-        );
+        assert_eq!(refused, AppError::Unauthenticated(Why::Revoked));
     }
 }
 
@@ -179,34 +242,6 @@ async fn a_stale_credential_for_a_run_that_is_gone_is_refused() {
             matches!(refused, AppError::Unauthenticated(_)),
             "{arrival:?}"
         );
-    }
-}
-
-// NEW-DESIGN (embedded-listener plan 4.1, `stamp`; plan 4.2 "Identity is
-// resolved from the bearer, never from the payload"): a child that forges
-// `requester_depth: 0` on a stop still has its real depth stamped, and is
-// refused as a child.
-#[tokio::test]
-async fn a_forged_requester_depth_is_stamped_over_by_the_identity() {
-    for arrival in ARRIVALS {
-        let world = World::new().await;
-        let child = world.child().await;
-        let admission = Admission::new(Arc::clone(&world.edge));
-        let forged = command_book(
-            child.identity.session_cover(),
-            sessions::StopSession {
-                requester_depth: 0,
-                reason: "forged".to_string(),
-            },
-        );
-        let refused = admission
-            .admit(arrival, &child.credential, forged)
-            .await
-            .unwrap_err();
-        let AppError::Refused { code, .. } = refused else {
-            panic!("{arrival:?}: {refused:?}");
-        };
-        assert_eq!(code, "sessions-child-cannot-stop");
     }
 }
 

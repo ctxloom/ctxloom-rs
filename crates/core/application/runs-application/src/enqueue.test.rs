@@ -12,7 +12,6 @@ fn request() -> EnqueueRequest {
         session: SESSION_ME.to_string(),
         incarnation: 1,
         mode: runs::RunMode::Interactive,
-        depth: 0,
     }
 }
 
@@ -35,6 +34,7 @@ async fn minted(edge: &KernelEdge) {
             engine: "claude-code".to_string(),
             origin: sessions::Origin::Session,
             started_at: None,
+            depth: 0,
         },
     ))
     .await

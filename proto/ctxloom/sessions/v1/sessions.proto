@@ -46,6 +46,33 @@ message SessionState {
   optional google.protobuf.Timestamp purged_at = 14;
   // Forgotten sessions keep their stream (and so their name, plan 3.1).
   bool forgotten = 15;
+  // The lineage the mint records (owner ruling 2026-11-04, S5 review Q2 (b)).
+  uint32 depth = 16;
+  // The run lifeline (plan 3.1) and the inbox, as the fold holds them.
+  uint32 incarnation = 17;
+  optional uint32 open_incarnation = 18;
+  uint32 relaunches = 19;
+  bool stopped = 20;
+  repeated InboxEntry inbox = 21;
+}
+
+enum InboxStatus {
+  INBOX_STATUS_UNSPECIFIED = 0;
+  INBOX_STATUS_QUEUED = 1;
+  INBOX_STATUS_CLAIMED = 2;
+  INBOX_STATUS_DELIVERED = 3;
+  INBOX_STATUS_WITHDRAWN = 4;
+  INBOX_STATUS_FAILED = 5;
+}
+
+message InboxEntry {
+  string message_id = 1;
+  string from = 2;
+  string kind = 3;
+  string body_ref = 4;
+  InboxStatus status = 5;
+  string claimant = 6;
+  optional uint64 at_turn = 7;
 }
 
 // Who a session was minted for (Go's Origin): an empty origin reads as a
@@ -79,7 +106,9 @@ message Rotation {
 message MintSession {
   option (io.angzarr.v1.command) = {
     component: "ctxloom.sessions.v1.SessionState"
-    emits: ["ctxloom.sessions.v1.SessionMinted"]
+    // Owner ruling 2026-11-04 (S5 review Q1 (b)): a mint also records the
+    // session's first owed incarnation.
+    emits: ["ctxloom.sessions.v1.SessionMinted", "ctxloom.sessions.v1.IncarnationOwed"]
   };
 
   string harp = 1;
@@ -90,6 +119,9 @@ message MintSession {
   Origin origin = 6;
   // Left out: the page's `recorded_at`. The importer gives Go's started_at.
   optional google.protobuf.Timestamp started_at = 7;
+  // The session's depth in its tree (owner ruling 2026-11-04, S5 review Q2
+  // (b): minimal lineage now; parent and may_delegate are S10's).
+  uint32 depth = 8;
 }
 
 // Record what the SessionStart hook bound: the engine's session id and
@@ -199,6 +231,7 @@ message SessionMinted {
   // Written only when the command gave one (the importer): else the
   // session's start is the page's `recorded_at`.
   optional google.protobuf.Timestamp started_at = 7;
+  uint32 depth = 8;
 }
 
 // The binding the session holds after a bind. A bind that displaced an
@@ -263,19 +296,6 @@ message EndRecorded {
 // the relaunch budget (per session, not per run) and the stop flag. The
 // inbox: queued, claimed, delivered, withdrawn, failed. Go's `run_ends[]` is
 // NOT kept here: it is the `run-ends` read model over the run streams.
-
-// The session owes its next incarnation: its first (after the mint), a
-// relaunch, or a run for mail that arrived to an ended, unstopped session.
-// Refused while an incarnation is live and, after a stop, always.
-message OweIncarnation {
-  option (io.angzarr.v1.command) = {
-    component: "ctxloom.sessions.v1.SessionState"
-    emits: ["ctxloom.sessions.v1.IncarnationOwed"]
-  };
-
-  // `first`, `relaunch` or `mail`.
-  string reason = 1;
-}
 
 // Order every live run of the session to stop. `requester_depth` is STAMPED
 // from the caller's identity, never read from its payload; refused from a

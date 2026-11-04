@@ -139,6 +139,7 @@ pub(crate) fn mint(harp: &str) -> MintSession {
         engine: "claude-code".to_string(),
         origin: Origin::Session,
         started_at: None,
+        depth: 0,
     }
 }
 
@@ -174,8 +175,11 @@ fn rename(harp: &str) -> RenameSession {
 fn a_mint_records_the_session_at_the_sampled_instant() {
     let mut session = Session::new();
     let events = session.run(mint(HARP)).unwrap();
-    let [SessionEvent::SessionMinted(minted)] = events.as_slice() else {
-        panic!("one SessionMinted, not {events:?}");
+    // Updated per the owner ruling 2026-11-04 (S5 review Q1 (b)): a mint now
+    // emits [SessionMinted, IncarnationOwed{1}], not [SessionMinted] alone.
+    let [SessionEvent::SessionMinted(minted), SessionEvent::IncarnationOwed(_)] = events.as_slice()
+    else {
+        panic!("SessionMinted then IncarnationOwed, not {events:?}");
     };
     assert_eq!(minted.harp, HARP);
     assert_eq!(
@@ -700,6 +704,8 @@ fn an_end_fact_records_when_the_last_run_ended() {
 
 #[test]
 fn the_state_round_trips_through_its_wire_form() {
+    // Updated per the owner rulings 2026-11-04 (S5 review Q1, Q2): the wire
+    // state now carries the lifeline, the inbox and the depth the mint records.
     let mut session = Session::minted();
     session.run(bind("id-1", "/t1")).unwrap();
     session.run(bind("id-2", "/t2")).unwrap();

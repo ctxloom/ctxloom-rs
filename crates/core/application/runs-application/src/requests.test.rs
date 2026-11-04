@@ -55,11 +55,3 @@ async fn an_owners_stop_is_applied_and_a_second_changes_nothing() {
         Ok(Requested::Unchanged)
     );
 }
-
-// NEW-DESIGN (plan 4.2 "equally closed"): the requests' URLs are the
-// allowlist's command list, and `Stop` is one of them.
-#[test]
-fn the_closed_requests_have_type_urls() {
-    assert_eq!(stop().type_url(), "/ctxloom.sessions.v1.StopSession");
-    assert!(AgentRequest::type_urls().contains(&stop().type_url()));
-}

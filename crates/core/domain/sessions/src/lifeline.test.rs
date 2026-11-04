@@ -4,17 +4,11 @@
 //! NEW-DESIGN.
 
 use crate::aggregate::tests::{mint, Session};
-use crate::{ClaimMessage, DeliverMessage, RecordMessageArrived};
+use crate::{ClaimMessage, DeliverMessage, MintSession, RecordMessageArrived};
 use crate::{
-    IncarnationEnded, IncarnationOwed, OweIncarnation, RecordIncarnationEnded, SessionEvent,
-    StopOrdered, StopSession, RELAUNCH_BUDGET,
+    IncarnationEnded, IncarnationOwed, RecordIncarnationEnded, SessionEvent, StopOrdered,
+    StopSession, RELAUNCH_BUDGET,
 };
-
-fn owe(reason: &str) -> OweIncarnation {
-    OweIncarnation {
-        reason: reason.to_string(),
-    }
-}
 
 fn ended(incarnation: u32, cause: &str) -> RecordIncarnationEnded {
     RecordIncarnationEnded {
@@ -32,41 +26,82 @@ fn arrive(id: &str) -> RecordMessageArrived {
     }
 }
 
-/// A session with its first incarnation owed and ended by `cause`.
+/// A session (its first incarnation owed by the mint) whose run ended by `cause`.
 fn first_run_ended(cause: &str) -> Session {
     let mut session = Session::minted();
-    session.run(owe("first")).unwrap();
     session.fact(ended(1, cause), "end:s:1");
     session
 }
 
-// NEW-DESIGN (plan 3.1: "a new session then owes its first incarnation").
-// Kept a separate command so S4's pinned `[SessionMinted]` mint is unchanged
-// (review question: should the mint emit it? the plan words it either way).
+// NEW-DESIGN, owner ruling 2026-11-04 (S5 review Q1 (b)): the mint emits
+// [SessionMinted, IncarnationOwed{1}] (plan 3.1: "a new session then owes its
+// first incarnation"); this supersedes the separate OweIncarnation command.
 #[test]
-fn a_minted_session_owes_its_first_incarnation() {
+fn a_mint_records_the_session_and_owes_its_first_incarnation() {
     let mut session = Session::new();
-    session.run(mint(crate::aggregate::tests::HARP)).unwrap();
-    let events = session.run(owe("first")).unwrap();
+    let events = session.run(mint(crate::aggregate::tests::HARP)).unwrap();
+    assert!(matches!(events[0], SessionEvent::SessionMinted(_)));
     assert_eq!(
-        events,
-        vec![SessionEvent::IncarnationOwed(IncarnationOwed {
+        events[1],
+        SessionEvent::IncarnationOwed(IncarnationOwed {
             incarnation: 1,
             reason: "first".to_string()
-        })]
+        })
     );
+    assert_eq!(events.len(), 2);
     let state = session.state();
     assert_eq!((state.incarnation, state.open_incarnation), (1, Some(1)));
 }
 
-// NEW-DESIGN: level-based. An incarnation owed or running blocks the next.
+// NEW-DESIGN, owner ruling 2026-11-04 (S5 review Q2 (b)): minimal lineage, the
+// session's depth, is recorded at the mint. Parent and may_delegate are S10's.
 #[test]
-fn an_incarnation_cannot_be_owed_while_one_is_open() {
-    let mut session = Session::minted();
-    session.run(owe("first")).unwrap();
-    let (code, args) = session.run(owe("mail")).unwrap_err();
-    assert_eq!(code, "sessions-incarnation-open");
-    assert_eq!(args["incarnation"], "1");
+fn a_mint_records_the_sessions_depth() {
+    let mut session = Session::new();
+    session
+        .run(MintSession {
+            depth: 2,
+            ..mint(crate::aggregate::tests::HARP)
+        })
+        .unwrap();
+    assert_eq!(session.state().depth, 2);
+}
+
+// NEW-DESIGN, owner ruling 2026-11-04 (S5 review Q1): "incarnation owed on
+// mail for an ended, unstopped recipient", by CONTINUATION: the session's own
+// handling of MessageArrived records IncarnationOwed, like a relaunch.
+// Go: TestEndFence_MailForAnEndedRunWaitsForTheResumedRun (the mail waits for
+// the resumed run).
+#[test]
+fn mail_for_an_ended_unstopped_session_owes_the_next_incarnation() {
+    let mut session = first_run_ended("runner-exit");
+    let events = session.fact(arrive("m1"), "arrive:s:m1");
+    assert_eq!(events.len(), 2);
+    assert!(matches!(events[0], SessionEvent::MessageArrived(_)));
+    assert_eq!(
+        events[1],
+        SessionEvent::IncarnationOwed(IncarnationOwed {
+            incarnation: 2,
+            reason: "mail".to_string()
+        })
+    );
+}
+
+// NEW-DESIGN (same ruling): while an incarnation is open the mail just queues,
+// and after a stop it is queued without owing a run.
+#[test]
+fn mail_owes_nothing_while_a_run_is_open_or_after_a_stop() {
+    let mut open = Session::minted();
+    assert_eq!(open.fact(arrive("m1"), "arrive:s:m1").len(), 1);
+
+    let mut stopped = first_run_ended("runner-exit");
+    stopped
+        .run(StopSession {
+            requester_depth: 0,
+            reason: "user".to_string(),
+        })
+        .unwrap();
+    assert_eq!(stopped.fact(arrive("m1"), "arrive:s:m1").len(), 1);
 }
 
 // NEW-DESIGN (plan 3.1): the session decides by level. Mail pending, budget
@@ -76,7 +111,6 @@ fn an_incarnation_cannot_be_owed_while_one_is_open() {
 #[test]
 fn an_end_with_mail_pending_owes_the_next_incarnation() {
     let mut session = Session::minted();
-    session.run(owe("first")).unwrap();
     session.fact(arrive("m1"), "arrive:s:m1");
     let events = session.fact(ended(1, "runner-exit"), "end:s:1");
     assert_eq!(
@@ -100,7 +134,6 @@ fn an_end_with_mail_pending_owes_the_next_incarnation() {
 #[test]
 fn an_end_with_no_mail_pending_gives_up_and_notices_the_parent() {
     let mut session = Session::minted();
-    session.run(owe("first")).unwrap();
     let events = session.fact(ended(1, "runner-exit"), "end:s:1");
     assert_eq!(
         events,
@@ -119,7 +152,6 @@ fn an_end_with_no_mail_pending_gives_up_and_notices_the_parent() {
 #[test]
 fn a_stopped_end_is_never_relaunched_even_with_mail_pending() {
     let mut session = Session::minted();
-    session.run(owe("first")).unwrap();
     session.fact(arrive("m1"), "arrive:s:m1");
     let events = session.fact(ended(1, "stopped"), "end:s:1");
     assert_eq!(events.len(), 1);
@@ -145,15 +177,12 @@ fn a_stop_ordered_after_the_end_still_stops_the_relaunch() {
         })]
     );
     assert!(session.state().stopped);
-    let (code, _) = session.run(owe("mail")).unwrap_err();
-    assert_eq!(code, "sessions-stopped");
 }
 
 // NEW-DESIGN (plan 3.1): a stopped session does not relaunch on an end.
 #[test]
 fn a_stopped_session_does_not_relaunch_on_an_end() {
     let mut session = Session::minted();
-    session.run(owe("first")).unwrap();
     session.fact(arrive("m1"), "arrive:s:m1");
     session
         .run(StopSession {
@@ -171,7 +200,6 @@ fn a_stopped_session_does_not_relaunch_on_an_end() {
 #[test]
 fn a_stop_ordered_by_a_child_is_refused() {
     let mut session = Session::minted();
-    session.run(owe("first")).unwrap();
     let (code, args) = session
         .run(StopSession {
             requester_depth: 2,
@@ -202,7 +230,6 @@ fn a_second_stop_order_records_nothing() {
 #[test]
 fn attach_then_die_with_mail_pending_exhausts_the_relaunch_budget() {
     let mut session = Session::minted();
-    session.run(owe("first")).unwrap();
     session.fact(arrive("m1"), "arrive:s:m1");
     let mut relaunches = 0;
     for incarnation in 1..=200 {
@@ -230,7 +257,6 @@ fn attach_then_die_with_mail_pending_exhausts_the_relaunch_budget() {
 #[test]
 fn consuming_mail_resets_the_relaunch_budget() {
     let mut session = Session::minted();
-    session.run(owe("first")).unwrap();
     session.fact(arrive("m1"), "arrive:s:m1");
     session.fact(ended(1, "runner-exit"), "end:s:1");
     assert_eq!(session.state().relaunches, 1);

@@ -341,6 +341,7 @@ fn commands(
             engine: entry.backend.clone(),
             origin,
             started_at: Some(entry.started_at),
+            depth: 0,
         }
         .into(),
     )];

@@ -68,10 +68,6 @@ message EnqueueRun {
   uint32 incarnation = 2;
   RunMode mode = 3;
   bytes credential_hash = 4;
-  // The session's depth in its tree, copied at enqueue so `identify` can
-  // resolve a child from the run alone. S5 STAND-IN: the plan has lineage on
-  // the session (S10); see the review note, open question 4.
-  uint32 depth = 5;
 }
 
 // Queue the next turn. Refused while one is in flight and after the run's
@@ -182,7 +178,6 @@ message RunEnqueued {
   uint32 incarnation = 2;
   RunMode mode = 3;
   bytes credential_hash = 4;
-  uint32 depth = 5;
 }
 
 message RunnerAttachedRecorded {

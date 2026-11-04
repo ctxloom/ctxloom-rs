@@ -121,6 +121,7 @@ fn mint(harp: &str) -> MintSession {
         engine: "claude-code".to_string(),
         origin: Origin::Session,
         started_at: None,
+        depth: 0,
     }
 }
 

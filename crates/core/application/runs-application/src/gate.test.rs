@@ -1,5 +1,5 @@
 //! The gate's duties against the local shapes: `identify`, the allowlist,
-//! `owns`, `stamp` (listener plan 4.1, 4.5). RED (S5): stubs; and, since the
+//! `owns` (listener plan 4.1, 4.5; `stamp` left with the Command envelope, Q3 ruling). RED (S5): stubs; and, since the
 //! world is built through the real aggregates, red until those land too.
 
 use std::sync::Arc;
@@ -8,9 +8,7 @@ use angzarr_embedded::v1::{Cover, Uuid};
 use run_ports::Token;
 
 use crate::fakes::World;
-use crate::{
-    owns, AgentFact, AgentRequest, Allowlist, AppError, BodyKind, Credential, Gate, RunsGate, Why,
-};
+use crate::{owns, AgentFact, AgentRequest, Allowlist, AppError, Credential, Gate, RunsGate, Why};
 
 /// The type URL of a domain message's wire form.
 fn url<M: angzarr_embedded::markup::DomainMessage>() -> String {
@@ -177,52 +175,48 @@ fn every_agent_fact_variant_is_on_the_allowlist() {
             | AgentFact::MessageFailed(_) => {}
         }
         assert!(
-            allowlist.permits(BodyKind::Fact, &fact.type_url()),
+            allowlist.permits_fact(&fact.type_url()),
             "{} is not allowlisted",
             fact.type_url()
         );
     }
     assert_eq!(samples.len(), 8, "one sample per variant");
     assert_eq!(
-        allowlist.urls(BodyKind::Fact).len(),
+        allowlist.facts().len(),
         samples.len(),
         "nothing else is on the fact list"
     );
 }
 
 // NEW-DESIGN (D6: "facts must not open a path for arbitrary commands"): no
-// command of the domains is permitted as a fact, and no fact as a command.
+// command of the domains is permitted as a fact (the fact list is closed to the
+// AgentFact types), and no AgentRequest has a wire type on it either.
 #[test]
-fn the_allowlist_keeps_commands_and_facts_apart() {
+fn the_fact_allowlist_holds_no_command() {
     let allowlist = Allowlist::agent();
     for command in [
         url::<runs::EnqueueRun>(),
         url::<runs::QueueTurn>(),
         url::<runs::RequestStop>(),
-        url::<sessions::OweIncarnation>(),
         url::<sessions::MintSession>(),
         url::<sessions::RenameSession>(),
         url::<sessions::ForgetSession>(),
+        url::<sessions::StopSession>(),
     ] {
-        assert!(
-            !allowlist.permits(BodyKind::Fact, &command),
-            "{command} as a fact"
-        );
-        assert!(
-            !allowlist.permits(BodyKind::Command, &command),
-            "{command} as a command"
-        );
+        assert!(!allowlist.permits_fact(&command), "{command} as a fact");
     }
-    for fact in AgentFact::samples() {
-        assert!(
-            !allowlist.permits(BodyKind::Command, &fact.type_url()),
-            "{} as a command",
-            fact.type_url()
-        );
+}
+
+// NEW-DESIGN, owner ruling 2026-11-04 (S5 review Q3): the request kinds are a
+// closed type of their own, enumerable like AgentFact; the match stops
+// compiling when a kind is added without being listed here.
+#[test]
+fn every_agent_request_kind_is_enumerated() {
+    let samples = AgentRequest::samples();
+    for request in &samples {
+        match request {
+            AgentRequest::Stop { .. } => {}
+        }
     }
-    // The closed requests are commands, and only commands.
-    for url in AgentRequest::type_urls() {
-        assert!(allowlist.permits(BodyKind::Command, &url));
-        assert!(!allowlist.permits(BodyKind::Fact, &url));
-    }
+    assert_eq!(samples.len(), 1, "one sample per kind");
 }

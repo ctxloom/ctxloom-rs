@@ -14,7 +14,6 @@ pub struct EnqueueRequest {
     pub session: String,
     pub incarnation: u32,
     pub mode: runs::RunMode,
-    pub depth: u32,
 }
 
 /// What the enqueue gives back: the run's root and its token, shown once (to be
