@@ -217,6 +217,7 @@ fn check_reports_the_runtime_the_markers_and_the_image() {
     assert!(report.reachable);
     assert_eq!(report.image, "ctxloom-agent-mock");
     assert!(report.image_present);
+    assert!(report.guidance.is_empty(), "{:?}", report.guidance);
 }
 
 // "Build validates its backend before touching any daemon".
@@ -435,4 +436,20 @@ fn the_container_use_trait_delegates() {
         ContainerUse::build(&c, Some("mock"), None),
         Err(IsolationError::NotPorted { .. })
     ));
+}
+
+// An absent image is guided to its build, not left silent.
+#[test]
+fn check_of_a_reachable_runtime_without_the_image_says_how_to_get_it() {
+    let files = Files::default();
+    let report = containers(podman(), engines(), &files)
+        .check(Some("mock"))
+        .unwrap();
+    assert!(!report.image_present);
+    assert_eq!(report.guidance.len(), 1);
+    assert!(
+        report.guidance[0].contains("ctxloom-agent-mock is not present"),
+        "{:?}",
+        report.guidance
+    );
 }
