@@ -14,8 +14,11 @@ use clap::Command;
 use config_files::{find_app_dir, Surroundings};
 use content_fs::ContentFs;
 use ctxloom_cli::{Call, Extension, Failure};
+use deps::forge;
+use deps::registry::Registry;
 use deps_application::Deps;
 use deps_files::ProjectFiles;
+use deps_ports::DepsFiles;
 use forge_github::GitHub;
 use remote_git::GitRemotes;
 
@@ -36,15 +39,35 @@ fn build_deps() -> Result<Deps, LibError> {
         temp_root: std::env::temp_dir(),
     };
     let app = find_app_dir(fs.as_ref(), &around);
+    let files = Arc::new(ProjectFiles::new(Arc::clone(&fs), app.path.clone()));
     Ok(Deps::new(
-        Arc::new(GitRemotes::new(
-            Arc::clone(&fs),
-            app.path.join("cache/repos"),
-        )),
-        Arc::new(ProjectFiles::new(Arc::clone(&fs), app.path.clone())),
+        Arc::new(
+            GitRemotes::new(Arc::clone(&fs), app.path.join("cache/repos")).with_credentials(
+                Arc::new(|name| std::env::var(name).ok()),
+                token_vars(Arc::clone(&files)),
+            ),
+        ),
+        files,
         Arc::new(ContentFs::new(fs, &app.path)),
     )
     .with_forge(Arc::new(GitHub::from_process())))
+}
+
+/// The variables a clone address's token is read from: the forge the
+/// registry (or the built-in rules) binds the address to says so, the same
+/// answer the API calls get. A registry that cannot be read is an empty one
+/// here: the clone then goes with the user's own git credentials, and the
+/// commands that need the registry report it.
+fn token_vars(files: Arc<ProjectFiles>) -> remote_git::TokenVars {
+    Arc::new(move |url| {
+        let registry = files
+            .read_registry()
+            .ok()
+            .flatten()
+            .and_then(|text| Registry::decode(&text, &files.registry_path()).ok())
+            .unwrap_or_else(Registry::empty);
+        forge::resolve(url, "", &registry).token_vars()
+    })
 }
 
 /// Every command of the program, wired when one first needs the home.
