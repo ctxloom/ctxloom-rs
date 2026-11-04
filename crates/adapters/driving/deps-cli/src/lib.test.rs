@@ -73,10 +73,8 @@ fn go_refreshing(fx: &Fixture, refresh: &FakeRefresh, line: &[&str], how: How) -
         .unwrap_or_else(|e| panic!("{line:?} does not parse: {e}"));
     let noun = matches.subcommand_name().expect("a noun").to_string();
     let call = Call {
-        matches: &matches,
-        explicit_format: how.explicit,
-        default_format: Format::Json,
         stdout_is_terminal: how.terminal,
+        ..Call::new(&matches, how.explicit, Format::Json)
     };
     let catalog = Catalog::en_us(&[deps_application::EN_US, deps::EN_US, angzarr_yaml::EN_US])
         .expect("a catalog");
@@ -375,6 +373,27 @@ fn test_the_table_cuts_a_long_description_and_never_a_name_and_escapes_the_rest(
     );
     assert!(out.contains("\\u{1b}[31mred"), "{out}");
     assert!(!out.contains('\u{1b}'), "{out:?}");
+}
+
+// Columns are counted in terminal width, so a wide character takes two.
+#[test]
+fn test_the_table_aligns_wide_characters_by_display_width() {
+    let fx = Fixture::new();
+    fx.forge.serves(vec![
+        forge_repo(
+            "a",
+            "\u{65e5}\u{672c}\u{8a9e}\u{306e}\u{540d}\u{524d}",
+            1,
+            "d",
+        ),
+        forge_repo("b", "ab", 2, "d"),
+    ]);
+    let out = go(&fx, &["remote", "discover"], TEXT).ok().out.clone();
+    assert!(
+        out.contains("\u{2502} a/\u{65e5}\u{672c}\u{8a9e}\u{306e}\u{540d}\u{524d} \u{2502}"),
+        "{out}"
+    );
+    assert!(out.contains("\u{2502} b/ab           \u{2502}"), "{out}");
 }
 
 #[test]

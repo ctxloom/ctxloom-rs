@@ -7,6 +7,7 @@ use angzarr_diagnostic::Diagnostic;
 use angzarr_presentation::{write_json, Catalog, Format};
 use clap::error::{ContextKind, ContextValue, ErrorKind};
 use clap::{Command, FromArgMatches};
+use cli_support::say_warning;
 use serde::Serialize;
 use sessions_application::{BindRequest, ImportService, SessionService};
 
@@ -188,7 +189,7 @@ fn sessions<S: Services>(
                 let _ = writeln!(err, "{PROG}: {line}");
             }
             for notice in &done.notices {
-                warn(&**notice, format, catalog, err);
+                say_warning(&**notice, PROG, format, catalog, err);
             }
             Ok(())
         }
@@ -261,7 +262,7 @@ fn hook_verb<S: Services>(
             )
             .map_err(|error| CliError::Command { error, exit: 1 })?;
             for warning in &outcome.warnings {
-                warn(warning, format, catalog, err);
+                say_warning(warning, PROG, format, catalog, err);
             }
             out.write_all(outcome.stdout.as_bytes())
         }
@@ -284,14 +285,6 @@ fn hook_verb<S: Services>(
     written.map_err(|e| CliError::Output {
         detail: e.to_string(),
     })
-}
-
-/// Say `notice` on `err` in `format` and carry on: a warning, not an error.
-fn warn(notice: &dyn Diagnostic, format: Format, catalog: &Catalog, err: &mut dyn Write) {
-    let _ = match format {
-        Format::Json => write_json(err, &catalog.envelope(notice)),
-        Format::Text => writeln!(err, "{PROG}: {}", catalog.message(notice)),
-    };
 }
 
 /// The format `--format` asks for, else the terminal's.

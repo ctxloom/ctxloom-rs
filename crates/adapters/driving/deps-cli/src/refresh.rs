@@ -8,7 +8,7 @@ use angzarr_presentation::Catalog;
 use deps_application::{PullReport, Refresh};
 use serde::Serialize;
 
-use crate::notices::FixOf;
+use cli_support::FixOf;
 
 /// A pull as json: its report, and the refresh it skipped, when it did.
 #[derive(Serialize)]

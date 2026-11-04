@@ -10,15 +10,14 @@
 //! written as json or as text, with what it noticed said on the error stream.
 
 mod commands;
-mod notices;
 mod refresh;
 mod text;
 
 use std::io::{self, Write};
 
-use angzarr_diagnostic::Diagnostic;
-use angzarr_presentation::{write_json, Catalog, Format};
+use angzarr_presentation::{Catalog, Format};
 use clap::ArgMatches;
+use cli_support::{flag, one, say_notices};
 use deps::registry::Edit;
 use deps_application::{
     AppError, CreateRequest, Deps, DiscoverRequest, MoveRequest, Notice, Outcome, ProjectRefresh,
@@ -31,31 +30,17 @@ pub use commands::{bundle_verbs, is_bundle_verb, nouns};
 /// The program's name, for the warnings.
 const PROG: &str = "ctxloom";
 
-/// One command, as this crate is asked to run it.
-pub struct Call<'a> {
-    /// The matches of the whole command line.
-    pub matches: &'a ArgMatches,
-    /// The `--format` the line gave, if any.
-    pub explicit_format: Option<Format>,
-    /// Text on a terminal, json off one.
-    pub default_format: Format,
-    pub stdout_is_terminal: bool,
+pub use cli_support::{Call, Failure};
+
+/// An application error as the failure it ends the command in.
+trait IntoFailure {
+    fn into_failure(self) -> Failure;
 }
 
-/// Why a command did not complete, and its exit code.
-#[derive(Debug)]
-pub struct Failure {
-    pub cause: Box<dyn Diagnostic>,
-    pub exit: u8,
-}
-
-impl From<AppError> for Failure {
-    fn from(error: AppError) -> Failure {
-        let exit = error.exit_code();
-        Failure {
-            cause: Box::new(error),
-            exit,
-        }
+impl IntoFailure for AppError {
+    fn into_failure(self) -> Failure {
+        let exit = self.exit_code();
+        Failure::new(self, exit)
     }
 }
 
@@ -92,7 +77,7 @@ pub fn run(
         .matches
         .subcommand()
         .filter(|(name, _)| *name == noun)
-        .ok_or_else(|| Failure::from(AppError::DefaultNeedsName))?;
+        .ok_or_else(|| AppError::DefaultNeedsName.into_failure())?;
     let (verb, args) = match sub.subcommand() {
         Some((name, matches)) => (name, matches),
         None => ("", sub),
@@ -106,50 +91,28 @@ pub fn run(
 
 /// The notices, said; then the answer's error or the answer.
 fn answer<T>(cx: &Context<'_>, outcome: Outcome<T>, err: &mut dyn Write) -> Result<T, Failure> {
-    notices::say(&outcome.notices, PROG, cx.format, cx.catalog, err);
-    outcome.result.map_err(Failure::from)
+    say_notices(&outcome.notices, PROG, cx.format, cx.catalog, err);
+    outcome.result.map_err(IntoFailure::into_failure)
 }
 
-/// Write `value` as json, or as `text` says.
+/// Write `value` as json, or as `text` says; a write that fails is a failure.
 fn emit<T: Serialize>(
     format: Format,
     out: &mut dyn Write,
     value: &T,
     text: impl FnOnce(&mut dyn Write) -> io::Result<()>,
 ) -> Result<(), Failure> {
-    let written = match format {
-        Format::Json => write_json(out, value),
-        Format::Text => text(out),
-    };
-    written.map_err(|e| {
-        Failure::from(AppError::File {
+    cli_support::emit(format, out, value, text).map_err(|e| {
+        AppError::File {
             what: "the answer".to_string(),
             detail: e.to_string(),
-        })
+        }
+        .into_failure()
     })
 }
 
-fn flag(matches: &ArgMatches, name: &str) -> bool {
-    matches
-        .try_get_one::<bool>(name)
-        .ok()
-        .flatten()
-        .copied()
-        .unwrap_or(false)
-}
-
 fn text_arg(matches: &ArgMatches, name: &str) -> String {
-    matches
-        .try_get_one::<String>(name)
-        .ok()
-        .flatten()
-        .cloned()
-        .unwrap_or_default()
-}
-
-/// A flag given with a value, even an empty one; none where it was not given.
-fn given(matches: &ArgMatches, name: &str) -> Option<String> {
-    matches.try_get_one::<String>(name).ok().flatten().cloned()
+    one(matches, name).unwrap_or_default()
 }
 
 fn remote(
@@ -193,9 +156,9 @@ fn remote(
         }
         "edit" => {
             let edit = Edit {
-                name: given(args, "name"),
-                url: given(args, "url"),
-                forge: given(args, "forge"),
+                name: one(args, "name"),
+                url: one(args, "url"),
+                forge: one(args, "forge"),
             };
             let edited = answer(cx, deps.remote_edit(&text_arg(args, "remote"), &edit), err)?;
             emit(cx.format, out, &edited, |out| {
@@ -217,7 +180,7 @@ fn remote(
             let chosen = if flag(args, "clear") {
                 None
             } else if name.is_empty() {
-                return Err(AppError::DefaultNeedsName.into());
+                return Err(AppError::DefaultNeedsName.into_failure());
             } else {
                 Some(name.as_str())
             };
@@ -301,10 +264,10 @@ fn dependencies(
                 })
             })?;
             if let Some(failure) = pulled.report.failure() {
-                return Err(failure.into());
+                return Err(failure.into_failure());
             }
             if let Some(failure) = pulled.failure {
-                return Err(failure.into());
+                return Err(failure.into_failure());
             }
         }
         "check" => return check(cx, args, out, err),
@@ -345,7 +308,7 @@ fn check(
             .map(|f| Notice::text(format!("fetch {}: {}", f.url, f.error)))
             .chain(report.unchecked.iter().filter_map(unchecked_warning))
             .collect();
-        notices::say(&warnings, PROG, cx.format, cx.catalog, err);
+        say_notices(&warnings, PROG, cx.format, cx.catalog, err);
     }
     emit(cx.format, out, &report, |out| text::check(out, &report))?;
     Ok(0)

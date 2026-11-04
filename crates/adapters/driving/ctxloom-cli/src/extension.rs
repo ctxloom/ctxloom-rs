@@ -6,44 +6,10 @@
 
 use std::io::Write;
 
-use angzarr_diagnostic::Diagnostic;
-use angzarr_presentation::{Catalog, Format};
-use clap::{ArgMatches, Command};
+use angzarr_presentation::Catalog;
+use clap::Command;
 
-/// One command, as an extension is asked to run it.
-pub struct Call<'a> {
-    /// The matches of the whole command line: the extension reads its noun's
-    /// arguments from them.
-    pub matches: &'a ArgMatches,
-    /// The `--format` the line gave, if it gave one.
-    pub explicit_format: Option<Format>,
-    /// What the terminal gives when none was asked for: text on a terminal,
-    /// json off one.
-    pub default_format: Format,
-    /// Whether stdout is a terminal.
-    pub stdout_is_terminal: bool,
-    /// `--degraded`: fatal findings are warnings.
-    pub degraded: bool,
-    /// `--no-companions`.
-    pub no_companions: bool,
-    /// Every `--config-set <path>=<value>`.
-    pub config_set: Vec<String>,
-}
-
-impl Call<'_> {
-    /// The format to answer in: the one asked for, else the terminal's.
-    pub fn format(&self) -> Format {
-        self.explicit_format.unwrap_or(self.default_format)
-    }
-}
-
-/// Why an extension's command did not complete: its own diagnostic, and the
-/// exit code (1 failed, 2 refused before any state was read, 3 fatal findings).
-#[derive(Debug)]
-pub struct Failure {
-    pub cause: Box<dyn Diagnostic>,
-    pub exit: u8,
-}
+pub use cli_support::{Call, Failure};
 
 /// A group of nouns another crate owns.
 pub trait Extension {

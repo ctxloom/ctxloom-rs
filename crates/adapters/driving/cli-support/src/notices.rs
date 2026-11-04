@@ -1,12 +1,11 @@
-//! What a command noticed, said on the error stream: a warning and what to do
-//! about it: a json line under json, words under text.
+//! What a command noticed, said on the error stream: a warning, and what to
+//! do about it (Go's `clidiag.Warn`).
 
 use std::fmt;
 use std::io::Write;
 
 use angzarr_diagnostic::{Arg, Diagnostic};
-use angzarr_presentation::{write_json_line, Catalog, Format};
-use deps_application::Notice;
+use angzarr_presentation::{write_json, write_json_line, Catalog, Format};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -18,7 +17,7 @@ struct Warning<'a> {
 }
 
 /// The remedy of a diagnostic: its code with `-fix`, and its args.
-pub(crate) struct FixOf<'a>(pub(crate) &'a dyn Diagnostic, pub(crate) String);
+pub struct FixOf<'a>(pub &'a dyn Diagnostic, pub String);
 
 impl fmt::Debug for FixOf<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -42,9 +41,10 @@ impl Diagnostic for FixOf<'_> {
     }
 }
 
-/// Say each notice on `err`.
-pub fn say(
-    notices: &[Notice],
+/// Say each notice on `err`: a json line under json, `prog: warning: ...`
+/// and its `  fix: ...` under text.
+pub fn say_notices<N: Diagnostic>(
+    notices: &[N],
     program: &str,
     format: Format,
     catalog: &Catalog,
@@ -76,6 +76,17 @@ pub fn say(
     }
 }
 
-#[cfg(test)]
-#[path = "notices.test.rs"]
-mod tests;
+/// Say `notice` on `err` in `format` and carry on: a warning, not an error.
+/// Json is the diagnostic's envelope; text is `program: message`.
+pub fn say_warning(
+    notice: &dyn Diagnostic,
+    program: &str,
+    format: Format,
+    catalog: &Catalog,
+    err: &mut dyn Write,
+) {
+    let _ = match format {
+        Format::Json => write_json(err, &catalog.envelope(notice)),
+        Format::Text => writeln!(err, "{program}: {}", catalog.message(notice)),
+    };
+}

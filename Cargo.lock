@@ -391,6 +391,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
+name = "cli-support"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "angzarr-presentation",
+ "clap",
+ "mutants",
+ "serde",
+]
+
+[[package]]
 name = "colorchoice"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -581,6 +592,7 @@ dependencies = [
  "angzarr-presentation",
  "clap",
  "clap_complete",
+ "cli-support",
  "hook-cli",
  "serde",
  "serde_json",
@@ -792,6 +804,7 @@ dependencies = [
  "angzarr-presentation",
  "angzarr-yaml",
  "clap",
+ "cli-support",
  "deps",
  "deps-application",
  "deps-ports",
@@ -1899,6 +1912,7 @@ dependencies = [
  "angzarr-diagnostic",
  "angzarr-presentation",
  "clap",
+ "cli-support",
  "library-application",
  "serde",
  "serde_json",
@@ -3040,6 +3054,7 @@ dependencies = [
  "angzarr-diagnostic",
  "angzarr-presentation",
  "clap",
+ "cli-support",
  "ctxloom-ports",
  "deps-application",
  "doctor-checks",
@@ -3392,6 +3407,7 @@ dependencies = [
  "angzarr-diagnostic",
  "angzarr-presentation",
  "clap",
+ "cli-support",
  "library-application",
  "serde",
  "serde_json",

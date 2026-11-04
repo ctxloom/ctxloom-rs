@@ -109,11 +109,11 @@ fn test_config_write_requires_its_file() {
 
 #[test]
 fn test_a_failure_carries_the_exit_code_of_the_error() {
-    let refused = Failure::from(SetupError::Request {
+    let refused = failed(SetupError::Request {
         detail: "d".to_string(),
     });
     assert_eq!(refused.exit, 2);
-    let fatal = Failure::from(SetupError::Refused {
+    let fatal = failed(SetupError::Refused {
         findings: String::new(),
     });
     assert_eq!(fatal.exit, 3);

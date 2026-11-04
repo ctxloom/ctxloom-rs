@@ -896,3 +896,14 @@ fn test_local_results_alone_have_no_remote_section() {
         "Results (1):\n\nFragments:\n  - n\n"
     );
 }
+
+// Columns are counted in terminal width, so a wide character takes two.
+#[test]
+fn test_the_remote_table_aligns_wide_characters_by_display_width() {
+    let results = remote_only(vec![found("origin", "\u{65e5}\u{672c}", &[])]);
+    let shown = shown(|out| search(out, &results));
+    assert!(
+        shown.contains("bundle   \u{2502} origin \u{2502} \u{65e5}\u{672c} \u{2502} \n"),
+        "{shown}"
+    );
+}
