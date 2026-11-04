@@ -617,3 +617,17 @@ fn a_runner_attaching_is_recorded_on_the_run() {
     assert_eq!(events.len(), 1);
     assert!(run.state().runner_attached);
 }
+
+// NEW-DESIGN: a command to a stream holding no run is refused, not decided on
+// an empty state.
+#[test]
+fn commands_to_a_stream_with_no_run_are_refused() {
+    let mut run = Run::new();
+    let (code, _) = run.command(queue_turn()).unwrap_err();
+    assert_eq!(code, "runs-no-run");
+    let stop = RequestStop {
+        reason: "x".to_string(),
+    };
+    let (code, _) = run.command(stop).unwrap_err();
+    assert_eq!(code, "runs-no-run");
+}

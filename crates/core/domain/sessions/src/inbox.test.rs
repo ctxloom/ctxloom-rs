@@ -152,3 +152,27 @@ fn mail_arriving_twice_under_one_id_queues_once() {
     assert!(session.fact(arrive("m1"), "arrive:s:m1:again").is_empty());
     assert_eq!(session.state().inbox.len(), 1);
 }
+
+// NEW-DESIGN: mail already settled is settled: a failure of delivered mail, or
+// a delivery of failed mail, records nothing, and neither does mail unknown.
+#[test]
+fn settled_mail_is_not_failed_or_delivered_again() {
+    let fail = |id: &str| FailMessage {
+        message_id: id.to_string(),
+        reason: "x".to_string(),
+    };
+    let mut session = Session::minted();
+    session.fact(arrive("m1"), "arrive:s:m1");
+    session.fact(arrive("m2"), "arrive:s:m2");
+    session.fact(deliver("m1", 1), "deliver:s:m1");
+    assert!(session.fact(fail("m1"), "fail:s:m1").is_empty());
+    session.fact(fail("m2"), "fail:s:m2");
+    assert!(session.fact(deliver("m2", 2), "deliver:s:m2").is_empty());
+    assert!(session.fact(fail("nope"), "fail:s:nope").is_empty());
+    assert!(session
+        .fact(deliver("nope", 1), "deliver:s:nope")
+        .is_empty());
+    assert!(session
+        .fact(claim("nope", "runner"), "claim:s:nope:runner")
+        .is_empty());
+}

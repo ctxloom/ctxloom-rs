@@ -18,3 +18,10 @@ fn every_diagnostic_has_a_message_and_its_code_is_prefixed() {
         );
     }
 }
+
+#[test]
+fn rejections_display_their_code_and_the_samples_are_not_empty() {
+    use crate::TreeRejection;
+    assert_eq!(TreeRejection::NoTree.to_string(), "trees-no-tree");
+    assert_eq!(diagnostic_samples().len(), 2);
+}

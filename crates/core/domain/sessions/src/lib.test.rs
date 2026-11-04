@@ -77,3 +77,28 @@ fn every_sample_displays_its_code_and_its_message_uses_exactly_its_args() {
         assert_eq!(names, used, "{}", sample.code());
     }
 }
+
+// NEW-DESIGN: an inbox entry survives the wire, every status.
+#[test]
+fn an_inbox_entry_round_trips_through_the_wire_in_every_status() {
+    use crate::{InboxEntry, InboxStatus};
+    for status in [
+        InboxStatus::Queued,
+        InboxStatus::Claimed,
+        InboxStatus::Delivered,
+        InboxStatus::Withdrawn,
+        InboxStatus::Failed,
+    ] {
+        let entry = InboxEntry {
+            message_id: "m".to_string(),
+            from: "peer".to_string(),
+            kind: "note".to_string(),
+            body_ref: "b".to_string(),
+            status,
+            claimant: "runner".to_string(),
+            at_turn: Some(2),
+        };
+        let wire = sessions_proto::v1::InboxEntry::from(entry.clone());
+        assert_eq!(InboxEntry::try_from(wire), Ok(entry));
+    }
+}

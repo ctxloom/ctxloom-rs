@@ -61,3 +61,15 @@ fn every_diagnostic_has_a_message_that_uses_exactly_its_args() {
         assert_eq!(args, used, "{code}");
     }
 }
+
+// NEW-DESIGN: a rejection is its code and args, and the catalog test has
+// samples to check.
+#[test]
+fn rejections_display_their_code_and_the_samples_are_not_empty() {
+    use crate::RunRejection;
+    assert_eq!(
+        RunRejection::TurnInFlight { turn: 4 }.to_string(),
+        "runs-turn-in-flight turn=4"
+    );
+    assert_eq!(diagnostic_samples().len(), 7);
+}

@@ -37,3 +37,16 @@ fn an_unauthenticated_error_says_the_same_whatever_the_reason() {
     assert_eq!(said(Why::UnknownRun), said(Why::Mismatch));
     assert_eq!(said(Why::Mismatch), said(Why::Revoked));
 }
+
+// NEW-DESIGN: an error is its code and args, and the catalog test has samples.
+#[test]
+fn an_error_displays_its_code_and_the_samples_are_not_empty() {
+    let failed = AppError::Failed {
+        reason: "unavailable".to_string(),
+    };
+    assert_eq!(
+        failed.to_string(),
+        "runs-application-failed reason=unavailable"
+    );
+    assert_eq!(diagnostic_samples().len(), 4);
+}

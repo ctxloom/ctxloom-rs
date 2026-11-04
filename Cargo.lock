@@ -1019,6 +1019,8 @@ dependencies = [
  "angzarr-embedded-host",
  "mutants",
  "run-ports",
+ "tokio",
+ "trees",
 ]
 
 [[package]]

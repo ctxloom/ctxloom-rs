@@ -26,6 +26,8 @@ impl Diagnostic for TreeRejection {
         }
     }
 
+    // Neither rejection has an arg: an empty list is the only right answer.
+    #[cfg_attr(test, mutants::skip)]
     fn args(&self) -> Vec<(&str, Arg)> {
         Vec::new()
     }

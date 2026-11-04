@@ -1,5 +1,7 @@
 //! The credential token and its digest (D29). RED (S5): stubs.
 
+use angzarr_diagnostic::Diagnostic;
+
 use crate::{diagnostic_samples, Token, TokenError, TokenHash, EN_US};
 
 const ZEROS: [u8; 32] = [0; 32];
@@ -85,4 +87,26 @@ fn every_diagnostic_has_a_message_using_its_args() {
             assert!(line.contains(&format!("${arg}")), "{code} omits {arg}");
         }
     }
+}
+
+// NEW-DESIGN: every hexadecimal digit means its value, in either nibble.
+#[test]
+fn every_hex_digit_is_read_at_its_value() {
+    let text = "0123456789abcdef".repeat(4);
+    let token = Token::from_text(&text).unwrap();
+    let expected: Vec<u8> = (0..32)
+        .map(|i| (((2 * i) % 16) as u8) << 4 | ((2 * i + 1) % 16) as u8)
+        .collect();
+    assert_eq!(token.as_bytes().as_slice(), expected.as_slice());
+    assert_eq!(token.to_text(), text);
+}
+
+// NEW-DESIGN: an error is its code and its args, never English, and the
+// catalog test has something to check.
+#[test]
+fn an_error_displays_its_code_and_args_and_has_samples() {
+    let error = TokenError::Malformed { length: 3 };
+    assert_eq!(error.to_string(), "run-ports-token-malformed length=3");
+    assert_eq!(error.args().len(), 1);
+    assert_eq!(diagnostic_samples().len(), 1);
 }

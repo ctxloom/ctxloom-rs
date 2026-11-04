@@ -48,7 +48,7 @@ impl Token {
         for (byte, pair) in bytes.iter_mut().zip(digits.chunks(2)) {
             let high = hex_digit(pair[0]).ok_or_else(malformed)?;
             let low = hex_digit(pair[1]).ok_or_else(malformed)?;
-            *byte = high << 4 | low;
+            *byte = high * 16 + low;
         }
         Ok(Token(bytes))
     }

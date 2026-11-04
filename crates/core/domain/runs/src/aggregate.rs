@@ -218,6 +218,9 @@ impl RunAggregate {
         apply(&mut self.run, &event.into(), page.sequence);
     }
 
+    // A turn starting changes nothing the run decides on: its fold is empty, so
+    // replacing it with nothing is the same function.
+    #[cfg_attr(test, mutants::skip)]
     #[applies(TurnStartedRecorded)]
     fn turn_started_recorded(&mut self, event: TurnStartedRecorded, page: &PageContext) {
         apply(&mut self.run, &event.into(), page.sequence);

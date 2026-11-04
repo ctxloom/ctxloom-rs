@@ -310,3 +310,13 @@ fn every_agent_request_kind_is_enumerated() {
     }
     assert_eq!(samples.len(), 1, "one sample per kind");
 }
+
+// NEW-DESIGN: depth 0 is an owner, anything deeper a child.
+#[tokio::test]
+async fn the_role_is_owner_at_depth_zero_and_child_below() {
+    use crate::Role;
+    let world = World::new().await;
+    let child = world.child().await;
+    assert_eq!(world.me.identity.role(), Role::Owner);
+    assert_eq!(child.identity.role(), Role::Child);
+}
