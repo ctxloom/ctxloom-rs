@@ -172,3 +172,39 @@ fn test_the_registry_lists_every_forge_by_label() {
     assert_eq!(forges[1].kind, "git");
     assert_eq!(forges[2].kind, "github");
 }
+
+#[test]
+fn test_github_com_without_a_configured_address_gets_its_own_as_the_base() {
+    assert_eq!(
+        resolve(GITHUB, "", &registry("")).base_url,
+        "https://github.com"
+    );
+    // Another host on plain git has no base to give.
+    assert_eq!(
+        resolve("https://gitlab.com/acme/hub", "", &registry("")).base_url,
+        ""
+    );
+    // A configured base is kept.
+    let forges = "  github:\n    type: github\n    base_url: https://mirror.test\n";
+    assert_eq!(
+        resolve(GITHUB, "", &registry(forges)).base_url,
+        "https://mirror.test"
+    );
+}
+
+#[test]
+fn test_an_http_server_s_own_port_is_80_and_an_address_in_brackets_has_no_port() {
+    let http = "  corp:\n    type: github\n    base_url: http://ghe.corp.test\n    token_env: T\n";
+    for url in ["http://ghe.corp.test/a/b", "http://ghe.corp.test:80/a/b"] {
+        assert_eq!(resolve(url, "", &registry(http)).token_env, "T", "{url}");
+    }
+    assert_eq!(
+        resolve("http://ghe.corp.test:443/a/b", "", &registry(http)).token_env,
+        ""
+    );
+    let v6 = "  corp:\n    type: github\n    base_url: https://[::1]\n    token_env: T\n";
+    assert_eq!(
+        resolve("https://[::1]/a/b", "", &registry(v6)).token_env,
+        "T"
+    );
+}

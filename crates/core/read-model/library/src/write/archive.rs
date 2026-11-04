@@ -160,8 +160,8 @@ const ENCRYPTED: u16 = 1;
 /// 1980-01-01, the zip epoch: every entry carries it, so a package packs to
 /// the same bytes whenever it is packed.
 const DOS_DATE: u16 = 0x0021;
-/// Unix, zip specification 2.0.
-const MADE_BY_UNIX: u16 = (3 << 8) | 20;
+/// Unix (3) in the high byte, zip specification 2.0 (20) in the low.
+const MADE_BY_UNIX: u16 = 0x0314;
 const STORED: u16 = 0;
 const DEFLATED: u16 = 8;
 const FILE_TYPE: u32 = 0o170_000;
@@ -235,7 +235,11 @@ pub fn pack(name: &str, entries: &[Entry]) -> Result<Vec<u8>, ArchiveError> {
         out.extend(0u16.to_le_bytes());
         out.extend(full.as_bytes());
         out.extend(&data);
-        let mode = REGULAR | if entry.executable { 0o755 } else { 0o644 };
+        let mode: u32 = if entry.executable {
+            0o100_755
+        } else {
+            0o100_644
+        };
         central.extend(CENTRAL.to_le_bytes());
         central.extend(MADE_BY_UNIX.to_le_bytes());
         central.extend(20u16.to_le_bytes());

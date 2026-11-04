@@ -55,3 +55,71 @@ fn test_a_claim_names_the_file_it_is_on() {
     assert_eq!(json.path(), ".mcp.json");
     assert_eq!(whole.path(), "a/b.md");
 }
+
+struct Named(&'static str, bool);
+
+impl EngineSurfaces for Named {
+    fn name(&self) -> &str {
+        self.0
+    }
+    fn carries(&self, _: Kind) -> bool {
+        false
+    }
+    fn context_rides_launch(&self) -> bool {
+        self.1
+    }
+    fn plan(&self, _: Kind, _: &Inputs) -> Result<Planned, SurfaceError> {
+        unreachable!()
+    }
+    fn wiring(&self, _: &dyn SurfaceStore, _: &str) -> Result<Wiring, SurfaceError> {
+        unreachable!()
+    }
+    fn codec(&self) -> &dyn HookCodec {
+        unreachable!()
+    }
+}
+
+struct Plain;
+
+impl EngineSurfaces for Plain {
+    fn name(&self) -> &str {
+        "plain"
+    }
+    fn carries(&self, _: Kind) -> bool {
+        false
+    }
+    fn plan(&self, _: Kind, _: &Inputs) -> Result<Planned, SurfaceError> {
+        unreachable!()
+    }
+    fn wiring(&self, _: &dyn SurfaceStore, _: &str) -> Result<Wiring, SurfaceError> {
+        unreachable!()
+    }
+    fn codec(&self) -> &dyn HookCodec {
+        unreachable!()
+    }
+}
+
+#[test]
+fn test_the_registry_finds_an_engine_by_name_and_lists_them_in_order() {
+    let registry = Registry::new(vec![
+        Box::new(Named("b", false)),
+        Box::new(Named("a", true)),
+    ]);
+    assert_eq!(registry.names(), vec!["b".to_string(), "a".to_string()]);
+    assert_eq!(
+        registry.get("a").map(|e| e.name().to_string()),
+        Some("a".into())
+    );
+    assert_eq!(
+        registry.get("b").map(|e| e.name().to_string()),
+        Some("b".into())
+    );
+    assert!(registry.get("c").is_none());
+    assert!(Registry::default().names().is_empty());
+}
+
+#[test]
+fn test_context_rides_a_launch_only_when_the_engine_says_so() {
+    assert!(!Plain.context_rides_launch());
+    assert!(Named("x", true).context_rides_launch());
+}

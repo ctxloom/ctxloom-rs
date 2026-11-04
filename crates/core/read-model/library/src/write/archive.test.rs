@@ -30,6 +30,11 @@ struct Raw<'a> {
     claimed_size: u32,
     crc: u32,
     flags: u16,
+    /// An extra field in the local header, and in the central one.
+    local_extra: Vec<u8>,
+    central_extra: Vec<u8>,
+    /// A file comment in the central directory.
+    comment: Vec<u8>,
 }
 
 impl<'a> Raw<'a> {
@@ -42,6 +47,9 @@ impl<'a> Raw<'a> {
             claimed_size: data.len() as u32,
             crc: crc32fast::hash(data),
             flags: 0x0800,
+            local_extra: Vec::new(),
+            central_extra: Vec::new(),
+            comment: Vec::new(),
         }
     }
 
@@ -66,8 +74,9 @@ fn zip(entries: &[Raw<'_>]) -> Vec<u8> {
         out.extend((e.stored.len() as u32).to_le_bytes());
         out.extend(e.claimed_size.to_le_bytes());
         out.extend((e.name.len() as u16).to_le_bytes());
-        out.extend(0u16.to_le_bytes());
+        out.extend((e.local_extra.len() as u16).to_le_bytes());
         out.extend(e.name.as_bytes());
+        out.extend(&e.local_extra);
         out.extend(&e.stored);
         central.extend(0x0201_4b50u32.to_le_bytes());
         let host: u16 = if e.mode.is_some() { 3 } else { 0 };
@@ -81,13 +90,15 @@ fn zip(entries: &[Raw<'_>]) -> Vec<u8> {
         central.extend((e.stored.len() as u32).to_le_bytes());
         central.extend(e.claimed_size.to_le_bytes());
         central.extend((e.name.len() as u16).to_le_bytes());
-        central.extend(0u16.to_le_bytes());
-        central.extend(0u16.to_le_bytes());
+        central.extend((e.central_extra.len() as u16).to_le_bytes());
+        central.extend((e.comment.len() as u16).to_le_bytes());
         central.extend(0u16.to_le_bytes());
         central.extend(0u16.to_le_bytes());
         central.extend((e.mode.unwrap_or(0) << 16).to_le_bytes());
         central.extend(offset.to_le_bytes());
         central.extend(e.name.as_bytes());
+        central.extend(&e.central_extra);
+        central.extend(&e.comment);
     }
     let start = out.len() as u32;
     out.extend(&central);
@@ -454,6 +465,60 @@ fn test_every_error_is_localized() {
             sample.code().starts_with("library-archive-"),
             "{}",
             sample.code()
+        );
+    }
+}
+
+// A header's extra fields and a comment are skipped by their lengths: the
+// next entry and the entry's data are found after them.
+#[test]
+fn test_extra_fields_and_comments_are_stepped_over() {
+    let mut first = Raw::file("p/a", b"one");
+    first.local_extra = vec![9; 5];
+    first.central_extra = vec![7; 2];
+    first.comment = vec![8; 3];
+    let mut second = Raw::file("p/b", b"two");
+    second.local_extra = vec![1; 4];
+    second.central_extra = vec![2; 3];
+    second.comment = vec![3; 2];
+    let got = unpack(&zip(&[first, second]), &Limits::default()).unwrap();
+    assert_eq!(
+        got.entries,
+        [entry("a", b"one", false), entry("b", b"two", false)]
+    );
+}
+
+/// The archive with the u32 at `field` of its first central entry replaced.
+fn with_central_u32(mut archive: Vec<u8>, field: usize, value: u32) -> Vec<u8> {
+    let end = archive.len() - 22;
+    let start = u32::from_le_bytes(archive[end + 16..end + 20].try_into().unwrap()) as usize;
+    archive[start + field..start + field + 4].copy_from_slice(&value.to_le_bytes());
+    archive
+}
+
+#[test]
+fn test_zip64_is_refused_by_any_one_of_the_three_sizes() {
+    let archive = zip(&[Raw::file("p/a", b"one")]);
+    for (field, what) in [(20, "compressed"), (24, "uncompressed"), (42, "offset")] {
+        let wide = with_central_u32(archive.clone(), field, u32::MAX);
+        assert_eq!(refused(&wide), ArchiveError::Zip64, "{what}");
+    }
+}
+
+// A stored entry is held to the budget by its length: the budget itself is
+// allowed, a byte past it is not, and nor is a long way past it.
+#[test]
+fn test_a_stored_entry_may_fill_the_budget_exactly() {
+    let limits = |max_total_bytes| Limits {
+        max_total_bytes,
+        ..Limits::default()
+    };
+    let archive = zip(&[Raw::file("p/a", b"12345")]);
+    assert!(unpack(&archive, &limits(5)).is_ok());
+    for max in [4, 3] {
+        assert_eq!(
+            unpack(&archive, &limits(max)).unwrap_err(),
+            ArchiveError::TooBig { max }
         );
     }
 }
