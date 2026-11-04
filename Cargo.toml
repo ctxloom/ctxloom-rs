@@ -25,6 +25,9 @@ publish = false
 angzarr-embedded = { git = "https://github.com/angzarr-io/angzarr-embedded", rev = "9bd1d2ccef26d20a7832dfb98fac3fd7afeec5da" }
 # The markup macros the hand-written domains use (`#[aggregate]`), at the same
 # embedded rev, so the lock holds one angzarr-embedded.
+# The host: `App` and its exposure seam (`serve_in`), which the in-process
+# edge adapter wraps. At the pin the rest of the lock shares.
+angzarr-embedded-host = { git = "https://github.com/angzarr-io/angzarr-embedded", rev = "9bd1d2ccef26d20a7832dfb98fac3fd7afeec5da" }
 angzarr-embedded-macros = { git = "https://github.com/angzarr-io/angzarr-embedded", rev = "9bd1d2ccef26d20a7832dfb98fac3fd7afeec5da" }
 # angzarr-build (angzarr-cli's markup domain layer): a build dependency of the
 # wire and domain crates, pinned by full commit, on angzarr core 4d7ef357 (the
@@ -66,6 +69,10 @@ sessions-application = { path = "crates/core/application/sessions-application" }
 runs-proto = { path = "crates/core/wire/runs-proto" }
 runs = { path = "crates/core/domain/runs" }
 trees = { path = "crates/core/domain/trees" }
+run-ports = { path = "crates/core/ports/run-ports" }
+runs-application = { path = "crates/core/application/runs-application" }
+credentials = { path = "crates/adapters/driven/credentials" }
+embedded-edge = { path = "crates/adapters/driven/embedded-edge" }
 session-ports = { path = "crates/core/ports/session-ports" }
 sessions-proto = { path = "crates/core/wire/sessions-proto" }
 sessions = { path = "crates/core/domain/sessions" }
@@ -99,6 +106,11 @@ ctxloom-store-sqlite = { path = "crates/adapters/driven/ctxloom-store-sqlite" }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "native-tls"] }
 # Version ranges and the breaking-change rule (owner, 2026-11-04).
 semver = "1"
+# The credential digest, its constant-time comparison and the OS entropy that
+# mints a token (D29).
+sha2 = "0.10"
+subtle = "2"
+getrandom = "0.3"
 clap = { version = "4.5", features = ["derive", "string"] }
 # `#[mutants::skip]`, for a mutant judged equivalent: a dev-dependency, behind
 # `cfg_attr(test, ...)`, so it links nothing in a build.

@@ -40,12 +40,20 @@ os.workspace = true
 ports.workspace = true
 tokio.workspace = true
 uuid.workspace = true
-# Only the seed mints sessions: the real mint is the run slice's.
-sessions = { workspace = true, optional = true }
+sessions.workspace = true
+runs.workspace = true
+trees.workspace = true
+runs-application.workspace = true
+run-ports.workspace = true
+embedded-edge.workspace = true
+angzarr-embedded-host.workspace = true
+# Only the seed uses the session-ports directly.
 session-ports = { workspace = true, optional = true }
 
 [dev-dependencies]
 harp-core.workspace = true
+angzarr-embedded = { workspace = true, features = ["test-support"] }
+tokio = { workspace = true, features = ["macros", "rt"] }
 
 [features]
 # `diagnostic_samples`, for other crates' catalog tests, and the seed the
@@ -53,7 +61,6 @@ harp-core.workspace = true
 test-support = [
     "ctxloom-store-sqlite/test-support",
     "ctxloom-cli/test-support",
-    "dep:sessions",
     "dep:session-ports",
 ]
 

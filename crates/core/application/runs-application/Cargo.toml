@@ -1,0 +1,32 @@
+[package]
+name = "runs-application"
+version = "0.1.0"
+description = "The runs use cases: the agent's Facts, AgentRequests and Feeds, admission by identity, and the enqueue that mints a run's credential"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+angzarr-embedded.workspace = true
+prost.workspace = true
+run-ports.workspace = true
+runs.workspace = true
+sessions.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+angzarr-embedded = { workspace = true, features = ["test-support"] }
+trees.workspace = true
+run-ports = { workspace = true, features = ["test-support"] }
+mutants.workspace = true
+sha2.workspace = true
+tokio = { workspace = true, features = ["macros", "rt"] }
+
+[features]
+# `diagnostic_samples`, for other crates' catalog tests.
+test-support = []
+
+[lints]
+workspace = true

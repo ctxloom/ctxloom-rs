@@ -40,7 +40,7 @@ version = "0.1.0"
 source = "git+https://github.com/angzarr-io/angzarr-cli?rev=cdd2237244c702bc2144561825742a6782a4c6d1#cdd2237244c702bc2144561825742a6782a4c6d1"
 dependencies = [
  "angzarr-diagnostic",
- "angzarr-embedded-host-config",
+ "angzarr-embedded-host-config 0.1.0 (git+https://github.com/angzarr-io/angzarr-embedded?rev=14b607091155bbc0c7ee6cebec365c36c2fd3391)",
  "prettyplease 0.3.0",
  "proc-macro2",
  "prost-reflect",
@@ -70,9 +70,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "angzarr-embedded-host"
+version = "0.1.0"
+source = "git+https://github.com/angzarr-io/angzarr-embedded?rev=9bd1d2ccef26d20a7832dfb98fac3fd7afeec5da#9bd1d2ccef26d20a7832dfb98fac3fd7afeec5da"
+dependencies = [
+ "angzarr-diagnostic",
+ "angzarr-embedded",
+ "angzarr-embedded-host-config 0.1.0 (git+https://github.com/angzarr-io/angzarr-embedded?rev=9bd1d2ccef26d20a7832dfb98fac3fd7afeec5da)",
+ "angzarr-proto",
+ "angzarr-proto-component",
+ "angzarr-proto-transport-embedded",
+ "angzarr-router",
+ "angzarr-store-sqlite",
+ "hyper-util",
+ "libc",
+ "prost",
+ "prost-types",
+ "tokio",
+ "tonic",
+ "tonic-health",
+ "tonic-prost",
+ "tonic-types",
+ "tower",
+]
+
+[[package]]
 name = "angzarr-embedded-host-config"
 version = "0.1.0"
 source = "git+https://github.com/angzarr-io/angzarr-embedded?rev=14b607091155bbc0c7ee6cebec365c36c2fd3391#14b607091155bbc0c7ee6cebec365c36c2fd3391"
+dependencies = [
+ "angzarr-yaml",
+ "serde",
+]
+
+[[package]]
+name = "angzarr-embedded-host-config"
+version = "0.1.0"
+source = "git+https://github.com/angzarr-io/angzarr-embedded?rev=9bd1d2ccef26d20a7832dfb98fac3fd7afeec5da#9bd1d2ccef26d20a7832dfb98fac3fd7afeec5da"
 dependencies = [
  "angzarr-yaml",
  "serde",
@@ -122,6 +156,32 @@ dependencies = [
  "prost-build",
  "prost-types",
  "uuid",
+]
+
+[[package]]
+name = "angzarr-proto-component"
+version = "0.1.0"
+source = "git+https://github.com/angzarr-io/angzarr?rev=4d7ef3573aad114d789a9c30f9cd702d7bb5c213#4d7ef3573aad114d789a9c30f9cd702d7bb5c213"
+dependencies = [
+ "angzarr-proto",
+ "bytes",
+ "prost",
+ "prost-build",
+ "prost-types",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+]
+
+[[package]]
+name = "angzarr-proto-transport-embedded"
+version = "0.1.0"
+source = "git+https://github.com/angzarr-io/angzarr?rev=4d7ef3573aad114d789a9c30f9cd702d7bb5c213#4d7ef3573aad114d789a9c30f9cd702d7bb5c213"
+dependencies = [
+ "angzarr-proto",
+ "angzarr-proto-component",
+ "prost",
+ "prost-build",
 ]
 
 [[package]]
@@ -215,6 +275,17 @@ name = "anyhow"
 version = "1.0.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
+
+[[package]]
+name = "async-trait"
+version = "0.1.92"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82f6aeea286b8eb4dd3431a1be1b59d290ace00f5bfd8e2a159bc2a05e2c1667"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.9",
+]
 
 [[package]]
 name = "atoi"
@@ -437,6 +508,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "credentials"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.3.4",
+ "mutants",
+ "run-ports",
+]
+
+[[package]]
 name = "crossbeam-queue"
 version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -511,6 +591,7 @@ version = "0.1.0"
 dependencies = [
  "angzarr-diagnostic",
  "angzarr-embedded",
+ "angzarr-embedded-host",
  "angzarr-presentation",
  "clap",
  "companion-probe",
@@ -524,6 +605,7 @@ dependencies = [
  "deps-files",
  "deps-ports",
  "editor-process",
+ "embedded-edge",
  "file-lock",
  "file-system",
  "forge-github",
@@ -536,12 +618,16 @@ dependencies = [
  "ports",
  "project-registry",
  "remote-git",
+ "run-ports",
+ "runs",
+ "runs-application",
  "session-files",
  "session-ports",
  "sessions",
  "sessions-application",
  "system",
  "tokio",
+ "trees",
  "uuid",
 ]
 
@@ -723,6 +809,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "embedded-edge"
+version = "0.1.0"
+dependencies = [
+ "angzarr-embedded",
+ "angzarr-embedded-host",
+ "mutants",
+ "run-ports",
 ]
 
 [[package]]
@@ -1027,6 +1123,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "h2"
+version = "0.4.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d29020232d6aa3fb1daca64c1127cf662cf97f254ae16c18c05b8ab635fc118"
+dependencies = [
+ "atomic-waker",
+ "bytes",
+ "fnv",
+ "futures-core",
+ "futures-sink",
+ "http",
+ "indexmap",
+ "slab",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "harp-core"
 version = "0.1.2"
 source = "git+https://github.com/benjaminabbitt/harp?rev=e27196f5a425ffcf8e443aab95d2bf085cd2b134#e27196f5a425ffcf8e443aab95d2bf085cd2b134"
@@ -1169,6 +1284,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 
 [[package]]
+name = "httpdate"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
+
+[[package]]
 name = "hyper"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1176,15 +1297,31 @@ checksum = "2c3e324da4c95177d6291d4c8730197c0d1822f8a9766814a4a44fa5ab797c9c"
 dependencies = [
  "atomic-waker",
  "bytes",
+ "futures-channel",
  "futures-core",
+ "h2",
  "http",
  "http-body",
  "httparse",
+ "httpdate",
  "itoa",
  "pin-project-lite",
  "smallvec",
  "tokio",
  "want",
+]
+
+[[package]]
+name = "hyper-timeout"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b90d566bffbce6a75bd8b09a05aa8c2cb1fabb6cb348f8840c9e4c90a0d83b0"
+dependencies = [
+ "hyper",
+ "hyper-util",
+ "pin-project-lite",
+ "tokio",
+ "tower-service",
 ]
 
 [[package]]
@@ -1804,6 +1941,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "pin-project"
+version = "1.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2466b2336ed02bcdca6b294417127b90ec92038d1d5c4fbeac971a922e0e0924"
+dependencies = [
+ "pin-project-internal",
+]
+
+[[package]]
+name = "pin-project-internal"
+version = "1.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c96395f0a926bc13b1c17622aaddda1ecb55d49c8f1bf9777e4d877800a43f8b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2178,6 +2335,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "run-ports"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "angzarr-embedded",
+ "mutants",
+ "sha2",
+ "subtle",
+]
+
+[[package]]
 name = "runs"
 version = "0.1.0"
 dependencies = [
@@ -2188,6 +2356,23 @@ dependencies = [
  "mutants",
  "prost",
  "runs-proto",
+ "uuid",
+]
+
+[[package]]
+name = "runs-application"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "angzarr-embedded",
+ "mutants",
+ "prost",
+ "run-ports",
+ "runs",
+ "sessions",
+ "sha2",
+ "tokio",
+ "trees",
  "uuid",
 ]
 
@@ -2881,7 +3066,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
@@ -3020,6 +3205,21 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "tokio-util"
+version = "0.7.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e464cf451ba96ebfc6f9b6542f17ee8b8956e33f1e40d9690624e59d7a7f8a4b"
+dependencies = [
+ "bytes",
+ "futures-core",
+ "futures-sink",
+ "libc",
+ "pin-project-lite",
+ "tokio",
 ]
 
 [[package]]
@@ -3062,6 +3262,98 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "009dbb7700f11c55ef83aebbe4c0e9cf1f1ac0844bd8d6f00dc38f302026e13a"
 
 [[package]]
+name = "tonic"
+version = "0.14.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2cdfc673aabd30fe8fee92e65837b644c37c5d47f0f97ae6d5e0f1237d15e1b"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
+ "h2",
+ "http",
+ "http-body",
+ "http-body-util",
+ "hyper",
+ "hyper-timeout",
+ "hyper-util",
+ "percent-encoding",
+ "pin-project",
+ "socket2",
+ "sync_wrapper",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "tower",
+ "tower-layer",
+ "tower-service",
+ "tracing",
+]
+
+[[package]]
+name = "tonic-build"
+version = "0.14.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac6d916d206ed7bdda1778ddff9bda43303789c258877e7bc22fb44ee5c984b4"
+dependencies = [
+ "prettyplease 0.2.37",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "tonic-health"
+version = "0.14.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc97d645691d64d96db1afe386d0d2918ac84ab56e2c91e153f22f6349a378cd"
+dependencies = [
+ "prost",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-prost",
+]
+
+[[package]]
+name = "tonic-prost"
+version = "0.14.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eba464054e2226f182a34489b8b079bf4c6e3e7ab5fd7fc30e024f24aa92a484"
+dependencies = [
+ "bytes",
+ "prost",
+ "tonic",
+]
+
+[[package]]
+name = "tonic-prost-build"
+version = "0.14.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ea216ddc448e08e7839ab09e20e60b06b6a1c32745ccb212c0ebd161c199f1b"
+dependencies = [
+ "prettyplease 0.2.37",
+ "proc-macro2",
+ "prost-build",
+ "prost-types",
+ "quote",
+ "syn 2.0.119",
+ "tempfile",
+ "tonic-build",
+]
+
+[[package]]
+name = "tonic-types"
+version = "0.14.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ccbb6c31deb8e99dcdf87df19c5289b7838a600da74a8224baa671e52fe7c5ad"
+dependencies = [
+ "prost",
+ "prost-types",
+ "tonic",
+]
+
+[[package]]
 name = "tower"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3069,11 +3361,15 @@ checksum = "ebe5ef63511595f1344e2d5cfa636d973292adc0eec1f0ad45fae9f0851ab1d4"
 dependencies = [
  "futures-core",
  "futures-util",
+ "indexmap",
  "pin-project-lite",
+ "slab",
  "sync_wrapper",
  "tokio",
+ "tokio-util",
  "tower-layer",
  "tower-service",
+ "tracing",
 ]
 
 [[package]]

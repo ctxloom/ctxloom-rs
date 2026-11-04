@@ -9,6 +9,7 @@
 //!   opened over them.
 
 mod commands;
+mod core_link;
 mod error;
 mod library;
 #[cfg(feature = "test-support")]
@@ -34,6 +35,7 @@ use system::System;
 use uuid::Uuid;
 
 pub use commands::Commands;
+pub use core_link::InProcessCore;
 #[cfg(any(test, feature = "test-support"))]
 pub use error::diagnostic_samples;
 pub use error::{LibError, EN_US};

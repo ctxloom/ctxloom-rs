@@ -10,6 +10,8 @@ pub const RUN_DOMAIN: &str = "runs";
 pub struct RunState {
     pub session: String,
     pub incarnation: u32,
+    /// The session's depth in its tree, copied at enqueue (S5 stand-in).
+    pub depth: u32,
     pub mode: Option<RunMode>,
     /// SHA-256 of the run's token; the token itself is never journaled (D29).
     pub credential_hash: Vec<u8>,

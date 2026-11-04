@@ -1,0 +1,19 @@
+[package]
+name = "embedded-edge"
+version = "0.1.0"
+description = "run-ports' Edge over angzarr-embedded-host's App: the exposure seam (serve_in) and the core's own handle_in, in process"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-embedded.workspace = true
+angzarr-embedded-host.workspace = true
+run-ports.workspace = true
+
+[dev-dependencies]
+mutants.workspace = true
+
+[lints]
+workspace = true
