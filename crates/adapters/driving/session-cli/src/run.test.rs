@@ -979,3 +979,165 @@ fn a_transcript_is_printed_with_one_closing_newline() {
         "{\"v\":1}\n"
     );
 }
+
+// ----------------------------------------------------------------------- sweep
+
+fn notice_command(done: &crate::Done) -> String {
+    assert_eq!(done.notices.len(), 1);
+    assert_eq!(
+        done.notices[0].code(),
+        "sessions-application-removed-nothing"
+    );
+    done.notices[0]
+        .args()
+        .into_iter()
+        .find(|(n, _)| *n == "command")
+        .map(|(_, a)| format!("{a:?}"))
+        .unwrap()
+}
+
+fn ended(harp: &str) -> View {
+    let mut v = view(harp, State::Ended);
+    v.record.ended_at = Some(ts(STARTED + 60));
+    v
+}
+
+#[test]
+fn a_sweep_reports_each_sessions_fate_with_its_reason_and_command_and_removes_nothing() {
+    let mut kept = ended("held-one");
+    kept.record.kept = true;
+    let mut fake = Fake {
+        views: vec![
+            view("live-one", State::Live),
+            kept,
+            ended("plan-one"),
+            view("unknown-one", State::Unknown),
+        ],
+        removal: Some(plan(false)),
+        ..Fake::default()
+    };
+    let ran = go(
+        &mut fake,
+        Format::Text,
+        &["sweep", "--purge-older-than", "1d", "--all-projects"],
+    );
+    let done = ran.result.unwrap();
+    let blank = " ".repeat(28);
+    let lines: Vec<&str> = ran.out.lines().collect();
+    assert!(
+        lines[0].starts_with("Session sweep: purge before 20"),
+        "{}",
+        ran.out
+    );
+    assert_eq!(lines[1], "");
+    assert_eq!(
+        lines[2..],
+        [
+            format!("  {:<28} {:<8} {:<8} {:>10}", "live-one", "skip", "skipped", ""),
+            format!("  {blank} it is running"),
+            format!("  {:<28} {:<8} {:<8} {:>10}", "held-one", "keep", "held", ""),
+            format!(
+                "  {blank} it is marked keep: its transcript is kept at any age"
+            ),
+            format!("  {blank} run: ctxloom session keep held-one --undo"),
+            format!("  {:<28} {:<8} {:<8} {:>10}", "plan-one", "purge", "planned", "9 B"),
+            format!("  {blank} run: ctxloom session purge plan-one --yes"),
+            format!(
+                "  {:<28} {:<8} {:<8} {:>10}",
+                "unknown-one", "skip", "skipped", ""
+            ),
+            format!("  {blank} its liveness cannot be proven"),
+            format!("  {blank} run: ctxloom session purge unknown-one --even-if-live"),
+            String::new(),
+            "0 done, 1 planned, 1 held, 0 left, 2 skipped, 0 failed; 0 session(s) had nothing to do."
+                .to_string(),
+        ]
+    );
+    assert_eq!(fake.list.len(), 1);
+    assert!(fake.list[0].all);
+    assert_eq!(fake.remove.len(), 1, "only the planning ask");
+    assert!(!fake.remove[0].yes);
+    assert!(notice_command(&done)
+        .contains("ctxloom session sweep --all-projects --purge-older-than 1d --yes"));
+}
+
+#[test]
+fn a_sweep_without_a_purge_age_says_purges_are_held() {
+    let mut fake = Fake {
+        views: vec![ended("plan-one")],
+        removal: Some(plan(false)),
+        ..Fake::default()
+    };
+    let ran = go(&mut fake, Format::Text, &["sweep"]);
+    let done = ran.result.unwrap();
+    assert!(
+        ran.out
+            .starts_with("Session sweep: purge before not set (purges are held).\n\n"),
+        "{}",
+        ran.out
+    );
+    assert!(fake.remove.is_empty());
+    let command = notice_command(&done);
+    assert!(command.contains("ctxloom session sweep --yes"), "{command}");
+    assert!(!command.contains("--all-projects"), "{command}");
+}
+
+#[test]
+fn a_sweep_report_in_json_is_the_report() {
+    let mut fake = Fake {
+        views: vec![ended("plan-one")],
+        removal: Some(plan(false)),
+        ..Fake::default()
+    };
+    let doc = json_of(&go(
+        &mut fake,
+        Format::Json,
+        &["sweep", "--purge-older-than", "1d"],
+    ));
+    assert_eq!(doc["rows"][0]["harp"], "plan-one");
+    assert_eq!(doc["rows"][0]["verdict"], "planned");
+    assert_eq!(doc["counts"]["planned"], 1);
+}
+
+#[test]
+fn a_sweep_with_yes_acts_and_leaves_no_notice() {
+    let mut fake = Fake {
+        views: vec![ended("plan-one")],
+        removal: Some(plan(true)),
+        ..Fake::default()
+    };
+    let ran = go(
+        &mut fake,
+        Format::Text,
+        &["sweep", "--purge-older-than", "1d", "--yes"],
+    );
+    assert!(ran.result.unwrap().notices.is_empty());
+    assert!(ran.out.contains("1 done"), "{}", ran.out);
+    assert_eq!(fake.remove.len(), 2);
+    assert!(fake.remove[1].yes);
+}
+
+#[test]
+fn a_sweep_that_failed_while_acting_exits_nonzero_but_a_report_of_a_failure_does_not() {
+    // The fake has nothing to remove: every purge fails.
+    let mut fake = Fake {
+        views: vec![ended("plan-one")],
+        removal: None,
+        ..Fake::default()
+    };
+    let ran = go(
+        &mut fake,
+        Format::Text,
+        &["sweep", "--purge-older-than", "1d"],
+    );
+    assert!(ran.out.contains("1 failed"), "{}", ran.out);
+    assert!(ran.result.is_ok(), "a report only reports");
+    let ran = go(
+        &mut fake,
+        Format::Text,
+        &["sweep", "--purge-older-than", "1d", "--yes"],
+    );
+    let failure = ran.result.unwrap_err();
+    assert_eq!(failure.error.code(), "session-cli-sweep-failed");
+    assert_eq!(failure.exit, 1);
+}

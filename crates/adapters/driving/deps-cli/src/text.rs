@@ -562,3 +562,7 @@ pub fn moved(out: &mut dyn Write, moved: &Moved) -> io::Result<()> {
         writeln!(out, "Moved {} -> {}", moved.source, moved.dest)
     }
 }
+
+#[cfg(test)]
+#[path = "text.test.rs"]
+mod tests;

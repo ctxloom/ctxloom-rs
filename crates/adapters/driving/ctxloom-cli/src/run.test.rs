@@ -20,8 +20,8 @@ use sessions_application::{
 use super::*;
 
 /// What the fake extension is told to answer.
-struct Fake {
-    answer: Result<u8, u8>,
+pub(crate) struct Fake {
+    pub(crate) answer: Result<u8, u8>,
 }
 
 impl Extension for Fake {
@@ -59,7 +59,7 @@ impl Extension for Fake {
 }
 
 /// No sessions: a command line test of an extension never reaches them.
-struct NoSessions;
+pub(crate) struct NoSessions;
 
 impl SessionService for NoSessions {
     async fn list(&mut self, _: ListQuery) -> Result<Vec<View>, AppError> {
@@ -105,7 +105,7 @@ impl ImportService for NoSessions {
     }
 }
 
-struct Wire(Fake, NoSessions);
+pub(crate) struct Wire(pub(crate) Fake, pub(crate) NoSessions);
 
 impl Services for Wire {
     type Sessions = NoSessions;

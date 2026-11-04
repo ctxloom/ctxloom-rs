@@ -17,7 +17,9 @@ setup-application.workspace = true
 
 [dev-dependencies]
 angzarr-presentation = { workspace = true, features = ["test-support"] }
+library-application = { workspace = true, features = ["test-support"] }
 serde_json.workspace = true
+surface-ports.workspace = true
 
 [features]
 test-support = ["setup-application/test-support"]

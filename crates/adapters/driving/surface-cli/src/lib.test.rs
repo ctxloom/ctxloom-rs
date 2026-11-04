@@ -187,3 +187,437 @@ fn test_the_hook_list_names_each_hooks_origin_and_empty_events() {
     assert!(text.contains("[bundle ctxloom+local:hooked]"));
     assert!(text.contains("turn_end\n  (none)\n"));
 }
+
+// ------------------------------------------------------------ the commands run
+
+mod commands_run {
+    use std::sync::Arc;
+
+    use angzarr_presentation::Catalog;
+    use surface_ports::ForeignFiles;
+
+    use super::*;
+    use crate::world::{world, World, CONFIG};
+
+    struct Ran {
+        exit: Result<u8, Failure>,
+        out: String,
+        err: String,
+        world: World,
+    }
+
+    fn catalog() -> Catalog {
+        Catalog::en_us(&[
+            library_application::EN_US,
+            setup_application::EN_US,
+            surface_ports::EN_US,
+        ])
+        .expect("a catalog")
+    }
+
+    fn go_to(line: &[&str], format: Format, out: &mut dyn Write) -> (Ran, ArgMatches) {
+        let world = world(CONFIG);
+        let matches = parse(line);
+        let noun = matches.subcommand_name().expect("a noun").to_string();
+        let call = Call {
+            matches: &matches,
+            explicit_format: Some(format),
+            default_format: Format::Json,
+            stdout_is_terminal: false,
+            degraded: false,
+            no_companions: false,
+            config_set: Vec::new(),
+        };
+        let mut err = Vec::new();
+        let exit = run(&world.setup, &noun, &call, &catalog(), out, &mut err);
+        let ran = Ran {
+            exit,
+            out: String::new(),
+            err: String::from_utf8(err).unwrap(),
+            world,
+        };
+        (ran, matches)
+    }
+
+    fn go(line: &[&str], format: Format) -> Ran {
+        let mut out = Vec::new();
+        let (mut ran, _) = go_to(line, format, &mut out);
+        ran.out = String::from_utf8(out).unwrap();
+        ran
+    }
+
+    #[test]
+    fn a_noun_the_line_does_not_carry_is_refused_with_exit_two() {
+        let world = world(CONFIG);
+        let matches = parse(&["manage", "check"]);
+        let call = Call {
+            matches: &matches,
+            explicit_format: None,
+            default_format: Format::Text,
+            stdout_is_terminal: false,
+            degraded: false,
+            no_companions: false,
+            config_set: Vec::new(),
+        };
+        let failure = run(
+            &world.setup,
+            "materialize",
+            &call,
+            &catalog(),
+            &mut Vec::new(),
+            &mut Vec::new(),
+        )
+        .expect_err("refused");
+        assert_eq!(failure.exit, 2);
+        assert!(
+            failure
+                .cause
+                .args()
+                .iter()
+                .any(|(_, a)| format!("{a:?}").contains("no materialize command")),
+            "{:?}",
+            failure.cause.args()
+        );
+    }
+
+    #[test]
+    fn the_format_is_the_terminals_text_unless_one_was_asked_for() {
+        let world = world(CONFIG);
+        let matches = parse(&["manage", "check"]);
+        let mut call = Call {
+            matches: &matches,
+            explicit_format: None,
+            default_format: Format::Json,
+            stdout_is_terminal: true,
+            degraded: false,
+            no_companions: false,
+            config_set: Vec::new(),
+        };
+        let mut out = Vec::new();
+        run(
+            &world.setup,
+            "manage",
+            &call,
+            &catalog(),
+            &mut out,
+            &mut Vec::new(),
+        )
+        .unwrap();
+        assert!(String::from_utf8(out).unwrap().starts_with("Project: "));
+        call.stdout_is_terminal = false;
+        let mut out = Vec::new();
+        run(
+            &world.setup,
+            "manage",
+            &call,
+            &catalog(),
+            &mut out,
+            &mut Vec::new(),
+        )
+        .unwrap();
+        assert!(String::from_utf8(out).unwrap().starts_with('{'));
+    }
+
+    #[test]
+    fn manage_check_and_a_bare_hooks_report_the_project() {
+        for line in [&["manage", "check"][..], &["manage", "hooks"]] {
+            let ran = go(line, Format::Text);
+            assert_eq!(ran.exit.unwrap(), 0, "{line:?}");
+            assert!(
+                ran.out.starts_with("Project: /p\n"),
+                "{line:?}: {}",
+                ran.out
+            );
+        }
+        let json = go(&["manage", "check"], Format::Json);
+        assert!(json.out.contains("\"work_dir\": \"/p\""), "{}", json.out);
+    }
+
+    #[test]
+    fn manage_hooks_list_lists_the_events() {
+        let ran = go(&["manage", "hooks", "list"], Format::Text);
+        assert_eq!(ran.exit.unwrap(), 0);
+        assert!(ran.out.contains("(none)"), "{}", ran.out);
+        assert!(!ran.out.contains("Project:"), "{}", ran.out);
+    }
+
+    #[test]
+    fn manage_install_print_plans_and_a_plain_install_installs() {
+        let plan = go(&["manage", "install", "--print"], Format::Text);
+        assert_eq!(plan.exit.unwrap(), 0);
+        assert!(
+            plan.out.starts_with("manage install would:\n"),
+            "{}",
+            plan.out
+        );
+        assert!(plan.world.mem.scaffold_paths().is_empty());
+        let done = go(&["manage", "install", "--no-pull"], Format::Text);
+        assert_eq!(done.exit.unwrap(), 0);
+        assert!(
+            done.out.contains("Initialized ctxloom directory: "),
+            "{}",
+            done.out
+        );
+        assert!(!done.out.contains("would:"), "{}", done.out);
+        assert!(done.world.mem.scaffold_text("config.yaml").is_some());
+    }
+
+    #[test]
+    fn manage_uninstall_names_what_it_removed() {
+        let ran = go(&["manage", "uninstall"], Format::Text);
+        assert_eq!(ran.exit.unwrap(), 0);
+        assert!(
+            ran.out.starts_with("Removed ctxloom harness from: "),
+            "{}",
+            ran.out
+        );
+    }
+
+    #[test]
+    fn manage_statusline_install_and_uninstall_say_the_new_state() {
+        let on = go(&["manage", "statusline", "install"], Format::Text);
+        assert_eq!(on.exit.unwrap(), 0);
+        assert_eq!(
+            on.out,
+            "ctxloom HUD statusline: enabled\nRun 'ctxloom run' or 'ctxloom materialize' to apply the change.\n"
+        );
+        let off = go(&["manage", "statusline", "uninstall"], Format::Text);
+        assert!(
+            off.out.starts_with("ctxloom HUD statusline: disabled\n"),
+            "{}",
+            off.out
+        );
+        let json = go(&["manage", "statusline", "install"], Format::Json);
+        assert!(json.out.contains("\"status\": \"enabled\""), "{}", json.out);
+        assert!(json.out.contains("\"statusline\": true"), "{}", json.out);
+        let bare = go(&["manage", "statusline"], Format::Text);
+        assert_eq!((bare.exit.unwrap(), bare.out.as_str()), (0, ""));
+    }
+
+    #[test]
+    fn manage_gitignore_install_writes_the_rules_and_a_bare_gitignore_does_nothing() {
+        let ran = go(&["manage", "gitignore", "install"], Format::Text);
+        assert_eq!(ran.exit.unwrap(), 0);
+        assert!(ran.out.starts_with("Wrote "), "{}", ran.out);
+        assert!(ran.world.mem.scaffold_text(".gitignore").is_some());
+        let bare = go(&["manage", "gitignore"], Format::Text);
+        assert_eq!((bare.exit.unwrap(), bare.out.as_str()), (0, ""));
+        assert!(bare.world.mem.scaffold_text(".gitignore").is_none());
+    }
+
+    #[test]
+    fn a_bare_manage_does_nothing_and_succeeds() {
+        let ran = go(&["manage"], Format::Text);
+        assert_eq!(
+            (ran.exit.unwrap(), ran.out.as_str(), ran.err.as_str()),
+            (0, "", "")
+        );
+    }
+
+    #[test]
+    fn materialize_delivers_and_dry_run_or_diff_only_plans() {
+        let delivered = go(
+            &[
+                "materialize",
+                "--target",
+                "/out",
+                "--backend",
+                "mock",
+                "dev",
+            ],
+            Format::Text,
+        );
+        assert_eq!(delivered.exit.unwrap(), 0);
+        assert!(
+            delivered.out.starts_with("Target: /out\n"),
+            "{}",
+            delivered.out
+        );
+        assert!(delivered.out.contains("mock: wrote "), "{}", delivered.out);
+        assert!(!delivered.world.store.state().claims.is_empty());
+        for flag in ["--dry-run", "--diff"] {
+            let planned = go(
+                &[
+                    "materialize",
+                    "--target",
+                    "/out",
+                    "--backend",
+                    "mock",
+                    "dev",
+                    flag,
+                ],
+                Format::Text,
+            );
+            assert_eq!(planned.exit.unwrap(), 0, "{flag}");
+            assert!(
+                planned.world.store.state().claims.is_empty(),
+                "{flag} must not deliver"
+            );
+        }
+    }
+
+    #[test]
+    fn a_refused_delivery_fails_the_command_after_the_report() {
+        let world = world(CONFIG);
+        world.store.state().refuse_path = Some("mock.md".to_string());
+        let matches = parse(&[
+            "materialize",
+            "--target",
+            "/out",
+            "--backend",
+            "mock",
+            "dev",
+        ]);
+        let call = Call {
+            matches: &matches,
+            explicit_format: Some(Format::Text),
+            default_format: Format::Text,
+            stdout_is_terminal: false,
+            degraded: false,
+            no_companions: false,
+            config_set: Vec::new(),
+        };
+        let mut out = Vec::new();
+        let failure = run(
+            &world.setup,
+            "materialize",
+            &call,
+            &catalog(),
+            &mut out,
+            &mut Vec::new(),
+        )
+        .expect_err("fails");
+        assert_eq!(failure.exit, 1);
+        let out = String::from_utf8(out).unwrap();
+        assert!(
+            out.contains("error: "),
+            "the report is still written: {out}"
+        );
+    }
+
+    #[test]
+    fn an_unwritable_answer_is_a_refused_request() {
+        struct Broken;
+        impl Write for Broken {
+            fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+                Err(io::Error::other("closed"))
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        let (ran, _) = go_to(&["manage", "check"], Format::Text, &mut Broken);
+        let failure = ran.exit.expect_err("fails");
+        assert_eq!(failure.exit, 2);
+        let (ran, _) = go_to(&["manage", "check"], Format::Json, &mut Broken);
+        assert!(ran.exit.is_err());
+    }
+
+    mod util_run {
+        use super::*;
+
+        #[derive(Default)]
+        struct Files {
+            files: std::sync::Mutex<std::collections::BTreeMap<String, Vec<u8>>>,
+        }
+
+        impl ForeignFiles for Files {
+            fn read(&self, path: &str) -> Result<Option<Vec<u8>>, surface_ports::SurfaceError> {
+                Ok(self.files.lock().unwrap().get(path).cloned())
+            }
+            fn write(&self, path: &str, bytes: &[u8]) -> Result<(), surface_ports::SurfaceError> {
+                self.files
+                    .lock()
+                    .unwrap()
+                    .insert(path.into(), bytes.to_vec());
+                Ok(())
+            }
+            fn record(&self, _: &str) -> Result<Option<String>, surface_ports::SurfaceError> {
+                Ok(None)
+            }
+            fn write_record(
+                &self,
+                path: &str,
+                _: &str,
+            ) -> Result<String, surface_ports::SurfaceError> {
+                Ok(format!("records/{path}"))
+            }
+        }
+
+        fn util_with(
+            line: &[&str],
+            patch: &str,
+            format: Format,
+        ) -> (Result<u8, Failure>, String, Arc<Files>) {
+            let files = Arc::new(Files::default());
+            let setup = world(CONFIG).setup.with_foreign(files.clone());
+            let matches = parse(line);
+            let (_, sub) = matches.subcommand().expect("util");
+            let cx = Context {
+                setup: &setup,
+                flags: Flags::default(),
+                format,
+                catalog: &catalog(),
+            };
+            let mut out = Vec::new();
+            let exit = util(&cx, sub, &mut patch.as_bytes(), &mut out);
+            (exit, String::from_utf8(out).unwrap(), files)
+        }
+
+        const WRITE: &[&str] = &["util", "config-write", "--file", "/x.json"];
+
+        #[test]
+        fn config_write_merges_the_patch_from_the_input() {
+            let (exit, out, files) = util_with(WRITE, r#"{"a": {"b": 1}}"#, Format::Text);
+            assert_eq!(exit.unwrap(), 0);
+            assert_eq!(out, "Merged a into /x.json (created)\n");
+            assert!(files.files.lock().unwrap().contains_key("/x.json"));
+            let (_, json, _) = util_with(WRITE, r#"{"a": 1}"#, Format::Json);
+            assert!(json.contains("\"file\": \"/x.json\""), "{json}");
+        }
+
+        #[test]
+        fn config_write_refuses_an_empty_patch_and_an_unreadable_input() {
+            let (exit, out, _) = util_with(WRITE, "", Format::Text);
+            assert!(exit.is_err());
+            assert_eq!(out, "");
+            struct Unreadable;
+            impl Read for Unreadable {
+                fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+                    Err(io::Error::other("closed"))
+                }
+            }
+            let setup = world(CONFIG).setup;
+            let matches = parse(WRITE);
+            let (_, sub) = matches.subcommand().unwrap();
+            let cx = Context {
+                setup: &setup,
+                flags: Flags::default(),
+                format: Format::Text,
+                catalog: &catalog(),
+            };
+            let failure = util(&cx, sub, &mut Unreadable, &mut Vec::new()).expect_err("fails");
+            assert_eq!(failure.cause.code(), "setup-application-config-write");
+        }
+
+        #[test]
+        fn a_util_without_its_verb_reads_nothing_and_succeeds() {
+            let matches = parse(&["util"]);
+            let (_, sub) = matches.subcommand().unwrap();
+            let setup = world(CONFIG).setup;
+            let cx = Context {
+                setup: &setup,
+                flags: Flags::default(),
+                format: Format::Text,
+                catalog: &catalog(),
+            };
+            struct Never;
+            impl Read for Never {
+                fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+                    panic!("nothing to read")
+                }
+            }
+            assert_eq!(util(&cx, sub, &mut Never, &mut Vec::new()).unwrap(), 0);
+        }
+    }
+}

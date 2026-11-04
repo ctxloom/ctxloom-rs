@@ -3369,6 +3369,7 @@ dependencies = [
  "serde",
  "serde_json",
  "setup-application",
+ "surface-ports",
 ]
 
 [[package]]
