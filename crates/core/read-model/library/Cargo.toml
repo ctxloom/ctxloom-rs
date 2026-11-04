@@ -11,12 +11,15 @@ publish.workspace = true
 angzarr-diagnostic.workspace = true
 # The one config reader (D15): the parsed tree, versioned documents.
 angzarr-yaml.workspace = true
-# The skill archive's zip: deflate and the checksum (pure; both already in the
-# lock, by harp-core).
+# The skill archive's zip (owner-approved third party, 2026-11-04): deflate
+# only (no aes, bzip2, zstd, lzma, ppmd, time or zopfli); the entry checksum is
+# checked here by crc32fast, which zip and flate2 already bring.
 crc32fast = "1"
-flate2 = "1"
+zip = { version = "9.0.5", default-features = false, features = ["deflate-flate2"] }
 
 [dev-dependencies]
+# The tests hand-build the hostile archives no zip writer would make.
+flate2 = "1"
 # The tests hold an error's English to Go's words (english_for!).
 angzarr-presentation = { workspace = true, features = ["test-support"] }
 
