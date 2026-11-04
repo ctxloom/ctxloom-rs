@@ -9,7 +9,7 @@ fn test_numbers_keep_the_digits_they_were_written_in() {
         "1234567890123456789",
         "-9223372036854775808",
         "18446744073709551615",
-        "1.50e3",
+        "1.50e+3",
     ] {
         assert!(again.contains(digits), "{again}");
     }
@@ -95,7 +95,7 @@ fn test_every_number_form_comes_back_as_written() {
         "0",
         "-0",
         "0.5",
-        "1E+2",
+        "1e+2",
         "-1.25e-3",
         "123456789012345678901234567890",
     ] {
@@ -135,6 +135,30 @@ fn test_a_document_at_the_depth_limit_reads() {
 }
 
 #[test]
-fn test_form_feed_and_backspace_are_written_as_unicode_escapes() {
-    assert_eq!(Json::text("\u{8}\u{c}").pretty(), "\"\\u0008\\u000c\"");
+fn test_backspace_and_form_feed_are_written_as_go_1_22_writes_them() {
+    assert_eq!(Json::text("\u{8}\u{c}").pretty(), "\"\\b\\f\"");
+}
+
+#[test]
+fn test_an_exponent_is_spelled_lowercase_with_its_sign() {
+    for (written, kept) in [("1E5", "1e+5"), ("2.5E-3", "2.5e-3"), ("7e3", "7e+3")] {
+        assert_eq!(
+            Json::parse(written).unwrap(),
+            Json::Number(kept.to_string())
+        );
+    }
+}
+
+#[test]
+fn test_a_number_that_is_not_one_is_written_as_null() {
+    assert_eq!(Json::Number("12x".to_string()).pretty(), "null");
+}
+
+#[test]
+fn test_an_object_with_the_reader_s_number_key_is_still_an_object() {
+    let doc = Json::parse(r#"{"$serde_json::private::Number": 1}"#).unwrap();
+    assert_eq!(
+        doc,
+        Json::object([("$serde_json::private::Number", Json::Number("1".into()))])
+    );
 }

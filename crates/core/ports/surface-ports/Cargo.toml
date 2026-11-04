@@ -9,6 +9,9 @@ publish.workspace = true
 
 [dependencies]
 angzarr-diagnostic.workspace = true
+serde.workspace = true
+# `arbitrary_precision` keeps a number's digits as written (see `Json::Number`).
+serde_json = { workspace = true, features = ["arbitrary_precision"] }
 
 [dev-dependencies]
 angzarr-presentation = { workspace = true, features = ["test-support"] }

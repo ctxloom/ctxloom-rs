@@ -3386,6 +3386,8 @@ dependencies = [
  "angzarr-diagnostic",
  "angzarr-presentation",
  "mutants",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

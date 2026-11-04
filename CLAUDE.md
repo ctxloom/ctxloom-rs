@@ -133,6 +133,9 @@ Dependencies point inward; a review refuses a change that breaks these:
 
 - The core depends on nothing outside it: no I/O, async runtime or clock in
   decide, apply or a projection.
+  Pure computation crates are allowed: `surface-ports` links serde_json (with
+  `arbitrary_precision`, so a number keeps the digits it was written in) for
+  its `Json` value's reader and writer.
 - A driven adapter sees only ports (and wire types), never a use case. A
   driving adapter sees only the application layer, never a domain's
   internals. Adapters never depend on each other, except that driving

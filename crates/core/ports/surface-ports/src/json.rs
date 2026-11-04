@@ -3,9 +3,15 @@
 //! exactly, and a file the user wrote by hand comes back with its digits) and
 //! objects in the order they were written. Go's hew edits the file's bytes in
 //! place; this reads and writes the document, so what it promises is the
-//! digits and the order, not the whitespace.
+//! digits and the order, not the whitespace. The reading and writing are
+//! `serde_json`'s, with its `arbitrary_precision` for the digits; it spells an
+//! exponent in lowercase with its sign (`1E5` is kept as `1e+5`).
 
-use std::fmt::Write;
+use std::fmt;
+
+use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
+use serde::{Deserialize, Serialize, Serializer};
+use serde_json::Number;
 
 /// A JSON value.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -101,290 +107,101 @@ impl Json {
 
     /// Read one document; the whole text must be it.
     pub fn parse(text: &str) -> Result<Json, String> {
-        let mut reader = Reader {
-            bytes: text.as_bytes(),
-            at: 0,
-        };
-        reader.skip();
-        let value = reader.value(0)?;
-        reader.skip();
-        if reader.at != reader.bytes.len() {
-            return Err(format!("unexpected text at byte {}", reader.at));
-        }
-        Ok(value)
+        serde_json::from_str(text).map_err(|e| e.to_string())
     }
 
     /// The document, indented by two spaces as Go's `json.MarshalIndent` does,
     /// without a trailing newline.
     pub fn pretty(&self) -> String {
-        let mut out = String::new();
-        self.write(&mut out, 0);
-        out
+        // Writing a `Json` to a string cannot fail: a number that is not one
+        // is written as null, and nothing else here can be refused.
+        serde_json::to_string_pretty(self).unwrap_or_default()
     }
+}
 
-    fn write(&self, out: &mut String, depth: usize) {
+impl Serialize for Json {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
-            Json::Null => out.push_str("null"),
-            Json::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
-            Json::Number(n) => out.push_str(n),
-            Json::String(s) => quote(out, s),
-            Json::Array(items) if items.is_empty() => out.push_str("[]"),
-            Json::Array(items) => {
-                out.push_str("[\n");
-                for (i, item) in items.iter().enumerate() {
-                    indent(out, depth + 1);
-                    item.write(out, depth + 1);
-                    out.push_str(if i + 1 < items.len() { ",\n" } else { "\n" });
-                }
-                indent(out, depth);
-                out.push(']');
-            }
-            Json::Object(members) if members.is_empty() => out.push_str("{}"),
-            Json::Object(members) => {
-                out.push_str("{\n");
-                for (i, (key, value)) in members.iter().enumerate() {
-                    indent(out, depth + 1);
-                    quote(out, key);
-                    out.push_str(": ");
-                    value.write(out, depth + 1);
-                    out.push_str(if i + 1 < members.len() { ",\n" } else { "\n" });
-                }
-                indent(out, depth);
-                out.push('}');
-            }
+            Json::Null => serializer.serialize_unit(),
+            Json::Bool(b) => serializer.serialize_bool(*b),
+            Json::Number(digits) => match digits.parse::<Number>() {
+                Ok(number) => number.serialize(serializer),
+                Err(_) => serializer.serialize_unit(),
+            },
+            Json::String(s) => serializer.serialize_str(s),
+            Json::Array(items) => serializer.collect_seq(items),
+            Json::Object(members) => serializer.collect_map(members.iter().map(|(k, v)| (k, v))),
         }
     }
 }
 
-fn indent(out: &mut String, depth: usize) {
-    for _ in 0..depth {
-        out.push_str("  ");
+impl<'de> Deserialize<'de> for Json {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Json, D::Error> {
+        deserializer.deserialize_any(Reader)
     }
 }
 
-fn quote(out: &mut String, text: &str) {
-    out.push('"');
-    for c in text.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => {
-                let _ = write!(out, "\\u{:04x}", c as u32);
-            }
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-}
+/// With `arbitrary_precision`, serde_json hands a number to a visitor as a
+/// one-member map under this key, its digits as the value.
+const NUMBER_KEY: &str = "$serde_json::private::Number";
 
-/// Deep enough for any file a person writes, shallow enough for the stack.
-const DEPTH: usize = 128;
+struct Reader;
 
-struct Reader<'a> {
-    bytes: &'a [u8],
-    at: usize,
-}
+impl<'de> Visitor<'de> for Reader {
+    type Value = Json;
 
-impl Reader<'_> {
-    fn skip(&mut self) {
-        while self
-            .bytes
-            .get(self.at)
-            .is_some_and(|b| matches!(b, b' ' | b'\n' | b'\r' | b'\t'))
-        {
-            self.at += 1;
-        }
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("a JSON value")
     }
 
-    fn peek(&self) -> Option<u8> {
-        self.bytes.get(self.at).copied()
+    fn visit_unit<E: de::Error>(self) -> Result<Json, E> {
+        Ok(Json::Null)
     }
 
-    fn expect(&mut self, byte: u8) -> Result<(), String> {
-        if self.peek() == Some(byte) {
-            self.at += 1;
-            Ok(())
-        } else {
-            Err(format!("expected {:?} at byte {}", byte as char, self.at))
-        }
+    fn visit_bool<E: de::Error>(self, b: bool) -> Result<Json, E> {
+        Ok(Json::Bool(b))
     }
 
-    fn word(&mut self, word: &str, value: Json) -> Result<Json, String> {
-        if self.bytes[self.at..].starts_with(word.as_bytes()) {
-            self.at += word.len();
-            Ok(value)
-        } else {
-            Err(format!("unexpected text at byte {}", self.at))
-        }
+    fn visit_u64<E: de::Error>(self, n: u64) -> Result<Json, E> {
+        Ok(Json::Number(n.to_string()))
     }
 
-    fn value(&mut self, depth: usize) -> Result<Json, String> {
-        if depth > DEPTH {
-            return Err("nested too deeply".to_string());
-        }
-        match self.peek() {
-            Some(b'{') => self.object(depth),
-            Some(b'[') => self.array(depth),
-            Some(b'"') => Ok(Json::String(self.string()?)),
-            Some(b't') => self.word("true", Json::Bool(true)),
-            Some(b'f') => self.word("false", Json::Bool(false)),
-            Some(b'n') => self.word("null", Json::Null),
-            Some(b'-' | b'0'..=b'9') => self.number(),
-            Some(_) => Err(format!("unexpected text at byte {}", self.at)),
-            None => Err("unexpected end of the document".to_string()),
-        }
+    fn visit_i64<E: de::Error>(self, n: i64) -> Result<Json, E> {
+        Ok(Json::Number(n.to_string()))
     }
 
-    fn number(&mut self) -> Result<Json, String> {
-        let start = self.at;
-        while self
-            .peek()
-            .is_some_and(|b| matches!(b, b'-' | b'+' | b'.' | b'e' | b'E' | b'0'..=b'9'))
-        {
-            self.at += 1;
-        }
-        let digits = String::from_utf8_lossy(&self.bytes[start..self.at]).into_owned();
-        if digits.parse::<f64>().is_err() {
-            return Err(format!("{digits:?} is not a number"));
-        }
-        Ok(Json::Number(digits))
+    fn visit_str<E: de::Error>(self, s: &str) -> Result<Json, E> {
+        Ok(Json::String(s.to_string()))
     }
 
-    fn string(&mut self) -> Result<String, String> {
-        self.expect(b'"')?;
-        let mut out: Vec<u8> = Vec::new();
-        loop {
-            let Some(byte) = self.peek() else {
-                return Err("a string is not closed".to_string());
-            };
-            self.at += 1;
-            match byte {
-                b'"' => break,
-                b'\\' => self.escape(&mut out)?,
-                0..=0x1f => {
-                    return Err(format!(
-                        "a control character in a string at byte {}",
-                        self.at
-                    ))
-                }
-                other => out.push(other),
-            }
-        }
-        String::from_utf8(out).map_err(|e| e.to_string())
+    fn visit_string<E: de::Error>(self, s: String) -> Result<Json, E> {
+        Ok(Json::String(s))
     }
 
-    fn escape(&mut self, out: &mut Vec<u8>) -> Result<(), String> {
-        let Some(byte) = self.peek() else {
-            return Err("a string is not closed".to_string());
-        };
-        self.at += 1;
-        let plain = match byte {
-            b'"' => b'"',
-            b'\\' => b'\\',
-            b'/' => b'/',
-            b'b' => 8,
-            b'f' => 12,
-            b'n' => b'\n',
-            b'r' => b'\r',
-            b't' => b'\t',
-            b'u' => {
-                let c = self.unicode()?;
-                let mut buf = [0u8; 4];
-                out.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
-                return Ok(());
-            }
-            other => return Err(format!("bad escape \\{}", other as char)),
-        };
-        out.push(plain);
-        Ok(())
-    }
-
-    fn hex4(&mut self) -> Result<u32, String> {
-        let end = self.at + 4;
-        let digits = self
-            .bytes
-            .get(self.at..end)
-            .and_then(|b| std::str::from_utf8(b).ok())
-            .and_then(|s| u32::from_str_radix(s, 16).ok())
-            .ok_or_else(|| format!("bad \\u escape at byte {}", self.at))?;
-        self.at = end;
-        Ok(digits)
-    }
-
-    fn unicode(&mut self) -> Result<char, String> {
-        let first = self.hex4()?;
-        let code = if (0xD800..0xDC00).contains(&first) {
-            if self.bytes.get(self.at..self.at + 2) != Some(b"\\u") {
-                return Err("a lone surrogate in a string".to_string());
-            }
-            self.at += 2;
-            let second = self.hex4()?;
-            if !(0xDC00..0xE000).contains(&second) {
-                return Err("a lone surrogate in a string".to_string());
-            }
-            0x10000 + ((first - 0xD800) << 10) + (second - 0xDC00)
-        } else {
-            first
-        };
-        char::from_u32(code).ok_or_else(|| "a lone surrogate in a string".to_string())
-    }
-
-    fn array(&mut self, depth: usize) -> Result<Json, String> {
-        self.expect(b'[')?;
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Json, A::Error> {
         let mut items = Vec::new();
-        self.skip();
-        if self.peek() == Some(b']') {
-            self.at += 1;
-            return Ok(Json::Array(items));
+        while let Some(item) = seq.next_element()? {
+            items.push(item);
         }
-        loop {
-            self.skip();
-            items.push(self.value(depth + 1)?);
-            self.skip();
-            match self.peek() {
-                Some(b',') => self.at += 1,
-                Some(b']') => {
-                    self.at += 1;
-                    return Ok(Json::Array(items));
-                }
-                _ => return Err(format!("expected , or ] at byte {}", self.at)),
-            }
-        }
+        Ok(Json::Array(items))
     }
 
-    fn object(&mut self, depth: usize) -> Result<Json, String> {
-        self.expect(b'{')?;
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Json, A::Error> {
         let mut members: Vec<(String, Json)> = Vec::new();
-        self.skip();
-        if self.peek() == Some(b'}') {
-            self.at += 1;
-            return Ok(Json::Object(members));
-        }
-        loop {
-            self.skip();
-            let key = self.string()?;
-            self.skip();
-            self.expect(b':')?;
-            self.skip();
-            let value = self.value(depth + 1)?;
+        while let Some(key) = map.next_key::<String>()? {
+            let value = map.next_value()?;
             // A key written twice: the last wins, in the first's place, as
             // Go's decoder reads it.
             match members.iter_mut().find(|(k, _)| *k == key) {
                 Some((_, held)) => *held = value,
                 None => members.push((key, value)),
             }
-            self.skip();
-            match self.peek() {
-                Some(b',') => self.at += 1,
-                Some(b'}') => {
-                    self.at += 1;
-                    return Ok(Json::Object(members));
-                }
-                _ => return Err(format!("expected , or }} at byte {}", self.at)),
+        }
+        match members.as_mut_slice() {
+            [(key, Json::String(digits))] if key == NUMBER_KEY => {
+                Ok(Json::Number(std::mem::take(digits)))
             }
+            _ => Ok(Json::Object(members)),
         }
     }
 }
