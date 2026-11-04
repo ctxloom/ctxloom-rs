@@ -391,6 +391,8 @@ pub enum ConfigError {
     Syntax { cause: angzarr_yaml::Error },
     /// The root is not a mapping.
     NotAMapping,
+    /// An edit in place that the editor could not make.
+    Unwritable { detail: String },
 }
 
 impl fmt::Display for ConfigError {
@@ -406,6 +408,7 @@ impl Diagnostic for ConfigError {
         match self {
             ConfigError::Syntax { .. } => code!("config-syntax"),
             ConfigError::NotAMapping => code!("config-not-a-mapping"),
+            ConfigError::Unwritable { .. } => code!("config-unwritable"),
         }
     }
 
@@ -413,6 +416,7 @@ impl Diagnostic for ConfigError {
         match self {
             ConfigError::Syntax { cause } => vec![("cause", Arg::Nested(Box::new(cause.clone())))],
             ConfigError::NotAMapping => Vec::new(),
+            ConfigError::Unwritable { detail } => vec![("detail", detail.as_str().into())],
         }
     }
 }
@@ -426,6 +430,7 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
     all.extend(bundle_samples());
     all.extend(catalog_samples());
     all.extend(config_samples());
+    all.extend(crate::write::archive::diagnostic_samples());
     all
 }
 
@@ -597,6 +602,9 @@ fn config_samples() -> Vec<Box<dyn Diagnostic>> {
             cause: sample_yaml_error(),
         }),
         Box::new(ConfigError::NotAMapping),
+        Box::new(ConfigError::Unwritable {
+            detail: "NotFound".to_string(),
+        }),
     ]
 }
 

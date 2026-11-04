@@ -20,8 +20,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use ctxloom_ports::{ConfigFiles, Failure, LayerText, Source};
-use file_system::{Fs, Kind};
+use ctxloom_ports::{ConfigFiles, Failure, LayerText, Put, Scaffold, Scope, Source};
+use file_system::{Fs, Kind, Perms};
+use os::Mode;
 
 #[cfg(any(test, feature = "test-support"))]
 pub use error::diagnostic_samples;
@@ -108,8 +109,17 @@ impl ConfigFilesFs {
         &self.app_dir
     }
 
+    /// `scope`'s config file: the home's, or the project's (the home's again
+    /// with no project).
+    fn layer_file(&self, scope: Scope) -> PathBuf {
+        match scope {
+            Scope::Home => self.home.join(APP_DIR_NAME).join(CONFIG_FILE_NAME),
+            Scope::Project => self.app_dir.path.join(CONFIG_FILE_NAME),
+        }
+    }
+
     /// The file's text, or none where it is not there.
-    fn layer(&self, path: &Path) -> Result<Option<LayerText>, Failure> {
+    fn read_layer(&self, path: &Path) -> Result<Option<LayerText>, Failure> {
         let shown = path.display().to_string();
         match self.fs.read(path) {
             Ok(bytes) => match String::from_utf8(bytes) {
@@ -138,6 +148,24 @@ impl ConfigFiles for ConfigFilesFs {
         self.app_dir.ignored_root.clone()
     }
 
+    fn layer(&self, scope: Scope) -> Result<Option<LayerText>, Failure> {
+        self.read_layer(&self.layer_file(scope))
+    }
+
+    fn layer_path(&self, scope: Scope) -> String {
+        self.layer_file(scope).display().to_string()
+    }
+
+    fn write_layer(&self, scope: Scope, text: &str) -> Result<(), Failure> {
+        let path = self.layer_file(scope);
+        write_file(
+            &*self.fs,
+            &path,
+            text.as_bytes(),
+            Perms::KeepOr(Mode::from_bits(0o644)),
+        )
+    }
+
     fn layers(&self) -> Result<Vec<LayerText>, Failure> {
         let home = self.home.join(APP_DIR_NAME).join(CONFIG_FILE_NAME);
         let mut paths = vec![home.clone()];
@@ -147,9 +175,89 @@ impl ConfigFiles for ConfigFilesFs {
         }
         let mut layers = Vec::new();
         for path in paths {
-            layers.extend(self.layer(&path)?);
+            layers.extend(self.read_layer(&path)?);
         }
         Ok(layers)
+    }
+}
+
+/// The `.ctxloom` of a new project: under the working directory.
+pub struct ScaffoldFs {
+    fs: Arc<dyn Fs>,
+    app_dir: PathBuf,
+}
+
+impl ScaffoldFs {
+    /// The scaffold of the project at `cwd`, on `fs`.
+    pub fn new(fs: Arc<dyn Fs>, cwd: &Path) -> ScaffoldFs {
+        ScaffoldFs {
+            fs,
+            app_dir: cwd.join(APP_DIR_NAME),
+        }
+    }
+}
+
+/// A file written whole, atomically, its directory made.
+fn write_file(fs: &dyn Fs, path: &Path, bytes: &[u8], perms: Perms) -> Result<(), Failure> {
+    let failure = |e: &io::Error| -> Failure {
+        Box::new(ConfigFileError::Write {
+            path: path.display().to_string(),
+            detail: e.to_string(),
+        })
+    };
+    if let Some(parent) = path.parent() {
+        fs.create_dir_all(parent, Mode::from_bits(0o755))
+            .map_err(|e| failure(&e))?;
+    }
+    fs.write_atomic(path, bytes, perms).map_err(|e| failure(&e))
+}
+
+impl ScaffoldFs {
+    /// `rel` below the app dir, or why it is not a path below it.
+    fn below(&self, rel: &str) -> Result<PathBuf, Failure> {
+        let bad = rel.is_empty()
+            || rel.starts_with('/')
+            || rel.contains('\0')
+            || rel
+                .split('/')
+                .any(|p| p.is_empty() || p == "." || p == "..");
+        if bad {
+            return Err(Box::new(ConfigFileError::Write {
+                path: rel.to_string(),
+                detail: "not a path below the project's .ctxloom".to_string(),
+            }));
+        }
+        Ok(rel
+            .split('/')
+            .fold(self.app_dir.clone(), |p, part| p.join(part)))
+    }
+}
+
+impl Scaffold for ScaffoldFs {
+    fn app_dir(&self) -> String {
+        self.app_dir.display().to_string()
+    }
+
+    fn exists(&self, rel: &str) -> Result<bool, Failure> {
+        let path = self.below(rel)?;
+        self.fs.exists(&path).map_err(|e| {
+            Box::new(ConfigFileError::Read {
+                path: path.display().to_string(),
+                detail: e.to_string(),
+            }) as Failure
+        })
+    }
+
+    fn write(&self, files: &[Put]) -> Result<(), Failure> {
+        let targets: Vec<PathBuf> = files
+            .iter()
+            .map(|put| self.below(&put.path))
+            .collect::<Result<_, _>>()?;
+        for (put, path) in files.iter().zip(&targets) {
+            let mode = Mode::from_bits(if put.executable { 0o755 } else { 0o644 });
+            write_file(&*self.fs, path, &put.bytes, Perms::Exact(mode))?;
+        }
+        Ok(())
     }
 }
 

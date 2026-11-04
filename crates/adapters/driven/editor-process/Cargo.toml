@@ -1,0 +1,24 @@
+[package]
+name = "editor-process"
+version = "0.1.0"
+description = "The Editor port as a process: the user's editor run on a temporary file, or on a file in place (S2)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+ctxloom-ports.workspace = true
+file-system.workspace = true
+os.workspace = true
+
+[dev-dependencies]
+file-system = { workspace = true, features = ["test-support"] }
+tempfile.workspace = true
+
+[features]
+test-support = ["ctxloom-ports/test-support"]
+
+[lints]
+workspace = true

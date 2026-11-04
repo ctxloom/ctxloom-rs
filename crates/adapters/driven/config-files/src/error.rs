@@ -18,6 +18,8 @@ pub enum ConfigFileError {
     Read { path: String, detail: String },
     /// A config file that is not UTF-8.
     NotText { path: String },
+    /// A config file that could not be written.
+    Write { path: String, detail: String },
 }
 
 impl fmt::Display for ConfigFileError {
@@ -33,15 +35,18 @@ impl Diagnostic for ConfigFileError {
         match self {
             ConfigFileError::Read { .. } => code!("read"),
             ConfigFileError::NotText { .. } => code!("not-text"),
+            ConfigFileError::Write { .. } => code!("write"),
         }
     }
 
     fn args(&self) -> Vec<(&str, Arg)> {
         match self {
-            ConfigFileError::Read { path, detail } => vec![
-                ("path", path.as_str().into()),
-                ("ext_err_txt", detail.as_str().into()),
-            ],
+            ConfigFileError::Read { path, detail } | ConfigFileError::Write { path, detail } => {
+                vec![
+                    ("path", path.as_str().into()),
+                    ("ext_err_txt", detail.as_str().into()),
+                ]
+            }
             ConfigFileError::NotText { path } => vec![("path", path.as_str().into())],
         }
     }
@@ -57,6 +62,10 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         }),
         Box::new(ConfigFileError::NotText {
             path: "/p/.ctxloom/config.yaml".to_string(),
+        }),
+        Box::new(ConfigFileError::Write {
+            path: "/p/.ctxloom/config.yaml".to_string(),
+            detail: "permission denied".to_string(),
         }),
     ]
 }

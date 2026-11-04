@@ -417,6 +417,7 @@ impl Diagnostic for Notice {
 #[cfg(any(test, feature = "test-support"))]
 pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
     let mut all = error_samples();
+    all.extend(crate::write::error::samples());
     all.extend(version_samples());
     all.extend(notice_samples());
     all

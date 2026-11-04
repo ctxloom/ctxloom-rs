@@ -13,6 +13,7 @@ angzarr-presentation.workspace = true
 angzarr-yaml.workspace = true
 config-files.workspace = true
 content-fs.workspace = true
+editor-process.workspace = true
 ctxloom-cli.workspace = true
 ctxloom-lib.workspace = true
 ctxloom-store-sqlite.workspace = true
@@ -38,6 +39,7 @@ test-support = [
     "library-application/test-support",
     "content-fs/test-support",
     "config-files/test-support",
+    "editor-process/test-support",
     "hook-cli/test-support",
     "session-cli/test-support",
     "session-files/test-support",

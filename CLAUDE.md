@@ -65,6 +65,21 @@ in).
 
 Divergence from Go: a config whose `schema_version` is newer, older or unreadable is refused (exit 2, D15 strict decode); Go warns and continues. A `non_tty_format` of yaml, toml or markdown is refused (D28).
 
+Slice S2 (library write side) adds, in the S1 crates, a write half: `library::write`
+(pure planning: the config section merge with sorted keys, item/envelope/mcp/
+skill/profile files, the scaffold, the loadout, the skill zip codec),
+`library-application::write` (create, edit and remove, previews unless `--yes`,
+export/import, the editor round trips), `ContentRepo::apply`/`claim`,
+`UserFiles`, `Scaffold`, `Editor` and `LoadoutProbe` ports, and the driven
+crates `editor-process` and `companion-probe` beside the writes of `content-fs`
+and `config-files`. Files are the truth: a command plans the files, checks the
+tree still reads, then hands the changes to the port; a refused write has
+written nothing. A config write replaces the section it owns whole, never
+heals a file that does not parse. `loadout --format yaml` is the one yaml
+output; its prose is withheld until the owner rules (D24, D8).
+Skill zips are written and read by `library::write::archive` over flate2 and
+crc32fast (already in the lock); a zip crate is not used.
+
 Slice S4 (sessions) adds:
 
 - `core/wire/sessions-proto`, from `proto/ctxloom/sessions/v1`;

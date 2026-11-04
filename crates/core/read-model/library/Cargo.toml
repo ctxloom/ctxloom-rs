@@ -11,6 +11,10 @@ publish.workspace = true
 angzarr-diagnostic.workspace = true
 # The one config reader (D15): the parsed tree, versioned documents.
 angzarr-yaml.workspace = true
+# The skill archive's zip: deflate and the checksum (pure; both already in the
+# lock, by harp-core).
+crc32fast = "1"
+flate2 = "1"
 
 [dev-dependencies]
 # The tests hold an error's English to Go's words (english_for!).

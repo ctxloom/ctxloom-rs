@@ -29,7 +29,7 @@ impl Library {
 
 /// The profiles the project's local bundles ship, by their canonical key.
 pub(crate) struct Profiles {
-    by_key: BTreeMap<String, (Profile, String)>,
+    pub(crate) by_key: BTreeMap<String, (Profile, String)>,
 }
 
 impl ProfileSource for Profiles {

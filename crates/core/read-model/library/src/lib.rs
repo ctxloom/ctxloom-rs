@@ -14,6 +14,8 @@
 //!   [`sha256`]: the digests.
 //! - [`config`]: the layered configuration, its schema, overrides and output.
 //! - [`findings`]: what a read noticed and did not stop for.
+//! - [`write`]: the write side as pure planning (S2): the text of the files a
+//!   command leaves.
 
 pub mod catalog;
 pub mod compose;
@@ -32,6 +34,7 @@ pub mod sha256;
 mod testdata;
 pub mod tokens;
 pub mod tree;
+pub mod write;
 mod yamlx;
 
 #[cfg(any(test, feature = "test-support"))]

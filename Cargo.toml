@@ -74,6 +74,8 @@ hook-cli = { path = "crates/adapters/driving/hook-cli" }
 ctxloom-cli = { path = "crates/adapters/driving/ctxloom-cli" }
 config-files = { path = "crates/adapters/driven/config-files" }
 content-fs = { path = "crates/adapters/driven/content-fs" }
+editor-process = { path = "crates/adapters/driven/editor-process" }
+companion-probe = { path = "crates/adapters/driven/companion-probe" }
 ctxloom-ports = { path = "crates/core/ports/ctxloom-ports" }
 library = { path = "crates/core/read-model/library" }
 library-application = { path = "crates/core/application/library-application" }

@@ -14,6 +14,7 @@ mod commands;
 pub mod inert;
 mod notices;
 mod text;
+mod write;
 
 use std::io::{self, Write};
 
@@ -126,19 +127,53 @@ fn dispatch(
     err: &mut dyn Write,
 ) -> Result<u8, Failure> {
     match noun {
-        "config" => config(cx, verb(sub, "show").1, out, err),
-        "bundle" => bundle(cx, verb(sub, "list"), out, err),
-        "fragment" => items(cx, "fragment", verb(sub, "list"), out, err),
-        "command" => items(cx, "command", verb(sub, "list"), out, err),
-        "skill" => skill(cx, verb(sub, "list"), out, err),
-        "profile" => profile(cx, verb(sub, "list"), out, err),
-        "agent" => agent(cx, verb(sub, "list"), out, err),
-        "llm" => llm(cx, out, err),
+        "config" => written(write::config(cx, verb(sub, "show"), out, err), || {
+            config(cx, verb(sub, "show").1, out, err)
+        }),
+        "bundle" => written(write::bundle(cx, verb(sub, "list"), out, err), || {
+            bundle(cx, verb(sub, "list"), out, err)
+        }),
+        "fragment" | "command" => {
+            let kind = if noun == "fragment" {
+                ItemKind::Fragment
+            } else {
+                ItemKind::Command
+            };
+            written(write::item(cx, kind, verb(sub, "list"), out, err), || {
+                items(cx, noun, verb(sub, "list"), out, err)
+            })
+        }
+        "skill" => written(write::skill(cx, verb(sub, "list"), out, err), || {
+            skill(cx, verb(sub, "list"), out, err)
+        }),
+        "profile" => written(write::profile(cx, verb(sub, "list"), out, err), || {
+            profile(cx, verb(sub, "list"), out, err)
+        }),
+        "agent" => written(write::agent(cx, verb(sub, "list"), out, err), || {
+            agent(cx, verb(sub, "list"), out, err)
+        }),
+        "llm" => written(write::llm(cx, verb(sub, "list"), out, err), || {
+            llm(cx, out, err)
+        }),
         "mcp" => mcp(cx, sub, out, err),
-        "companion" => companion(cx, out, err),
+        "companion" => written(write::companion(cx, verb(sub, "list"), out, err), || {
+            companion(cx, out, err)
+        }),
+        "loadout" => write::loadout(sub, out),
         "search" => search(cx, sub, out, err),
         "context" => context(cx, verb(sub, "assemble").1, out, err),
         _ => run_command(cx, sub, out, err),
+    }
+}
+
+/// A write verb's answer, or (it was not one) the read verb's.
+fn written(
+    write: Result<Option<u8>, Failure>,
+    read: impl FnOnce() -> Result<u8, Failure>,
+) -> Result<u8, Failure> {
+    match write? {
+        Some(code) => Ok(code),
+        None => read(),
     }
 }
 
@@ -433,8 +468,13 @@ fn mcp(
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> Result<u8, Failure> {
-    let server = verb(sub, "server").1;
+    let Some(("server", server)) = sub.subcommand() else {
+        return Err(write::mcp_bare(cx));
+    };
     let (name, args) = verb(server, "list");
+    if let Some(code) = write::mcp(cx, (name, args), out, err)? {
+        return Ok(code);
+    }
     if name == "show" {
         let outcome = cx.library.mcp_show(&cx.flags, &text_arg(args, "name"));
         return answer(cx, outcome, out, err, |show, out, _| {

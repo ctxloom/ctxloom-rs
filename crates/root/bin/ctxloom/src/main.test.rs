@@ -195,6 +195,36 @@ mod library_config;
 #[path = "library_parity.test.rs"]
 mod library_parity;
 
+#[path = "library_write_agent.test.rs"]
+mod library_write_agent;
+
+#[path = "library_write_bundle.test.rs"]
+mod library_write_bundle;
+
+#[path = "library_write_companion.test.rs"]
+mod library_write_companion;
+
+#[path = "library_write_config.test.rs"]
+mod library_write_config;
+
+#[path = "library_write_items.test.rs"]
+mod library_write_items;
+
+#[path = "library_write_llm.test.rs"]
+mod library_write_llm;
+
+#[path = "library_write_loadout.test.rs"]
+mod library_write_loadout;
+
+#[path = "library_write_mcp.test.rs"]
+mod library_write_mcp;
+
+#[path = "library_write_profile.test.rs"]
+mod library_write_profile;
+
+#[path = "library_write_skill.test.rs"]
+mod library_write_skill;
+
 #[path = "session.test.rs"]
 mod session;
 

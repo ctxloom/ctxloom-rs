@@ -314,7 +314,6 @@ fn test_profile_agent_llm_companion_and_mcp_commands() {
     assert!(text_of(&["companion"]).contains("NOT ON PATH"));
     let servers = json_of(&["mcp", "server", "list"]);
     assert_eq!(servers["servers"][0]["name"], "tree-sitter");
-    assert_eq!(json_of(&["mcp"]), servers);
     assert_eq!(json_of(&["mcp", "server"]), servers);
     assert_eq!(
         json_of(&["mcp", "server", "show", "tree-sitter"])["found"],
@@ -323,7 +322,10 @@ fn test_profile_agent_llm_companion_and_mcp_commands() {
     assert!(
         text_of(&["mcp", "server", "show", "tree-sitter"]).starts_with("MCP Server: tree-sitter\n")
     );
-    assert!(text_of(&["mcp"]).starts_with("MCP Servers:\n"));
+    // plan supersedes Go: mcp.feature (S2) refuses the bare noun, which
+    // listed the servers in S1.
+    assert!(go(&["mcp"], TEXT, BARE).refused().contains("mcp-bare"));
+    assert!(go(&["mcp"], JSON, BARE).refused().contains("mcp-bare-json"));
 }
 
 // search.feature: query, --tag, --type, --local; --remote is refused here.
@@ -621,3 +623,6 @@ fn test_a_remedy_shows_as_its_code_and_carries_the_notices_args() {
     assert_eq!(fix.code(), "library-application-notice-text-fix");
     assert_eq!(fix.args().len(), notice.args().len());
 }
+
+#[path = "write.test.rs"]
+mod write_verbs;

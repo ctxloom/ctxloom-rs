@@ -304,7 +304,459 @@ fn test_the_errors_carry_their_args_and_their_samples_are_all_of_them() {
             "content-fs-list-root",
             "content-fs-list-dir",
             "content-fs-read-file",
-            "content-fs-bad-name"
+            "content-fs-bad-name",
+            "content-fs-bad-path",
+            "content-fs-write-file",
+            "content-fs-remove-path",
+            "content-fs-make-dir"
         ]
     );
+}
+
+// ---------------------------------------------------------------- the write side (S2)
+
+fn empty_repo() -> (Arc<Rooted>, ContentFs) {
+    let fs = rooted();
+    let repo = ContentFs::new(fs.clone(), Path::new(APP));
+    (fs, repo)
+}
+
+fn bundle_file(name: &str, rel: &str) -> std::path::PathBuf {
+    Path::new(APP)
+        .join(BUNDLES_BELOW_APP_DIR)
+        .join(name)
+        .join(rel)
+}
+
+fn read(fs: &Rooted, name: &str, rel: &str) -> Option<Vec<u8>> {
+    fs.read(&bundle_file(name, rel)).ok()
+}
+
+fn write(path: &str, bytes: &str) -> Change {
+    Change::Write(Put::file(path, bytes))
+}
+
+// operations CreateBundle / UpdateBundle: the tree is files, written whole
+#[test]
+fn test_apply_writes_files_and_makes_their_directories() {
+    let (fs, repo) = empty_repo();
+    repo.apply(
+        "demo",
+        &[
+            write("bundle.yaml", "version: 1.0.0\n"),
+            write("fragments/a.md", "A"),
+            write("mcp/.m.meta.yaml", "notes: n\n"),
+        ],
+    )
+    .unwrap();
+    assert_eq!(
+        read(&fs, "demo", "bundle.yaml").unwrap(),
+        b"version: 1.0.0\n"
+    );
+    assert_eq!(read(&fs, "demo", "fragments/a.md").unwrap(), b"A");
+    assert_eq!(
+        read(&fs, "demo", "mcp/.m.meta.yaml").unwrap(),
+        b"notes: n\n"
+    );
+    assert_eq!(repo.bundle_names().unwrap(), ["demo"]);
+}
+
+#[test]
+fn test_apply_replaces_a_file_whole_and_leaves_no_temporary_file() {
+    let (fs, repo) = empty_repo();
+    repo.apply("demo", &[write("bundle.yaml", "a long first version\n")])
+        .unwrap();
+    repo.apply("demo", &[write("bundle.yaml", "short\n")])
+        .unwrap();
+    assert_eq!(read(&fs, "demo", "bundle.yaml").unwrap(), b"short\n");
+    let names: Vec<String> = fs
+        .read_dir(&bundle_file("demo", ""))
+        .unwrap()
+        .into_iter()
+        .map(|e| e.name.to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names, ["bundle.yaml"]);
+}
+
+// the plan: exec bits come from the sidecar only, so a file is made executable
+// only when it is asked to be, and plain otherwise
+#[test]
+fn test_apply_makes_a_file_executable_only_when_asked() {
+    let (fs, repo) = empty_repo();
+    repo.apply(
+        "demo",
+        &[
+            Change::Write(Put {
+                path: "skills/s/scripts/run.sh".to_string(),
+                bytes: b"#!/bin/sh\n".to_vec(),
+                executable: true,
+            }),
+            write("skills/s/SKILL.md", "x"),
+        ],
+    )
+    .unwrap();
+    let meta = |rel: &str| fs.metadata(&bundle_file("demo", rel)).unwrap();
+    assert!(meta("skills/s/scripts/run.sh").executable);
+    assert!(!meta("skills/s/SKILL.md").executable);
+    assert_eq!(
+        repo.executable_files("demo")
+            .unwrap()
+            .into_iter()
+            .collect::<Vec<_>>(),
+        ["skills/s/scripts/run.sh"]
+    );
+    // Rewriting the script plain takes the bit away: the write is the whole of it.
+    repo.apply("demo", &[write("skills/s/scripts/run.sh", "#!/bin/sh\n")])
+        .unwrap();
+    assert!(!meta("skills/s/scripts/run.sh").executable);
+}
+
+#[test]
+fn test_apply_removes_files_and_directories_and_forgives_what_is_not_there() {
+    let (fs, repo) = empty_repo();
+    repo.apply(
+        "demo",
+        &[
+            write("bundle.yaml", "b"),
+            write("fragments/a.md", "A"),
+            write("fragments/a.distilled.md", "D"),
+            write("skills/s/SKILL.md", "S"),
+            write("skills/s/deep/x", "X"),
+        ],
+    )
+    .unwrap();
+    repo.apply(
+        "demo",
+        &[
+            Change::Remove {
+                path: "fragments/a.md".to_string(),
+            },
+            Change::Remove {
+                path: "fragments/missing.md".to_string(),
+            },
+            Change::RemoveDir {
+                path: "skills/s".to_string(),
+            },
+            Change::RemoveDir {
+                path: "skills/never".to_string(),
+            },
+        ],
+    )
+    .unwrap();
+    assert!(read(&fs, "demo", "fragments/a.md").is_none());
+    assert_eq!(read(&fs, "demo", "fragments/a.distilled.md").unwrap(), b"D");
+    assert!(read(&fs, "demo", "skills/s/SKILL.md").is_none());
+    assert!(fs.metadata(&bundle_file("demo", "skills/s")).is_err());
+    assert_eq!(read(&fs, "demo", "bundle.yaml").unwrap(), b"b");
+}
+
+#[test]
+fn test_apply_goes_in_order_so_the_last_change_to_a_path_wins() {
+    let (fs, repo) = empty_repo();
+    repo.apply(
+        "demo",
+        &[
+            write("a", "1"),
+            Change::Remove {
+                path: "a".to_string(),
+            },
+            write("b", "1"),
+            write("b", "2"),
+            write("c", "x"),
+            Change::Remove {
+                path: "c".to_string(),
+            },
+            write("c", "y"),
+        ],
+    )
+    .unwrap();
+    assert!(read(&fs, "demo", "a").is_none());
+    assert_eq!(read(&fs, "demo", "b").unwrap(), b"2");
+    assert_eq!(read(&fs, "demo", "c").unwrap(), b"y");
+}
+
+// zip-slip's cousin: a path that leaves the bundle is refused before anything is written
+#[test]
+fn test_apply_refuses_a_path_that_leaves_the_bundle_and_writes_nothing() {
+    for bad in [
+        "../x",
+        "/abs",
+        "a/../../b",
+        "",
+        ".",
+        "a//b",
+        "./a",
+        "a/./b",
+        "a\0b",
+        "..",
+    ] {
+        let (fs, repo) = empty_repo();
+        let err = repo
+            .apply("demo", &[write("fine.md", "ok"), write(bad, "evil")])
+            .expect_err(bad);
+        assert_eq!(err.code(), "content-fs-bad-path", "{bad:?}");
+        assert!(
+            read(&fs, "demo", "fine.md").is_none(),
+            "{bad:?} wrote the good one"
+        );
+        let err = repo
+            .apply(
+                "demo",
+                &[Change::Remove {
+                    path: bad.to_string(),
+                }],
+            )
+            .expect_err(bad);
+        assert_eq!(err.code(), "content-fs-bad-path");
+        let err = repo
+            .apply(
+                "demo",
+                &[Change::RemoveDir {
+                    path: bad.to_string(),
+                }],
+            )
+            .expect_err(bad);
+        assert_eq!(err.code(), "content-fs-bad-path");
+    }
+}
+
+#[test]
+fn test_apply_will_not_write_through_a_link() {
+    let (fs, repo) = empty_repo();
+    fs.create_dir_all(Path::new("/outside"), Mode::from_bits(0o755))
+        .unwrap();
+    repo.apply("demo", &[write("bundle.yaml", "b")]).unwrap();
+    fs.symlink_dir(Path::new("/outside"), &bundle_file("demo", "skills"))
+        .unwrap();
+    let err = repo
+        .apply("demo", &[write("skills/x.md", "evil")])
+        .unwrap_err();
+    assert_eq!(err.code(), "content-fs-bad-path");
+    assert!(fs.read(Path::new("/outside/x.md")).is_err());
+    let err = repo
+        .apply(
+            "demo",
+            &[Change::RemoveDir {
+                path: "skills".to_string(),
+            }],
+        )
+        .unwrap_err();
+    assert_eq!(err.code(), "content-fs-bad-path");
+    assert!(fs.metadata(Path::new("/outside")).is_ok());
+}
+
+#[test]
+fn test_a_bundle_name_that_climbs_is_refused_for_every_write() {
+    let (_fs, repo) = empty_repo();
+    for bad in ["../x", "/abs", "", "a/../b"] {
+        assert_eq!(
+            repo.apply(bad, &[]).unwrap_err().code(),
+            "content-fs-bad-name",
+            "{bad}"
+        );
+        assert_eq!(
+            repo.claim(bad).unwrap_err().code(),
+            "content-fs-bad-name",
+            "{bad}"
+        );
+        assert_eq!(
+            repo.remove_bundle(bad).unwrap_err().code(),
+            "content-fs-bad-name",
+            "{bad}"
+        );
+    }
+}
+
+// operations.claimNewBundleDir: one step, one winner
+#[test]
+fn test_claim_makes_the_directory_once() {
+    let (fs, repo) = empty_repo();
+    assert!(repo.claim("demo").unwrap());
+    assert!(fs.metadata(&bundle_file("demo", "")).unwrap().kind == Kind::Dir);
+    assert!(!repo.claim("demo").unwrap());
+    // Nested names make their parents; a bundle's name is its path.
+    assert!(repo.claim("team/rules").unwrap());
+    assert!(!repo.claim("team/rules").unwrap());
+    // A file in the way is something there.
+    fs.write_atomic(
+        &bundle_file("file", ""),
+        b"x",
+        file_system::Perms::Exact(Mode::from_bits(0o644)),
+    )
+    .unwrap();
+    assert!(!repo.claim("file").unwrap());
+}
+
+#[test]
+fn test_remove_bundle_takes_that_tree_and_no_other() {
+    let (fs, repo) = empty_repo();
+    repo.apply(
+        "demo",
+        &[write("bundle.yaml", "d"), write("fragments/a.md", "A")],
+    )
+    .unwrap();
+    repo.apply("demo2", &[write("bundle.yaml", "d2")]).unwrap();
+    repo.apply("team/rules", &[write("bundle.yaml", "r")])
+        .unwrap();
+    repo.remove_bundle("demo").unwrap();
+    assert!(fs.metadata(&bundle_file("demo", "")).is_err());
+    assert_eq!(read(&fs, "demo2", "bundle.yaml").unwrap(), b"d2");
+    repo.remove_bundle("demo").unwrap();
+    repo.remove_bundle("team/rules").unwrap();
+    assert!(fs.metadata(&bundle_file("team/rules", "")).is_err());
+    assert_eq!(repo.bundle_names().unwrap(), ["demo2"]);
+}
+
+#[test]
+fn test_remove_bundle_will_not_follow_a_link_out() {
+    let (fs, repo) = empty_repo();
+    fs.create_dir_all(Path::new("/outside"), Mode::from_bits(0o755))
+        .unwrap();
+    fs.write_atomic(
+        Path::new("/outside/keep"),
+        b"k",
+        file_system::Perms::Exact(Mode::from_bits(0o644)),
+    )
+    .unwrap();
+    fs.create_dir_all(&bundle_file("", ""), Mode::from_bits(0o755))
+        .unwrap();
+    fs.symlink_dir(Path::new("/outside"), &bundle_file("evil", ""))
+        .unwrap();
+    repo.remove_bundle("evil").unwrap();
+    assert_eq!(fs.read(Path::new("/outside/keep")).unwrap(), b"k");
+}
+
+#[test]
+fn test_the_bundle_dir_is_where_the_bundle_is() {
+    let (_fs, repo) = empty_repo();
+    assert_eq!(
+        repo.bundle_dir("team/rules"),
+        "/proj/.ctxloom/content/bundles/v2/team/rules"
+    );
+    assert_eq!(
+        repo.manifest_path("demo"),
+        format!("{}/bundle.yaml", repo.bundle_dir("demo"))
+    );
+}
+
+// ---------------------------------------------------------------- the user's files
+
+fn user() -> (Arc<Rooted>, UserFilesFs) {
+    let fs = Arc::new(Rooted::temp_with_cwd(Path::new("/work")).expect("a root"));
+    fs.create_dir_all(Path::new("/work"), Mode::from_bits(0o755))
+        .unwrap();
+    let user = UserFilesFs::new(fs.clone());
+    (fs, user)
+}
+
+#[test]
+fn test_a_file_is_written_where_the_user_said_and_read_back() {
+    let (fs, user) = user();
+    assert!(user.write_file("out/dir/x.yaml", b"X", false).unwrap());
+    assert_eq!(user.read_file("out/dir/x.yaml").unwrap(), b"X");
+    assert_eq!(fs.read(Path::new("/work/out/dir/x.yaml")).unwrap(), b"X");
+    assert!(user.exists("out/dir/x.yaml").unwrap());
+    assert!(!user.exists("out/dir/nope").unwrap());
+    assert!(user.is_dir("out/dir").unwrap());
+    assert!(!user.is_dir("out/dir/x.yaml").unwrap());
+    assert!(!user.is_dir("out/nope").unwrap());
+    // An absolute path is as given.
+    assert!(user.write_file("/abs/y", b"Y", false).unwrap());
+    assert_eq!(fs.read(Path::new("/abs/y")).unwrap(), b"Y");
+}
+
+#[test]
+fn test_a_file_is_not_replaced_unless_it_is_to_be() {
+    let (_fs, user) = user();
+    assert!(user.write_file("x", b"first", false).unwrap());
+    assert!(!user.write_file("x", b"second", false).unwrap());
+    assert_eq!(user.read_file("x").unwrap(), b"first");
+    assert!(user.write_file("x", b"third", true).unwrap());
+    assert_eq!(user.read_file("x").unwrap(), b"third");
+}
+
+#[test]
+fn test_a_file_that_is_not_there_cannot_be_read() {
+    let (_fs, user) = user();
+    let err = user.read_file("nope").unwrap_err();
+    assert_eq!(err.code(), "content-fs-read-file");
+}
+
+#[test]
+fn test_a_tree_is_read_whole_sorted_with_its_dotfiles_and_exec_bits() {
+    let (fs, user) = user();
+    user.write_tree(
+        "t",
+        &[
+            Put::file("z.md", "Z"),
+            Put::file("a/.hidden.meta.yaml", "H"),
+            Put {
+                path: "a/run.sh".to_string(),
+                bytes: b"#!/bin/sh".to_vec(),
+                executable: true,
+            },
+            Put::file("a/b/c.txt", "C"),
+        ],
+    )
+    .unwrap();
+    assert!(
+        fs.metadata(Path::new("/work/t/a/run.sh"))
+            .unwrap()
+            .executable
+    );
+    assert!(!fs.metadata(Path::new("/work/t/z.md")).unwrap().executable);
+    // A link in the tree is not followed and not listed.
+    fs.symlink_dir(Path::new("/work/t/a"), Path::new("/work/t/link"))
+        .unwrap();
+    let read = user.read_tree("t").unwrap();
+    let paths: Vec<&str> = read.iter().map(|p| p.path.as_str()).collect();
+    assert_eq!(
+        paths,
+        ["a/.hidden.meta.yaml", "a/b/c.txt", "a/run.sh", "z.md"]
+    );
+    let exec: Vec<bool> = read.iter().map(|p| p.executable).collect();
+    assert_eq!(exec, [false, false, true, false]);
+    assert_eq!(read[1].bytes, b"C");
+}
+
+#[test]
+fn test_a_tree_that_is_not_there_cannot_be_read() {
+    let (_fs, user) = user();
+    assert_eq!(
+        user.read_tree("nope").unwrap_err().code(),
+        "content-fs-list-dir"
+    );
+}
+
+#[test]
+fn test_write_tree_replaces_what_is_there_file_by_file() {
+    let (_fs, user) = user();
+    user.write_tree("t", &[Put::file("a", "1"), Put::file("b", "2")])
+        .unwrap();
+    user.write_tree("t", &[Put::file("a", "new")]).unwrap();
+    assert_eq!(user.read_file("t/a").unwrap(), b"new");
+    assert_eq!(user.read_file("t/b").unwrap(), b"2");
+}
+
+// A path that cannot be looked at is an error, not an absence.
+#[test]
+fn test_a_path_through_a_file_is_an_error_and_not_an_absence() {
+    let (_fs, user) = user();
+    assert!(user.write_file("plain", b"x", false).unwrap());
+    assert!(user.is_dir("plain/child").is_err());
+    let (fs, repo) = empty_repo();
+    let file = bundle_file("file", "");
+    fs.create_dir_all(file.parent().unwrap(), Mode::from_bits(0o755))
+        .unwrap();
+    fs.write_atomic(
+        &file,
+        b"x",
+        file_system::Perms::Exact(Mode::from_bits(0o644)),
+    )
+    .unwrap();
+    assert_eq!(
+        repo.remove_bundle("file").unwrap_err().code(),
+        "content-fs-remove-path"
+    );
+    repo.remove_bundle("never-there").unwrap();
 }

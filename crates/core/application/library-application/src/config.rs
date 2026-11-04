@@ -296,20 +296,7 @@ impl Config {
         };
         let mut out: Vec<Agent> = agents
             .iter()
-            .map(|(name, body)| Agent {
-                name: name.clone(),
-                llm: text_at(body, "llm"),
-                profiles: list_at(body, "profiles"),
-                runtime: text_at(body, "runtime"),
-                permissions: body.get("permissions").cloned().unwrap_or(Value::Null),
-                driving: text_at(body, "driving"),
-                home_mode: text_at(body, "engine_home"),
-                env_host: body
-                    .get("env_host")
-                    .and_then(Value::as_str)
-                    .map(|s| s == "true"),
-                env: list_at(body, "env"),
-            })
+            .map(|(name, body)| Agent::of(name, body))
             .collect();
         out.sort_by(|a, b| a.name.cmp(&b.name));
         out
@@ -379,6 +366,24 @@ impl Config {
 }
 
 impl Agent {
+    /// The binding `name` as its mapping declares it.
+    pub fn of(name: &str, body: &Value) -> Agent {
+        Agent {
+            name: name.to_string(),
+            llm: text_at(body, "llm"),
+            profiles: list_at(body, "profiles"),
+            runtime: text_at(body, "runtime"),
+            permissions: body.get("permissions").cloned().unwrap_or(Value::Null),
+            driving: text_at(body, "driving"),
+            home_mode: text_at(body, "engine_home"),
+            env_host: body
+                .get("env_host")
+                .and_then(Value::as_str)
+                .map(|s| s == "true"),
+            env: list_at(body, "env"),
+        }
+    }
+
     /// The binding as the listing shows it.
     pub fn row(&self) -> AgentRow {
         AgentRow {

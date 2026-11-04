@@ -1,0 +1,14 @@
+description: "Local default coding profile scaffolded by `ctxloom init`: the project's primary implementer context, inheriting ctxloom-default's developer profile. Edit it freely; `ctxloom init prompt` re-enters the setup interview any time."
+tags:
+  - default
+# A LOCAL profile (owned and editable in this project's .ctxloom), not a bare
+# remote reference.
+#
+# The baseline-conduct parent was REMOVED with the `default` bundle it pointed
+# at. Conduct is no longer SEEDED into every project as a fixed parent; it is
+# offered by init's phase-3 survey as content carrying the `default` tag, which
+# the user includes or declines like anything else. A tag is a recommendation
+# the user answers; a seeded parent is a decision made on their behalf before
+# they arrive.
+parents:
+  - ctxloom+git://github.com/ctxloom/ctxloom-default//bundles/ai-developer@branch:main#profiles/developer

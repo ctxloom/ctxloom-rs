@@ -7,12 +7,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use angzarr_presentation::Catalog;
-use config_files::{find_app_dir, ConfigFilesFs, Surroundings};
-use content_fs::ContentFs;
+use companion_probe::ProcessProbe;
+use config_files::{find_app_dir, ConfigFilesFs, ScaffoldFs, Surroundings};
+use content_fs::{ContentFs, UserFilesFs};
 use ctxloom_cli::{Call, Extension, Failure};
 use ctxloom_ports::Executables;
+use editor_process::ProcessEditor;
 use file_system::{Fs, Kind};
-use library_application::Library;
+use library_application::{Library, WritePorts};
 
 use crate::{LibError, Wiring};
 
@@ -77,12 +79,19 @@ fn build() -> Result<Library, LibError> {
         dirs,
     };
     let environ = std::env::vars().collect();
+    let ports = WritePorts {
+        user: Arc::new(UserFilesFs::new(Arc::clone(&fs))),
+        scaffold: Arc::new(ScaffoldFs::new(Arc::clone(&fs), &around.cwd)),
+        editor: Arc::new(ProcessEditor::new(Arc::clone(&fs), &around.temp_root)),
+        probe: Arc::new(ProcessProbe::standard()),
+    };
     Ok(Library::new(
         Arc::new(content),
         Arc::new(files),
         Arc::new(binaries),
         environ,
-    ))
+    )
+    .with_write_ports(ports))
 }
 
 impl Extension for LibraryCommands {

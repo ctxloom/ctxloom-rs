@@ -20,6 +20,7 @@ fn catalog() -> Result<Catalog, angzarr_presentation::CatalogError> {
         library_application::EN_US,
         content_fs::EN_US,
         config_files::EN_US,
+        editor_process::EN_US,
     ]);
     Catalog::en_us(&sources)
 }
@@ -119,6 +120,7 @@ impl Services for Wired {
         all.extend(library_application::diagnostic_samples());
         all.extend(content_fs::diagnostic_samples());
         all.extend(config_files::diagnostic_samples());
+        all.extend(editor_process::diagnostic_samples());
         all.extend(session_cli::diagnostic_samples());
         all.extend(hook_cli::diagnostic_samples());
         all.extend(session_files::diagnostic_samples());

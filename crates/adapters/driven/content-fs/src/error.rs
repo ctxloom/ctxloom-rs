@@ -22,6 +22,14 @@ pub enum ContentError {
     ReadFile { path: String, detail: String },
     /// A name that is no bundle's path (it climbs, or is absolute).
     BadName { name: String },
+    /// A path inside a bundle that is absolute, climbs out, or goes through a link.
+    BadPath { path: String },
+    /// A file could not be written.
+    WriteFile { path: String, detail: String },
+    /// A file or a directory could not be taken away.
+    RemovePath { path: String, detail: String },
+    /// A directory could not be made.
+    MakeDir { path: String, detail: String },
 }
 
 impl fmt::Display for ContentError {
@@ -39,6 +47,10 @@ impl Diagnostic for ContentError {
             ContentError::ListDir { .. } => code!("list-dir"),
             ContentError::ReadFile { .. } => code!("read-file"),
             ContentError::BadName { .. } => code!("bad-name"),
+            ContentError::BadPath { .. } => code!("bad-path"),
+            ContentError::WriteFile { .. } => code!("write-file"),
+            ContentError::RemovePath { .. } => code!("remove-path"),
+            ContentError::MakeDir { .. } => code!("make-dir"),
         }
     }
 
@@ -46,11 +58,15 @@ impl Diagnostic for ContentError {
         match self {
             ContentError::ListRoot { path, detail }
             | ContentError::ListDir { path, detail }
-            | ContentError::ReadFile { path, detail } => vec![
+            | ContentError::ReadFile { path, detail }
+            | ContentError::WriteFile { path, detail }
+            | ContentError::RemovePath { path, detail }
+            | ContentError::MakeDir { path, detail } => vec![
                 ("path", path.as_str().into()),
                 ("ext_err_txt", detail.as_str().into()),
             ],
             ContentError::BadName { name } => vec![("name", name.as_str().into())],
+            ContentError::BadPath { path } => vec![("path", path.as_str().into())],
         }
     }
 }
@@ -71,9 +87,24 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
             path: path.clone(),
             detail: detail.clone(),
         }),
-        Box::new(ContentError::ReadFile { path, detail }),
+        Box::new(ContentError::ReadFile {
+            path: path.clone(),
+            detail: detail.clone(),
+        }),
         Box::new(ContentError::BadName {
             name: "../x".to_string(),
         }),
+        Box::new(ContentError::BadPath {
+            path: "../x".to_string(),
+        }),
+        Box::new(ContentError::WriteFile {
+            path: path.clone(),
+            detail: detail.clone(),
+        }),
+        Box::new(ContentError::RemovePath {
+            path: path.clone(),
+            detail: detail.clone(),
+        }),
+        Box::new(ContentError::MakeDir { path, detail }),
     ]
 }

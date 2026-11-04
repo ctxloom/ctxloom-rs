@@ -3,3 +3,4 @@
 
 config-files-read = cannot read the config file { $path }: { $ext_err_txt }
 config-files-not-text = the config file { $path } is not text (it is not UTF-8)
+config-files-write = cannot write the config file { $path }: { $ext_err_txt }

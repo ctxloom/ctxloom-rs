@@ -30,7 +30,7 @@ pub const ENGINES: [&str; 6] = [
 const DEFAULT_ENGINE: &str = "claude-code";
 
 /// The runtimes an engine can be given.
-const RUNTIMES: [&str; 3] = ["host", "container-rootless", "container-rootful"];
+pub(crate) const RUNTIMES: [&str; 3] = ["host", "container-rootless", "container-rootful"];
 
 /// Commands the container image stages itself (and so are not required of
 /// the host).

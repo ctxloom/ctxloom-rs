@@ -271,5 +271,251 @@ fn test_the_errors_carry_their_args_and_their_samples_are_all_of_them() {
         .iter()
         .map(|d| d.code().to_string())
         .collect();
-    assert_eq!(codes, ["config-files-read", "config-files-not-text"]);
+    assert_eq!(
+        codes,
+        [
+            "config-files-read",
+            "config-files-not-text",
+            "config-files-write"
+        ]
+    );
+}
+
+// ---------------------------------------------------------------- the write side (S2)
+
+#[test]
+fn test_each_layers_file_is_where_it_is_shown() {
+    let files = files_of(rooted(), project_app());
+    assert_eq!(
+        files.layer_path(Scope::Project),
+        "/work/proj/.ctxloom/config.yaml"
+    );
+    assert_eq!(
+        files.layer_path(Scope::Home),
+        "/home/u/.ctxloom/config.yaml"
+    );
+    // With no project there is one file for both.
+    let home_only = files_of(
+        rooted(),
+        AppDir {
+            path: PathBuf::from("/home/u/.ctxloom"),
+            source: Source::Home,
+            ignored_root: None,
+        },
+    );
+    assert_eq!(
+        home_only.layer_path(Scope::Project),
+        "/home/u/.ctxloom/config.yaml"
+    );
+    assert_eq!(
+        home_only.layer_path(Scope::Home),
+        "/home/u/.ctxloom/config.yaml"
+    );
+}
+
+#[test]
+fn test_a_layer_is_read_by_scope_and_none_where_it_is_not_there() {
+    let fs = rooted();
+    file(&fs, "/home/u/.ctxloom/config.yaml", "home: 1\n");
+    let files = files_of(fs, project_app());
+    assert_eq!(
+        files.layer(Scope::Home).unwrap(),
+        Some(LayerText {
+            path: "/home/u/.ctxloom/config.yaml".to_string(),
+            text: "home: 1\n".to_string()
+        })
+    );
+    assert_eq!(files.layer(Scope::Project).unwrap(), None);
+}
+
+#[test]
+fn test_a_layer_that_is_not_text_or_cannot_be_read_is_refused() {
+    let fs = rooted();
+    dir(&fs, "/work/proj/.ctxloom");
+    fs.write_atomic(
+        Path::new("/work/proj/.ctxloom/config.yaml"),
+        &[0xff, 0xfe, 0x00],
+        Perms::Exact(Mode::from_bits(0o644)),
+    )
+    .unwrap();
+    dir(&fs, "/home/u/.ctxloom/config.yaml");
+    let files = files_of(fs, project_app());
+    assert_eq!(
+        files.layer(Scope::Project).unwrap_err().code(),
+        "config-files-not-text"
+    );
+    assert_eq!(
+        files.layer(Scope::Home).unwrap_err().code(),
+        "config-files-read"
+    );
+}
+
+#[test]
+fn test_a_layer_is_written_whole_and_its_directory_made() {
+    let fs = rooted();
+    let files = files_of(fs.clone(), project_app());
+    files
+        .write_layer(Scope::Project, "schema_version: 8\n")
+        .unwrap();
+    assert_eq!(
+        fs.read(Path::new("/work/proj/.ctxloom/config.yaml"))
+            .unwrap(),
+        b"schema_version: 8\n"
+    );
+    assert_eq!(
+        fs.metadata(Path::new("/work/proj/.ctxloom/config.yaml"))
+            .unwrap()
+            .mode,
+        Some(Mode::from_bits(0o644))
+    );
+    files.write_layer(Scope::Project, "x: 1\n").unwrap();
+    assert_eq!(
+        fs.read(Path::new("/work/proj/.ctxloom/config.yaml"))
+            .unwrap(),
+        b"x: 1\n"
+    );
+    let names: Vec<String> = fs
+        .read_dir(Path::new("/work/proj/.ctxloom"))
+        .unwrap()
+        .into_iter()
+        .map(|e| e.name.to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names, ["config.yaml"], "no temporary file is left");
+}
+
+#[test]
+fn test_the_home_layer_is_written_in_the_home_and_the_projects_is_left_alone() {
+    let fs = rooted();
+    file(&fs, "/work/proj/.ctxloom/config.yaml", "project: 1\n");
+    let files = files_of(fs.clone(), project_app());
+    files
+        .write_layer(Scope::Home, "companions:\n  - acme\n")
+        .unwrap();
+    assert_eq!(
+        fs.read(Path::new("/home/u/.ctxloom/config.yaml")).unwrap(),
+        b"companions:\n  - acme\n"
+    );
+    assert_eq!(
+        fs.read(Path::new("/work/proj/.ctxloom/config.yaml"))
+            .unwrap(),
+        b"project: 1\n"
+    );
+}
+
+#[test]
+fn test_a_rewrite_keeps_the_mode_the_file_had() {
+    let fs = rooted();
+    file(&fs, "/work/proj/.ctxloom/config.yaml", "a: 1\n");
+    fs.set_permissions(
+        Path::new("/work/proj/.ctxloom/config.yaml"),
+        Mode::from_bits(0o600),
+    )
+    .unwrap();
+    files_of(fs.clone(), project_app())
+        .write_layer(Scope::Project, "a: 2\n")
+        .unwrap();
+    assert_eq!(
+        fs.metadata(Path::new("/work/proj/.ctxloom/config.yaml"))
+            .unwrap()
+            .mode,
+        Some(Mode::from_bits(0o600))
+    );
+}
+
+#[test]
+fn test_a_layer_that_cannot_be_written_is_refused_with_the_systems_words() {
+    let fs = rooted();
+    // A directory where the file would go.
+    dir(&fs, "/work/proj/.ctxloom/config.yaml");
+    let err = files_of(fs, project_app())
+        .write_layer(Scope::Project, "a: 1\n")
+        .unwrap_err();
+    assert_eq!(err.code(), "config-files-write");
+    assert_eq!(err.args()[0].0, "path");
+    assert_eq!(err.args()[1].0, "ext_err_txt");
+}
+
+// ---------------------------------------------------------------- the scaffold (S2)
+
+fn scaffold() -> (Arc<Rooted>, ScaffoldFs) {
+    let fs = rooted();
+    dir(&fs, "/work/proj");
+    let scaffold = ScaffoldFs::new(fs.clone(), Path::new("/work/proj"));
+    (fs, scaffold)
+}
+
+// cli/init.go resolveAppDir(false): under the working directory
+#[test]
+fn test_a_new_project_is_made_under_the_working_directory() {
+    let (_fs, scaffold) = scaffold();
+    assert_eq!(scaffold.app_dir(), "/work/proj/.ctxloom");
+}
+
+#[test]
+fn test_the_scaffold_writes_its_files_and_their_directories() {
+    let (fs, scaffold) = scaffold();
+    assert!(!scaffold.exists("config.yaml").unwrap());
+    scaffold
+        .write(&[
+            Put::file("config.yaml", "schema_version: 8\n"),
+            Put::file("content/bundles/v2/project/bundle.yaml", "b"),
+        ])
+        .unwrap();
+    assert!(scaffold.exists("config.yaml").unwrap());
+    assert!(scaffold.exists("content/bundles/v2/project").unwrap());
+    assert!(!scaffold.exists("remotes.yaml").unwrap());
+    assert_eq!(
+        fs.read(Path::new(
+            "/work/proj/.ctxloom/content/bundles/v2/project/bundle.yaml"
+        ))
+        .unwrap(),
+        b"b"
+    );
+    let meta = fs
+        .metadata(Path::new("/work/proj/.ctxloom/config.yaml"))
+        .unwrap();
+    assert_eq!(meta.mode, Some(Mode::from_bits(0o644)));
+    assert_eq!(
+        fs.metadata(Path::new("/work/proj/.ctxloom")).unwrap().mode,
+        Some(Mode::from_bits(0o755))
+    );
+}
+
+#[test]
+fn test_the_scaffold_refuses_a_path_that_leaves_the_project() {
+    let (fs, scaffold) = scaffold();
+    for bad in [
+        "../x",
+        "/abs",
+        "a/../../b",
+        "",
+        ".",
+        "a//b",
+        "./a",
+        "a/./b",
+        "a\0b",
+        "..",
+    ] {
+        let err = scaffold
+            .write(&[Put::file("ok", "1"), Put::file(bad, "evil")])
+            .unwrap_err();
+        assert_eq!(err.code(), "config-files-write", "{bad:?}");
+    }
+    assert!(!fs.exists(Path::new("/work/proj/.ctxloom/ok")).unwrap());
+    assert!(scaffold.exists("../x").is_err());
+    for bad in ["", "/abs", "a\0b", "a//b", "a/./b", "a/../b"] {
+        assert!(scaffold.exists(bad).is_err(), "{bad:?}");
+    }
+    assert!(scaffold.exists("fine/path").is_ok());
+}
+
+#[test]
+fn test_the_scaffold_names_the_systems_words_when_it_cannot_write() {
+    let (fs, scaffold) = scaffold();
+    dir(&fs, "/work/proj/.ctxloom/config.yaml");
+    let err = scaffold
+        .write(&[Put::file("config.yaml", "a")])
+        .unwrap_err();
+    assert_eq!(err.code(), "config-files-write");
+    assert_eq!(err.args()[1].0, "ext_err_txt");
 }

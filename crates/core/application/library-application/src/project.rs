@@ -10,6 +10,7 @@ use library::BundleError;
 
 use crate::config::{self, Config, Flags};
 use crate::error::{AppError, Notice};
+use crate::write::WritePorts;
 
 /// What a command came to: its answer or its error, and what it noticed.
 pub struct Outcome<T> {
@@ -22,7 +23,8 @@ pub struct Library {
     content: Arc<dyn ContentRepo>,
     files: Arc<dyn ConfigFiles>,
     binaries: Arc<dyn Executables>,
-    environ: Vec<(String, String)>,
+    pub(crate) environ: Vec<(String, String)>,
+    pub(crate) ports: Option<WritePorts>,
 }
 
 /// A project opened.
@@ -30,7 +32,10 @@ pub struct Project {
     pub(crate) config: Config,
     pub(crate) catalog: Catalog,
     pub(crate) content: Arc<dyn ContentRepo>,
+    pub(crate) files: Arc<dyn ConfigFiles>,
     pub(crate) binaries: Arc<dyn Executables>,
+    pub(crate) environ: Vec<(String, String)>,
+    pub(crate) ports: Option<WritePorts>,
     pub(crate) flags: Flags,
     /// The project has a bundles directory.
     pub(crate) has_root: bool,
@@ -53,7 +58,15 @@ impl Library {
             files,
             binaries,
             environ,
+            ports: None,
         }
+    }
+
+    /// The library with the write side's ports: the user's files, the
+    /// scaffold, an editor and a companion probe.
+    pub fn with_write_ports(mut self, ports: WritePorts) -> Library {
+        self.ports = Some(ports);
+        self
     }
 
     /// Whether `CTXLOOM_DEGRADED=1` is set.
@@ -138,7 +151,10 @@ impl Library {
             config,
             catalog: Catalog::new(entries),
             content: Arc::clone(&self.content),
+            files: Arc::clone(&self.files),
             binaries: Arc::clone(&self.binaries),
+            environ: self.environ.clone(),
+            ports: self.ports.clone(),
             flags: flags.clone(),
             has_root,
             unreadable,

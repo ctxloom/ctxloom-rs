@@ -342,6 +342,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
+name = "companion-probe"
+version = "0.1.0"
+dependencies = [
+ "ctxloom-ports",
+ "tempfile",
+]
+
+[[package]]
 name = "config-files"
 version = "0.1.0"
 dependencies = [
@@ -437,6 +445,7 @@ dependencies = [
  "ctxloom-cli",
  "ctxloom-lib",
  "ctxloom-store-sqlite",
+ "editor-process",
  "file-lock",
  "harp-core",
  "hook-cli",
@@ -473,11 +482,13 @@ dependencies = [
  "angzarr-embedded",
  "angzarr-presentation",
  "clap",
+ "companion-probe",
  "config-files",
  "content-fs",
  "ctxloom-cli",
  "ctxloom-ports",
  "ctxloom-store-sqlite",
+ "editor-process",
  "file-lock",
  "file-system",
  "harp-core",
@@ -596,6 +607,17 @@ name = "dotenvy"
 version = "0.15.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
+
+[[package]]
+name = "editor-process"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "ctxloom-ports",
+ "file-system",
+ "os",
+ "tempfile",
+]
 
 [[package]]
 name = "either"
@@ -1216,6 +1238,8 @@ dependencies = [
  "angzarr-diagnostic",
  "angzarr-presentation",
  "angzarr-yaml",
+ "crc32fast",
+ "flate2",
 ]
 
 [[package]]

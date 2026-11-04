@@ -25,17 +25,26 @@ pub enum Kind {
 }
 
 impl Kind {
-    fn word(self) -> &'static str {
+    pub(crate) fn word(self) -> &'static str {
         match self {
             Kind::Fragment => "fragment",
             Kind::Command => "command",
         }
     }
 
-    fn dir(self) -> &'static str {
+    pub(crate) fn dir(self) -> &'static str {
         match self {
             Kind::Fragment => "fragments",
             Kind::Command => "commands",
+        }
+    }
+
+    /// The directory of the kind's files in a bundle's tree (a command's are
+    /// in `prompts`).
+    pub(crate) fn tree_dir(self) -> &'static str {
+        match self {
+            Kind::Fragment => library::write::item::FRAGMENTS,
+            Kind::Command => library::write::item::PROMPTS,
         }
     }
 
@@ -127,7 +136,11 @@ impl Project {
     }
 
     /// The bundle and item a reference names, for a command serving `kind`.
-    fn item_target(&self, kind: Kind, reference: &str) -> Result<(String, String), AppError> {
+    pub(crate) fn item_target(
+        &self,
+        kind: Kind,
+        reference: &str,
+    ) -> Result<(String, String), AppError> {
         let expected = format!("bundle#{}/name", kind.dir());
         let Some((bundle, selector)) = reference.split_once('#') else {
             return Err(AppError::BadReference {

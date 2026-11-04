@@ -19,6 +19,32 @@ use super::{binary, Ran};
 /// Go's `minimalConfig` (`steps_fixture.go`): the smallest project config.
 pub(crate) const MINIMAL_CONFIG: &str = "schema_version: 8\n";
 
+/// The editors Go's acceptance steps pin in the home config
+/// (`steps_fixture.go`): `sh -c <script> editor <tmpfile>`, so `$1` is the
+/// temporary file the content was written to.
+#[derive(Clone, Copy)]
+pub(crate) enum Editor {
+    /// Appends `EDITED-BY-TEST` to the file ("a marker editor").
+    Marker,
+    /// Truncates the file ("an editor that empties the file").
+    Empties,
+    /// Rewrites the `description:` line ("a description-rewriting editor").
+    Description,
+    /// Rewrites the `command:` line ("a command-rewriting editor").
+    Command,
+}
+
+impl Editor {
+    pub(crate) fn home_config(self) -> &'static str {
+        match self {
+            Editor::Marker => "schema_version: 8\neditor:\n  command: sh\n  args:\n    - \"-c\"\n    - 'printf \"\\nEDITED-BY-TEST\\n\" >> \"$1\"'\n    - editor\n",
+            Editor::Empties => "schema_version: 8\neditor:\n  command: sh\n  args:\n    - \"-c\"\n    - 'printf \"\" > \"$1\"'\n    - editor\n",
+            Editor::Description => "schema_version: 8\neditor:\n  command: sh\n  args:\n    - \"-c\"\n    - 'sed \"s/^description:.*/description: EDITED-BY-TEST/\" \"$1\" > \"$1.edited\" && mv \"$1.edited\" \"$1\"'\n    - editor\n",
+            Editor::Command => "schema_version: 8\neditor:\n  command: sh\n  args:\n    - \"-c\"\n    - 'sed \"s/^\\( *\\)command:.*/\\1command: EDITED-BY-TEST/\" \"$1\" > \"$1.edited\" && mv \"$1.edited\" \"$1\"'\n    - editor\n",
+        }
+    }
+}
+
 /// Where the fixtures are.
 pub(crate) fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures")
@@ -78,6 +104,15 @@ impl Project {
         put(&self.project.join(rel), content);
     }
 
+    /// Put `bytes` at `rel` in the project.
+    pub(crate) fn write_bytes(&self, rel: &str, bytes: &[u8]) {
+        let path = self.project.join(rel);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("a directory");
+        }
+        std::fs::write(path, bytes).expect("a file");
+    }
+
     /// Put `content` at `rel` in the home.
     pub(crate) fn write_home(&self, rel: &str, content: &str) {
         put(&self.home.join(rel), content);
@@ -131,6 +166,116 @@ impl Project {
             &format!(".ctxloom/content/bundles/v2/project/profiles/{name}.yaml"),
             &format!("description: acceptance fixture profile\nbundles:\n  - {bundle}\n"),
         );
+    }
+
+    /// The text of the file at `rel` in the project; none where it is not there.
+    pub(crate) fn read(&self, rel: &str) -> Option<String> {
+        std::fs::read_to_string(self.project.join(rel)).ok()
+    }
+
+    /// The bytes of the file at `rel` in the project; none where it is not there.
+    pub(crate) fn read_bytes(&self, rel: &str) -> Option<Vec<u8>> {
+        std::fs::read(self.project.join(rel)).ok()
+    }
+
+    /// The text of the file at `rel` in the home.
+    pub(crate) fn read_home(&self, rel: &str) -> Option<String> {
+        std::fs::read_to_string(self.home.join(rel)).ok()
+    }
+
+    /// Whether anything is at `rel` in the project.
+    pub(crate) fn exists(&self, rel: &str) -> bool {
+        self.project.join(rel).exists()
+    }
+
+    /// Go's `the file "<rel>" contains "<text>"`.
+    pub(crate) fn file_contains(&self, rel: &str, text: &str) -> &Project {
+        let held = self.read(rel).unwrap_or_else(|| panic!("no file {rel}"));
+        assert!(
+            held.contains(text),
+            "{rel} should contain {text:?}: {held:?}"
+        );
+        self
+    }
+
+    /// Go's `the file "<rel>" does not contain "<text>"`.
+    pub(crate) fn file_lacks(&self, rel: &str, text: &str) -> &Project {
+        let held = self.read(rel).unwrap_or_else(|| panic!("no file {rel}"));
+        assert!(
+            !held.contains(text),
+            "{rel} should not contain {text:?}: {held:?}"
+        );
+        self
+    }
+
+    /// Go's `the file "<rel>" does not exist`.
+    pub(crate) fn file_is_absent(&self, rel: &str) -> &Project {
+        assert!(!self.exists(rel), "{rel} should not exist");
+        self
+    }
+
+    /// Every file below `rel` in the project, by its path below `rel` (slash
+    /// separated) and its bytes.
+    pub(crate) fn tree(&self, rel: &str) -> std::collections::BTreeMap<String, Vec<u8>> {
+        fn walk(top: &Path, dir: &Path, out: &mut std::collections::BTreeMap<String, Vec<u8>>) {
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                return;
+            };
+            for entry in entries {
+                let path = entry.expect("an entry").path();
+                if path.is_dir() {
+                    walk(top, &path, out);
+                } else {
+                    let below = path.strip_prefix(top).expect("below the top");
+                    out.insert(
+                        below.to_string_lossy().replace('\\', "/"),
+                        std::fs::read(&path).expect("a file"),
+                    );
+                }
+            }
+        }
+        let mut out = std::collections::BTreeMap::new();
+        walk(&self.project.join(rel), &self.project.join(rel), &mut out);
+        out
+    }
+
+    /// Give the file at `rel` the execute bits (unix).
+    pub(crate) fn make_executable(&self, rel: &str) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(
+                self.project.join(rel),
+                std::fs::Permissions::from_mode(0o755),
+            )
+            .expect("the file made executable");
+        }
+        #[cfg(not(unix))]
+        let _ = rel;
+    }
+
+    /// Whether the file at `rel` has an execute bit (unix; false elsewhere).
+    pub(crate) fn is_executable(&self, rel: &str) -> bool {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::metadata(self.project.join(rel))
+                .is_ok_and(|m| m.permissions().mode() & 0o111 != 0)
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = rel;
+            false
+        }
+    }
+
+    /// Go's "a ctxloom project with a <kind> editor": the project's config
+    /// minimal, the home's pinning the editor (`steps_fixture.go`).
+    pub(crate) fn with_editor(editor: Editor) -> Project {
+        let project = Project::bare();
+        project.write(".ctxloom/config.yaml", MINIMAL_CONFIG);
+        project.write_home(".ctxloom/config.yaml", editor.home_config());
+        project
     }
 
     /// Run `ctxloom args` in the project, with the project root named by
@@ -201,8 +346,20 @@ fn copy_tree(from: &Path, to: &Path) {
 
 impl Ran {
     /// Both streams, as Go's "the output contains" reads them.
+    ///
+    /// Off a terminal an error is a json envelope on the error stream; Go's
+    /// text is its `message` (and `fix`), decoded, so the quotes read as the
+    /// person reads them.
     pub(crate) fn output(&self) -> String {
-        format!("{}{}", self.stdout, self.stderr)
+        let said = serde_json::from_str::<Value>(&self.stderr)
+            .ok()
+            .and_then(|doc| {
+                let message = doc.get("message")?.as_str()?.to_string();
+                let fix = doc.get("fix").and_then(Value::as_str).unwrap_or_default();
+                Some(format!("{message}\n{fix}\n"))
+            })
+            .unwrap_or_else(|| self.stderr.clone());
+        format!("{}{}{}", self.stdout, self.stderr, said)
     }
 
     /// Go's "the command succeeds".

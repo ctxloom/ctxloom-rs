@@ -416,7 +416,7 @@ pub(crate) fn mcp_server(item: &Value, path: &str) -> Result<McpServer, BundleEr
 }
 
 /// Why an MCP server's target is not one a writer can use, in Go's words.
-fn mcp_target_fault(server: &McpServer) -> Option<String> {
+pub(crate) fn mcp_target_fault(server: &McpServer) -> Option<String> {
     let targets = usize::from(!server.command.is_empty() || !server.args.is_empty())
         + usize::from(!server.url.is_empty())
         + usize::from(!server.served_by.is_empty());

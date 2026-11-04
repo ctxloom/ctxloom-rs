@@ -1,0 +1,11 @@
+# ctxloom Remote Sources
+# Pre-configured remotes for common ctxloom bundles and profiles.
+#
+# Registering a remote is the trust act: its content reaches the assistant
+# because the project added it.
+
+schema_version: 1
+
+remotes:
+  ctxloom-default:
+    url: https://github.com/ctxloom/ctxloom-default

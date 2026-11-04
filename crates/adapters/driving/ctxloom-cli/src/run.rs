@@ -116,7 +116,12 @@ fn extended(
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> u8 {
-    let asked = matches.get_one::<String>("format").map(String::as_str);
+    // `loadout --format` names a document format (yaml), not an output
+    // format: the command reads and judges the value itself.
+    let asked = matches
+        .get_one::<String>("format")
+        .map(String::as_str)
+        .filter(|_| noun != "loadout");
     let explicit_format = match asked
         .map(|value| {
             value

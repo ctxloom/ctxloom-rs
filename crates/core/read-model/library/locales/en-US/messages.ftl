@@ -60,4 +60,26 @@ library-bundle-profile = invalid bundle YAML: profile { $name }: { $cause }
 
 library-config-syntax = yaml: { $cause }
 library-config-not-a-mapping = the config's root must be a mapping
+library-config-unwritable = the config could not be edited in place: { $detail }
 library-profile-not-found-fix = `ctxloom profile list` names every profile you can use
+
+## Skill archives (a zip is adversarial input).
+
+library-archive-nothing-to-pack = skill archive: skill "{ $name }" has no files, so there is nothing to pack — refusing to write an empty archive
+library-archive-unrecognized = skill archive: unrecognized format (not a zip)
+library-archive-invalid = skill archive: invalid zip: { $detail }
+library-archive-zip64 = skill archive: zip64 archives are not supported
+library-archive-encrypted = skill archive: entry "{ $name }" is encrypted
+library-archive-method = skill archive: entry "{ $name }" is compressed with method { $method }, which is neither stored nor deflate
+library-archive-too-many-entries = skill archive: more than { $max } entries — rejected (entry-count bomb guard)
+library-archive-too-big = skill archive: more than { $max } bytes once decompressed — rejected (decompression-bomb guard)
+library-archive-absolute = skill archive: entry "{ $name }" has an absolute path — rejected
+library-archive-traversal = skill archive: entry "{ $name }" climbs out of the package with ".." — rejected
+library-archive-bad-name = skill archive: entry "{ $name }" is not a path a package may hold (an empty segment, a backslash, a NUL or bytes that are not UTF-8) — rejected
+library-archive-link = skill archive: entry "{ $name }" is a symbolic link — rejected (no link may exist in a skill)
+library-archive-special = skill archive: entry "{ $name }" is a device, FIFO or socket — rejected
+library-archive-duplicate = skill archive: entry "{ $name }" appears twice — rejected
+library-archive-foreign-top = skill archive: entry "{ $name }" is outside the archive's one top-level directory "{ $top }" — rejected
+library-archive-empty = skill archive: empty archive, no top-level skill directory found
+library-archive-no-files = skill archive: contained no files under its top-level directory "{ $top }" — rejected
+library-archive-checksum = skill archive: entry "{ $name }" does not match its checksum — rejected

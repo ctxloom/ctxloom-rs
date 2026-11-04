@@ -7,7 +7,10 @@
 //! - [`Library::open`] reads the configuration (layers, overrides, the
 //!   engine registry) and the bundles; a bundle that cannot be read is
 //!   skipped with a notice and the listing goes on.
-//! - Nothing here writes, and nothing is created: a read is a read.
+//! - A read is a read: nothing is written or created. The write side (S2,
+//!   [`write`]) plans a change, checks that what it leaves reads, and only
+//!   then hands it to the ports; a refused write has written nothing, and a
+//!   preview or an edit with nothing to change has written nothing either.
 
 mod agents;
 mod bundles;
@@ -24,6 +27,7 @@ mod project;
 mod run;
 mod search;
 mod views;
+pub mod write;
 mod yamlout;
 
 pub use agents::ENGINES;
@@ -33,10 +37,17 @@ pub use config_show::ConfigShown;
 pub use error::diagnostic_samples;
 pub use error::{AppError, Notice, EN_US};
 pub use items::Kind as ItemKind;
+#[allow(unused_imports)]
+pub use library::write::loadout::DOCUMENT as LOADOUT;
+pub use library::write::mcp::McpPatch;
+pub use library::write::profile::ProfileEdit;
 pub use project::{Library, Outcome};
 pub use run::{AssembleRequest, Previewed, RunRequest};
 pub use search::SearchRequest;
 pub use views::*;
+pub use write::requests::*;
+pub use write::views::*;
+pub use write::{WriteError, WritePorts};
 
 #[cfg(test)]
 #[path = "lib.test.rs"]

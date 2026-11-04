@@ -1,0 +1,17 @@
+[package]
+name = "companion-probe"
+version = "0.1.0"
+description = "The LoadoutProbe port as a process: a companion asked for its loadout, bounded in time (S2)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+ctxloom-ports.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

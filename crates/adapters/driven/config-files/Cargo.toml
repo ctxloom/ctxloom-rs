@@ -11,10 +11,10 @@ publish.workspace = true
 angzarr-diagnostic.workspace = true
 ctxloom-ports.workspace = true
 file-system.workspace = true
+os.workspace = true
 
 [dev-dependencies]
 file-system = { workspace = true, features = ["test-support"] }
-os.workspace = true
 
 [features]
 test-support = ["ctxloom-ports/test-support"]

@@ -16,6 +16,28 @@ impl ConfigFiles for NoRootIgnored {
     fn layers(&self) -> Result<Vec<LayerText>, Failure> {
         Ok(Vec::new())
     }
+
+    fn layer(&self, _scope: Scope) -> Result<Option<LayerText>, Failure> {
+        Ok(None)
+    }
+
+    fn layer_path(&self, _scope: Scope) -> String {
+        String::new()
+    }
+
+    fn write_layer(&self, _scope: Scope, _text: &str) -> Result<(), Failure> {
+        Ok(())
+    }
+}
+
+// a plain file is not executable
+#[test]
+fn test_a_put_file_is_plain() {
+    let put = Put::file("a/b.md", "x");
+    assert_eq!(
+        (put.path.as_str(), put.bytes.as_slice(), put.executable),
+        ("a/b.md", b"x".as_slice(), false)
+    );
 }
 
 // configload: an adapter that never ignores a `CTXLOOM_ROOT` says nothing of
