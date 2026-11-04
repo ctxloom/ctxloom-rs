@@ -145,11 +145,7 @@ fn go_to(
         .try_get_matches_from(full)
         .expect("parses");
     let noun = matches.subcommand_name().expect("a noun").to_string();
-    let call = Call {
-        matches: &matches,
-        explicit_format: Some(format),
-        default_format: Format::Text,
-    };
+    let call = Call::new(&matches, Some(format), Format::Text);
     let catalog = Catalog::en_us(&[sessions_application::EN_US, deps_application::EN_US, EN_US])
         .expect("catalog");
     let mut err = Vec::new();
@@ -325,11 +321,7 @@ fn a_noun_the_line_does_not_carry_is_a_usage_failure() {
         .fold(Command::new("ctxloom"), Command::subcommand)
         .try_get_matches_from(["ctxloom", "clean"])
         .unwrap();
-    let call = Call {
-        matches: &matches,
-        explicit_format: None,
-        default_format: Format::Text,
-    };
+    let call = Call::new(&matches, None, Format::Text);
     let catalog = Catalog::en_us(&[EN_US]).unwrap();
     let failure = run(
         &uses,

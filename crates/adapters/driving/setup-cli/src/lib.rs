@@ -15,7 +15,6 @@
 //!   the body an engine is handed.
 
 mod commands;
-mod notices;
 mod text;
 
 use std::io::Write;
@@ -23,6 +22,7 @@ use std::io::Write;
 use angzarr_diagnostic::Diagnostic;
 use angzarr_presentation::{write_json, Catalog, Format};
 use clap::ArgMatches;
+use cli_support::say_warning;
 use deps_application::Notice;
 use doctor_checks::Doctor;
 use init_application::{Init, InitRequest};
@@ -30,24 +30,11 @@ use reclaim_application::Cleaner;
 use sessions_application::RemovedNothing;
 
 pub use commands::nouns;
-pub use notices::say_warning;
 
 /// The program's name, for the warnings.
 const PROG: &str = "ctxloom";
 
-/// One command, as this crate is asked to run it.
-pub struct Call<'a> {
-    pub matches: &'a ArgMatches,
-    pub explicit_format: Option<Format>,
-    pub default_format: Format,
-}
-
-/// Why a command did not complete, and its exit code.
-#[derive(Debug)]
-pub struct Failure {
-    pub cause: Box<dyn Diagnostic>,
-    pub exit: u8,
-}
+pub use cli_support::{Call, Failure};
 
 /// The use cases the commands run on.
 pub struct UseCases<'a> {
@@ -57,10 +44,7 @@ pub struct UseCases<'a> {
 }
 
 fn failure(cause: impl Diagnostic + 'static, exit: u8) -> Failure {
-    Failure {
-        cause: Box::new(cause),
-        exit,
-    }
+    Failure::new(cause, exit)
 }
 
 fn output(error: std::io::Error) -> Failure {
@@ -122,6 +106,7 @@ fn clean(
             &RemovedNothing {
                 command: "ctxloom clean --yes".to_string(),
             },
+            PROG,
             format,
             catalog,
             err,
@@ -198,7 +183,7 @@ fn init(
     }
     let notices: &[Notice] = &done.notices;
     for notice in notices {
-        say_warning(notice, Format::Text, catalog, err);
+        say_warning(notice, PROG, Format::Text, catalog, err);
     }
     Ok(0)
 }

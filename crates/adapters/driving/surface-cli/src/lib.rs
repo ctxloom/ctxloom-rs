@@ -7,14 +7,13 @@
 //! the setup [`nouns`] and, given the matches of one, [`run`]s it.
 
 mod commands;
-mod notices;
 mod text;
 
 use std::io::{self, Read, Write};
 
-use angzarr_diagnostic::Diagnostic;
-use angzarr_presentation::{write_json, Catalog, Format};
+use angzarr_presentation::{Catalog, Format};
 use clap::ArgMatches;
+use cli_support::{flag, many, one, say_notices};
 use library_application::Flags;
 use serde::Serialize;
 use setup_application::{InstallRequest, MaterializeRequest, Setup, SetupError, SurfaceSpec};
@@ -24,35 +23,22 @@ pub use commands::nouns;
 /// The program's name, for the warnings.
 const PROG: &str = "ctxloom";
 
-/// One command, as this crate is asked to run it.
-pub struct Call<'a> {
-    /// The matches of the whole command line.
-    pub matches: &'a ArgMatches,
-    /// The `--format` the line gave, if any.
-    pub explicit_format: Option<Format>,
-    /// Text on a terminal, json off one.
-    pub default_format: Format,
-    pub stdout_is_terminal: bool,
-    pub degraded: bool,
-    pub no_companions: bool,
-    pub config_set: Vec<String>,
+pub use cli_support::{Call, Failure};
+
+/// A setup error as the failure it ends the command in.
+trait IntoFailure {
+    fn into_failure(self) -> Failure;
 }
 
-/// Why a command did not complete, and its exit code.
-#[derive(Debug)]
-pub struct Failure {
-    pub cause: Box<dyn Diagnostic>,
-    pub exit: u8,
-}
-
-impl From<SetupError> for Failure {
-    fn from(error: SetupError) -> Failure {
-        let exit = error.exit_code();
-        Failure {
-            cause: Box::new(error),
-            exit,
-        }
+impl IntoFailure for SetupError {
+    fn into_failure(self) -> Failure {
+        let exit = self.exit_code();
+        Failure::new(self, exit)
     }
+}
+
+fn failed(error: SetupError) -> Failure {
+    error.into_failure()
 }
 
 struct Context<'a> {
@@ -91,7 +77,7 @@ pub fn run(
         .subcommand()
         .filter(|(name, _)| *name == noun)
         .ok_or_else(|| {
-            Failure::from(SetupError::Request {
+            failed(SetupError::Request {
                 detail: format!("no {noun} command"),
             })
         })?;
@@ -108,37 +94,11 @@ fn emit<T: Serialize>(
     value: &T,
     text: impl FnOnce(&mut dyn Write) -> io::Result<()>,
 ) -> Result<(), Failure> {
-    let written = match cx.format {
-        Format::Json => write_json(out, value),
-        Format::Text => text(out),
-    };
-    written.map_err(|e| {
-        Failure::from(SetupError::Request {
+    cli_support::emit(cx.format, out, value, text).map_err(|e| {
+        failed(SetupError::Request {
             detail: format!("the answer could not be written: {e}"),
         })
     })
-}
-
-fn flag(matches: &ArgMatches, name: &str) -> bool {
-    matches
-        .try_get_one::<bool>(name)
-        .ok()
-        .flatten()
-        .copied()
-        .unwrap_or(false)
-}
-
-fn one(matches: &ArgMatches, name: &str) -> Option<String> {
-    matches.try_get_one::<String>(name).ok().flatten().cloned()
-}
-
-fn many(matches: &ArgMatches, name: &str) -> Vec<String> {
-    matches
-        .try_get_many::<String>(name)
-        .ok()
-        .flatten()
-        .map(|values| values.cloned().collect())
-        .unwrap_or_default()
 }
 
 fn manage(
@@ -152,23 +112,29 @@ fn manage(
     };
     match verb {
         "install" if flag(args, "print") => {
-            let plan = cx.setup.install_plan(one(args, "engine").as_deref())?;
+            let plan = cx
+                .setup
+                .install_plan(one(args, "engine").as_deref())
+                .map_err(failed)?;
             emit(cx, out, &plan, |w| text::plan(w, &plan))?;
         }
         "install" => {
-            let done = cx.setup.install(&InstallRequest {
-                engine: one(args, "engine"),
-                no_pull: flag(args, "no-pull"),
-                flags: cx.flags.clone(),
-            })?;
-            notices::say(&done.notices, PROG, cx.format, cx.catalog, err);
+            let done = cx
+                .setup
+                .install(&InstallRequest {
+                    engine: one(args, "engine"),
+                    no_pull: flag(args, "no-pull"),
+                    flags: cx.flags.clone(),
+                })
+                .map_err(failed)?;
+            say_notices(&done.notices, PROG, cx.format, cx.catalog, err);
             emit(cx, out, &done.value, |w| text::install(w, &done.value))?;
         }
         "uninstall" => {
-            let report = cx.setup.uninstall()?;
+            let report = cx.setup.uninstall().map_err(failed)?;
             emit(cx, out, &report, |w| text::uninstall(w, &report))?;
             if let Some(first) = report.errors.first() {
-                return Err(Failure::from(SetupError::Request {
+                return Err(failed(SetupError::Request {
                     detail: first.clone(),
                 }));
             }
@@ -176,12 +142,15 @@ fn manage(
         "check" => check(cx, out, err)?,
         "hooks" => match args.subcommand() {
             Some(("list", list)) => {
-                let done = cx.setup.hooks_list(
-                    one(list, "event").as_deref(),
-                    &many(list, "profile"),
-                    &cx.flags,
-                )?;
-                notices::say(&done.notices, PROG, cx.format, cx.catalog, err);
+                let done = cx
+                    .setup
+                    .hooks_list(
+                        one(list, "event").as_deref(),
+                        &many(list, "profile"),
+                        &cx.flags,
+                    )
+                    .map_err(failed)?;
+                say_notices(&done.notices, PROG, cx.format, cx.catalog, err);
                 emit(cx, out, &done.value, |w| text::hooks(w, &done.value))?;
             }
             _ => check(cx, out, err)?,
@@ -191,8 +160,11 @@ fn manage(
             if args.subcommand_name().is_none() {
                 return Ok(0);
             }
-            let done = cx.setup.set_statusline(enabled, &cx.flags)?;
-            notices::say(&done.notices, PROG, cx.format, cx.catalog, err);
+            let done = cx
+                .setup
+                .set_statusline(enabled, &cx.flags)
+                .map_err(failed)?;
+            say_notices(&done.notices, PROG, cx.format, cx.catalog, err);
             let state = if done.value { "enabled" } else { "disabled" };
             let doc = StatuslineAnswer {
                 status: state,
@@ -208,7 +180,7 @@ fn manage(
         }
         _ => {
             if args.subcommand_name() == Some("install") {
-                let report = cx.setup.gitignore_install()?;
+                let report = cx.setup.gitignore_install().map_err(failed)?;
                 emit(cx, out, &report, |w| text::gitignore(w, &report))?;
             }
         }
@@ -223,8 +195,8 @@ struct StatuslineAnswer {
 }
 
 fn check(cx: &Context<'_>, out: &mut dyn Write, err: &mut dyn Write) -> Result<(), Failure> {
-    let done = cx.setup.check(&cx.flags)?;
-    notices::say(&done.notices, PROG, cx.format, cx.catalog, err);
+    let done = cx.setup.check(&cx.flags).map_err(failed)?;
+    say_notices(&done.notices, PROG, cx.format, cx.catalog, err);
     emit(cx, out, &done.value, |w| text::check(w, &done.value))
 }
 
@@ -237,7 +209,8 @@ fn materialize(
     let surfaces = many(args, "surface")
         .iter()
         .map(|s| SurfaceSpec::parse(s))
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(failed)?;
     let request = MaterializeRequest {
         profiles: many(args, "profiles"),
         target: one(args, "target"),
@@ -249,8 +222,8 @@ fn materialize(
         leave_launch_context: false,
         flags: cx.flags.clone(),
     };
-    let mut done = cx.setup.materialize(&request)?;
-    notices::say(&done.notices, PROG, cx.format, cx.catalog, err);
+    let mut done = cx.setup.materialize(&request).map_err(failed)?;
+    say_notices(&done.notices, PROG, cx.format, cx.catalog, err);
     for failure in &done.value.failures {
         done.value.errors.push(cx.catalog.message(failure));
     }
@@ -279,14 +252,15 @@ fn util(
     };
     let mut patch = String::new();
     input.read_to_string(&mut patch).map_err(|e| {
-        Failure::from(SetupError::ConfigWrite {
+        failed(SetupError::ConfigWrite {
             detail: format!("read patch from stdin: {e}"),
         })
     })?;
     let file = one(args, "file").unwrap_or_default();
     let done = cx
         .setup
-        .config_write(&file, one(args, "filetype").as_deref(), &patch)?;
+        .config_write(&file, one(args, "filetype").as_deref(), &patch)
+        .map_err(failed)?;
     emit(cx, out, &done, |w| {
         writeln!(
             w,

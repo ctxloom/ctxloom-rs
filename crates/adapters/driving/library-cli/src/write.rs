@@ -14,7 +14,7 @@ use library_application::{
 };
 use serde::Serialize;
 
-use crate::{emit, flag, many_arg, text_arg, Context, Failure};
+use crate::{emit, failed, flag, many, text_arg, Context, Failure, IntoFailure};
 
 /// A flag's value, `None` when the flag was not given.
 fn given(sub: &ArgMatches, name: &str) -> Option<String> {
@@ -35,7 +35,7 @@ fn pair(flag_name: &str, value: &str) -> Result<(String, String), Failure> {
         .split_once('=')
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .ok_or_else(|| {
-            Failure::from(AppError::from(WriteError::FlagPair {
+            failed(AppError::from(WriteError::FlagPair {
                 flag: format!("--{flag_name}"),
                 got: value.to_string(),
             }))
@@ -59,7 +59,7 @@ fn text_only(cx: &Context<'_>, command: &str) -> Result<(), Failure> {
             command: command.to_string(),
             format: "json".to_string(),
         }
-        .into());
+        .into_failure());
     }
     Ok(())
 }
@@ -171,14 +171,14 @@ pub(crate) fn bundle(
                 name,
                 description: given(sub, "description"),
                 version: given(sub, "version"),
-                add_tags: many_arg(sub, "add-tag"),
-                remove_tags: many_arg(sub, "remove-tag"),
-                add_fragments: many_arg(sub, "add-fragment"),
-                remove_fragments: many_arg(sub, "remove-fragment"),
-                add_prompts: many_arg(sub, "add-prompt"),
-                remove_prompts: many_arg(sub, "remove-prompt"),
-                add_mcp: many_arg(sub, "add-mcp"),
-                remove_mcp: many_arg(sub, "remove-mcp"),
+                add_tags: many(sub, "add-tag"),
+                remove_tags: many(sub, "remove-tag"),
+                add_fragments: many(sub, "add-fragment"),
+                remove_fragments: many(sub, "remove-fragment"),
+                add_prompts: many(sub, "add-prompt"),
+                remove_prompts: many(sub, "remove-prompt"),
+                add_mcp: many(sub, "add-mcp"),
+                remove_mcp: many(sub, "remove-mcp"),
             };
             let outcome = cx.library.bundle_edit(&cx.flags, &request);
             finish(cx, outcome, out, err, |edited, out, _| {
@@ -426,9 +426,9 @@ pub(crate) fn mcp(
 /// A bare `mcp`: no stdio server to point a client at.
 pub(crate) fn mcp_bare(cx: &Context<'_>) -> Failure {
     if cx.explicit && cx.format == Format::Json {
-        return AppError::from(WriteError::McpBareJson {}).into();
+        return AppError::from(WriteError::McpBareJson {}).into_failure();
     }
-    AppError::from(WriteError::McpBare {}).into()
+    AppError::from(WriteError::McpBare {}).into_failure()
 }
 
 pub(crate) fn profile(
@@ -444,8 +444,8 @@ pub(crate) fn profile(
             let request = ProfileCreateRequest {
                 name,
                 description: text_arg(sub, "description"),
-                parents: many_arg(sub, "parent"),
-                bundles: many_arg(sub, "include"),
+                parents: many(sub, "parent"),
+                bundles: many(sub, "include"),
                 llm: text_arg(sub, "llm"),
                 target: text_arg(sub, "bundle"),
             };
@@ -472,14 +472,14 @@ pub(crate) fn profile(
             let edit = ProfileEdit {
                 description: given(sub, "description"),
                 llm: given(sub, "llm"),
-                add_parents: many_arg(sub, "add-parent"),
-                remove_parents: many_arg(sub, "remove-parent"),
-                add_bundles: many_arg(sub, "add-bundle"),
-                remove_bundles: many_arg(sub, "remove-bundle"),
-                exclude_fragments: many_arg(sub, "exclude-fragment"),
-                include_fragments: many_arg(sub, "include-fragment"),
-                exclude_mcp: many_arg(sub, "exclude-mcp"),
-                include_mcp: many_arg(sub, "include-mcp"),
+                add_parents: many(sub, "add-parent"),
+                remove_parents: many(sub, "remove-parent"),
+                add_bundles: many(sub, "add-bundle"),
+                remove_bundles: many(sub, "remove-bundle"),
+                exclude_fragments: many(sub, "exclude-fragment"),
+                include_fragments: many(sub, "include-fragment"),
+                exclude_mcp: many(sub, "exclude-mcp"),
+                include_mcp: many(sub, "include-mcp"),
             };
             let outcome = cx.library.profile_modify(&cx.flags, &name, &edit);
             finish_text(cx, outcome, out, err, |done, out, _| {
@@ -631,7 +631,7 @@ pub(crate) fn llm(
                 kind: given(sub, "type"),
                 model: given(sub, "model"),
                 permissions: given(sub, "permissions"),
-                set: many_arg(sub, "set"),
+                set: many(sub, "set"),
             };
             let outcome = cx
                 .library
@@ -719,7 +719,7 @@ pub(crate) fn companion(
 pub(crate) fn loadout(sub: &ArgMatches, out: &mut dyn Write) -> Result<u8, Failure> {
     let asked = given(sub, "format");
     if let Some(format) = asked.filter(|f| f != "yaml") {
-        return Err(AppError::from(WriteError::LoadoutFormat { format }).into());
+        return Err(AppError::from(WriteError::LoadoutFormat { format }).into_failure());
     }
     out.write_all(LOADOUT.as_bytes())
         .map_err(crate::output_failure)?;

@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use angzarr_presentation::Catalog;
 use companion_probe::ProcessProbe;
-use config_files::{find_app_dir, ConfigFilesFs, ScaffoldFs, Surroundings};
+use config_files::{ConfigFilesFs, ScaffoldFs};
 use content_fs::{ContentFs, UserFilesFs};
 use ctxloom_cli::{Call, Extension, Failure};
 use ctxloom_ports::Executables;
@@ -72,22 +72,10 @@ pub(crate) fn build(remotes: Option<Rc<dyn RemoteLibrary>>) -> Result<Library, L
     let wiring = Wiring::from_process()?;
     let fs = wiring.fs();
     let home = wiring.home().to_path_buf();
-    let around = Surroundings {
-        root_env: std::env::var("CTXLOOM_ROOT").ok(),
-        cwd: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-        home: home.clone(),
-        temp_root: std::env::temp_dir(),
-    };
-    let app = find_app_dir(fs.as_ref(), &around);
+    let (around, app) = wiring.locate();
     let content = ContentFs::new(Arc::clone(&fs), &app.path);
     let files = ConfigFilesFs::new(Arc::clone(&fs), app, &home);
-    let dirs = std::env::var_os("PATH")
-        .map(|path| std::env::split_paths(&path).collect())
-        .unwrap_or_default();
-    let binaries = PathSearch {
-        fs: Arc::clone(&fs),
-        dirs,
-    };
+    let binaries = wiring.path_search();
     let environ = std::env::vars().collect();
     let ports = WritePorts {
         user: Arc::new(UserFilesFs::new(Arc::clone(&fs))),
@@ -121,22 +109,7 @@ impl Extension for LibraryCommands {
         out: &mut dyn Write,
         err: &mut dyn Write,
     ) -> Result<u8, Failure> {
-        let library = self.wired().map_err(|e| Failure {
-            cause: Box::new(e),
-            exit: 1,
-        })?;
-        let inner = library_cli::Call {
-            matches: call.matches,
-            explicit_format: call.explicit_format,
-            default_format: call.default_format,
-            stdout_is_terminal: call.stdout_is_terminal,
-            degraded: call.degraded,
-            no_companions: call.no_companions,
-            config_set: call.config_set.clone(),
-        };
-        library_cli::run(library, noun, &inner, catalog, out, err).map_err(|f| Failure {
-            cause: f.cause,
-            exit: f.exit,
-        })
+        let library = self.wired().map_err(|e| Failure::new(e, 1))?;
+        library_cli::run(library, noun, call, catalog, out, err)
     }
 }

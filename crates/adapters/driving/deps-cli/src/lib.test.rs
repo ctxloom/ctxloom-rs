@@ -73,10 +73,8 @@ fn go_refreshing(fx: &Fixture, refresh: &FakeRefresh, line: &[&str], how: How) -
         .unwrap_or_else(|e| panic!("{line:?} does not parse: {e}"));
     let noun = matches.subcommand_name().expect("a noun").to_string();
     let call = Call {
-        matches: &matches,
-        explicit_format: how.explicit,
-        default_format: Format::Json,
         stdout_is_terminal: how.terminal,
+        ..Call::new(&matches, how.explicit, Format::Json)
     };
     let catalog = Catalog::en_us(&[deps_application::EN_US, deps::EN_US, angzarr_yaml::EN_US])
         .expect("a catalog");
