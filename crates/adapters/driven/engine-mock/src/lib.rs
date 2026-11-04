@@ -70,31 +70,7 @@ fn safe(name: &str) -> bool {
 
 /// The hook as the mock's native hook file spells it.
 fn hook_json(engine: &str, hook: &Hook) -> Json {
-    let mut args = hook.args.clone();
-    if hook.is_callback() && !args.iter().any(|a| a == "--engine") {
-        args.push("--engine".to_string());
-        args.push(engine.to_string());
-    }
-    let mut members = vec![(
-        "type",
-        Json::text(if hook.kind.is_empty() {
-            "command"
-        } else {
-            &hook.kind
-        }),
-    )];
-    if !hook.command.is_empty() {
-        members.push(("command", Json::text(hook.command.as_str())));
-    }
-    if !args.is_empty() {
-        members.push(("args", Json::strings(&args)));
-    }
-    if !hook.prompt.is_empty() {
-        members.push(("prompt", Json::text(hook.prompt.as_str())));
-    }
-    if hook.timeout > 0 {
-        members.push(("timeout", Json::Number(hook.timeout.to_string())));
-    }
+    let mut members = hook.json_members(engine);
     if !hook.tool.is_empty() {
         members.push(("tool", Json::text(hook.tool.as_str())));
     }

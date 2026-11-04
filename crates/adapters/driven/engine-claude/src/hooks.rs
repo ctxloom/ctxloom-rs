@@ -43,29 +43,7 @@ fn matcher_of(class: &str) -> Option<&'static str> {
 
 /// The hook as `settings.json` spells it; the type defaults to `command`.
 fn value(hook: &Hook) -> Json {
-    let mut args = hook.args.clone();
-    if hook.is_callback() && !args.iter().any(|a| a == "--engine") {
-        args.push("--engine".to_string());
-        args.push(ENGINE.to_string());
-    }
-    let kind = if hook.kind.is_empty() {
-        "command"
-    } else {
-        &hook.kind
-    };
-    let mut members = vec![("type", Json::text(kind))];
-    if !hook.command.is_empty() {
-        members.push(("command", Json::text(hook.command.as_str())));
-    }
-    if !args.is_empty() {
-        members.push(("args", Json::strings(&args)));
-    }
-    if !hook.prompt.is_empty() {
-        members.push(("prompt", Json::text(hook.prompt.as_str())));
-    }
-    if hook.timeout > 0 {
-        members.push(("timeout", Json::Number(hook.timeout.to_string())));
-    }
+    let mut members = hook.json_members(ENGINE);
     if hook.is_async {
         members.push(("async", Json::Bool(true)));
     }

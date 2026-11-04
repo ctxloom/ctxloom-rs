@@ -123,3 +123,28 @@ fn test_context_rides_a_launch_only_when_the_engine_says_so() {
     assert!(!Plain.context_rides_launch());
     assert!(Named("x", true).context_rides_launch());
 }
+
+#[test]
+fn test_a_hook_spells_its_shared_members_in_order() {
+    let hook = Hook {
+        command: "ctxloom".into(),
+        args: vec!["hook".into(), "stop".into()],
+        prompt: "p".into(),
+        timeout: 5,
+        is_async: true,
+        tool: "shell".into(),
+        matcher: "m".into(),
+        ..Hook::default()
+    };
+    let members = hook.json_members("eng");
+    let keys: Vec<_> = members.iter().map(|(k, _)| *k).collect();
+    assert_eq!(keys, ["type", "command", "args", "prompt", "timeout"]);
+    assert_eq!(members[0].1, Json::text("command"));
+    assert_eq!(
+        members[2].1,
+        Json::strings(["hook", "stop", "--engine", "eng"])
+    );
+    assert_eq!(members[4].1, Json::Number("5".into()));
+    let bare = Hook::default().json_members("eng");
+    assert_eq!(bare, vec![("type", Json::text("command"))]);
+}
