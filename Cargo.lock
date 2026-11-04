@@ -3013,6 +3013,7 @@ dependencies = [
  "angzarr-diagnostic",
  "angzarr-presentation",
  "clap",
+ "ctxloom-ports",
  "deps-application",
  "doctor-checks",
  "init-application",

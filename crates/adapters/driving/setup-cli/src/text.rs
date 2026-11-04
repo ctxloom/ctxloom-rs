@@ -5,14 +5,23 @@ use std::io::{self, Write};
 use doctor_checks::{Report, Status};
 use reclaim_application::CleanReport;
 
+const UNITS: [&str; 6] = ["KB", "MB", "GB", "TB", "PB", "EB"];
+
+/// Whether a unit above `unit` exists. A u64 tops out at 16 EB, so the last
+/// unit is never run past and this bound can only protect the index.
+// Equivalent: no u64 reaches the end of UNITS, so the bound never decides.
+#[cfg_attr(test, mutants::skip)]
+fn has_larger_unit(unit: usize) -> bool {
+    unit + 1 < UNITS.len()
+}
+
 /// A size as a person reads it.
 pub(crate) fn human(bytes: u64) -> String {
-    const UNITS: [&str; 6] = ["KB", "MB", "GB", "TB", "PB", "EB"];
     if bytes < 1024 {
         return format!("{bytes} B");
     }
     let (mut value, mut unit) = (bytes as f64 / 1024.0, 0);
-    while value >= 1024.0 && unit + 1 < UNITS.len() {
+    while value >= 1024.0 && has_larger_unit(unit) {
         value /= 1024.0;
         unit += 1;
     }
