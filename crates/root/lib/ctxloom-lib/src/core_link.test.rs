@@ -36,8 +36,11 @@ type TheEdge = EmbeddedEdge<angzarr_embedded_host::stores::OneStore<FaultyStore<
 struct World {
     core: Core,
     store: FaultyStore<MemoryStore>,
+    /// The runner principal's credential and identity.
     credential: Credential,
     identity: Identity,
+    /// The model principal's (owner ruling 2026-11-04, item 16).
+    model_credential: Credential,
 }
 
 impl World {
@@ -78,7 +81,11 @@ impl World {
             .await
             .unwrap();
         let credential = Credential {
-            token: enqueued.token,
+            token: enqueued.runner_token,
+            run: enqueued.run.clone(),
+        };
+        let model_credential = Credential {
+            token: enqueued.model_token,
             run: enqueued.run,
         };
         let identity = RunsGate::new(Arc::clone(&edge))
@@ -90,6 +97,7 @@ impl World {
             store,
             credential,
             identity,
+            model_credential,
         }
     }
 
@@ -189,8 +197,8 @@ async fn a_fact_at_the_race_cap_is_parked_over_app_serve_in() {
     );
 }
 
-// NEW-DESIGN (D29): the run's end, recorded by the fact, revokes the token
-// over the real App: the next request with it is refused.
+// NEW-DESIGN (D29; item 16): the run's end, recorded by the fact, revokes BOTH
+// principals' tokens over the real App: the next request with either is refused.
 #[tokio::test]
 async fn the_token_is_refused_once_the_runs_end_is_recorded() {
     let world = World::new().await;
@@ -198,9 +206,43 @@ async fn the_token_is_refused_once_the_runs_end_is_recorded() {
     facts.record(&world.identity, exited()).await.unwrap();
     let admission = Admission::new(world.edge());
     let book = exited().book(&world.identity);
-    let refused = admission
-        .admit(Arrival::Ip, &world.credential, book)
+    for credential in [&world.credential, &world.model_credential] {
+        let refused = admission
+            .admit(Arrival::Ip, credential, book.clone())
+            .await
+            .unwrap_err();
+        assert_eq!(refused, AppError::Unauthenticated(Why::Revoked));
+    }
+}
+
+// NEW-DESIGN, owner ruling 2026-11-04 (item 16, fail closed): over the real
+// App, the model's token cannot record the runner's exit, and the run lives on.
+#[tokio::test]
+async fn the_models_token_cannot_record_an_exit_over_app_serve_in() {
+    let world = World::new().await;
+    let admission = Admission::new(world.edge());
+    let before = world
+        .edge()
+        .events(&world.identity.run_cover(), 0)
+        .await
+        .unwrap()
+        .len();
+    let denied = admission
+        .admit(
+            Arrival::Ip,
+            &world.model_credential,
+            exited().book(&world.identity),
+        )
         .await
         .unwrap_err();
-    assert_eq!(refused, AppError::Unauthenticated(Why::Revoked));
+    assert!(matches!(denied, AppError::Denied(Unserved::Hidden { .. })));
+    assert_eq!(
+        world
+            .edge()
+            .events(&world.identity.run_cover(), 0)
+            .await
+            .unwrap()
+            .len(),
+        before
+    );
 }

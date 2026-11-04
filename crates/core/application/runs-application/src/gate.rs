@@ -10,18 +10,21 @@ use angzarr_embedded::v1::{Cover, Uuid};
 use run_ports::{Edge, Token};
 
 use crate::error::{AppError, Why};
-use crate::identity::Identity;
+use crate::identity::{Identity, Principal};
 
 /// What a caller presents: the bearer and the run id (two metadata pairs on the
-/// wire; plan 5.3: "the bearer plus the run id find the run's stream").
+/// wire; plan 5.3: "the bearer plus the run id find the run's stream"). The
+/// bearer is the runner's token or the model's; which one it is, is decided by
+/// the hash that matches, never by the caller.
 #[derive(Clone, Debug)]
 pub struct Credential {
     pub token: Token,
     pub run: Uuid,
 }
 
-/// The closed set of what an agent may SEND as a fact: the `AgentFact` type
-/// URLs and nothing else. Commands have no entry: the agent listener accepts no
+/// The closed set of what ONE principal may SEND as a fact: the `AgentFact`
+/// type URLs it authors and nothing else. The two principals' lists are
+/// disjoint (owner ruling 2026-11-04, item 16). Commands have no entry: the agent listener accepts no
 /// generic Command envelope of any type (owner ruling 2026-11-04, S5 review Q3);
 /// an agent's asks are the closed `AgentRequest` type, its own service.
 #[derive(Clone, Debug)]
@@ -30,9 +33,22 @@ pub struct Allowlist {
 }
 
 impl Allowlist {
-    /// What a runner may send: the closed `AgentFact` URLs.
-    pub fn agent() -> Allowlist {
+    /// What the RUNNER may send: the observation facts.
+    pub fn runner() -> Allowlist {
         todo!("S5 stub")
+    }
+
+    /// What the MODEL may send: the claim facts, and none of the runner's.
+    pub fn model() -> Allowlist {
+        todo!("S5 stub")
+    }
+
+    /// The list of `principal`.
+    pub fn of(principal: Principal) -> Allowlist {
+        match principal {
+            Principal::Runner => Allowlist::runner(),
+            Principal::Model => Allowlist::model(),
+        }
     }
 
     pub fn permits_fact(&self, type_url: &str) -> bool {
@@ -63,7 +79,7 @@ pub trait Gate: Send + Sync {
         credential: &Credential,
     ) -> impl Future<Output = Result<Identity, AppError>> + Send;
 
-    /// What this identity may send.
+    /// What this identity's principal may send.
     fn allowlist(&self, identity: &Identity) -> Allowlist;
 
     /// Whether the identity owns `cover`.
@@ -88,8 +104,7 @@ impl<E: Edge> Gate for RunsGate<E> {
     }
 
     fn allowlist(&self, identity: &Identity) -> Allowlist {
-        let _ = identity;
-        Allowlist::agent()
+        Allowlist::of(identity.principal)
     }
 
     fn owns(&self, identity: &Identity, cover: &Cover) -> bool {

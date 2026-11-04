@@ -12,13 +12,15 @@ use angzarr_embedded::v1::{command_page, CommandBook, CommandPage, Cover, Fact, 
 use angzarr_embedded::{Any, Failure, Handled, Payload, Registry};
 
 use crate::{
-    run_root, EndCause, EnqueueRun, LaunchFailed, QueueTurn, RequestStop, RunAggregate, RunCommand,
-    RunEnded, RunEvent, RunExited, RunMode, RunState, RunnerAttached, TurnCompleted, TurnFailed,
-    TurnFailureClass, TurnStarted, RUN_DOMAIN,
+    run_root, EndCause, EnqueueRun, FinalReported, LaunchFailed, QueueTurn, RequestStop,
+    RunAggregate, RunCommand, RunEnded, RunEvent, RunExited, RunMode, RunState, RunnerAttached,
+    SummaryReported, TurnCompleted, TurnFailed, TurnFailureClass, TurnStarted, RUN_DOMAIN,
 };
 
 const SESSION: &str = "5f0c7a52-1111-5111-8111-000000000001";
-const HASH: [u8; 32] = [0xab; 32];
+// Two principals per run (owner ruling 2026-11-04, item 16): a hash each.
+const RUNNER_HASH: [u8; 32] = [0xab; 32];
+const MODEL_HASH: [u8; 32] = [0xcd; 32];
 
 type Said = (String, BTreeMap<String, String>);
 
@@ -116,7 +118,8 @@ fn enqueue() -> EnqueueRun {
         session: SESSION.to_string(),
         incarnation: 1,
         mode: RunMode::Interactive,
-        credential_hash: HASH.to_vec(),
+        runner_credential_hash: RUNNER_HASH.to_vec(),
+        model_credential_hash: MODEL_HASH.to_vec(),
     }
 }
 
@@ -131,8 +134,9 @@ fn exited(code: i32) -> RunExited {
     RunExited { code, signal: 0 }
 }
 
-// NEW-DESIGN (plan 3.3, D29): the event holds the hash and nothing else of
-// the credential; the fold keeps it for `identify`.
+// NEW-DESIGN (plan 3.3, D29; owner ruling 2026-11-04, item 16: two principals
+// per run): the event holds a hash for each principal and nothing else of
+// either credential; the fold keeps both for `identify`.
 #[test]
 fn enqueue_records_the_session_incarnation_mode_and_the_hash_of_the_token() {
     let mut run = Run::new();
@@ -142,23 +146,49 @@ fn enqueue_records_the_session_incarnation_mode_and_the_hash_of_the_token() {
     };
     assert_eq!(enqueued.session, SESSION);
     assert_eq!(enqueued.incarnation, 1);
-    assert_eq!(enqueued.credential_hash, HASH.to_vec());
+    assert_eq!(enqueued.runner_credential_hash, RUNNER_HASH.to_vec());
+    assert_eq!(enqueued.model_credential_hash, MODEL_HASH.to_vec());
     let state = run.state();
-    assert_eq!(state.credential_hash, HASH.to_vec());
+    assert_eq!(state.runner_credential_hash, RUNNER_HASH.to_vec());
+    assert_eq!(state.model_credential_hash, MODEL_HASH.to_vec());
     assert!(!state.credential_revoked);
 }
 
-// NEW-DESIGN (D29: "only its SHA-256 goes in the event").
+// NEW-DESIGN (D29: "only its SHA-256 goes in the event"), for each principal's
+// hash.
 #[test]
 fn enqueue_refuses_a_credential_hash_that_is_not_a_sha256_digest() {
+    let shorts = [
+        EnqueueRun {
+            runner_credential_hash: vec![1, 2, 3],
+            ..enqueue()
+        },
+        EnqueueRun {
+            model_credential_hash: vec![1, 2, 3, 4],
+            ..enqueue()
+        },
+    ];
+    for (short, length) in shorts.into_iter().zip(["3", "4"]) {
+        let mut run = Run::new();
+        let (code, args) = run.command(short).unwrap_err();
+        assert_eq!(code, "runs-credential-hash-invalid");
+        assert_eq!(args["length"], length);
+        assert_eq!(run.event_count(), 0);
+    }
+}
+
+// NEW-DESIGN, owner ruling 2026-11-04 (item 16, fail closed): a token must
+// name exactly ONE principal, so an enqueue whose two hashes are equal is
+// refused and journals nothing.
+#[test]
+fn enqueue_refuses_one_hash_for_both_principals() {
     let mut run = Run::new();
-    let short = EnqueueRun {
-        credential_hash: vec![1, 2, 3],
+    let same = EnqueueRun {
+        model_credential_hash: RUNNER_HASH.to_vec(),
         ..enqueue()
     };
-    let (code, args) = run.command(short).unwrap_err();
-    assert_eq!(code, "runs-credential-hash-invalid");
-    assert_eq!(args["length"], "3");
+    let (code, _) = run.command(same).unwrap_err();
+    assert_eq!(code, "runs-credentials-not-distinct");
     assert_eq!(run.event_count(), 0);
 }
 
@@ -386,6 +416,191 @@ fn a_stop_request_is_recorded_once_and_does_not_end_the_run() {
     let state = run.state();
     assert!(state.stop_requested);
     assert_eq!(state.ended, None);
+}
+
+// NEW-DESIGN, owner ruling 2026-11-04 (item 16): a summary is a CLAIM, a fact
+// the model records. It is evidence and changes no transition: the run stays
+// live, its turn gate and credentials untouched.
+#[test]
+fn a_summary_claim_is_recorded_and_transitions_nothing() {
+    let mut run = Run::enqueued();
+    run.command(queue_turn()).unwrap();
+    let before = run.state();
+    let events = run.fact(summary(1, 0), "report:r:1:0");
+    assert!(matches!(
+        events.as_slice(),
+        [RunEvent::SummaryReportedRecorded(_)]
+    ));
+    let after = run.state();
+    assert_eq!(after.summaries, 1);
+    assert_eq!(
+        RunState {
+            summaries: 0,
+            ..after
+        },
+        before,
+        "nothing else of the run changed"
+    );
+}
+
+// NEW-DESIGN, owner ruling 2026-11-04 (item 16): "even task done" is a claim.
+// A final report is recorded as evidence for the parent and does NOT end the
+// run, free its turn, or revoke a credential (there is no `final_reported` end
+// cause: the session stays resumable and the decider accepts or re-delegates).
+#[test]
+fn a_final_claim_is_recorded_and_ends_nothing() {
+    let mut run = Run::enqueued();
+    run.command(queue_turn()).unwrap();
+    let events = run.fact(final_claim(1), "final:r:1");
+    assert!(matches!(
+        events.as_slice(),
+        [RunEvent::FinalReportedRecorded(_)]
+    ));
+    let state = run.state();
+    assert_eq!(state.final_reported, Some(1));
+    assert_eq!(state.ended, None, "the run did not end");
+    assert!(!state.credential_revoked, "no credential was revoked");
+    assert_eq!(
+        state.turn_in_flight,
+        Some(1),
+        "the runner's turn is the runner's"
+    );
+    assert!(!run
+        .harness
+        .pages()
+        .iter()
+        .any(|page| RunEvent::from_any(page.payload.as_ref().unwrap())
+            .is_ok_and(|e| matches!(e, RunEvent::RunEnded(_)))));
+}
+
+// NEW-DESIGN: a claim is idempotent by its external id, like any fact; a
+// second summary under another ordinal is a second claim.
+#[test]
+fn a_claim_again_is_a_duplicate_and_a_new_ordinal_is_a_new_claim() {
+    let mut run = Run::enqueued();
+    run.fact(summary(1, 0), "report:r:1:0");
+    let again = run
+        .harness
+        .when_book(fact_book(summary(1, 0), "report:r:1:0"))
+        .handled()
+        .unwrap();
+    assert!(matches!(again, Handled::Duplicate(..)));
+    run.fact(summary(1, 1), "report:r:1:1");
+    assert_eq!(run.state().summaries, 2);
+}
+
+type State = (&'static str, fn() -> Run);
+
+fn summary(turn: u64, ordinal: u32) -> SummaryReported {
+    SummaryReported {
+        turn,
+        ordinal,
+        scope: "progress".to_string(),
+        text_ref: "text:1".to_string(),
+    }
+}
+
+fn final_claim(turn: u64) -> FinalReported {
+    FinalReported {
+        turn,
+        text_ref: "text:final".to_string(),
+    }
+}
+
+// NEW-DESIGN, owner ruling 2026-11-04 (item 16, totality): a fact is what
+// already happened, so no fact handler may reject, in ANY state of the run:
+// never enqueued, enqueued, a turn in flight, a stop requested, ended. A fact
+// the run cannot use records nothing; it is never an error. The `match` stops
+// compiling when a fact is added without being listed here.
+#[test]
+fn every_fact_applies_in_every_state() {
+    fn facts() -> Vec<(CommandBook, &'static str)> {
+        vec![
+            (
+                fact_book(
+                    RunnerAttached {
+                        runner_id: "r".to_string(),
+                        protocol: "v1".to_string(),
+                    },
+                    "attach",
+                ),
+                "attach",
+            ),
+            (fact_book(TurnStarted { turn: 1 }, "started"), "started"),
+            (
+                fact_book(
+                    TurnCompleted {
+                        turn: 1,
+                        native_key: String::new(),
+                        answer_ref: String::new(),
+                        exit_code: 0,
+                    },
+                    "completed",
+                ),
+                "completed",
+            ),
+            (
+                fact_book(
+                    TurnFailed {
+                        turn: 1,
+                        class: TurnFailureClass::EngineError,
+                        detail: String::new(),
+                    },
+                    "failed",
+                ),
+                "failed",
+            ),
+            (fact_book(exited(0), "exit"), "exit"),
+            (
+                fact_book(
+                    LaunchFailed {
+                        deterministic: false,
+                        detail: String::new(),
+                    },
+                    "launch",
+                ),
+                "launch",
+            ),
+            (fact_book(summary(1, 0), "summary"), "summary"),
+            (fact_book(final_claim(1), "final"), "final"),
+        ]
+    }
+    // The domain's facts are not an enum the compiler can match on; the count
+    // is the guard: a new fact in runs.proto fails here until it is added above.
+    assert_eq!(facts().len(), 8, "one case per fact of the runs proto");
+    let states: [State; 5] = [
+        ("never enqueued", Run::new),
+        ("enqueued", Run::enqueued),
+        ("turn in flight", || {
+            let mut run = Run::enqueued();
+            run.command(queue_turn()).unwrap();
+            run
+        }),
+        ("stop requested", || {
+            let mut run = Run::enqueued();
+            run.command(RequestStop {
+                reason: "x".to_string(),
+            })
+            .unwrap();
+            run
+        }),
+        ("ended", || {
+            let mut run = Run::enqueued();
+            run.fact(exited(0), "exit:first");
+            run
+        }),
+    ];
+    for (state, make) in states {
+        for (book, name) in facts() {
+            let mut run = make();
+            let handled = run.harness.when_book(book).handled();
+            assert!(
+                handled.is_ok(),
+                "{name} in state {state}: {:?}",
+                handled.err()
+            );
+        }
+    }
 }
 
 // NEW-DESIGN: a runner attaches once per id; the attach is a fact.

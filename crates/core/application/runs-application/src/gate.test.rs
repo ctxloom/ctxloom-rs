@@ -8,7 +8,10 @@ use angzarr_embedded::v1::{Cover, Uuid};
 use run_ports::Token;
 
 use crate::fakes::World;
-use crate::{owns, AgentFact, AgentRequest, Allowlist, AppError, Credential, Gate, RunsGate, Why};
+use crate::Identity;
+use crate::{
+    owns, AgentFact, AgentRequest, Allowlist, AppError, Credential, Gate, Principal, RunsGate, Why,
+};
 
 /// The type URL of a domain message's wire form.
 fn url<M: angzarr_embedded::markup::DomainMessage>() -> String {
@@ -84,28 +87,67 @@ async fn an_unknown_run_does_not_identify() {
     );
 }
 
+// NEW-DESIGN, owner ruling 2026-11-04 (item 16): the principal is decided by
+// WHICH token matched, never by the caller: the runner's token identifies the
+// run as the runner, the model's as the model, and nothing else differs.
+#[tokio::test]
+async fn the_principal_is_the_one_whose_hash_matched() {
+    let world = World::new().await;
+    let gate = RunsGate::new(Arc::clone(&world.edge));
+    let runner = gate.identify(&world.me.credential).await.unwrap();
+    let model = gate.identify(&world.me.model_credential).await.unwrap();
+    assert_eq!(runner.principal, Principal::Runner);
+    assert_eq!(model.principal, Principal::Model);
+    assert_eq!(model, world.me.model_identity);
+    assert_eq!(
+        Identity {
+            principal: Principal::Runner,
+            ..model
+        },
+        runner,
+        "the same run, session, harp and depth"
+    );
+}
+
+// NEW-DESIGN (item 16, fail closed): another run's MODEL token for this run's
+// id does not identify either.
+#[tokio::test]
+async fn another_runs_model_token_does_not_identify_for_this_runs_id() {
+    let world = World::new().await;
+    let gate = RunsGate::new(Arc::clone(&world.edge));
+    let crossed = Credential {
+        token: world.other.model_token.clone(),
+        run: world.me.identity.run.clone(),
+    };
+    assert_eq!(
+        why(gate.identify(&crossed).await.unwrap_err()),
+        Why::Mismatch
+    );
+}
+
 // PORTED-FROM-GO: internal/core/coord/session_owner_revoke_test.go
 // TestRevokeSessionOwner_TokenStopsIdentifying and
 // internal/core/coord/creds_test.go TestCredentialRevocation_RevokesTheChildsCredential,
 // per D29: EVERY token, the owner's included, stops identifying when its run's
-// end is recorded.
+// end is recorded. Owner ruling 2026-11-04 (item 16): both principals' tokens.
 #[tokio::test]
 async fn a_token_stops_identifying_when_its_runs_end_is_recorded_the_owners_too() {
     let world = World::new().await;
     let child = world.child().await;
     let gate = RunsGate::new(Arc::clone(&world.edge));
     for party in [&world.me, &child] {
-        assert!(
-            gate.identify(&party.credential).await.is_ok(),
-            "precondition"
-        );
+        for credential in [&party.credential, &party.model_credential] {
+            assert!(gate.identify(credential).await.is_ok(), "precondition");
+        }
         world.end(party).await;
-        assert_eq!(
-            why(gate.identify(&party.credential).await.unwrap_err()),
-            Why::Revoked,
-            "depth {}",
-            party.identity.depth
-        );
+        for credential in [&party.credential, &party.model_credential] {
+            assert_eq!(
+                why(gate.identify(credential).await.unwrap_err()),
+                Why::Revoked,
+                "depth {}",
+                party.identity.depth
+            );
+        }
     }
 }
 
@@ -118,6 +160,7 @@ async fn ending_one_run_revokes_only_its_own_token() {
     let gate = RunsGate::new(Arc::clone(&world.edge));
     world.end(&world.me).await;
     assert!(gate.identify(&world.other.credential).await.is_ok());
+    assert!(gate.identify(&world.other.model_credential).await.is_ok());
 }
 
 // NEW-DESIGN (listener plan 4.5): `owns` is a pure predicate over the cover:
@@ -156,15 +199,15 @@ async fn an_identity_owns_its_own_run_and_session_and_nothing_else() {
 }
 
 // NEW-DESIGN (listener plan section 11, risk "Allowlist drift": "ctxloom's own
-// test should assert every variant is allowlisted (S5)"): every AgentFact
-// variant is on the fact allowlist, and the match below stops compiling when a
-// variant is added without being listed here.
+// test should assert every variant is allowlisted (S5)"), per principal (owner
+// ruling 2026-11-04, item 16): every AgentFact variant is on the list of its
+// AUTHOR, and the match below stops compiling when a variant is added without
+// being given an author here.
 #[test]
-fn every_agent_fact_variant_is_on_the_allowlist() {
-    let allowlist = Allowlist::agent();
+fn every_agent_fact_variant_is_on_its_authors_allowlist() {
     let samples = AgentFact::samples();
     for fact in &samples {
-        match fact {
+        let author = match fact {
             AgentFact::RunnerAttached(_)
             | AgentFact::TurnStarted(_)
             | AgentFact::TurnCompleted(_)
@@ -173,44 +216,81 @@ fn every_agent_fact_variant_is_on_the_allowlist() {
             | AgentFact::MessageClaimed(_)
             | AgentFact::MessageDelivered(_)
             | AgentFact::MessageFailed(_)
-            | AgentFact::EngineSessionBound(_) => {}
-        }
+            | AgentFact::EngineSessionBound(_) => Principal::Runner,
+            AgentFact::SummaryReported(_) | AgentFact::FinalReported(_) => Principal::Model,
+        };
+        assert_eq!(fact.author(), author, "{}", fact.type_url());
         assert!(
-            allowlist.permits_fact(&fact.type_url()),
-            "{} is not allowlisted",
+            Allowlist::of(author).permits_fact(&fact.type_url()),
+            "{} is not allowlisted for {author:?}",
             fact.type_url()
         );
     }
-    assert_eq!(samples.len(), 9, "one sample per variant");
+    assert_eq!(samples.len(), 11, "one sample per variant");
     assert_eq!(
-        allowlist.facts().len(),
+        Allowlist::runner().facts().len() + Allowlist::model().facts().len(),
         samples.len(),
-        "nothing else is on the fact list"
+        "nothing else is on either list"
     );
 }
 
-// NEW-DESIGN (D6: "facts must not open a path for arbitrary commands"): no
-// command of the domains is permitted as a fact (the fact list is closed to the
-// AgentFact types), and no AgentRequest has a wire type on it either.
+// NEW-DESIGN, owner ruling 2026-11-04 (item 16, fail closed): the two lists are
+// disjoint, so the model's credential cannot forge a runner observation
+// (RunExited, TurnCompleted, EngineSessionBound, RunnerAttached, ...) and the
+// runner cannot record the model's claims. The model's list is exactly the
+// claim facts.
 #[test]
-fn the_fact_allowlist_holds_no_command() {
-    let allowlist = Allowlist::agent();
-    for command in [
-        url::<runs::EnqueueRun>(),
-        url::<runs::QueueTurn>(),
-        url::<runs::RequestStop>(),
-        url::<sessions::MintSession>(),
-        url::<sessions::RenameSession>(),
-        url::<sessions::ForgetSession>(),
-        url::<sessions::StopSession>(),
-    ] {
-        assert!(!allowlist.permits_fact(&command), "{command} as a fact");
+fn the_runner_and_model_allowlists_are_disjoint_and_the_model_may_only_claim() {
+    let runner = Allowlist::runner();
+    let model = Allowlist::model();
+    for url in runner.facts() {
+        assert!(!model.permits_fact(&url), "{url} is on both lists");
+    }
+    for fact in AgentFact::samples() {
+        let on_model = model.permits_fact(&fact.type_url());
+        assert_eq!(
+            on_model,
+            matches!(
+                fact,
+                AgentFact::SummaryReported(_) | AgentFact::FinalReported(_)
+            ),
+            "{}",
+            fact.type_url()
+        );
+    }
+    assert!(!model.permits_fact(&url::<runs::RunExited>()));
+    assert!(!model.permits_fact(&url::<runs::TurnCompleted>()));
+    assert!(!model.permits_fact(&url::<sessions::BindEngineSession>()));
+    assert!(!model.permits_fact(&url::<runs::LaunchFailed>()));
+}
+
+// NEW-DESIGN (D6: "facts must not open a path for arbitrary commands"): no
+// command of the domains is permitted as a fact, by either principal (the fact
+// lists are closed to the AgentFact types), and no AgentRequest has a wire
+// type on either.
+#[test]
+fn the_fact_allowlists_hold_no_command() {
+    for allowlist in [Allowlist::runner(), Allowlist::model()] {
+        for command in [
+            url::<runs::EnqueueRun>(),
+            url::<runs::QueueTurn>(),
+            url::<runs::RequestStop>(),
+            url::<sessions::MintSession>(),
+            url::<sessions::RenameSession>(),
+            url::<sessions::ForgetSession>(),
+            url::<sessions::StopSession>(),
+        ] {
+            assert!(!allowlist.permits_fact(&command), "{command} as a fact");
+        }
     }
 }
 
 // NEW-DESIGN, owner ruling 2026-11-04 (S5 review Q3): the request kinds are a
 // closed type of their own, enumerable like AgentFact; the match stops
-// compiling when a kind is added without being listed here.
+// compiling when a kind is added without being listed here. Item 16: the
+// closed type is the genuinely refusable asks only (spawn, send, stop, steer,
+// ask, summarize-request, pause, resume); reports and answers are facts, and
+// roster-style calls are reads. Only `Stop` has its aggregate in S5.
 #[test]
 fn every_agent_request_kind_is_enumerated() {
     let samples = AgentRequest::samples();

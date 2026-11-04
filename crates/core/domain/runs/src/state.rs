@@ -11,8 +11,13 @@ pub struct RunState {
     pub session: String,
     pub incarnation: u32,
     pub mode: Option<RunMode>,
-    /// SHA-256 of the run's token; the token itself is never journaled (D29).
-    pub credential_hash: Vec<u8>,
+    /// SHA-256 of the RUNNER principal's token; the token itself is never
+    /// journaled (D29).
+    pub runner_credential_hash: Vec<u8>,
+    /// SHA-256 of the MODEL principal's token. Always different from the
+    /// runner's, so a token names exactly one principal (owner ruling
+    /// 2026-11-04, item 16).
+    pub model_credential_hash: Vec<u8>,
     /// Set by the fold of `RunEnded`, for every token, the owner's included,
     /// whatever the cause (D29).
     pub credential_revoked: bool,
@@ -21,5 +26,11 @@ pub struct RunState {
     /// 4.3: the turn number is a per-stream position, the cause).
     pub turn_in_flight: Option<u64>,
     pub stop_requested: bool,
+    /// How many summary claims the model has recorded: advisory evidence, no
+    /// transition (owner ruling 2026-11-04, item 16).
+    pub summaries: u32,
+    /// The turn of the model's final claim, if it made one. A CLAIM: the run
+    /// stays live, its credentials valid and its next turn queueable.
+    pub final_reported: Option<u64>,
     pub ended: Option<EndCause>,
 }

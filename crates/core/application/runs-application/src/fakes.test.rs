@@ -26,7 +26,7 @@ use angzarr_embedded::{
 use run_ports::{Arrival, Edge, Token, TokenSource, Unserved};
 use sha2::{Digest, Sha256};
 
-use crate::{Credential, Identity};
+use crate::{Credential, Identity, Principal};
 
 /// How far a domain is exposed (the host's `Expose`); absent is none.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -214,11 +214,16 @@ pub(crate) fn fact_book(
     }
 }
 
-/// One caller: a session with one live run and its token.
+/// One caller: a session with one live run and its TWO tokens (owner ruling
+/// 2026-11-04, item 16). `identity`, `credential` and `token` are the RUNNER
+/// principal's; the `model_*` are the model principal's.
 pub(crate) struct Party {
     pub(crate) identity: Identity,
     pub(crate) credential: Credential,
     pub(crate) token: Token,
+    pub(crate) model_identity: Identity,
+    pub(crate) model_credential: Credential,
+    pub(crate) model_token: Token,
 }
 
 pub(crate) struct World {
@@ -272,6 +277,7 @@ impl World {
         .await
         .unwrap();
         let token = Token::from_bytes([n; 32]);
+        let model_token = Token::from_bytes([n + 100; 32]);
         let run_root = runs::run_root(session, 1);
         let run_cover = Cover {
             domain: runs::RUN_DOMAIN.to_string(),
@@ -284,24 +290,36 @@ impl World {
                 session: session.to_string(),
                 incarnation: 1,
                 mode: runs::RunMode::Interactive,
-                credential_hash: Sha256::digest(token.as_bytes()).to_vec(),
+                runner_credential_hash: Sha256::digest(token.as_bytes()).to_vec(),
+                model_credential_hash: Sha256::digest(model_token.as_bytes()).to_vec(),
             },
         ))
         .await
         .unwrap();
+        let identity = Identity {
+            run: run_root.clone(),
+            session: session_root,
+            incarnation: 1,
+            harp: harp.to_string(),
+            depth,
+            principal: Principal::Runner,
+        };
         Party {
-            identity: Identity {
-                run: run_root.clone(),
-                session: session_root,
-                incarnation: 1,
-                harp: harp.to_string(),
-                depth,
+            model_identity: Identity {
+                principal: Principal::Model,
+                ..identity.clone()
             },
+            identity,
             credential: Credential {
                 token: token.clone(),
-                run: run_root,
+                run: run_root.clone(),
             },
             token,
+            model_credential: Credential {
+                token: model_token.clone(),
+                run: run_root,
+            },
+            model_token,
         }
     }
 

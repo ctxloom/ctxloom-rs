@@ -5,9 +5,10 @@ use angzarr_embedded::markup::{Context, Failed, PageContext, Record};
 use angzarr_embedded_macros::{aggregate, applies, handles_cmd, handles_fact};
 
 use crate::{
-    EnqueueRun, LaunchFailed, QueueTurn, RequestStop, RunCommand, RunEnded, RunEnqueued, RunEvent,
-    RunExited, RunRejection, RunState, RunnerAttached, RunnerAttachedRecorded, StopRequested,
-    TurnCompleted, TurnCompletedRecorded, TurnFailed, TurnFailedRecorded, TurnQueued, TurnStarted,
+    EnqueueRun, FinalReported, FinalReportedRecorded, LaunchFailed, QueueTurn, RequestStop,
+    RunCommand, RunEnded, RunEnqueued, RunEvent, RunExited, RunRejection, RunState, RunnerAttached,
+    RunnerAttachedRecorded, StopRequested, SummaryReported, SummaryReportedRecorded, TurnCompleted,
+    TurnCompletedRecorded, TurnFailed, TurnFailedRecorded, TurnQueued, TurnStarted,
     TurnStartedRecorded,
 };
 
@@ -88,6 +89,22 @@ impl RunAggregate {
         todo!("S5 stub")
     }
 
+    /// A model's claim: advisory evidence, recorded and nothing else (owner
+    /// ruling 2026-11-04, item 16). Total: it applies in every state.
+    #[handles_fact(SummaryReported)]
+    fn summary_reported(&self, fact: SummaryReported, ctx: &Context) -> Record<Self> {
+        let _ = (fact, ctx);
+        todo!("S5 stub")
+    }
+
+    /// A model's final claim: notifies, transitions nothing (it neither ends
+    /// the run nor revokes a credential). Total.
+    #[handles_fact(FinalReported)]
+    fn final_reported(&self, fact: FinalReported, ctx: &Context) -> Record<Self> {
+        let _ = (fact, ctx);
+        todo!("S5 stub")
+    }
+
     #[applies(RunEnqueued)]
     fn run_enqueued(&mut self, event: RunEnqueued, page: &PageContext) {
         let _ = (event, page);
@@ -126,6 +143,18 @@ impl RunAggregate {
 
     #[applies(StopRequested)]
     fn stop_requested(&mut self, event: StopRequested, page: &PageContext) {
+        let _ = (event, page);
+        todo!("S5 stub")
+    }
+
+    #[applies(SummaryReportedRecorded)]
+    fn summary_reported_recorded(&mut self, event: SummaryReportedRecorded, page: &PageContext) {
+        let _ = (event, page);
+        todo!("S5 stub")
+    }
+
+    #[applies(FinalReportedRecorded)]
+    fn final_reported_recorded(&mut self, event: FinalReportedRecorded, page: &PageContext) {
         let _ = (event, page);
         todo!("S5 stub")
     }

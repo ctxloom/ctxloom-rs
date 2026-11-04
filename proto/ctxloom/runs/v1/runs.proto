@@ -42,7 +42,11 @@ enum EndCause {
   END_CAUSE_IDLE_REAPED = 5;
   END_CAUSE_DRAINED = 6;
   END_CAUSE_DRAIN_INTERRUPTED = 7;
-  END_CAUSE_FINAL_REPORTED = 8;
+  // Value 8 was FINAL_REPORTED. Owner ruling 2026-11-04 (S5 review item 16): a
+  // final report is a model's CLAIM, advisory, and never ends a run; the end is
+  // the runner's observation (RunExited and the like).
+  reserved 8;
+  reserved "END_CAUSE_FINAL_REPORTED";
 }
 
 enum TurnFailureClass {
@@ -55,9 +59,12 @@ enum TurnFailureClass {
 
 // region commands
 
-// Enqueue the run for `session`'s `incarnation`, with the SHA-256 of the
-// token the application minted (D29): only the hash is ever journaled. The
-// policy session to run sends it on `IncarnationOwed`.
+// Enqueue the run for `session`'s `incarnation`, with the SHA-256 of each of
+// the TWO tokens the application minted (D29; owner ruling 2026-11-04, item
+// 16): one for the runner principal, one for the model principal, so the
+// model's credential cannot forge a runner fact. Only the hashes are ever
+// journaled, and they must differ. The policy session to run sends it on
+// `IncarnationOwed`.
 message EnqueueRun {
   option (io.angzarr.v1.command) = {
     component: "ctxloom.runs.v1.RunState"
@@ -67,7 +74,8 @@ message EnqueueRun {
   string session = 1;
   uint32 incarnation = 2;
   RunMode mode = 3;
-  bytes credential_hash = 4;
+  bytes runner_credential_hash = 4;
+  bytes model_credential_hash = 5;
 }
 
 // Queue the next turn. Refused while one is in flight and after the run's
@@ -167,6 +175,39 @@ message LaunchFailed {
   string detail = 2;
 }
 
+// The model's CLAIMS (owner ruling 2026-11-04, item 16): what the model said or
+// produced, recorded as facts by the MODEL principal, never the runner's.
+// Advisory: a claim changes no transition. `turn` and `ordinal` are stamped by
+// the runner side, never chosen by the model, and the external id derives from
+// them (`report:<run>:<turn>:<ordinal>`, `final:<run>:<turn>`). References
+// (run, turn, text_ref), not embedded authority.
+message SummaryReported {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.runs.v1.RunState"
+    emits: ["ctxloom.runs.v1.SummaryReportedRecorded"]
+    fact: true
+  };
+
+  uint64 turn = 1;
+  uint32 ordinal = 2;
+  string scope = 3;
+  string text_ref = 4;
+}
+
+// The model says its work is done. A CLAIM: it notifies the parent and
+// transitions nothing; acceptance is a separate refusable command by a decider
+// role. It does not end the run or revoke a credential.
+message FinalReported {
+  option (io.angzarr.v1.command) = {
+    component: "ctxloom.runs.v1.RunState"
+    emits: ["ctxloom.runs.v1.FinalReportedRecorded"]
+    fact: true
+  };
+
+  uint64 turn = 1;
+  string text_ref = 2;
+}
+
 // endregion facts
 
 // region events
@@ -177,7 +218,8 @@ message RunEnqueued {
   string session = 1;
   uint32 incarnation = 2;
   RunMode mode = 3;
-  bytes credential_hash = 4;
+  bytes runner_credential_hash = 4;
+  bytes model_credential_hash = 5;
 }
 
 message RunnerAttachedRecorded {
@@ -222,6 +264,22 @@ message StopRequested {
   option (io.angzarr.v1.event) = {component: "ctxloom.runs.v1.RunState"};
 
   string reason = 1;
+}
+
+message SummaryReportedRecorded {
+  option (io.angzarr.v1.event) = {component: "ctxloom.runs.v1.RunState"};
+
+  uint64 turn = 1;
+  uint32 ordinal = 2;
+  string scope = 3;
+  string text_ref = 4;
+}
+
+message FinalReportedRecorded {
+  option (io.angzarr.v1.event) = {component: "ctxloom.runs.v1.RunState"};
+
+  uint64 turn = 1;
+  string text_ref = 2;
 }
 
 // The exactly-once end. Folding it revokes the credential, whatever the

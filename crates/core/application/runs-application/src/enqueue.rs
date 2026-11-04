@@ -1,5 +1,6 @@
-//! The run's enqueue, which mints its credential (D29): the token is returned
-//! once, only its SHA-256 is journaled. STUBS (S5 red).
+//! The run's enqueue, which mints its two credentials (D29; owner ruling
+//! 2026-11-04, item 16): each token is returned once, only its SHA-256 is
+//! journaled. STUBS (S5 red).
 
 use std::sync::Arc;
 
@@ -16,12 +17,15 @@ pub struct EnqueueRequest {
     pub mode: runs::RunMode,
 }
 
-/// What the enqueue gives back: the run's root and its token, shown once (to be
-/// written to the 0600 file by the launcher, S6).
+/// What the enqueue gives back: the run's root and its two tokens, shown once.
+/// The runner's goes to the runner's 0600 file (launcher, S6); the model's to a
+/// separate file only the model-side adapter reads (S6, S10). Owner ruling
+/// 2026-11-04, item 16: two principals per run.
 #[derive(Debug)]
 pub struct Enqueued {
     pub run: Uuid,
-    pub token: Token,
+    pub runner_token: Token,
+    pub model_token: Token,
 }
 
 pub struct Enqueuer<E: Edge, T: TokenSource> {

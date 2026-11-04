@@ -10,7 +10,7 @@ use angzarr_embedded::{Failure, KernelError, Malformed};
 use run_ports::{Arrival, Unserved};
 
 use crate::fakes::{command_book, fact_book, World};
-use crate::{Admission, AgentRequest, AppError, Credential, Requested, Why};
+use crate::{Admission, AgentFact, AgentRequest, AppError, Credential, Principal, Requested, Why};
 
 const ARRIVALS: [Arrival; 2] = [Arrival::Loopback, Arrival::Ip];
 
@@ -151,9 +151,9 @@ async fn a_command_envelope_of_any_type_is_refused_on_the_agent_listener() {
     }
 }
 
-// NEW-DESIGN, owner ruling 2026-11-04 (S5 review Q3 (b)): AgentRequest kinds
-// pass through their closed type, over both arrivals. The owner's stop is
-// applied; a child's is refused by the session with its code, and the
+// NEW-DESIGN, owner ruling 2026-11-04 (S5 review Q3 (b); item 16: requests are
+// the MODEL principal's): AgentRequest kinds pass through their closed type,
+// over both arrivals. The owner's stop is applied; a child's is refused by the session with its code, and the
 // requester is the identity, never a field of the request (there is none to
 // forge, so the old forged-depth test is gone with the Command envelope).
 #[tokio::test]
@@ -165,13 +165,13 @@ async fn agent_requests_pass_through_the_closed_request_type() {
         for request in AgentRequest::samples() {
             assert_eq!(
                 admission
-                    .request(arrival, &world.me.credential, request.clone())
+                    .request(arrival, &world.me.model_credential, request.clone())
                     .await,
                 Ok(Requested::Applied),
                 "{arrival:?}"
             );
             let refused = admission
-                .request(arrival, &child.credential, request)
+                .request(arrival, &child.model_credential, request)
                 .await
                 .unwrap_err();
             let AppError::Refused { code, .. } = refused else {
@@ -191,7 +191,7 @@ async fn an_agent_request_with_a_revoked_token_is_refused() {
     world.end(&world.me).await;
     for request in AgentRequest::samples() {
         let refused = admission
-            .request(Arrival::Ip, &world.me.credential, request)
+            .request(Arrival::Ip, &world.me.model_credential, request)
             .await
             .unwrap_err();
         assert_eq!(refused, AppError::Unauthenticated(Why::Revoked));
@@ -272,4 +272,80 @@ async fn authentication_is_checked_before_anything_else() {
         .await
         .unwrap_err();
     assert!(matches!(refused, AppError::Unauthenticated(_)));
+}
+
+// NEW-DESIGN, owner ruling 2026-11-04 (item 16, fail closed): the model's
+// credential cannot forge what the runner observed. Every runner fact, sent
+// with the MODEL's token, over both arrivals, is hidden as an unknown domain
+// and nothing is written to the run or the session.
+#[tokio::test]
+async fn the_models_credential_cannot_forge_a_runner_fact() {
+    for arrival in ARRIVALS {
+        let world = World::new().await;
+        let admission = Admission::new(Arc::clone(&world.edge));
+        let who = &world.me.identity;
+        let (run, session) = (who.run_cover(), who.session_cover());
+        let (run_before, session_before) = (
+            world.edge.pages(&run).await.len(),
+            world.edge.pages(&session).await.len(),
+        );
+        for fact in AgentFact::samples()
+            .into_iter()
+            .filter(|f| f.author() == Principal::Runner)
+        {
+            let denied = admission
+                .admit(arrival, &world.me.model_credential, fact.book(who))
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(denied, AppError::Denied(Unserved::Hidden { .. })),
+                "{arrival:?} {}: {denied:?}",
+                fact.type_url()
+            );
+        }
+        assert_eq!(world.edge.pages(&run).await.len(), run_before);
+        assert_eq!(world.edge.pages(&session).await.len(), session_before);
+        // The run is still live: the forged exit did not revoke anything.
+        assert!(admission
+            .admit(arrival, &world.me.credential, exited(&run))
+            .await
+            .is_ok());
+    }
+}
+
+// NEW-DESIGN (same ruling): the model's credential records its claims, over
+// both arrivals; and the runner's credential cannot record them (disjoint
+// lists), nor send a request.
+#[tokio::test]
+async fn the_model_records_claims_and_the_runner_cannot() {
+    for arrival in ARRIVALS {
+        let world = World::new().await;
+        let admission = Admission::new(Arc::clone(&world.edge));
+        let who = &world.me.identity;
+        for claim in AgentFact::samples()
+            .into_iter()
+            .filter(|f| f.author() == Principal::Model)
+        {
+            let answered = admission
+                .admit(arrival, &world.me.model_credential, claim.book(who))
+                .await
+                .unwrap_or_else(|e| panic!("{arrival:?} {}: {e:?}", claim.type_url()));
+            assert_eq!(
+                answered.outcome.map(|o| o.delivery),
+                Some(angzarr_embedded::v1::DeliveryOutcome::Applied as i32)
+            );
+            let denied = admission
+                .admit(arrival, &world.me.credential, claim.book(who))
+                .await
+                .unwrap_err();
+            assert!(matches!(denied, AppError::Denied(Unserved::Hidden { .. })));
+        }
+        for request in AgentRequest::samples() {
+            let denied = admission
+                .request(arrival, &world.me.credential, request)
+                .await
+                .unwrap_err();
+            assert!(matches!(denied, AppError::Denied(Unserved::Hidden { .. })));
+        }
+    }
 }

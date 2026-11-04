@@ -6,7 +6,12 @@
 //!   caller's own run or session, and its `external_id` is derived from its
 //!   cause (plan 4.3).
 //! - [`AgentRequests`]: the agent's refusable asks, equally closed and
-//!   identity-stamped (D7).
+//!   identity-stamped (D7). The MODEL principal's only.
+//!
+//! A run has TWO principals (owner ruling 2026-11-04, item 16): the runner,
+//! which records authoritative observations, and the model, which records only
+//! advisory CLAIM facts and sends the closed requests. Each has its own token
+//! and allowlist; a decider role (S10, S14) turns a claim into a transition.
 //! - [`Feeds`]: per-stream catch-up from a resume point, no cross-stream
 //!   position anywhere (plan 6).
 //! - [`Admission`]: credential to [`Identity`], the allowlist, `owns`,
@@ -35,7 +40,7 @@ pub use error::{AppError, Why, EN_US};
 pub use facts::{AgentFact, Facts, Recorded};
 pub use feeds::{Cursor, Feeds, Follow};
 pub use gate::{owns, Allowlist, Credential, Gate, RunsGate};
-pub use identity::{Identity, Role};
+pub use identity::{Identity, Principal, Role};
 pub use requests::{AgentRequest, AgentRequests, Requested};
 
 #[cfg(test)]

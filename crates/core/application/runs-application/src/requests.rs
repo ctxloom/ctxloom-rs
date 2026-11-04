@@ -44,6 +44,8 @@ impl<E: Edge> AgentRequests<E> {
     }
 
     /// Send `request` on `who`'s own session, with `who`'s identity stamped.
+    /// Requests are the MODEL principal's: a runner identity is `Denied`
+    /// (hidden) and nothing is sent (owner ruling 2026-11-04, item 16).
     pub async fn request(
         &self,
         who: &Identity,

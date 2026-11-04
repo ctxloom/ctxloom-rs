@@ -7,7 +7,7 @@ use run_ports::Edge;
 use angzarr_embedded::v1::{DeliveryOutcome, Uuid};
 
 use crate::fakes::{fact_book, uuid, World, SESSION_ME};
-use crate::{AgentFact, Facts, Identity, Recorded};
+use crate::{AgentFact, AppError, Facts, Identity, Principal, Recorded};
 
 fn identity() -> Identity {
     Identity {
@@ -20,6 +20,7 @@ fn identity() -> Identity {
         incarnation: 1,
         harp: "amber-swift-owl".to_string(),
         depth: 0,
+        principal: Principal::Runner,
     }
 }
 
@@ -98,6 +99,32 @@ fn the_engine_session_bind_is_identified_by_session_and_native_id() {
         format!("bind:{SESSION_ME}:native-1")
     );
     assert_eq!(bound.cover(&who), who.session_cover());
+}
+
+// NEW-DESIGN, owner ruling 2026-11-04 (item 16): a claim's external id is
+// derived by the RUNNER side from the run and turn (and, for a progress report,
+// the ordinal it stamps), never from a counter the model supplies, and it
+// addresses the caller's own run.
+#[test]
+fn claims_are_identified_by_run_and_turn() {
+    let who = Identity {
+        principal: Principal::Model,
+        ..identity()
+    };
+    let summary = AgentFact::SummaryReported(runs::SummaryReported {
+        turn: 3,
+        ordinal: 2,
+        scope: "progress".to_string(),
+        text_ref: "t".to_string(),
+    });
+    let done = AgentFact::FinalReported(runs::FinalReported {
+        turn: 3,
+        text_ref: "t".to_string(),
+    });
+    assert_eq!(summary.external_id(&who), format!("report:{RUN}:3:2"));
+    assert_eq!(done.external_id(&who), format!("final:{RUN}:3"));
+    assert_eq!(summary.cover(&who), who.run_cover());
+    assert_eq!(done.cover(&who), who.run_cover());
 }
 
 // NEW-DESIGN (plan 4.3: the stable session id, not the harp, D5 Q1).
@@ -253,6 +280,144 @@ async fn a_fact_the_kernel_dead_letters_is_parked_and_its_letter_is_in_the_store
     let letters = world.edge.dead_letters(&who.run_cover()).await;
     assert_eq!(letters.len(), 1, "the kernel's own dead letter");
     assert_eq!(letters[0].stream, who.run_cover());
+}
+
+// NEW-DESIGN, owner ruling 2026-11-04 (item 16, fail closed): a fact is
+// recorded only by its author. Every fact, offered by the OTHER principal, is
+// hidden, nothing is sent to the kernel and nothing is written.
+#[tokio::test]
+async fn a_fact_of_the_other_principal_is_denied_and_nothing_is_sent() {
+    let world = World::new().await;
+    let facts = Facts::new(Arc::clone(&world.edge));
+    for fact in AgentFact::samples() {
+        let other = match fact.author() {
+            Principal::Runner => &world.me.model_identity,
+            Principal::Model => &world.me.identity,
+        };
+        let served = world.edge.served();
+        let run_before = world.edge.pages(&other.run_cover()).await.len();
+        let session_before = world.edge.pages(&other.session_cover()).await.len();
+        let denied = facts.record(other, fact.clone()).await.unwrap_err();
+        assert!(
+            matches!(denied, AppError::Denied(run_ports::Unserved::Hidden { .. })),
+            "{}",
+            fact.type_url()
+        );
+        assert_eq!(world.edge.served(), served, "{}", fact.type_url());
+        assert_eq!(world.edge.pages(&other.run_cover()).await.len(), run_before);
+        assert_eq!(
+            world.edge.pages(&other.session_cover()).await.len(),
+            session_before
+        );
+    }
+}
+
+// NEW-DESIGN, owner ruling 2026-11-04 (item 16): claims are facts the MODEL
+// records, applied once and then DUPLICATE, on the run's stream. They are
+// advisory: the run does not end and the runner's own token still identifies.
+#[tokio::test]
+async fn a_claim_is_recorded_by_the_model_and_ends_nothing() {
+    use crate::{Gate, RunsGate};
+    let world = World::new().await;
+    let facts = Facts::new(Arc::clone(&world.edge));
+    let who = &world.me.model_identity;
+    let claims = [
+        AgentFact::SummaryReported(runs::SummaryReported {
+            turn: 1,
+            ordinal: 0,
+            scope: "progress".to_string(),
+            text_ref: "t:1".to_string(),
+        }),
+        AgentFact::FinalReported(runs::FinalReported {
+            turn: 1,
+            text_ref: "t:final".to_string(),
+        }),
+    ];
+    for claim in claims {
+        assert_eq!(
+            facts.record(who, claim.clone()).await,
+            Ok(Recorded::Applied)
+        );
+        assert_eq!(facts.record(who, claim).await, Ok(Recorded::Duplicate));
+    }
+    let gate = RunsGate::new(Arc::clone(&world.edge));
+    assert!(gate.identify(&world.me.credential).await.is_ok());
+    assert!(gate.identify(&world.me.model_credential).await.is_ok());
+}
+
+// NEW-DESIGN, owner ruling 2026-11-04 (item 16, totality): every AgentFact
+// applies in every state of the run and its session, and is never refused,
+// errored or parked: live, a turn in flight, a stop ordered, ended, and with
+// mail pending in the inbox. A fact that has nothing to do records nothing.
+#[tokio::test]
+async fn every_agent_fact_applies_in_every_state() {
+    use crate::fakes::command_book;
+    let states = [
+        "live",
+        "turn in flight",
+        "stop ordered",
+        "ended",
+        "mail pending",
+    ];
+    for state in states {
+        let world = World::new().await;
+        let facts = Facts::new(Arc::clone(&world.edge));
+        let me = &world.me;
+        match state {
+            "turn in flight" => {
+                let queue = runs::QueueTurn {
+                    prompt_ref: "p".to_string(),
+                    resume: false,
+                };
+                world
+                    .edge
+                    .handle(command_book(me.identity.run_cover(), queue))
+                    .await
+                    .unwrap();
+            }
+            "stop ordered" => {
+                let stop = sessions::StopSession {
+                    requester_depth: 0,
+                    reason: "x".to_string(),
+                };
+                world
+                    .edge
+                    .handle(command_book(me.identity.session_cover(), stop))
+                    .await
+                    .unwrap();
+            }
+            "ended" => world.end(me).await,
+            "mail pending" => {
+                world
+                    .edge
+                    .handle(fact_book(
+                        me.identity.session_cover(),
+                        sessions::RecordMessageArrived {
+                            message_id: "m1".to_string(),
+                            from: "peer".to_string(),
+                            kind: "note".to_string(),
+                            body_ref: "b".to_string(),
+                        },
+                        "arrive:fixture:m1",
+                    ))
+                    .await
+                    .unwrap();
+            }
+            _ => {}
+        }
+        for fact in AgentFact::samples() {
+            let who = match fact.author() {
+                Principal::Runner => &me.identity,
+                Principal::Model => &me.model_identity,
+            };
+            let outcome = facts.record(who, fact.clone()).await;
+            assert!(
+                matches!(outcome, Ok(Recorded::Applied | Recorded::Duplicate)),
+                "{} in state {state}: {outcome:?}",
+                fact.type_url()
+            );
+        }
+    }
 }
 
 // NEW-DESIGN: the answer maps the spec's three outcomes and no others.

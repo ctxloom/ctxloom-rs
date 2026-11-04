@@ -157,3 +157,29 @@ fn a_cursor_is_one_streams_position_and_nothing_wider() {
     assert_eq!(cursor.cover().domain, "runs");
     assert_eq!(Cursor::start(&cursor.cover()).next_sequence, 0);
 }
+
+// NEW-DESIGN, owner ruling 2026-11-04 (item 16): reads are not facts and carry
+// no authority, so the model principal reads its own run like the runner does
+// (roster-style calls are reads, no event), and still only its own.
+#[tokio::test]
+async fn the_model_principal_reads_its_own_stream_and_no_other() {
+    let world = World::new().await;
+    let feeds = Feeds::new(Arc::clone(&world.edge));
+    let mine = world.me.model_identity.run_cover();
+    let theirs = world.other.identity.run_cover();
+    assert_eq!(
+        feeds
+            .read(&world.me.model_identity, &mine, 0)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(feeds
+        .read(&world.me.model_identity, &theirs, 0)
+        .await
+        .unwrap()
+        .is_empty());
+    let mut follow = feeds.follow(world.me.model_credential.clone(), Cursor::start(&mine));
+    assert_eq!(follow.next().await.unwrap().len(), 1);
+}

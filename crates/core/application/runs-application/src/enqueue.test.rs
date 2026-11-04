@@ -5,7 +5,7 @@ use std::sync::Arc;
 use run_ports::Edge;
 
 use crate::fakes::{command_book, uuid, CountingSource, KernelEdge, SESSION_ME};
-use crate::{Admission, Credential, EnqueueRequest, Enqueuer};
+use crate::{AppError, Credential, EnqueueRequest, Enqueuer, Gate, Principal, RunsGate};
 
 fn request() -> EnqueueRequest {
     EnqueueRequest {
@@ -41,8 +41,9 @@ async fn minted(edge: &KernelEdge) {
     .unwrap();
 }
 
-// NEW-DESIGN (D29, plan 5.3: "only its SHA-256 goes in the event"): the run's
-// stream holds the digest of the token and no byte sequence equal to the token.
+// NEW-DESIGN (D29, plan 5.3: "only its SHA-256 goes in the event"; owner
+// ruling 2026-11-04, item 16: two principals): the run's stream holds the
+// digest of EACH of the two tokens and no byte sequence equal to either token.
 #[tokio::test]
 async fn the_enqueue_journals_the_digest_and_never_the_token() {
     let edge = Arc::new(KernelEdge::new());
@@ -61,43 +62,63 @@ async fn the_enqueue_journals_the_digest_and_never_the_token() {
         .into_iter()
         .flat_map(|page| page.payload.map(|any| any.value).unwrap_or_default())
         .collect();
-    let digest = enqueued.token.hash();
-    assert!(
-        stored.windows(32).any(|w| w == digest.as_bytes()),
-        "the digest is journaled"
-    );
-    assert!(
-        !stored.windows(32).any(|w| w == enqueued.token.as_bytes()),
-        "the token is not"
-    );
+    for token in [&enqueued.runner_token, &enqueued.model_token] {
+        let digest = token.hash();
+        assert!(
+            stored.windows(32).any(|w| w == digest.as_bytes()),
+            "the digest is journaled"
+        );
+        assert!(
+            !stored.windows(32).any(|w| w == token.as_bytes()),
+            "the token is not"
+        );
+    }
 }
 
-// NEW-DESIGN: the token the enqueue returns identifies the run it enqueued
-// (mint, journal and identify agree).
+// NEW-DESIGN, owner ruling 2026-11-04 (item 16): the enqueue mints TWO
+// distinct tokens, and each identifies the run it enqueued as its own
+// principal (mint, journal and identify agree).
 #[tokio::test]
-async fn the_returned_token_identifies_the_new_run() {
+async fn each_returned_token_identifies_the_new_run_as_its_own_principal() {
     let edge = Arc::new(KernelEdge::new());
     minted(&edge).await;
     let enqueuer = Enqueuer::new(Arc::clone(&edge), Arc::new(CountingSource::default()));
     let enqueued = enqueuer.enqueue(request()).await.unwrap();
-    let admission = Admission::new(Arc::clone(&edge));
-    let credential = Credential {
-        token: enqueued.token.clone(),
-        run: enqueued.run.clone(),
+    assert_ne!(enqueued.runner_token, enqueued.model_token);
+    let gate = RunsGate::new(Arc::clone(&edge));
+    for (token, principal) in [
+        (&enqueued.runner_token, Principal::Runner),
+        (&enqueued.model_token, Principal::Model),
+    ] {
+        let credential = Credential {
+            token: token.clone(),
+            run: enqueued.run.clone(),
+        };
+        let identity = gate.identify(&credential).await.unwrap();
+        assert_eq!(identity.principal, principal);
+        assert_eq!(identity.run, enqueued.run);
+    }
+}
+
+// NEW-DESIGN, owner ruling 2026-11-04 (item 16, fail closed): a token source
+// that hands out the same token twice would make one token two principals; the
+// run refuses the enqueue and journals nothing.
+#[tokio::test]
+async fn a_source_that_repeats_a_token_cannot_enqueue() {
+    struct Stuck;
+    impl run_ports::TokenSource for Stuck {
+        fn mint(&self) -> run_ports::Token {
+            run_ports::Token::from_bytes([9; 32])
+        }
+    }
+    let edge = Arc::new(KernelEdge::new());
+    minted(&edge).await;
+    let enqueuer = Enqueuer::new(Arc::clone(&edge), Arc::new(Stuck));
+    let refused = enqueuer.enqueue(request()).await.unwrap_err();
+    let AppError::Refused { code, .. } = refused else {
+        panic!("not refused: {refused:?}");
     };
-    let fact = crate::fakes::fact_book(
-        angzarr_embedded::v1::Cover {
-            domain: runs::RUN_DOMAIN.to_string(),
-            root: Some(enqueued.run),
-            edition: None,
-        },
-        runs::TurnStarted { turn: 1 },
-        "t",
-    );
-    assert!(admission
-        .admit(run_ports::Arrival::Loopback, &credential, fact)
-        .await
-        .is_ok());
+    assert_eq!(code, "runs-credentials-not-distinct");
 }
 
 // NEW-DESIGN (plan 5.3: a token PER RUN): two enqueues mint two different
@@ -111,5 +132,5 @@ async fn each_enqueue_mints_its_own_token_and_a_repeat_changes_nothing() {
     let first = enqueuer.enqueue(request()).await.unwrap();
     let repeat = enqueuer.enqueue(request()).await;
     assert!(repeat.is_err(), "runs-already-enqueued");
-    assert_ne!(first.token, run_ports::Token::from_bytes([0; 32]));
+    assert_ne!(first.runner_token, run_ports::Token::from_bytes([0; 32]));
 }
