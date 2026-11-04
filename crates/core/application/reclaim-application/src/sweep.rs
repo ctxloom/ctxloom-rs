@@ -12,12 +12,18 @@
 //! | its transcript within the retention           | held, saying why            |
 //! | otherwise                                     | purged (planned without `yes`) |
 //!
+//! Before its row, each session's scratch worktrees are rows of their own
+//! (`worktree`), asked of the worktree leaf with the sweep's own apply
+//! decision: reaped (done), reapable (planned), spared in place (held) or
+//! skipped, each saying why.
+//!
 //! Nothing is decided by a model: the same sessions give the same report.
 //! The purge acts through `session purge`, so every refusal it makes is the
 //! sweep's.
 
 use std::collections::BTreeMap;
 
+use isolation_application::{IsolationError, Row, Verdict as Worktree, WorktreeUse};
 use serde::Serialize;
 use session_index::stamp;
 use sessions_application::{
@@ -111,7 +117,7 @@ fn row(
 }
 
 /// Sweep the project's sessions (or every project's).
-pub async fn sweep<S: SessionService>(
+pub async fn sweep<S: SessionService + WorktreeUse>(
     service: &mut S,
     request: &SweepRequest,
 ) -> Result<SweepReport, ReclaimError> {
@@ -126,6 +132,7 @@ pub async fn sweep<S: SessionService>(
     let mut untouched = 0;
     for view in &views {
         let harp = view.record.harp.as_str();
+        rows.extend(worktree_rows(service, harp, request.yes)?);
         let purge = format!("ctxloom session purge {harp} --yes");
         let decided = match view.state {
             State::Live => Some(row(
@@ -204,6 +211,48 @@ pub async fn sweep<S: SessionService>(
         counts,
         untouched,
     })
+}
+
+/// A session's scratch checkouts, through the worktree leaf and with the
+/// sweep's own apply decision: reaped, planned, spared in place, or skipped,
+/// each with its reason. A session with no directory has none.
+fn worktree_rows<S: WorktreeUse>(
+    service: &mut S,
+    harp: &str,
+    apply: bool,
+) -> Result<Vec<SweepRow>, ReclaimError> {
+    let report = match service.worktrees(Some(harp), apply) {
+        Ok(report) => report,
+        Err(IsolationError::NoSession { .. }) => return Ok(Vec::new()),
+        Err(error) => return Err(ReclaimError::Isolation(error)),
+    };
+    Ok(report
+        .worktrees
+        .iter()
+        .map(|checkout| worktree_row(harp, checkout))
+        .collect())
+}
+
+fn worktree_row(harp: &str, checkout: &Row) -> SweepRow {
+    let (verdict, command) = match checkout.verdict {
+        Worktree::Reaped => (Verdict::Done, String::new()),
+        Worktree::Reapable => (
+            Verdict::Planned,
+            format!("ctxloom session worktrees purge {harp} --yes"),
+        ),
+        Worktree::Spared => (Verdict::Held, String::new()),
+        Worktree::Skipped => (Verdict::Skipped, String::new()),
+    };
+    let reason = match (checkout.verdict, checkout.reason.is_empty()) {
+        // The worktree leaf's own word for it: left in place, uncommitted
+        // work and all.
+        (Worktree::Spared, _) => {
+            format!("{} spared in place: {}", checkout.worktree, checkout.reason)
+        }
+        (_, true) => checkout.worktree.clone(),
+        (_, false) => format!("{}: {}", checkout.worktree, checkout.reason),
+    };
+    row(harp, "worktree", verdict, &reason, command)
 }
 
 /// The purge of one session, planned and, on `yes`, applied.

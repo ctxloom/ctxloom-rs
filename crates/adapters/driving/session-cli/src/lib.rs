@@ -13,10 +13,12 @@
 //! ctxloom session transcript               (bare: lists)
 //! ctxloom session transcript list [<harp>] [--all]
 //! ctxloom session transcript show <harp>
+//! ctxloom session worktrees                (bare: lists)
+//! ctxloom session worktrees list [<harp>]
+//! ctxloom session worktrees purge <harp> [--yes]
 //! ```
 //!
-//! Go's `session purge`, `sweep`, `adopt`, `approvals`, `worktrees` and
-//! `transcript purge` arrive with S10 to S12; `session watch` waits on the
+//! Go's `session adopt` and `approvals` arrive with S10 and S12; `session watch` waits on the
 //! owner's ruling on the watch lines. The old `rename` verb is gone, not
 //! hidden.
 //!
@@ -83,6 +85,8 @@ pub enum SessionVerb {
     Sweep(SweepArgs),
     /// The recorded conversation behind a session: list it, show it, purge it
     Transcript(Transcript),
+    /// The scratch git checkouts a session left behind: list them, remove the safe ones
+    Worktrees(Worktrees),
     /// Import Go ctxloom's sessions (~/.ctxloom/sessions) into each project's store, once
     #[command(after_help = "Examples:\n  ctxloom session import")]
     Import,
@@ -190,4 +194,38 @@ pub struct TranscriptListArgs {
     /// Include sessions from every project (default: the current one)
     #[arg(long)]
     pub all: bool,
+}
+
+/// The `session worktrees` group.
+#[derive(Args, Debug)]
+pub struct Worktrees {
+    #[command(subcommand)]
+    pub verb: Option<WorktreesVerb>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum WorktreesVerb {
+    /// List ctxloom-owned scratch worktrees and the verdict each one would get
+    #[command(after_help = "Examples:\n  ctxloom session worktrees list")]
+    List(WorktreesListArgs),
+    /// Remove a session's scratch worktrees that this run can prove are safe
+    #[command(after_help = "Examples:\n  ctxloom session worktrees purge amber-swift-owl --yes")]
+    Purge(WorktreesPurgeArgs),
+}
+
+#[derive(Args, Debug, Default)]
+pub struct WorktreesListArgs {
+    /// Restrict the listing to this session
+    #[arg(value_name = "SESSION-NAME")]
+    pub harp: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct WorktreesPurgeArgs {
+    /// The session whose scratch worktrees to remove
+    #[arg(value_name = "SESSION-NAME")]
+    pub harp: String,
+    /// Act on exactly the plan this invocation printed. No config key may pre-answer it.
+    #[arg(short = 'y', long)]
+    pub yes: bool,
 }

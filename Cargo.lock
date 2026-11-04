@@ -517,6 +517,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
 
 [[package]]
+name = "container-cli"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "angzarr-presentation",
+ "clap",
+ "isolation-application",
+ "mutants",
+ "serde_json",
+]
+
+[[package]]
+name = "container-runtime"
+version = "0.1.0"
+dependencies = [
+ "isolation-ports",
+ "mutants",
+ "tempfile",
+]
+
+[[package]]
 name = "content-fs"
 version = "0.1.0"
 dependencies = [
@@ -637,6 +658,7 @@ dependencies = [
  "angzarr-yaml",
  "cache-files",
  "config-files",
+ "container-cli",
  "content-fs",
  "ctxloom-cli",
  "ctxloom-lib",
@@ -651,6 +673,7 @@ dependencies = [
  "harp-core",
  "hook-cli",
  "init-application",
+ "isolation-application",
  "library",
  "library-application",
  "reclaim-application",
@@ -663,6 +686,7 @@ dependencies = [
  "setup-cli",
  "surface-ports",
  "tempfile",
+ "worktree-git",
 ]
 
 [[package]]
@@ -675,6 +699,7 @@ dependencies = [
  "clap_complete",
  "cli-support",
  "hook-cli",
+ "isolation-application",
  "serde",
  "serde_json",
  "session-cli",
@@ -690,10 +715,13 @@ dependencies = [
  "angzarr-embedded",
  "angzarr-embedded-host",
  "angzarr-presentation",
+ "angzarr-yaml",
  "cache-files",
  "clap",
  "companion-probe",
  "config-files",
+ "container-cli",
+ "container-runtime",
  "content-fs",
  "ctxloom-cli",
  "ctxloom-ports",
@@ -715,6 +743,8 @@ dependencies = [
  "harp-names",
  "hook-cli",
  "init-application",
+ "isolation-application",
+ "isolation-ports",
  "library-application",
  "library-cli",
  "liveness",
@@ -739,6 +769,7 @@ dependencies = [
  "tokio",
  "trees",
  "uuid",
+ "worktree-git",
 ]
 
 [[package]]
@@ -1919,6 +1950,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
 
 [[package]]
+name = "isolation"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "mutants",
+]
+
+[[package]]
+name = "isolation-application"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "ctxloom-ports",
+ "isolation",
+ "isolation-ports",
+ "mutants",
+ "serde",
+ "serde_json",
+ "session-ports",
+]
+
+[[package]]
+name = "isolation-ports"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+]
+
+[[package]]
 name = "itertools"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2727,6 +2787,7 @@ dependencies = [
  "angzarr-diagnostic",
  "angzarr-presentation",
  "ctxloom-ports",
+ "isolation-application",
  "mutants",
  "serde",
  "session-index",
@@ -3140,6 +3201,7 @@ dependencies = [
  "angzarr-diagnostic",
  "angzarr-presentation",
  "clap",
+ "isolation-application",
  "mutants",
  "reclaim-application",
  "serde",
@@ -4569,6 +4631,16 @@ name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+
+[[package]]
+name = "worktree-git"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "isolation-ports",
+ "mutants",
+ "tempfile",
+]
 
 [[package]]
 name = "writeable"

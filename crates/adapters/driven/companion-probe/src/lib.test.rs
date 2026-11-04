@@ -98,3 +98,20 @@ fn test_a_program_with_a_great_deal_to_say_does_not_hang_the_probe() {
     let (_dir, path) = script("#!/bin/sh\nyes | head -c 5000000\n");
     assert_eq!(settled(&ProcessProbe::standard(), &path), Ok(()));
 }
+
+// `container tooling` reads the loadout a companion prints, not only whether
+// it answers (Go: `companions.Verify` and the loadout read, release/0.7).
+#[test]
+fn the_loadout_text_is_what_the_companion_prints() {
+    let (_dir, path) = script("#!/bin/sh\nprintf 'init:\\n  tooling: x\\n'\n");
+    let probe = ProcessProbe::standard();
+    let mut text = probe.loadout(&path);
+    for _ in 0..50 {
+        if !matches!(&text, Err(Unanswered::Failed(why)) if why.contains("busy")) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        text = probe.loadout(&path);
+    }
+    assert_eq!(text, Ok("init:\n  tooling: x\n".to_string()));
+}

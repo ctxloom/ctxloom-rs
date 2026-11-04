@@ -12,6 +12,9 @@ angzarr-diagnostic.workspace = true
 angzarr-presentation.workspace = true
 angzarr-yaml.workspace = true
 cache-files.workspace = true
+container-cli.workspace = true
+isolation-application.workspace = true
+worktree-git.workspace = true
 config-files.workspace = true
 content-fs.workspace = true
 editor-process.workspace = true
@@ -61,6 +64,9 @@ test-support = [
     "session-files/test-support",
     "sessions/test-support",
     "sessions-application/test-support",
+    "container-cli/test-support",
+    "isolation-application/test-support",
+    "worktree-git/test-support",
 ]
 
 [dev-dependencies]
