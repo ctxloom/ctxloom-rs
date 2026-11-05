@@ -2914,7 +2914,6 @@ name = "remote-git"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "deps",
  "deps-ports",
  "file-system",
  "os",

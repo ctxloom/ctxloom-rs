@@ -14,7 +14,7 @@ use deps::reference::RemoteRef;
 use deps_ports::{RepoTree, Why};
 use pin_changes::{diff_pin, PinChange, Side, Tree, TreeFile};
 
-use crate::cache;
+use crate::cache::{self, ByAddress};
 use crate::closure::{Mode, Walk};
 use crate::views::{
     ConstraintChangeView, FailedItem, PullReport, ReconcileView, SyncItem, UncheckedRemote,
@@ -183,8 +183,7 @@ impl Deps {
     fn install(&self, pin: &Pin) -> Result<RepoTree, Why> {
         let remote = RemoteRef::parse(&pin.identity)
             .ok_or_else(|| format!("{} is not a remote bundle reference", pin.identity))?;
-        let tree = self
-            .remotes
+        let tree = ByAddress(self.remotes.as_ref())
             .read_bundle(&pin.url, &pin.hash, &remote.bundle)?
             .ok_or_else(|| {
                 format!(
@@ -217,14 +216,14 @@ impl Deps {
         let mut reach = |url: &str| {
             fetched
                 .entry(url.to_string())
-                .or_insert_with(|| self.remotes.refresh(url))
+                .or_insert_with(|| ByAddress(self.remotes.as_ref()).refresh(url))
                 .clone()
         };
         let mut content = |reference: &str| {
             let Some(remote) = RemoteRef::parse(reference) else {
                 return Probe::Failed(format!("{reference} does not parse"));
             };
-            match self.remotes.has_bundle(&remote.url, &remote.bundle) {
+            match ByAddress(self.remotes.as_ref()).has_bundle(&remote.url, &remote.bundle) {
                 Ok(true) => Probe::Present,
                 Ok(false) => Probe::Gone,
                 Err(detail) => Probe::Failed(detail),

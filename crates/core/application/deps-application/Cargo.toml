@@ -18,6 +18,8 @@ serde.workspace = true
 
 [dev-dependencies]
 angzarr-presentation = { workspace = true, features = ["test-support"] }
+deps = { workspace = true, features = ["test-support"] }
+ctxloom-ports = { workspace = true, features = ["test-support"] }
 serde_json.workspace = true
 mutants.workspace = true
 

@@ -17,6 +17,7 @@ use deps::lock::Lock;
 use deps::reference::RemoteRef;
 use deps::registry::Registry;
 
+use crate::cache::ByAddress;
 use crate::closure::{Mode, RepoView, Walk};
 use crate::views::{CheckReport, CheckedRef, RefreshFailure, UncheckedRow, UpdateRow};
 use crate::{AppError, Deps, Outcome};
@@ -133,7 +134,7 @@ impl Deps {
                     remote.url
                 ))
             } else {
-                self.remotes.refresh(&remote.url)
+                ByAddress(self.remotes.as_ref()).refresh(&remote.url)
             };
             if let Err(error) = outcome {
                 failures.push(RefreshFailure {
@@ -195,7 +196,7 @@ impl Deps {
         if registry.lookup_url(&remote.url).is_none() {
             return Err(AppError::NotRegistered { url: remote.url });
         }
-        self.remotes
+        ByAddress(self.remotes.as_ref())
             .refresh(&remote.url)
             .map_err(|detail| AppError::CloneNotRefreshed {
                 url: remote.url.clone(),

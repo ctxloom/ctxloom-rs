@@ -68,16 +68,6 @@ allow = ["*"]
 # kind = "dev"
 # reason = "why this stands"
 
-# Exceptions: the audit's finding that these rules were enforced in review only,
-# and what running the lint first found (2026-11-05). Each is debt, not a
-# decision: the departure stands until the fix named in its reason lands, and
-# the entry goes with it (a stale one fails).
-
-[[exception]]
-from = "remote-git"
-to = "deps"
-reason = "debt: the git remote adapter uses the deps read model's pure cache_segments for the cache path; fix: as deps-files, move it to deps-ports"
-
 # Dev-dependency findings (warnings), kept by the owner's ruling as test-only
 # exceptions: the tests of a driving adapter build a type only the port defines.
 

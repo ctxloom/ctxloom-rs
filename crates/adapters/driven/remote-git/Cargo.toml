@@ -9,7 +9,6 @@ publish.workspace = true
 
 [dependencies]
 base64.workspace = true
-deps = { workspace = true }
 deps-ports.workspace = true
 file-system.workspace = true
 os.workspace = true
@@ -18,6 +17,7 @@ run-within.workspace = true
 
 [dev-dependencies]
 file-system = { workspace = true, features = ["test-support"] }
+os = { workspace = true, features = ["test-support"] }
 run-within = { workspace = true, features = ["test-support"] }
 
 [features]

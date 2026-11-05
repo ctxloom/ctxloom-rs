@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 
 use deps_ports::{CopyOutcome, Endpoint, PullRequest};
 
+use crate::cache::ByAddress;
 use crate::views::{Moved, Pushed};
 use crate::{AppError, Deps, Outcome};
 
@@ -122,8 +123,7 @@ impl Deps {
                 .map_err(published)?;
             ("pr-created", opened.commit, opened.url)
         } else {
-            let commit = self
-                .remotes
+            let commit = ByAddress(self.remotes.as_ref())
                 .publish(&remote.url, &in_repository, &message)
                 .map_err(published)?;
             ("pushed", commit, String::new())

@@ -134,7 +134,9 @@ fn test_a_search_finds_bundles_by_name_or_description_in_remote_then_name_order(
         ],
     );
     // A search reads the clone as the last fetch left it.
-    fx.remotes.refresh("file:///srv/a.git").expect("fetched");
+    fx.remotes
+        .refresh(&crate::cache::repository("file:///srv/a.git").expect("a repository"))
+        .expect("fetched");
     let found = fx.deps.search("demo").expect("searches");
     let hits: Vec<(&str, &str)> = found
         .hits

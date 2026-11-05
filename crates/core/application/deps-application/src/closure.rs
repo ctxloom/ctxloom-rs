@@ -19,6 +19,7 @@ use library::model::Bundle;
 use library::profile::{canonical_key, Profile};
 use library::tree::read_tree;
 
+use crate::cache::ByAddress;
 use crate::{AppError, Deps, Notice};
 
 /// The project's own profiles: the closure's roots.
@@ -97,19 +98,19 @@ pub(crate) struct RepoView<'r> {
 
 impl RepoVersions for RepoView<'_> {
     fn tags(&self) -> Result<Vec<String>, String> {
-        self.remotes.tags(self.url)
+        ByAddress(self.remotes).tags(self.url)
     }
 
     fn resolve_ref(&self, name: &str) -> Result<String, String> {
-        self.remotes.resolve_ref(self.url, name)
+        ByAddress(self.remotes).resolve_ref(self.url, name)
     }
 
     fn resolve_tag(&self, name: &str) -> Result<String, String> {
-        self.remotes.resolve_tag(self.url, name)
+        ByAddress(self.remotes).resolve_tag(self.url, name)
     }
 
     fn default_branch(&self) -> Result<String, String> {
-        self.remotes.default_branch(self.url)
+        ByAddress(self.remotes).default_branch(self.url)
     }
 }
 
@@ -252,7 +253,7 @@ impl<'a> Walk<'a> {
         if self.mode == Mode::Carried || self.fetched.contains_key(url) {
             return;
         }
-        let outcome = self.deps.remotes.refresh(url);
+        let outcome = ByAddress(self.deps.remotes.as_ref()).refresh(url);
         if let Err(detail) = &outcome {
             self.notices
                 .push(Notice::text(format!("fetch {url}: {detail}")));
@@ -404,11 +405,11 @@ impl<'a> Walk<'a> {
     }
 
     fn read_bundle(&mut self, remote: &RemoteRef, sha: &str) -> Option<Bundle> {
-        let tree = match self
-            .deps
-            .remotes
-            .read_bundle(&remote.url, sha, &remote.bundle)
-        {
+        let tree = match ByAddress(self.deps.remotes.as_ref()).read_bundle(
+            &remote.url,
+            sha,
+            &remote.bundle,
+        ) {
             Ok(Some(tree)) => tree,
             Ok(None) => {
                 self.notices.push(Notice::text(format!(

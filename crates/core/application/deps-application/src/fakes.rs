@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use ctxloom_ports::{Change, ContentRepo, Failure, TreeFiles};
 use deps_ports::{
     BundleSlot, CopyOutcome, DepsFiles, Endpoint, Forge, ForgeRepo, Opened, PullRequest, Remotes,
-    RepoFile, RepoTree, Why,
+    RepoFile, RepoTree, Repository, Why,
 };
 
 use crate::Deps;
@@ -192,7 +192,8 @@ impl Remotes for FakeRemotes {
         }
     }
 
-    fn ensure(&self, url: &str) -> Result<(), Why> {
+    fn ensure(&self, repo: &Repository) -> Result<(), Why> {
+        let url = repo.url.as_str();
         self.calls
             .lock()
             .expect("the calls")
@@ -210,7 +211,8 @@ impl Remotes for FakeRemotes {
         Ok(())
     }
 
-    fn refresh(&self, url: &str) -> Result<(), Why> {
+    fn refresh(&self, repo: &Repository) -> Result<(), Why> {
+        let url = repo.url.as_str();
         self.calls
             .lock()
             .expect("the calls")
@@ -226,11 +228,13 @@ impl Remotes for FakeRemotes {
         Ok(())
     }
 
-    fn tags(&self, url: &str) -> Result<Vec<String>, Why> {
+    fn tags(&self, repo: &Repository) -> Result<Vec<String>, Why> {
+        let url = repo.url.as_str();
         self.cloned(url, |repo| Ok(repo.seen_tags.keys().cloned().collect()))
     }
 
-    fn resolve_ref(&self, url: &str, name: &str) -> Result<String, Why> {
+    fn resolve_ref(&self, repo: &Repository, name: &str) -> Result<String, Why> {
+        let url = repo.url.as_str();
         self.cloned(url, |repo| {
             repo.seen_branches
                 .get(name)
@@ -241,7 +245,8 @@ impl Remotes for FakeRemotes {
         })
     }
 
-    fn resolve_tag(&self, url: &str, name: &str) -> Result<String, Why> {
+    fn resolve_tag(&self, repo: &Repository, name: &str) -> Result<String, Why> {
+        let url = repo.url.as_str();
         self.cloned(url, |repo| {
             repo.seen_tags
                 .get(name)
@@ -250,11 +255,18 @@ impl Remotes for FakeRemotes {
         })
     }
 
-    fn default_branch(&self, url: &str) -> Result<String, Why> {
+    fn default_branch(&self, repo: &Repository) -> Result<String, Why> {
+        let url = repo.url.as_str();
         self.cloned(url, |_| Ok("main".to_string()))
     }
 
-    fn read_bundle(&self, url: &str, sha: &str, bundle: &str) -> Result<Option<RepoTree>, Why> {
+    fn read_bundle(
+        &self,
+        repo: &Repository,
+        sha: &str,
+        bundle: &str,
+    ) -> Result<Option<RepoTree>, Why> {
+        let url = repo.url.as_str();
         self.cloned(url, |repo| {
             let commit = repo
                 .tree_at(sha)
@@ -279,7 +291,8 @@ impl Remotes for FakeRemotes {
         })
     }
 
-    fn list_bundles(&self, url: &str) -> Result<Vec<String>, Why> {
+    fn list_bundles(&self, repo: &Repository) -> Result<Vec<String>, Why> {
+        let url = repo.url.as_str();
         self.cloned(url, |repo| {
             let tip = repo.tip().ok_or("no default branch")?;
             let prefix = format!("{BUNDLES}/");
@@ -294,7 +307,8 @@ impl Remotes for FakeRemotes {
         })
     }
 
-    fn has_bundle(&self, url: &str, bundle: &str) -> Result<bool, Why> {
+    fn has_bundle(&self, repo: &Repository, bundle: &str) -> Result<bool, Why> {
+        let url = repo.url.as_str();
         self.cloned(url, |repo| {
             let tip = repo.tip().ok_or("no default branch")?;
             Ok(tip
@@ -305,10 +319,11 @@ impl Remotes for FakeRemotes {
 
     fn publish(
         &self,
-        url: &str,
+        repo: &Repository,
         files: &BTreeMap<String, Vec<u8>>,
         _message: &str,
     ) -> Result<String, Why> {
+        let url = repo.url.as_str();
         {
             let repos = self.repos();
             let repo = repos.get(url).ok_or("no such repository")?;

@@ -3,6 +3,7 @@
 use deps::address::canonical_ref;
 use deps::registry::{Edit, Remote};
 
+use crate::cache::ByAddress;
 use crate::views::{
     BrowseItem, Browsed, Created, DefaultSet, EditedRemote, RemoteListing, RemoteRow, RemoteState,
     RemoveResult,
@@ -74,7 +75,7 @@ impl Deps {
             .add(&request.name, &url, &request.forge)
             .map_err(AppError::cause)?;
         self.save_registry(&registry)?;
-        let warning = match self.remotes.ensure(&remote.url) {
+        let warning = match ByAddress(self.remotes.as_ref()).ensure(&remote.url) {
             Ok(()) => String::new(),
             Err(detail) => format!("{}: clone failed: {detail}", remote.name),
         };
@@ -193,8 +194,12 @@ impl Deps {
             remote: name.to_string(),
             detail,
         };
-        self.remotes.ensure(&remote.url).map_err(browse)?;
-        let names = self.remotes.list_bundles(&remote.url).map_err(browse)?;
+        ByAddress(self.remotes.as_ref())
+            .ensure(&remote.url)
+            .map_err(browse)?;
+        let names = ByAddress(self.remotes.as_ref())
+            .list_bundles(&remote.url)
+            .map_err(browse)?;
         let items: Vec<BrowseItem> = names
             .into_iter()
             .map(|bundle| BrowseItem {

@@ -32,8 +32,7 @@ use std::sync::Arc;
 use auth::{Auth, Credential};
 pub use auth::{Env, TokenVars};
 pub use command::{Git, DEFAULT_TIMEOUT};
-use deps::address::cache_segments;
-use deps_ports::{Remotes, RepoTree, Why};
+use deps_ports::{Remotes, RepoTree, Repository, Why};
 use file_system::Fs;
 use process_env::EnvSnapshot;
 
@@ -80,14 +79,13 @@ impl GitRemotes {
         self.auth.credential(url)
     }
 
-    /// Where the clone of `url` is cached; why it has no place if its address
-    /// names no repository.
-    fn clone_dir(&self, url: &str) -> Result<PathBuf, Why> {
-        let segments = cache_segments(url)
-            .ok_or_else(|| format!("refusing to cache {url:?}: it names no repository"))?;
-        Ok(segments
+    /// Where the clone of `repo` is cached: below the cache, under the
+    /// segments the application handed.
+    fn clone_dir(&self, repo: &Repository) -> PathBuf {
+        repo.cache
+            .segments()
             .iter()
-            .fold(self.cache.clone(), |dir, s| dir.join(s)))
+            .fold(self.cache.clone(), |dir, s| dir.join(s))
     }
 
     fn is_clone(&self, dir: &Path) -> bool {
@@ -96,13 +94,13 @@ impl GitRemotes {
             .is_ok_and(|meta| meta.kind == file_system::Kind::Dir)
     }
 
-    /// The clone of `url`, which must be there.
-    fn cloned(&self, url: &str) -> Result<PathBuf, Why> {
-        let dir = self.clone_dir(url)?;
+    /// The clone of `repo`, which must be there.
+    fn cloned(&self, repo: &Repository) -> Result<PathBuf, Why> {
+        let dir = self.clone_dir(repo);
         if self.is_clone(&dir) {
             Ok(dir)
         } else {
-            Err(format!("{url} is not cloned yet"))
+            Err(format!("{} is not cloned yet", repo.url))
         }
     }
 
@@ -169,24 +167,24 @@ impl Remotes for GitRemotes {
         Ok(format!("file://{}", absolute.display()))
     }
 
-    fn ensure(&self, url: &str) -> Result<(), Why> {
-        let dir = self.clone_dir(url)?;
+    fn ensure(&self, repo: &Repository) -> Result<(), Why> {
+        let dir = self.clone_dir(repo);
         if self.is_clone(&dir) {
             return Ok(());
         }
-        self.clone_into(url, &dir, false)
+        self.clone_into(&repo.url, &dir, false)
     }
 
-    fn refresh(&self, url: &str) -> Result<(), Why> {
-        let dir = self.clone_dir(url)?;
+    fn refresh(&self, repo: &Repository) -> Result<(), Why> {
+        let dir = self.clone_dir(repo);
         if !self.is_clone(&dir) {
-            return self.clone_into(url, &dir, false);
+            return self.clone_into(&repo.url, &dir, false);
         }
         self.git.run_with(
             Some(&dir),
             &["fetch", "--prune", "--force", "--tags", "origin"],
             None,
-            &self.credential(url),
+            &self.credential(&repo.url),
         )?;
         // The default branch may have moved; a repository with no branch yet
         // has none to point at, and that is not a failure.
@@ -198,37 +196,42 @@ impl Remotes for GitRemotes {
         Ok(())
     }
 
-    fn tags(&self, url: &str) -> Result<Vec<String>, Why> {
-        read::tags(&self.git, &self.cloned(url)?)
+    fn tags(&self, repo: &Repository) -> Result<Vec<String>, Why> {
+        read::tags(&self.git, &self.cloned(repo)?)
     }
 
-    fn resolve_ref(&self, url: &str, name: &str) -> Result<String, Why> {
-        read::resolve_ref(&self.git, &self.cloned(url)?, name)
+    fn resolve_ref(&self, repo: &Repository, name: &str) -> Result<String, Why> {
+        read::resolve_ref(&self.git, &self.cloned(repo)?, name)
     }
 
-    fn resolve_tag(&self, url: &str, name: &str) -> Result<String, Why> {
-        read::resolve_tag(&self.git, &self.cloned(url)?, name)
+    fn resolve_tag(&self, repo: &Repository, name: &str) -> Result<String, Why> {
+        read::resolve_tag(&self.git, &self.cloned(repo)?, name)
     }
 
-    fn default_branch(&self, url: &str) -> Result<String, Why> {
-        read::default_branch(&self.git, &self.cloned(url)?)
+    fn default_branch(&self, repo: &Repository) -> Result<String, Why> {
+        read::default_branch(&self.git, &self.cloned(repo)?)
     }
 
-    fn read_bundle(&self, url: &str, sha: &str, bundle: &str) -> Result<Option<RepoTree>, Why> {
-        read::bundle(&self.git, &self.cloned(url)?, sha, bundle)
+    fn read_bundle(
+        &self,
+        repo: &Repository,
+        sha: &str,
+        bundle: &str,
+    ) -> Result<Option<RepoTree>, Why> {
+        read::bundle(&self.git, &self.cloned(repo)?, sha, bundle)
     }
 
-    fn list_bundles(&self, url: &str) -> Result<Vec<String>, Why> {
-        read::bundles(&self.git, &self.cloned(url)?)
+    fn list_bundles(&self, repo: &Repository) -> Result<Vec<String>, Why> {
+        read::bundles(&self.git, &self.cloned(repo)?)
     }
 
-    fn has_bundle(&self, url: &str, bundle: &str) -> Result<bool, Why> {
-        read::has_bundle(&self.git, &self.cloned(url)?, bundle)
+    fn has_bundle(&self, repo: &Repository, bundle: &str) -> Result<bool, Why> {
+        read::has_bundle(&self.git, &self.cloned(repo)?, bundle)
     }
 
     fn publish(
         &self,
-        url: &str,
+        repo: &Repository,
         files: &BTreeMap<String, Vec<u8>>,
         message: &str,
     ) -> Result<String, Why> {
@@ -236,7 +239,7 @@ impl Remotes for GitRemotes {
             &self.git,
             self.fs.as_ref(),
             &self.cache,
-            url,
+            &repo.url,
             files,
             message,
         )

@@ -15,7 +15,7 @@ use deps::plan::{self, Pin};
 use deps::reference::RemoteRef;
 use pin_changes::{diff_pin, PinChange, Side};
 
-use crate::cache;
+use crate::cache::{self, ByAddress};
 use crate::closure::{Mode, Walk};
 use crate::pull::disclosed;
 use crate::views::UpgradeReport;
@@ -144,7 +144,7 @@ impl Deps {
         {
             return Ok(disclosed(&tree));
         }
-        match self.remotes.read_bundle(&remote.url, sha, &remote.bundle) {
+        match ByAddress(self.remotes.as_ref()).read_bundle(&remote.url, sha, &remote.bundle) {
             Ok(Some(tree)) => Ok(disclosed(&tree)),
             Ok(None) => Err(format!("no such bundle at {}", sha.get(..7).unwrap_or(sha))),
             Err(detail) => Err(detail),
@@ -160,7 +160,7 @@ impl Deps {
                 continue;
             };
             let outcome = cache::slot(&remote).and_then(|slot| {
-                self.remotes
+                ByAddress(self.remotes.as_ref())
                     .read_bundle(&pin.url, &pin.hash, &remote.bundle)
                     .and_then(|tree| tree.ok_or_else(|| "no such bundle".to_string()))
                     .and_then(|tree| self.files.install(&slot, &pin.hash, &tree))

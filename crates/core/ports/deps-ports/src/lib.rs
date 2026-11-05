@@ -52,47 +52,52 @@ pub trait Remotes {
     /// repository there.
     fn local_repository(&self, path: &str) -> Result<String, Why>;
 
-    /// Clone the repository at `url` into the cache if it is not there;
+    /// Clone `repo` into the cache if it is not there;
     /// nothing is fetched when it is.
-    fn ensure(&self, url: &str) -> Result<(), Why>;
+    fn ensure(&self, repo: &Repository) -> Result<(), Why>;
 
     /// Bring the cached clone up to date (cloning it when it is absent): the
     /// remote-tracking refs and the tags move to the live remote, and what the
     /// remote dropped is dropped. An error means the repository could not be
     /// read this run.
-    fn refresh(&self, url: &str) -> Result<(), Why>;
+    fn refresh(&self, repo: &Repository) -> Result<(), Why>;
 
     /// The repository's tag names, from the cached clone.
-    fn tags(&self, url: &str) -> Result<Vec<String>, Why>;
+    fn tags(&self, repo: &Repository) -> Result<Vec<String>, Why>;
 
     /// A branch (its remote-tracking tip), a tag or a commit name as the commit
     /// it is, in the cached clone.
-    fn resolve_ref(&self, url: &str, name: &str) -> Result<String, Why>;
+    fn resolve_ref(&self, repo: &Repository, name: &str) -> Result<String, Why>;
 
     /// A tag name as its commit, through the tags alone.
-    fn resolve_tag(&self, url: &str, name: &str) -> Result<String, Why>;
+    fn resolve_tag(&self, repo: &Repository, name: &str) -> Result<String, Why>;
 
     /// The default branch's name.
-    fn default_branch(&self, url: &str) -> Result<String, Why>;
+    fn default_branch(&self, repo: &Repository) -> Result<String, Why>;
 
     /// The files of the bundle `bundle` at the commit `sha`, by path relative
     /// to the bundle; none where the commit has no such bundle.
-    fn read_bundle(&self, url: &str, sha: &str, bundle: &str) -> Result<Option<RepoTree>, Why>;
+    fn read_bundle(
+        &self,
+        repo: &Repository,
+        sha: &str,
+        bundle: &str,
+    ) -> Result<Option<RepoTree>, Why>;
 
     /// The names of the bundles at the tip of the default branch (a directory
     /// holding a `bundle.yaml` is a bundle, however deep), sorted.
-    fn list_bundles(&self, url: &str) -> Result<Vec<String>, Why>;
+    fn list_bundles(&self, repo: &Repository) -> Result<Vec<String>, Why>;
 
     /// Whether the default branch's tip has the bundle `bundle` (answered of
     /// that one path, never of a listing).
-    fn has_bundle(&self, url: &str, bundle: &str) -> Result<bool, Why>;
+    fn has_bundle(&self, repo: &Repository, bundle: &str) -> Result<bool, Why>;
 
     /// Commit `files` (paths in the repository, with their bytes) to the
     /// default branch as one commit with `message` and push it; the commit now
     /// at the tip (the same one where nothing changed).
     fn publish(
         &self,
-        url: &str,
+        repo: &Repository,
         files: &BTreeMap<String, Vec<u8>>,
         message: &str,
     ) -> Result<String, Why>;

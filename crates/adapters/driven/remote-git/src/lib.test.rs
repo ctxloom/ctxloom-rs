@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
-use deps_ports::Remotes;
+use deps_ports::{CachePath, Remotes, Repository};
 use file_system::Os;
 
 use super::*;
@@ -49,6 +49,23 @@ fn identity() -> Vec<(&'static str, OsString)> {
     ]
     .map(|(key, value)| (key, OsString::from(value)))
     .to_vec()
+}
+
+/// The repository at `url`, cached where the application would say: its host
+/// (none for a file address) and path, `.git` dropped. Any other place would
+/// do to the adapter; this one is only a plausible one.
+fn repo(url: &str) -> Repository {
+    let path = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let path = path.strip_suffix(".git").unwrap_or(path);
+    let segments = path
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect();
+    Repository {
+        url: url.to_string(),
+        cache: CachePath::new(segments).expect("plain names"),
+    }
 }
 
 /// A bare repository and the working clone that pushes to it.
@@ -158,8 +175,8 @@ fn test_ensure_clones_once_and_does_not_fetch_a_clone_it_has() {
     let origin = Origin::new();
     let first = demo(&origin);
     let c = cache();
-    c.remotes.ensure(&origin.url()).expect("clones");
-    let dir = c.remotes.clone_dir(&origin.url()).expect("a directory");
+    c.remotes.ensure(&repo(&origin.url())).expect("clones");
+    let dir = c.remotes.clone_dir(&repo(&origin.url()));
     assert!(
         dir.starts_with(c.dir.root()) && is_dir(dir.join(".git")),
         "{}",
@@ -170,17 +187,17 @@ fn test_ensure_clones_once_and_does_not_fetch_a_clone_it_has() {
         "no checkout: nothing is read from a working tree"
     );
     let second = origin.commit(&[(&format!("{BUNDLE}/demo/fragments/b.md"), "B\n", false)]);
-    c.remotes.ensure(&origin.url()).expect("is there");
+    c.remotes.ensure(&repo(&origin.url())).expect("is there");
     assert_eq!(
         c.remotes
-            .resolve_ref(&origin.url(), "main")
+            .resolve_ref(&repo(&origin.url()), "main")
             .expect("resolves"),
         first
     );
-    c.remotes.refresh(&origin.url()).expect("fetches");
+    c.remotes.refresh(&repo(&origin.url())).expect("fetches");
     assert_eq!(
         c.remotes
-            .resolve_ref(&origin.url(), "main")
+            .resolve_ref(&repo(&origin.url()), "main")
             .expect("resolves"),
         second
     );
@@ -191,12 +208,15 @@ fn test_refresh_clones_what_is_not_there_and_a_failed_clone_leaves_nothing_behin
     let origin = Origin::new();
     demo(&origin);
     let c = cache();
-    c.remotes.refresh(&origin.url()).expect("clones");
+    c.remotes.refresh(&repo(&origin.url())).expect("clones");
     let missing = format!("file://{}/nowhere.git", origin.root.root().display());
-    let refused = c.remotes.ensure(&missing).expect_err("no such repository");
+    let refused = c
+        .remotes
+        .ensure(&repo(&missing))
+        .expect_err("no such repository");
     assert!(refused.starts_with("git clone: "), "{refused}");
-    assert!(!exists(c.remotes.clone_dir(&missing).expect("a directory")));
-    assert!(c.remotes.refresh(&missing).is_err());
+    assert!(!exists(c.remotes.clone_dir(&repo(&missing))));
+    assert!(c.remotes.refresh(&repo(&missing)).is_err());
 }
 
 // deps.feature: A stale local checkout never leaks into what's served
@@ -205,20 +225,20 @@ fn test_a_branch_is_its_remote_tracking_tip_whatever_the_clone_has_checked_out()
     let origin = Origin::new();
     let first = demo(&origin);
     let c = cache();
-    c.remotes.ensure(&origin.url()).expect("clones");
+    c.remotes.ensure(&repo(&origin.url())).expect("clones");
     let second = origin.commit(&[(&format!("{BUNDLE}/demo/fragments/a.md"), "A2\n", false)]);
-    c.remotes.refresh(&origin.url()).expect("fetches");
-    let dir = c.remotes.clone_dir(&origin.url()).expect("a directory");
+    c.remotes.refresh(&repo(&origin.url())).expect("fetches");
+    let dir = c.remotes.clone_dir(&repo(&origin.url()));
     git(&dir, &["reset", "--hard", &first]);
     assert_eq!(
         c.remotes
-            .resolve_ref(&origin.url(), "main")
+            .resolve_ref(&repo(&origin.url()), "main")
             .expect("resolves"),
         second
     );
     let tree = c
         .remotes
-        .read_bundle(&origin.url(), &second, "demo")
+        .read_bundle(&repo(&origin.url()), &second, "demo")
         .expect("reads")
         .expect("a bundle");
     assert_eq!(tree["fragments/a.md"].data, b"A2\n");
@@ -238,36 +258,57 @@ fn test_versions_resolve_as_branch_then_tag_then_commit() {
     origin.tag("release");
     let c = cache();
     let url = origin.url();
-    c.remotes.refresh(&url).expect("clones");
+    c.remotes.refresh(&repo(&url)).expect("clones");
     assert_eq!(
-        c.remotes.tags(&url).expect("tags"),
+        c.remotes.tags(&repo(&url)).expect("tags"),
         vec!["release", "v1.0.0"]
     );
-    assert_eq!(c.remotes.resolve_ref(&url, "main").expect("branch"), second);
-    assert_eq!(c.remotes.resolve_ref(&url, "v1.0.0").expect("tag"), first);
+    assert_eq!(
+        c.remotes.resolve_ref(&repo(&url), "main").expect("branch"),
+        second
+    );
+    assert_eq!(
+        c.remotes.resolve_ref(&repo(&url), "v1.0.0").expect("tag"),
+        first
+    );
     assert_eq!(
         c.remotes
-            .resolve_ref(&url, &second[..9])
+            .resolve_ref(&repo(&url), &second[..9])
             .expect("abbreviated"),
         second
     );
-    assert_eq!(c.remotes.resolve_ref(&url, &second).expect("full"), second);
-    assert_eq!(c.remotes.resolve_tag(&url, "v1.0.0").expect("tag"), first);
+    assert_eq!(
+        c.remotes.resolve_ref(&repo(&url), &second).expect("full"),
+        second
+    );
+    assert_eq!(
+        c.remotes.resolve_tag(&repo(&url), "v1.0.0").expect("tag"),
+        first
+    );
     // A branch and a tag of one name: the generic lookup says the branch, the
     // tag lookup the tag.
     assert_eq!(
-        c.remotes.resolve_ref(&url, "release").expect("branch"),
+        c.remotes
+            .resolve_ref(&repo(&url), "release")
+            .expect("branch"),
         first
     );
-    assert_eq!(c.remotes.resolve_tag(&url, "release").expect("tag"), second);
+    assert_eq!(
+        c.remotes.resolve_tag(&repo(&url), "release").expect("tag"),
+        second
+    );
     for refused in ["nope", "not-hex-zz", "ab"] {
         assert_eq!(
-            c.remotes.resolve_ref(&url, refused).expect_err(refused),
+            c.remotes
+                .resolve_ref(&repo(&url), refused)
+                .expect_err(refused),
             format!("unknown revision {refused}")
         );
     }
     assert_eq!(
-        c.remotes.resolve_tag(&url, "main").expect_err("a branch"),
+        c.remotes
+            .resolve_tag(&repo(&url), "main")
+            .expect_err("a branch"),
         "unknown tag main"
     );
 }
@@ -277,19 +318,23 @@ fn test_the_default_branch_is_what_the_remote_head_points_at_else_main_or_master
     let origin = Origin::new();
     demo(&origin);
     let c = cache();
-    c.remotes.ensure(&origin.url()).expect("clones");
+    c.remotes.ensure(&repo(&origin.url())).expect("clones");
     assert_eq!(
-        c.remotes.default_branch(&origin.url()).expect("a branch"),
+        c.remotes
+            .default_branch(&repo(&origin.url()))
+            .expect("a branch"),
         "main"
     );
-    let dir = c.remotes.clone_dir(&origin.url()).expect("a directory");
+    let dir = c.remotes.clone_dir(&repo(&origin.url()));
     // With the remote's HEAD ref gone, the clone's own branches say.
     git(
         &dir,
         &["symbolic-ref", "--delete", "refs/remotes/origin/HEAD"],
     );
     assert_eq!(
-        c.remotes.default_branch(&origin.url()).expect("main"),
+        c.remotes
+            .default_branch(&repo(&origin.url()))
+            .expect("main"),
         "main"
     );
     git(&dir, &["branch", "-m", "main", "master"]);
@@ -303,12 +348,16 @@ fn test_the_default_branch_is_what_the_remote_head_points_at_else_main_or_master
     );
     git(&dir, &["update-ref", "-d", "refs/remotes/origin/main"]);
     assert_eq!(
-        c.remotes.default_branch(&origin.url()).expect("master"),
+        c.remotes
+            .default_branch(&repo(&origin.url()))
+            .expect("master"),
         "master"
     );
     git(&dir, &["update-ref", "-d", "refs/remotes/origin/master"]);
     assert_eq!(
-        c.remotes.default_branch(&origin.url()).expect_err("none"),
+        c.remotes
+            .default_branch(&repo(&origin.url()))
+            .expect_err("none"),
         "cannot determine the repository's default branch"
     );
 }
@@ -320,10 +369,10 @@ fn test_a_bundle_is_read_at_a_commit_with_its_bytes_and_modes() {
     let first = demo(&origin);
     let c = cache();
     let url = origin.url();
-    c.remotes.ensure(&url).expect("clones");
+    c.remotes.ensure(&repo(&url)).expect("clones");
     let tree = c
         .remotes
-        .read_bundle(&url, &first, "demo")
+        .read_bundle(&repo(&url), &first, "demo")
         .expect("reads")
         .expect("a bundle");
     let paths: Vec<&str> = tree.keys().map(String::as_str).collect();
@@ -335,26 +384,26 @@ fn test_a_bundle_is_read_at_a_commit_with_its_bytes_and_modes() {
     assert!(tree["scripts/run.sh"].executable && !tree["bundle.yaml"].executable);
     assert_eq!(
         c.remotes
-            .read_bundle(&url, &first, "absent")
+            .read_bundle(&repo(&url), &first, "absent")
             .expect("reads"),
         None
     );
     assert!(c
         .remotes
-        .read_bundle(&url, &"0".repeat(40), "demo")
+        .read_bundle(&repo(&url), &"0".repeat(40), "demo")
         .is_err());
     // The tree of an earlier commit is the tree of that commit.
     let second = origin.commit(&[(&format!("{BUNDLE}/demo/fragments/a.md"), "A2\n", false)]);
-    c.remotes.refresh(&url).expect("fetches");
+    c.remotes.refresh(&repo(&url)).expect("fetches");
     let earlier = c
         .remotes
-        .read_bundle(&url, &first, "demo")
+        .read_bundle(&repo(&url), &first, "demo")
         .expect("reads")
         .expect("a bundle");
     assert_eq!(earlier["fragments/a.md"].data, b"A\n");
     let later = c
         .remotes
-        .read_bundle(&url, &second, "demo")
+        .read_bundle(&repo(&url), &second, "demo")
         .expect("reads")
         .expect("a bundle");
     assert_eq!(later["fragments/a.md"].data, b"A2\n");
@@ -373,10 +422,10 @@ fn test_binary_bytes_survive_and_a_link_is_not_a_file_of_the_tree() {
     git(&origin.work, &["push", "-q", "origin", "main"]);
     let sha = git(&origin.work, &["rev-parse", "HEAD"]);
     let c = cache();
-    c.remotes.ensure(&origin.url()).expect("clones");
+    c.remotes.ensure(&repo(&origin.url())).expect("clones");
     let tree = c
         .remotes
-        .read_bundle(&origin.url(), &sha, "demo")
+        .read_bundle(&repo(&origin.url()), &sha, "demo")
         .expect("reads")
         .expect("a bundle");
     assert_eq!(tree["blob.bin"].data, vec![0u8, 1, 2, 255, b'\n', 0, b'\n']);
@@ -400,18 +449,21 @@ fn test_bundles_are_listed_and_asked_after_at_the_tip() {
     ]);
     let c = cache();
     let url = origin.url();
-    c.remotes.ensure(&url).expect("clones");
+    c.remotes.ensure(&repo(&url)).expect("clones");
     assert_eq!(
-        c.remotes.list_bundles(&url).expect("lists"),
+        c.remotes.list_bundles(&repo(&url)).expect("lists"),
         vec!["alpha", "team/rules", "zeta"]
     );
-    assert!(c.remotes.has_bundle(&url, "alpha").expect("asks"));
-    assert!(c.remotes.has_bundle(&url, "team/rules").expect("asks"));
+    assert!(c.remotes.has_bundle(&repo(&url), "alpha").expect("asks"));
+    assert!(c
+        .remotes
+        .has_bundle(&repo(&url), "team/rules")
+        .expect("asks"));
     assert!(
-        !c.remotes.has_bundle(&url, "team").expect("asks"),
+        !c.remotes.has_bundle(&repo(&url), "team").expect("asks"),
         "a directory without a manifest is no bundle"
     );
-    assert!(!c.remotes.has_bundle(&url, "absent").expect("asks"));
+    assert!(!c.remotes.has_bundle(&repo(&url), "absent").expect("asks"));
 }
 
 // deps.feature: A bundle deleted upstream: the answer follows the fetch
@@ -421,18 +473,18 @@ fn test_what_upstream_removed_is_gone_after_a_fetch_and_not_before() {
     demo(&origin);
     let c = cache();
     let url = origin.url();
-    c.remotes.ensure(&url).expect("clones");
+    c.remotes.ensure(&repo(&url)).expect("clones");
     origin.remove(&[
         &format!("{BUNDLE}/demo/bundle.yaml"),
         &format!("{BUNDLE}/demo/fragments/a.md"),
         &format!("{BUNDLE}/demo/scripts/run.sh"),
     ]);
     assert!(
-        c.remotes.has_bundle(&url, "demo").expect("asks"),
+        c.remotes.has_bundle(&repo(&url), "demo").expect("asks"),
         "the clone has not seen it"
     );
-    c.remotes.refresh(&url).expect("fetches");
-    assert!(!c.remotes.has_bundle(&url, "demo").expect("asks"));
+    c.remotes.refresh(&repo(&url)).expect("fetches");
+    assert!(!c.remotes.has_bundle(&repo(&url), "demo").expect("asks"));
 }
 
 // deps.feature: An unreachable remote
@@ -442,13 +494,13 @@ fn test_a_remote_that_cannot_be_read_fails_the_fetch_and_the_clone_stays_readabl
     let first = demo(&origin);
     let c = cache();
     let url = origin.url();
-    c.remotes.ensure(&url).expect("clones");
+    c.remotes.ensure(&repo(&url)).expect("clones");
     origin.vanish();
-    let refused = c.remotes.refresh(&url).expect_err("unreachable");
+    let refused = c.remotes.refresh(&repo(&url)).expect_err("unreachable");
     assert!(refused.starts_with("git fetch: "), "{refused}");
     assert!(c
         .remotes
-        .read_bundle(&url, &first, "demo")
+        .read_bundle(&repo(&url), &first, "demo")
         .expect("still reads")
         .is_some());
 }
@@ -459,23 +511,41 @@ fn test_what_was_never_cloned_cannot_be_read() {
     demo(&origin);
     let c = cache();
     let url = origin.url();
-    let said = c.remotes.tags(&url).expect_err("not cloned");
+    let said = c.remotes.tags(&repo(&url)).expect_err("not cloned");
     assert!(said.ends_with("is not cloned yet"), "{said}");
-    assert!(c.remotes.resolve_ref(&url, "main").is_err());
-    assert!(c.remotes.read_bundle(&url, "abc", "demo").is_err());
-    assert!(c.remotes.list_bundles(&url).is_err());
-    assert!(c.remotes.has_bundle(&url, "demo").is_err());
-    assert!(c.remotes.default_branch(&url).is_err());
-    assert!(c.remotes.resolve_tag(&url, "x").is_err());
+    assert!(c.remotes.resolve_ref(&repo(&url), "main").is_err());
+    assert!(c.remotes.read_bundle(&repo(&url), "abc", "demo").is_err());
+    assert!(c.remotes.list_bundles(&repo(&url)).is_err());
+    assert!(c.remotes.has_bundle(&repo(&url), "demo").is_err());
+    assert!(c.remotes.default_branch(&repo(&url)).is_err());
+    assert!(c.remotes.resolve_tag(&repo(&url), "x").is_err());
 }
 
+// The application works the place out of the address; the adapter clones
+// below the cache under exactly the segments it is handed.
 #[test]
-fn test_an_address_that_names_no_repository_has_no_place_in_the_cache() {
+fn test_a_clone_is_kept_exactly_under_the_segments_it_is_handed() {
+    let origin = Origin::new();
+    demo(&origin);
     let c = cache();
-    for url in ["bundles", "https://", ""] {
-        let refused = c.remotes.ensure(url).expect_err(url);
-        assert!(refused.starts_with("refusing to cache"), "{refused}");
-    }
+    let handed = Repository {
+        url: origin.url(),
+        cache: CachePath::new(vec!["any".to_string(), "place".to_string()]).expect("plain"),
+    };
+    c.remotes.ensure(&handed).expect("clones");
+    assert_eq!(
+        c.remotes.clone_dir(&handed),
+        c.dir.root().join("any").join("place")
+    );
+    assert!(is_dir(c.dir.root().join("any/place/.git")));
+    assert!(c.remotes.tags(&handed).is_ok());
+    // The same address under other segments is not cloned yet.
+    let elsewhere = Repository {
+        cache: CachePath::new(vec!["else".to_string()]).expect("plain"),
+        ..handed
+    };
+    let why = c.remotes.tags(&elsewhere).expect_err("not cloned there");
+    assert!(why.ends_with("is not cloned yet"), "{why}");
 }
 
 // remote.go resolveLocalRepoURL
@@ -517,7 +587,7 @@ fn test_a_publish_lands_files_as_one_commit_beside_the_history() {
     ]);
     let commit = c
         .remotes
-        .publish(&origin.url(), &files, "Update bundle: authored")
+        .publish(&repo(&origin.url()), &files, "Update bundle: authored")
         .expect("publishes");
     assert_eq!(git(&origin.bare, &["rev-parse", "main"]), commit);
     assert_eq!(
@@ -555,7 +625,7 @@ fn test_a_publish_lands_files_as_one_commit_beside_the_history() {
     // Nothing to change is nothing to publish: the tip stands.
     let again = c
         .remotes
-        .publish(&origin.url(), &files, "again")
+        .publish(&repo(&origin.url()), &files, "again")
         .expect("publishes");
     assert_eq!(again, commit);
     assert_eq!(git(&origin.bare, &["rev-list", "--count", "main"]), "2");
@@ -572,7 +642,7 @@ fn test_a_publish_to_a_repository_that_cannot_be_reached_fails_and_leaves_no_clo
     let url = origin.url();
     origin.vanish();
     let files = BTreeMap::from([("a.txt".to_string(), b"a".to_vec())]);
-    assert!(c.remotes.publish(&url, &files, "m").is_err());
+    assert!(c.remotes.publish(&repo(&url), &files, "m").is_err());
     let leftovers = names(c.dir.root()).len();
     assert_eq!(leftovers, 0);
 }
@@ -594,11 +664,11 @@ fn test_an_inherited_git_dir_does_not_steer_the_repository() {
         ),
     ]));
     c.remotes
-        .ensure(&origin.url())
+        .ensure(&repo(&origin.url()))
         .expect("clones all the same");
     assert_eq!(
         c.remotes
-            .resolve_ref(&origin.url(), "main")
+            .resolve_ref(&repo(&origin.url()), "main")
             .expect("resolves"),
         first
     );
@@ -728,7 +798,7 @@ mod credentials {
         let c = with_token(cache());
         let err = c
             .remotes
-            .ensure("https://127.0.0.1:1/o/r")
+            .ensure(&repo("https://127.0.0.1:1/o/r"))
             .expect_err("nothing listens there");
         assert!(
             !err.contains(TOKEN)
@@ -744,11 +814,14 @@ mod credentials {
         let origin = Origin::new();
         demo(&origin);
         let plain = cache();
-        plain.remotes.ensure(&origin.url()).expect("clones");
+        plain.remotes.ensure(&repo(&origin.url())).expect("clones");
         let keyed = with_token(cache());
-        keyed.remotes.ensure(&origin.url()).expect("clones");
-        keyed.remotes.refresh(&origin.url()).expect("fetches");
-        let dir = keyed.remotes.clone_dir(&origin.url()).expect("a directory");
+        keyed.remotes.ensure(&repo(&origin.url())).expect("clones");
+        keyed
+            .remotes
+            .refresh(&repo(&origin.url()))
+            .expect("fetches");
+        let dir = keyed.remotes.clone_dir(&repo(&origin.url()));
         let config = slurp(dir.join(".git/config"));
         assert!(
             !config.contains(TOKEN) && !config.to_lowercase().contains("extraheader"),
@@ -757,11 +830,11 @@ mod credentials {
         assert_eq!(
             keyed
                 .remotes
-                .resolve_ref(&origin.url(), "main")
+                .resolve_ref(&repo(&origin.url()), "main")
                 .expect("resolves"),
             plain
                 .remotes
-                .resolve_ref(&origin.url(), "main")
+                .resolve_ref(&repo(&origin.url()), "main")
                 .expect("resolves"),
         );
         assert!(keyed.remotes.credential(&origin.url()).pairs().is_empty());
@@ -797,9 +870,9 @@ mod hung_git {
         demo(&origin);
         let c = cache();
         let (_stub, remotes) = hung(&c);
-        let why = remotes.ensure(&origin.url()).unwrap_err();
+        let why = remotes.ensure(&repo(&origin.url())).unwrap_err();
         assert_eq!(why, format!("git clone: {TIMED_OUT}"));
-        let dir = remotes.clone_dir(&origin.url()).unwrap();
+        let dir = remotes.clone_dir(&repo(&origin.url()));
         assert!(
             !exists(&dir),
             "a partial clone was left at {}",
@@ -815,11 +888,11 @@ mod hung_git {
         let origin = Origin::new();
         demo(&origin);
         let c = cache();
-        c.remotes.ensure(&origin.url()).unwrap();
+        c.remotes.ensure(&repo(&origin.url())).unwrap();
         let (_stub, remotes) = hung(&c);
-        let why = remotes.refresh(&origin.url()).unwrap_err();
+        let why = remotes.refresh(&repo(&origin.url())).unwrap_err();
         assert_eq!(why, format!("git fetch: {TIMED_OUT}"));
-        assert!(c.remotes.tags(&origin.url()).is_ok());
+        assert!(c.remotes.tags(&repo(&origin.url())).is_ok());
     }
 
     #[test]
@@ -838,9 +911,9 @@ mod hung_git {
         let origin = Origin::new();
         demo(&origin);
         let c = cache();
-        c.remotes.ensure(&origin.url()).unwrap();
+        c.remotes.ensure(&repo(&origin.url())).unwrap();
         let (_stub, remotes) = hung(&c);
-        let why = remotes.tags(&origin.url()).unwrap_err();
+        let why = remotes.tags(&repo(&origin.url())).unwrap_err();
         assert_eq!(why, format!("git tag: {TIMED_OUT}"));
     }
 
@@ -851,7 +924,9 @@ mod hung_git {
         let c = cache();
         let (_stub, remotes) = hung(&c);
         let files = BTreeMap::from([("a.txt".to_string(), b"a".to_vec())]);
-        let why = remotes.publish(&origin.url(), &files, "msg").unwrap_err();
+        let why = remotes
+            .publish(&repo(&origin.url()), &files, "msg")
+            .unwrap_err();
         assert_eq!(why, format!("git clone: {TIMED_OUT}"));
         let left = names(c.dir.root());
         assert!(left.is_empty(), "{left:?}");

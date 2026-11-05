@@ -7,7 +7,8 @@ use deps::short;
 use deps_ports::{Failure, InstalledBundle, RemoteHit, RemoteLibrary, RemoteSearch};
 use library::tree::read_tree;
 
-use crate::{cache, Deps};
+use crate::cache::{self, ByAddress};
+use crate::Deps;
 
 impl RemoteLibrary for Deps {
     fn installed(&self) -> Result<Vec<InstalledBundle>, Failure> {
@@ -115,13 +116,13 @@ impl Deps {
     /// The bundles a repository publishes at its default branch's tip, each
     /// with what its manifest says of it, by name.
     fn published(&self, url: &str) -> Result<Vec<(String, Meta)>, String> {
-        self.remotes.ensure(url)?;
-        let names = self.remotes.list_bundles(url)?;
-        let branch = self.remotes.default_branch(url)?;
-        let tip = self.remotes.resolve_ref(url, &branch)?;
+        ByAddress(self.remotes.as_ref()).ensure(url)?;
+        let names = ByAddress(self.remotes.as_ref()).list_bundles(url)?;
+        let branch = ByAddress(self.remotes.as_ref()).default_branch(url)?;
+        let tip = ByAddress(self.remotes.as_ref()).resolve_ref(url, &branch)?;
         let mut out = Vec::new();
         for name in names {
-            let meta = match self.remotes.read_bundle(url, &tip, &name) {
+            let meta = match ByAddress(self.remotes.as_ref()).read_bundle(url, &tip, &name) {
                 Ok(Some(tree)) => {
                     let files = tree.into_iter().map(|(k, f)| (k, f.data)).collect();
                     read_tree(&name, &files).ok()

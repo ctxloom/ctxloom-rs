@@ -2,11 +2,18 @@
 //! held here.
 
 use ctxloom_ports::ContentRepo;
-use deps_ports::{BundleSlot, CachePath, DepsFiles, Remotes};
+use deps_ports::{BundleSlot, CachePath, DepsFiles, Remotes, Repository};
 
 use super::*;
 
 const URL: &str = "file:///srv/origin.git";
+
+fn repo(url: &str) -> Repository {
+    Repository {
+        url: url.to_string(),
+        cache: CachePath::new(vec!["x".to_string()]).expect("a plain name"),
+    }
+}
 
 #[test]
 fn test_a_repository_is_read_only_once_cloned() {
@@ -14,10 +21,10 @@ fn test_a_repository_is_read_only_once_cloned() {
     remotes.serve(URL);
     let sha = remotes.commit(URL, &demo("1.0.0", "one"));
     remotes.tag(URL, "v1.0.0", &sha);
-    assert!(remotes.tags(URL).is_err());
-    remotes.ensure(URL).expect("clones");
-    assert_eq!(remotes.tags(URL), Ok(vec!["v1.0.0".to_string()]));
-    assert!(remotes.tags("file:///srv/never.git").is_err());
+    assert!(remotes.tags(&repo(URL)).is_err());
+    remotes.ensure(&repo(URL)).expect("clones");
+    assert_eq!(remotes.tags(&repo(URL)), Ok(vec!["v1.0.0".to_string()]));
+    assert!(remotes.tags(&repo("file:///srv/never.git")).is_err());
 }
 
 #[test]
@@ -27,9 +34,9 @@ fn test_a_branch_resolves_to_its_commit() {
     let first = remotes.commit(URL, &demo("1.0.0", "one"));
     remotes.commit(URL, &demo("2.0.0", "two"));
     remotes.branch(URL, "topic", &first);
-    remotes.ensure(URL).expect("clones");
-    remotes.refresh(URL).expect("fetches");
-    assert_eq!(remotes.resolve_ref(URL, "topic"), Ok(first));
+    remotes.ensure(&repo(URL)).expect("clones");
+    remotes.refresh(&repo(URL)).expect("fetches");
+    assert_eq!(remotes.resolve_ref(&repo(URL), "topic"), Ok(first));
 }
 
 fn slot(identity: &str) -> BundleSlot {
