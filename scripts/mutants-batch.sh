@@ -33,6 +33,7 @@ g() { env -u GIT_INDEX_FILE -u GIT_DIR -u GIT_WORK_TREE git "$@"; }
 
 top=$(g rev-parse --show-toplevel)
 head=${2:-HEAD}
+[ -n "$head" ] || head=HEAD
 head_sha=$(g -C "$top" rev-parse --verify --quiet "$head^{commit}") || { echo "FAIL mutants-batch: $head is not a commit" >&2; exit 1; }
 if [ -n "${1:-}" ]; then
     base_sha=$(g -C "$top" rev-parse --verify --quiet "$1^{commit}") || { echo "FAIL mutants-batch: $1 is not a commit" >&2; exit 1; }

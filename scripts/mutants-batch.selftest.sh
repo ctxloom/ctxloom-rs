@@ -90,6 +90,15 @@ rc=0; MODE=pass run env >/dev/null 2>&1 || rc=$?
 [ "$rc" -ne 0 ] || fail "an empty batch applied a diff"
 leftover
 
+# Empty arguments, as the recipes pass them, mean the defaults.
+rc=0; out=$(cd "$repo" && MODE=pass MUTANTS_GATE="$tmp/gate.sh" MUTANTS_POLL=0.2 "$here/mutants-batch.sh" '' '' 2>&1) || rc=$?
+[ "$rc" -eq 0 ] && grep -q "($main_sha..$head_sha)" <<< "$out" || fail "empty arguments did not take the defaults: $out"
+# The recipes quote their arguments, so an empty base stays the first one.
+dry=$(just --justfile "$here/../justfile" --dry-run mutants-batch 2>&1)
+grep -q "mutants-batch.sh '' 'HEAD'" <<< "$dry" || fail "mutants-batch recipe does not quote its arguments: $dry"
+dry=$(just --justfile "$here/../justfile" --dry-run closeout 2>&1)
+grep -q "closeout.sh ''" <<< "$dry" || fail "closeout recipe does not quote its argument: $dry"
+
 # Bad refs.
 ARGS="nonesuch"
 rc=0; out=$(MODE=pass run env 2>&1) || rc=$?

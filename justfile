@@ -116,7 +116,7 @@ test-pkg +packages: (_require-nextest "test-pkg")
 [doc("Mutation-test a batch: mutants-batch [base] [head]")]
 [no-exit-message]
 mutants-batch base="" head="HEAD":
-    @{{TOP}}/scripts/mutants-batch.sh {{base}} {{head}}
+    @{{TOP}}/scripts/mutants-batch.sh '{{base}}' '{{head}}'
 
 # The whole mechanical close-out: build, lint, lint-deps, test, lint-os and
 # mutants-batch, one summary line each (scripts/closeout.sh).
@@ -124,7 +124,7 @@ mutants-batch base="" head="HEAD":
 [doc("Close-out gates in one run: closeout [base]")]
 [no-exit-message]
 closeout base="":
-    @{{TOP}}/scripts/closeout.sh {{base}}
+    @{{TOP}}/scripts/closeout.sh '{{base}}'
 
 # Delete target/ (the only sanctioned `cargo clean`; ltk blocks the raw one).
 [group('setup')]
