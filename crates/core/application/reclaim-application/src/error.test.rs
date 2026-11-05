@@ -5,12 +5,15 @@ use sessions_application::AppError;
 
 use super::*;
 
-angzarr_presentation::english_for!(&[EN_US.1]);
+angzarr_presentation::english_for!(&[EN_US.1, duration_text::EN_US.1]);
 
 fn bad_age() -> ReclaimError {
     ReclaimError::BadAge {
         flag: "--older-than".into(),
         value: "soon".into(),
+        cause: duration_text::DurationError::Malformed {
+            text: "soon".into(),
+        },
     }
 }
 
@@ -26,10 +29,13 @@ fn a_bad_age_is_a_usage_error_with_its_own_code_and_args() {
     assert_eq!(error.exit_code(), 2);
     assert_eq!(error.code(), "reclaim-application-bad-age");
     let args: Vec<&str> = error.args().iter().map(|(k, _)| *k).collect();
-    assert_eq!(args, ["flag", "value"]);
+    assert_eq!(args, ["flag", "value", "error"]);
     let english = error.english();
     assert!(english.contains("--older-than") && english.contains("soon"));
     assert!(error.to_string().contains("bad-age"));
+    // The cause is rendered in words, not as its code.
+    assert!(english.contains("not a span"), "{english}");
+    assert!(!english.contains("duration-text-"), "{english}");
 }
 
 #[test]
@@ -47,7 +53,7 @@ fn a_cache_failure_exits_one_with_its_causes_code_and_args() {
     let error = ReclaimError::Cache(Box::new(bad_age()));
     assert_eq!(error.exit_code(), 1);
     assert_eq!(error.code(), "reclaim-application-bad-age");
-    assert_eq!(error.args().len(), 2);
+    assert_eq!(error.args().len(), 3);
 }
 
 #[test]
@@ -64,5 +70,5 @@ fn an_unreadable_configuration_exits_one_with_its_causes_code_and_args() {
     let error = ReclaimError::Config(Box::new(bad_age()));
     assert_eq!(error.exit_code(), 1);
     assert_eq!(error.code(), "reclaim-application-bad-age");
-    assert_eq!(error.args().len(), 2);
+    assert_eq!(error.args().len(), 3);
 }

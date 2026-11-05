@@ -4,13 +4,18 @@ use std::fmt;
 
 use angzarr_diagnostic::{code, Arg, Diagnostic};
 use ctxloom_ports::Failure;
+use duration_text::DurationError;
 use isolation_application::IsolationError;
 use sessions_application::AppError;
 
 #[derive(Debug)]
 pub enum ReclaimError {
-    /// A flag's age or date that is neither.
-    BadAge { flag: String, value: String },
+    /// A flag's age or date that is neither, and why.
+    BadAge {
+        flag: String,
+        value: String,
+        cause: DurationError,
+    },
     /// The cache could not be measured or removed: the adapter's own words.
     Cache(Failure),
     /// The configuration could not be read.
@@ -58,12 +63,11 @@ impl Diagnostic for ReclaimError {
 
     fn args(&self) -> Vec<(&str, Arg)> {
         match self {
-            ReclaimError::BadAge { flag, value } => {
-                vec![
-                    ("flag", flag.as_str().into()),
-                    ("value", value.as_str().into()),
-                ]
-            }
+            ReclaimError::BadAge { flag, value, cause } => vec![
+                ("flag", flag.as_str().into()),
+                ("value", value.as_str().into()),
+                ("error", Arg::nested(cause)),
+            ],
             ReclaimError::Cache(cause) | ReclaimError::Config(cause) => cause.args(),
             ReclaimError::Sessions(cause) => cause.args(),
             ReclaimError::Isolation(cause) => cause.args(),
@@ -84,6 +88,9 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
     vec![Box::new(ReclaimError::BadAge {
         flag: "--purge-older-than".to_string(),
         value: "soon".to_string(),
+        cause: DurationError::Malformed {
+            text: "soon".to_string(),
+        },
     })]
 }
 

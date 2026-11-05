@@ -40,6 +40,7 @@ sessions.workspace = true
 scheduler.workspace = true
 scheduler-loop.workspace = true
 process-env.workspace = true
+duration-text.workspace = true
 project-dir.workspace = true
 
 [features]
@@ -52,6 +53,7 @@ test-support = [
     "ctxloom-wiring/test-support",
     "ctxloom-store-sqlite/test-support",
     "project-dir/test-support",
+    "duration-text/test-support",
     "library/test-support",
     "library-application/test-support",
     "cache-files/test-support",

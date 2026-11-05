@@ -35,6 +35,7 @@ impl SweepConfig for Config {
             Err(()) => Err(Box::new(ReclaimError::BadAge {
                 flag: "config".into(),
                 value: "unreadable".into(),
+                cause: duration_text::DurationError::Empty,
             })),
         }
     }
@@ -85,7 +86,7 @@ fn a_blank_configured_age_is_no_purge_age() {
 fn a_configured_age_that_is_none_is_refused_naming_the_key() {
     let mut config = Config::says("soon");
     match purge_cutoff(None, &mut config, NOW) {
-        Err(ReclaimError::BadAge { flag, value }) => {
+        Err(ReclaimError::BadAge { flag, value, .. }) => {
             assert_eq!(
                 (flag.as_str(), value.as_str()),
                 ("session_purge_age", "soon")

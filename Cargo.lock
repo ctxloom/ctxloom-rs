@@ -675,6 +675,7 @@ dependencies = [
  "cucumber",
  "deps",
  "deps-application",
+ "duration-text",
  "editor-process",
  "file-lock",
  "file-system",
@@ -772,6 +773,7 @@ dependencies = [
  "deps-files",
  "deps-ports",
  "doctor-checks",
+ "duration-text",
  "editor-process",
  "embedded-edge",
  "engine-claude",
@@ -1050,6 +1052,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "669a445ee724c5c69b1b06fe0b63e70a1c84bc9bb7d9696cd4f4e3ec45050408"
 
 [[package]]
+name = "duration-text"
+version = "0.1.0"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=c66dd6bdfc8618618ba832b1f9ee6019580fdab7#c66dd6bdfc8618618ba832b1f9ee6019580fdab7"
+dependencies = [
+ "angzarr-diagnostic",
+]
+
+[[package]]
 name = "editor-process"
 version = "0.1.0"
 dependencies = [
@@ -1117,7 +1127,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2047,7 +2057,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cde48f36530cbd91b65f050101e6c056d6eb743cea2a8f0f19beef69c6742ff8"
 dependencies = [
  "scopeguard",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2711,7 +2721,7 @@ version = "0.14.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "03da047801ff44bb6a4d407d4860c05fd70bb81714e6b2f3812603d5b145b042"
 dependencies = [
- "heck 0.5.0",
+ "heck 0.4.1",
  "itertools 0.14.0",
  "log",
  "multimap",
@@ -2843,13 +2853,13 @@ dependencies = [
  "angzarr-diagnostic",
  "angzarr-presentation",
  "ctxloom-ports",
+ "duration-text",
  "isolation-application",
  "mutants",
  "serde",
  "session-index",
  "sessions",
  "sessions-application",
- "time",
 ]
 
 [[package]]
@@ -3059,7 +3069,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3949,10 +3959,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3962,7 +3972,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
 dependencies = [
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4620,7 +4630,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

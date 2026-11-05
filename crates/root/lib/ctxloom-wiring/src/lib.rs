@@ -166,6 +166,7 @@ pub fn catalog_sources() -> Vec<angzarr_presentation::Source> {
         file_system::EN_US,
         project_registry::EN_US,
         project_dir::EN_US,
+        duration_text::EN_US,
         ctxloom_store_sqlite::EN_US,
         session_files::EN_US,
     ];

@@ -15,8 +15,8 @@ serde.workspace = true
 session-index.workspace = true
 sessions.workspace = true
 sessions-application.workspace = true
-# Dates and offsets for --older-than: pure calendar arithmetic, no clock.
-time.workspace = true
+# The grammar of --older-than: a span or a date, as a cutoff (no clock of its own).
+duration-text.workspace = true
 
 [dev-dependencies]
 angzarr-presentation = { workspace = true, features = ["test-support"] }
@@ -24,7 +24,7 @@ mutants.workspace = true
 
 [features]
 # `diagnostic_samples`, for other crates' catalog tests.
-test-support = []
+test-support = ["duration-text/test-support"]
 
 [lints]
 workspace = true

@@ -148,6 +148,7 @@ impl Services for Wired {
     fn diagnostic_samples(&self) -> Vec<Box<dyn angzarr_diagnostic::Diagnostic>> {
         let mut all = ctxloom_store_sqlite::diagnostic_samples();
         all.extend(project_dir::diagnostic_samples());
+        all.extend(duration_text::diagnostic_samples());
         all.extend(ctxloom_wiring::diagnostic_samples());
         all.extend(library::diagnostic_samples());
         all.extend(library_application::diagnostic_samples());

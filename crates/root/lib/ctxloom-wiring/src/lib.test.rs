@@ -489,6 +489,10 @@ fn test_the_catalog_has_the_shared_project_dir_messages_and_the_samples_carry_it
         sources.contains(&project_dir::EN_US),
         "project-dir's catalog"
     );
+    assert!(
+        sources.contains(&duration_text::EN_US),
+        "duration-text's catalog"
+    );
     assert!(sources.contains(&crate::EN_US), "this crate's own");
     assert!(
         sources.contains(&scheduler::EN_US),

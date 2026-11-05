@@ -134,6 +134,8 @@ process-env = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "c66dd6bdf
 project-dir = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "c66dd6bdfc8618618ba832b1f9ee6019580fdab7" }
 # run-within (S6): a program run under a deadline, its tree killed, its output bounded.
 run-within = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "c66dd6bdfc8618618ba832b1f9ee6019580fdab7" }
+# duration-text (S9): a span or date as an age, and the cutoff it makes.
+duration-text = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "c66dd6bdfc8618618ba832b1f9ee6019580fdab7" }
 
 # HTTP for forge-github (owner, 2026-11-04): the blocking client, so the
 # synchronous CLI holds no runtime of its own, and the TLS stack chosen below.
