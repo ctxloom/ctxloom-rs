@@ -33,13 +33,6 @@ fn test_the_lock_holds_one_of_each_angzarr_crate() {
     assert!(wrong.is_empty(), "one of each is required: {wrong:?}");
 }
 
-/// The git-sourced crates the lock holds more than once, as of this pin. Each
-/// is a duplicate to be gone when the pins agree (`angzarr-embedded-host-config`
-/// comes in at two angzarr-embedded revs: ours, and the one taskloom's graph
-/// was built on). The list names what is, so a NEW duplicate fails the test and
-/// a duplicate that goes (so its entry is stale) fails it too.
-const KNOWN_DUPLICATED: [&str; 1] = ["angzarr-embedded-host-config"];
-
 /// Every package of the lock that comes from git, by name, each with the
 /// source it comes from.
 fn git_packages(lock: &str) -> Vec<(String, String)> {
@@ -61,7 +54,7 @@ fn git_packages(lock: &str) -> Vec<(String, String)> {
 }
 
 #[test]
-fn test_every_git_pinned_crate_is_in_the_lock_once_but_the_known_duplicates() {
+fn test_every_git_pinned_crate_is_in_the_lock_once() {
     let lock = include_str!("../../../../../Cargo.lock");
     let packages = git_packages(lock);
     assert!(
@@ -77,21 +70,10 @@ fn test_every_git_pinned_crate_is_in_the_lock_once_but_the_known_duplicates() {
         .map(|w| w[0])
         .collect();
     twice.dedup();
-    assert_eq!(
-        twice, KNOWN_DUPLICATED,
-        "git crates held more than once (a new one, or a known one gone)"
+    assert!(
+        twice.is_empty(),
+        "git crates held more than once: {twice:?}"
     );
-    // a duplicate is never of one source twice: it is two revs
-    for name in KNOWN_DUPLICATED {
-        let mut sources: Vec<&str> = packages
-            .iter()
-            .filter(|(n, _)| n == name)
-            .map(|(_, s)| s.as_str())
-            .collect();
-        sources.sort_unstable();
-        sources.dedup();
-        assert!(sources.len() > 1, "{name}: {sources:?}");
-    }
 }
 
 #[test]

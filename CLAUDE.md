@@ -151,10 +151,10 @@ Dependencies point inward; a review refuses a change that breaks these:
 
 The lock holds ONE `angzarr-embedded`, `angzarr-proto`, `angzarr-ports` and
 `angzarr-diagnostic` (a test reads Cargo.lock). Every pin in `Cargo.toml` is
-a full commit. taskloom's `ports` is built on angzarr core 4d7ef357, so the
-angzarr-embedded pin is the rev built on that same core (9bd1d2c); moving to
-a newer embedded (and `angzarr-embedded-runner`) waits for taskloom to
-re-pin. The platform crates (`os`, `file-system`, `file-lock`) are
+a full commit. The angzarr pins are one line (angzarr-embedded 9db9299,
+core dd59566, angzarr-cli b47c357, angzarr-platform 5771284); taskloom's
+crates (12e83b0) and ctxloom-lib's (48145d3) are built on it, so moving one
+moves all. The lock holds one of every angzarr crate. The platform crates (`os`, `file-system`, `file-lock`) are
 angzarr-platform's, and `angzarr-presentation` and `angzarr-diagnostic` are
 angzarr core's, all `Apache-2.0 OR BSD-3-Clause`; this workspace is
 `AGPL-3.0-only`.
