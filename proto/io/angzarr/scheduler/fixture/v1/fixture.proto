@@ -5,7 +5,7 @@ syntax = "proto3";
 // closed, and records the AlarmReached it is told of if it still matches its
 // own arming. It exists so the scheduler's end-to-end path is proven without
 // any application domain (crates/core/domain/scheduler-fixture, publish=false).
-package angzarr.embedded.scheduler.fixture.v1;
+package io.angzarr.scheduler.fixture.v1;
 
 import "google/protobuf/timestamp.proto";
 import "io/angzarr/v1/options.proto";
@@ -23,8 +23,8 @@ message DummyState {
 // Set (or move) the deadline.
 message SetDeadline {
   option (io.angzarr.v1.command) = {
-    component: "angzarr.embedded.scheduler.fixture.v1.DummyState"
-    emits: ["angzarr.embedded.scheduler.fixture.v1.DeadlineSet"]
+    component: "io.angzarr.scheduler.fixture.v1.DummyState"
+    emits: ["io.angzarr.scheduler.fixture.v1.DeadlineSet"]
   };
 
   google.protobuf.Timestamp deadline = 1;
@@ -33,24 +33,24 @@ message SetDeadline {
 // Close the dummy: its deadline no longer matters.
 message Close {
   option (io.angzarr.v1.command) = {
-    component: "angzarr.embedded.scheduler.fixture.v1.DummyState"
-    emits: ["angzarr.embedded.scheduler.fixture.v1.Closed"]
+    component: "io.angzarr.scheduler.fixture.v1.DummyState"
+    emits: ["io.angzarr.scheduler.fixture.v1.Closed"]
   };
 }
 
 message DeadlineSet {
-  option (io.angzarr.v1.event) = {component: "angzarr.embedded.scheduler.fixture.v1.DummyState"};
+  option (io.angzarr.v1.event) = {component: "io.angzarr.scheduler.fixture.v1.DummyState"};
 
   google.protobuf.Timestamp deadline = 1;
 }
 
 message Closed {
-  option (io.angzarr.v1.event) = {component: "angzarr.embedded.scheduler.fixture.v1.DummyState"};
+  option (io.angzarr.v1.event) = {component: "io.angzarr.scheduler.fixture.v1.DummyState"};
 }
 
 // The dummy's own event for a deadline that passed while it was still open.
 message DeadlinePassed {
-  option (io.angzarr.v1.event) = {component: "angzarr.embedded.scheduler.fixture.v1.DummyState"};
+  option (io.angzarr.v1.event) = {component: "io.angzarr.scheduler.fixture.v1.DummyState"};
 
   google.protobuf.Timestamp at = 1;
 }

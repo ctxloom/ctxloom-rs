@@ -9,13 +9,13 @@
 //! ([`delivery!`]) hands the target [`AlarmReached`], a fact it re-checks
 //! against its own arming.
 //!
-//! Nothing here knows an application: the crate lifts into angzarr-embedded
+//! Nothing here knows an application: the crate lifts into angzarr (core; embedded the first user)
 //! as it is (scheduler.plan.md section 8).
 
 mod generated {
     include!(concat!(
         env!("OUT_DIR"),
-        "/angzarr.embedded.scheduler.v1.domain.rs"
+        "/io.angzarr.scheduler.v1.domain.rs"
     ));
 }
 mod aggregate;

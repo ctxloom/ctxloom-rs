@@ -4,8 +4,8 @@
 
 fn main() -> Result<(), angzarr_build::BuildError> {
     angzarr_build::markup_domain(
-        &["angzarr/embedded/scheduler/v1/scheduler.proto"],
+        &["io/angzarr/scheduler/v1/scheduler.proto"],
         &["../../../../proto"],
-        &[("angzarr.embedded.scheduler.v1", "::scheduler_proto::v1")],
+        &[("io.angzarr.scheduler.v1", "::scheduler_proto::v1")],
     )
 }

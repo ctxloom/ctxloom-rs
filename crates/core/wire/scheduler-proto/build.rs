@@ -3,7 +3,7 @@
 
 fn main() -> Result<(), angzarr_build::BuildError> {
     angzarr_build::wire(
-        &["angzarr/embedded/scheduler/v1/scheduler.proto"],
+        &["io/angzarr/scheduler/v1/scheduler.proto"],
         &["../../../../proto"],
     )
 }

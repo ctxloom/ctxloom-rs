@@ -18,13 +18,13 @@ use scheduler::{stream_for, AlarmReached, ArmAlarm, CancelAlarm, SchedulerAggreg
 mod wire {
     include!(concat!(
         env!("OUT_DIR"),
-        "/angzarr.embedded.scheduler.fixture.v1.rs"
+        "/io.angzarr.scheduler.fixture.v1.rs"
     ));
 }
 mod generated {
     include!(concat!(
         env!("OUT_DIR"),
-        "/angzarr.embedded.scheduler.fixture.v1.domain.rs"
+        "/io.angzarr.scheduler.fixture.v1.domain.rs"
     ));
 }
 pub use generated::*;

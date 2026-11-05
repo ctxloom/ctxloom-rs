@@ -1,5 +1,5 @@
 //! The wire messages carry the names the kernel routes by, in their final
-//! package: a stored event's type URL must never change at the lift.
+//! package, the spec's `io.angzarr.scheduler.v1`: a stored event's type URL must never change at the lift.
 
 use super::v1;
 use prost::Name;
@@ -15,6 +15,6 @@ fn every_message_is_in_the_final_package() {
         v1::AlarmCancelled::type_url(),
         v1::AlarmFired::type_url(),
     ] {
-        assert!(url.starts_with("/angzarr.embedded.scheduler.v1."), "{url}");
+        assert!(url.starts_with("/io.angzarr.scheduler.v1."), "{url}");
     }
 }

@@ -1,21 +1,19 @@
 syntax = "proto3";
 
-// The scheduler domain: its public time messages (ArmAlarm, CancelAlarm,
-// AlarmReached: field for field the draft spec's, angzarr-project branch
-// prep/spec-20261102-draft, io/angzarr/scheduler/v1/scheduler.proto) and its
-// private stored events and clock fact. All in ONE package, the final one
-// (angzarr.embedded.scheduler.v1) from the first commit: a type URL is stored
-// in every event, so a rename at the lift would need an upcaster in every
-// state.db (scheduler.plan.md OD-13).
+// The scheduler domain, an angzarr feature (core; embedded is the first user):
+// its public time messages (ArmAlarm, CancelAlarm, AlarmReached: field for
+// field the draft spec's, angzarr-project branch prep/spec-20261102-draft,
+// io/angzarr/scheduler/v1/scheduler.proto) and its private stored events and
+// clock fact, all in ONE package, the spec's. A type URL is stored in every
+// event, so the package is final from the first commit.
 //
-// Why the spec's three are not in the spec's package (io.angzarr.scheduler.v1):
-// angzarr-build's markup layer generates a component's domain types, command
-// and event enums from the ONE package its anchor message is in, so a command
-// in another package than its component's is wired to the wrong prost module
-// and does not compile. Their type URLs therefore differ from the spec's;
-// nothing stores a command or the delivered fact (only events are stored), so
-// the lift can move them to the spec's package without an upcaster.
-package angzarr.embedded.scheduler.v1;
+// `Stream` below stands in for the spec's `io.angzarr.v1.Cover` field of the
+// same shape. angzarr's Cover is never changed, and it cannot be used as a
+// message field here: angzarr-build's domain layer defines its own
+// `Cover`/`UUID` over Vec<u8>, which conflicts with angzarr-proto's
+// Bytes-based Cover (error `angzarr-codegen-wire-bytes`). Stream mirrors
+// Cover's wire fields (domain, root, edition) one for one.
+package io.angzarr.scheduler.v1;
 
 import "google/protobuf/timestamp.proto";
 import "io/angzarr/v1/options.proto";
@@ -33,9 +31,8 @@ message SchedulerState {
 }
 
 // A stream's address: angzarr's `Cover` field for field (domain, root,
-// edition), as the scheduler's own message. angzarr-build's domain layer
-// cannot carry angzarr-proto's Cover: it generates a second `Cover`/`UUID`
-// domain type that expects `Vec<u8>`, and angzarr-proto's UUID holds `Bytes`.
+// edition), as the scheduler's own message; why it is not Cover itself is in
+// the file header (error `angzarr-codegen-wire-bytes`).
 message Stream {
   string domain = 1;
   // The stream's 16-byte root.
@@ -51,8 +48,8 @@ message Stream {
 // Re-arming an armed alarm_id moves it; the old instant is never reached.
 message ArmAlarm {
   option (io.angzarr.v1.command) = {
-    component: "angzarr.embedded.scheduler.v1.SchedulerState"
-    emits: ["angzarr.embedded.scheduler.v1.AlarmArmed"]
+    component: "io.angzarr.scheduler.v1.SchedulerState"
+    emits: ["io.angzarr.scheduler.v1.AlarmArmed"]
   };
 
   // The stream to tell: the asking domain's own (domain, root, edition).
@@ -67,8 +64,8 @@ message ArmAlarm {
 // alarm that is not armed records nothing.
 message CancelAlarm {
   option (io.angzarr.v1.command) = {
-    component: "angzarr.embedded.scheduler.v1.SchedulerState"
-    emits: ["angzarr.embedded.scheduler.v1.AlarmCancelled"]
+    component: "io.angzarr.scheduler.v1.SchedulerState"
+    emits: ["io.angzarr.scheduler.v1.AlarmCancelled"]
   };
 
   string alarm_id = 1;
@@ -94,8 +91,8 @@ message AlarmReached {
 // an alarm armed at exactly this `at`.
 message AlarmDue {
   option (io.angzarr.v1.command) = {
-    component: "angzarr.embedded.scheduler.v1.SchedulerState"
-    emits: ["angzarr.embedded.scheduler.v1.AlarmFired"]
+    component: "io.angzarr.scheduler.v1.SchedulerState"
+    emits: ["io.angzarr.scheduler.v1.AlarmFired"]
     fact: true
   };
 
@@ -108,7 +105,7 @@ message AlarmDue {
 // region events
 
 message AlarmArmed {
-  option (io.angzarr.v1.event) = {component: "angzarr.embedded.scheduler.v1.SchedulerState"};
+  option (io.angzarr.v1.event) = {component: "io.angzarr.scheduler.v1.SchedulerState"};
 
   Stream target = 1;
   string alarm_id = 2;
@@ -116,7 +113,7 @@ message AlarmArmed {
 }
 
 message AlarmCancelled {
-  option (io.angzarr.v1.event) = {component: "angzarr.embedded.scheduler.v1.SchedulerState"};
+  option (io.angzarr.v1.event) = {component: "io.angzarr.scheduler.v1.SchedulerState"};
 
   string alarm_id = 1;
 }
@@ -124,7 +121,7 @@ message AlarmCancelled {
 // The alarm's instant was reached while it was armed at it. The delivery
 // policy turns this into AlarmReached on the target.
 message AlarmFired {
-  option (io.angzarr.v1.event) = {component: "angzarr.embedded.scheduler.v1.SchedulerState"};
+  option (io.angzarr.v1.event) = {component: "io.angzarr.scheduler.v1.SchedulerState"};
 
   Stream target = 1;
   string alarm_id = 2;

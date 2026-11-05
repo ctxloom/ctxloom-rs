@@ -29,7 +29,7 @@ impl DomainMessage for AlarmReached {
         Ok(AlarmReached {
             alarm_id: wire.alarm_id,
             at: wire.at.ok_or(WireError::Missing {
-                message: "angzarr.embedded.scheduler.v1.AlarmReached",
+                message: "io.angzarr.scheduler.v1.AlarmReached",
                 field: "at",
             })?,
         })

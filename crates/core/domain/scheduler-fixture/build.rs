@@ -3,12 +3,12 @@
 //! crate of its own. Generated code is never committed.
 
 fn main() -> Result<(), angzarr_build::BuildError> {
-    let protos = ["angzarr/embedded/scheduler/fixture/v1/fixture.proto"];
+    let protos = ["io/angzarr/scheduler/fixture/v1/fixture.proto"];
     let includes = ["../../../../proto"];
     angzarr_build::wire(&protos, &includes)?;
     angzarr_build::markup_domain(
         &protos,
         &includes,
-        &[("angzarr.embedded.scheduler.fixture.v1", "crate::wire")],
+        &[("io.angzarr.scheduler.fixture.v1", "crate::wire")],
     )
 }
