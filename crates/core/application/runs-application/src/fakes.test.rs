@@ -1,7 +1,7 @@
 //! The test doubles the use cases share: an [`Edge`] over the kernel and an
 //! in-memory store (so a fact is APPLIED, DUPLICATE or PARKED by the kernel's
 //! own rules, not the double's), and a counting token
-//! source. The real edge over `App::serve_in` is `ctxloom-lib`'s `core_link`
+//! source. The real edge over `App::serve_in` is `ctxloom-wiring`'s `core_link`
 //! test.
 //!
 //! The doubles do NOT stand in for the domains: the world is built through the

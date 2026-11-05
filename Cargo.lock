@@ -661,8 +661,8 @@ dependencies = [
  "container-cli",
  "content-fs",
  "ctxloom-cli",
- "ctxloom-lib",
  "ctxloom-store-sqlite",
+ "ctxloom-wiring",
  "cucumber",
  "deps",
  "deps-application",
@@ -708,7 +708,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "ctxloom-lib"
+name = "ctxloom-ports"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+]
+
+[[package]]
+name = "ctxloom-store-sqlite"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "angzarr-embedded",
+ "file-system",
+ "os",
+ "ports",
+ "session-ports",
+ "tokio",
+]
+
+[[package]]
+name = "ctxloom-wiring"
 version = "0.1.0"
 dependencies = [
  "angzarr-diagnostic",
@@ -771,26 +791,6 @@ dependencies = [
  "trees",
  "uuid",
  "worktree-git",
-]
-
-[[package]]
-name = "ctxloom-ports"
-version = "0.1.0"
-dependencies = [
- "angzarr-diagnostic",
-]
-
-[[package]]
-name = "ctxloom-store-sqlite"
-version = "0.1.0"
-dependencies = [
- "angzarr-diagnostic",
- "angzarr-embedded",
- "file-system",
- "os",
- "ports",
- "session-ports",
- "tokio",
 ]
 
 [[package]]

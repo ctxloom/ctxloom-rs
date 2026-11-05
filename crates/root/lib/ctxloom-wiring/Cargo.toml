@@ -1,5 +1,5 @@
 [package]
-name = "ctxloom-lib"
+name = "ctxloom-wiring"
 version = "0.1.0"
 description = "ctxloom's wiring: the core's ports over their default adapters, shared by the binary and the tests"
 edition.workspace = true
