@@ -277,7 +277,10 @@ impl Wiring {
                     self.locate().1,
                     &self.home,
                 )),
-                std::env::vars().collect(),
+                // Overrides are text: a variable that is not UTF-8 is none.
+                std::env::vars_os()
+                    .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
+                    .collect(),
             ),
         }
     }
