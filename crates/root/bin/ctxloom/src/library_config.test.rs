@@ -11,6 +11,7 @@
 //! question is in the S1 report.
 
 use super::library::{contains_value, reports_as, Project};
+use crate::tests::files;
 
 const FORMATS: [&[&str]; 3] = [&[], &["--format", "json"], &["--format", "text"]];
 
@@ -176,7 +177,7 @@ fn test_a_schema_7_config_migrates_in_memory_dropping_essence_max_chars() {
     assert_eq!(reports_as(&doc, "schema_version"), "8");
     assert_eq!(reports_as(&doc, "config.use_distilled"), "false");
     // The file is not touched: persisting an upgrade is --write-upgrades'.
-    let kept = std::fs::read_to_string(project.dir().join(".ctxloom/config.yaml")).unwrap();
+    let kept = files::read(project.dir().join(".ctxloom/config.yaml")).unwrap();
     assert!(kept.contains("essence_max_chars"), "{kept}");
 
     project.write(
@@ -298,7 +299,7 @@ fn test_without_a_project_the_home_config_is_the_whole_configuration() {
     );
     assert_eq!(reports_as(&ran.succeeds().json(), "command"), "nano");
     assert!(
-        !project.dir().join(".ctxloom").exists(),
+        !files::exists(project.dir().join(".ctxloom")),
         "reading creates nothing"
     );
 }

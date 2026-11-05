@@ -8,6 +8,7 @@
 //! an import over a skill that is there refuses (Go replaced it in silence).
 
 use super::library::{reports_as, Project};
+use crate::tests::files;
 
 const FORMATS: [&[&str]; 3] = [&[], &["--format", "json"], &["--format", "text"]];
 
@@ -299,7 +300,7 @@ fn test_a_skills_files_survive_export_and_import_byte_for_byte() {
         assert!(!project.is_executable(&format!("{LANDED}/skills/reviewer/assets/blob.bin")));
         project.file_is_absent("reviewer.zip.bak");
         project.run(&["bundle", "view", "landed"]).succeeds();
-        let _ = std::fs::remove_file(project.dir().join("reviewer.zip"));
+        let _ = files::fs().remove_file(&project.dir().join("reviewer.zip"));
     }
 }
 

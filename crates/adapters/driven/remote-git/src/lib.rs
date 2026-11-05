@@ -244,3 +244,7 @@ impl Remotes for GitRemotes {
 #[cfg(test)]
 #[path = "lib.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "fixtures.test.rs"]
+mod fixtures;

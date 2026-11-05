@@ -29,6 +29,7 @@ use std::path::PathBuf;
 use serde_json::Value;
 
 use super::{Env, Ran};
+use crate::tests::files;
 
 const HARP: &str = "amber-swift-owl";
 
@@ -98,9 +99,8 @@ impl Home {
     /// A summary an older ctxloom left in the session's output dir.
     fn leave_summary(&self, harp: &str) -> PathBuf {
         let dir = self.output_dir(harp);
-        std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("essence.md");
-        std::fs::write(&file, "an older ctxloom's summary\n").unwrap();
+        files::put(&file, "an older ctxloom's summary\n");
         file
     }
 
@@ -111,7 +111,7 @@ impl Home {
             .home()
             .join(".ctxloom/sessions")
             .join(format!("{harp}.lock"));
-        let file = File::open(path).expect("a lock file: seed with --lock free");
+        let file = files::open_read(path).expect("a lock file: seed with --lock free");
         file.lock().expect("the lock is free to take");
         file
     }
@@ -188,7 +188,7 @@ fn test_a_fresh_project_has_recorded_nothing() {
 #[test]
 fn test_reading_creates_nothing() {
     let home = Home::new();
-    let before = std::fs::read_dir(home.env.home()).unwrap().count();
+    let before = files::children(home.env.home()).len();
     for args in [
         &["session", "list"][..],
         &["session", "list", "--all"],
@@ -197,7 +197,7 @@ fn test_reading_creates_nothing() {
     ] {
         assert_eq!(home.run(args).code, 0, "{args:?}");
     }
-    assert_eq!(std::fs::read_dir(home.env.home()).unwrap().count(), before);
+    assert_eq!(files::children(home.env.home()).len(), before);
 }
 
 // session.feature: "Showing a session prints its record, titled by its first
@@ -389,13 +389,13 @@ fn test_keep_marks_the_listing_and_undo_releases_it() {
         "{}",
         removal.said()
     );
-    assert!(home.transcript_file(HARP).exists());
+    assert!(files::exists(home.transcript_file(HARP)));
     assert_eq!(home.run(&["session", "keep", HARP, "--undo"]).code, 0);
     let listed = rows(&home.run(&["session", "list", "--all", "--format", "json"]));
     assert!(row(&listed, HARP).get("kept").is_none());
     let removal = home.run(&["session", "remove", HARP, "--yes"]);
     assert_eq!(removal.code, 0, "{}", removal.said());
-    assert!(!home.transcript_file(HARP).exists());
+    assert!(!files::exists(home.transcript_file(HARP)));
 }
 
 #[test]
@@ -421,7 +421,7 @@ fn test_remove_reports_before_it_removes() {
         all.contains("ctxloom session remove amber-swift-owl --yes"),
         "{all}"
     );
-    assert!(home.transcript_file(HARP).exists());
+    assert!(files::exists(home.transcript_file(HARP)));
     let listed = home.run(&["session", "list", "--all"]);
     assert!(said(&listed).contains(HARP), "{}", listed.said());
 }
@@ -435,8 +435,8 @@ fn test_remove_yes_takes_the_index_entry_and_the_transcript_and_leaves_the_outpu
     let essence = home.leave_summary(HARP);
     let ran = home.run(&["session", "remove", HARP, "--yes"]);
     assert_eq!(ran.code, 0, "{}", ran.said());
-    assert!(!home.transcript_file(HARP).exists());
-    assert!(essence.exists(), "the output dir is the human's");
+    assert!(!files::exists(home.transcript_file(HARP)));
+    assert!(files::exists(&essence), "the output dir is the human's");
     let listed = home.run(&["session", "list", "--all"]);
     assert!(!said(&listed).contains(HARP), "{}", listed.said());
 }
@@ -453,7 +453,7 @@ fn test_remove_within_the_retention_is_refused() {
     let ran = home.run(&["session", "remove", "brisk-copper-moth", "--yes"]);
     assert_ne!(ran.code, 0, "{}", ran.said());
     assert!(said(&ran).contains("retention"), "{}", ran.said());
-    assert!(home.transcript_file("brisk-copper-moth").exists());
+    assert!(files::exists(home.transcript_file("brisk-copper-moth")));
 }
 
 // session.feature: "A session the lock cannot prove finished is refused, and
@@ -483,10 +483,10 @@ fn test_remove_of_a_session_the_lock_cannot_prove_dead_is_refused_and_the_escape
         "{}",
         ran.said()
     );
-    assert!(home.transcript_file(HARP).exists());
+    assert!(files::exists(home.transcript_file(HARP)));
     let anyway = home.run(&["session", "remove", HARP, "--yes", "--even-if-live"]);
     assert_eq!(anyway.code, 0, "{}", anyway.said());
-    assert!(!home.transcript_file(HARP).exists());
+    assert!(!files::exists(home.transcript_file(HARP)));
 }
 
 // --------------------------------------------------------------- transcript
@@ -611,11 +611,10 @@ fn test_edit_name_renames_the_harp_and_moves_its_output_folder() {
     let ran = home.run(&["session", "edit", HARP, "--name", "bright-keen-hawk"]);
     assert_eq!(ran.code, 0, "{}", ran.said());
     assert!(said(&ran).contains("bright-keen-hawk"), "{}", ran.said());
-    assert!(home
-        .output_dir("bright-keen-hawk")
-        .join("essence.md")
-        .exists());
-    assert!(!essence.exists());
+    assert!(files::exists(
+        home.output_dir("bright-keen-hawk").join("essence.md")
+    ));
+    assert!(!files::exists(&essence));
     let listed = rows(&home.run(&["session", "list", "--all"]));
     assert!(harps(&listed).contains(&"bright-keen-hawk".to_string()));
     assert!(!harps(&listed).contains(&HARP.to_string()));
@@ -719,14 +718,13 @@ impl Home {
     /// project this home is (the seed registers it).
     fn go_sessions(&self) -> Vec<(PathBuf, String)> {
         self.seed("registered-project-marker", &[]);
-        let work_root = std::fs::canonicalize(self.env.home()).unwrap();
+        let work_root = files::canonical(self.env.home());
         GO_SIDECARS
             .iter()
             .map(|(harp, text)| {
                 let dir = self.session_dir(harp);
-                std::fs::create_dir_all(&dir).unwrap();
                 let body = text.replace("/work/proj", &work_root.display().to_string());
-                std::fs::write(dir.join("session.yaml"), &body).unwrap();
+                files::put(dir.join("session.yaml"), &body);
                 (dir.join("session.yaml"), body)
             })
             .collect()
@@ -758,7 +756,7 @@ fn test_import_gives_the_listing_go_gives_for_each_sidecar_generation() {
 
     // Go's directories are read, never written.
     for (path, body) in planted {
-        assert_eq!(std::fs::read_to_string(path).unwrap(), body);
+        assert_eq!(files::read(path).unwrap(), body);
     }
 }
 

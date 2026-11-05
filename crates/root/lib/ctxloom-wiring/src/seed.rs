@@ -245,10 +245,8 @@ impl Wiring {
         if let Some(ago) = seed.ended_ago {
             let at = SystemTime::now() - Duration::from_secs(ago);
             for path in written {
-                let real = self.fs.real_path(&path).map_err(seed_error)?;
-                std::fs::OpenOptions::new()
-                    .write(true)
-                    .open(real)
+                self.fs
+                    .open(&path, Open::Append(Mode::from_bits(0o600)))
                     .and_then(|file| file.set_modified(at))
                     .map_err(seed_error)?;
             }

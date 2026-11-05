@@ -93,7 +93,7 @@ pub(crate) fn container(
     let library = Rc::new(crate::library::build(None).map_err(wired)?);
     let flags = call.globals.clone();
     let containers = Containers::new(
-        HostRuntimes::from_process(),
+        HostRuntimes::from_process(wiring.fs()),
         Engines {
             names: crate::commands::engines().names(),
             library: Rc::clone(&library),

@@ -1,5 +1,10 @@
 //! Whether this process is inside a container.
 
+use std::path::Path;
+use std::sync::Arc;
+
+use file_system::Fs;
+
 /// What the markers are read through, so a test never touches the real
 /// `/proc`, the sentinel files or the process environment (CI itself runs
 /// inside containers).
@@ -42,16 +47,26 @@ pub fn markers_from(machine: &dyn Machine) -> Vec<String> {
     markers
 }
 
-/// The real machine: the filesystem and the process environment.
-pub struct Real;
+/// The real machine: the filesystem, through the file-system seam, and the
+/// process environment.
+pub struct Real {
+    fs: Arc<dyn Fs>,
+}
+
+impl Real {
+    /// The machine whose files are `fs`'s.
+    pub fn new(fs: Arc<dyn Fs>) -> Real {
+        Real { fs }
+    }
+}
 
 impl Machine for Real {
     fn exists(&self, path: &str) -> bool {
-        std::path::Path::new(path).exists()
+        self.fs.exists(Path::new(path)).unwrap_or(false)
     }
 
     fn read(&self, path: &str) -> Option<String> {
-        std::fs::read_to_string(path).ok()
+        self.fs.read_to_string(Path::new(path)).ok()
     }
 
     fn var(&self, name: &str) -> String {

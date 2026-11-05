@@ -12,6 +12,9 @@ use super::{
     branch_of, checkout_name, is_name, nested_under, same_path, sanitize, GitWorkspaces, Listed,
     EXCLUDE_HEADER,
 };
+use crate::fixtures::{
+    canonical, exists, fs, is_dir, link, mkdirs, put, put_exec, root, runs_scripts, slurp,
+};
 
 const PATTERNS: [&str; 5] = [
     ".ctxloom/cache/",
@@ -48,20 +51,20 @@ fn git(dir: &Path, args: &[&str]) -> String {
 
 /// A home with a git-backed project.
 struct Fixture {
-    _root: tempfile::TempDir,
+    _root: file_system::Rooted,
     home: PathBuf,
     project: PathBuf,
 }
 
 impl Fixture {
     fn new() -> Fixture {
-        let root = tempfile::tempdir().expect("a temporary directory");
-        let home = root.path().join("home");
-        let project = root.path().join("project");
-        std::fs::create_dir_all(&home).unwrap();
-        std::fs::create_dir_all(&project).unwrap();
+        let root = root();
+        let home = root.root().join("home");
+        let project = root.root().join("project");
+        mkdirs(&home);
+        mkdirs(&project);
         git(&project, &["init", "-q"]);
-        std::fs::write(project.join("README.md"), "hello\n").unwrap();
+        put(project.join("README.md"), "hello\n");
         git(&project, &["add", "-A"]);
         git(&project, &["commit", "-q", "-m", "initial"]);
         Fixture {
@@ -72,7 +75,7 @@ impl Fixture {
     }
 
     fn adapter(&self) -> GitWorkspaces {
-        GitWorkspaces::new(&self.home)
+        GitWorkspaces::new(fs(), &self.home)
     }
 
     fn work_dir(&self, harp: &str) -> PathBuf {
@@ -133,7 +136,7 @@ fn a_worktree_run_gets_its_own_branch_in_the_sessions_work_dir() {
         &["rev-parse", "--abbrev-ref", "HEAD"],
     );
     assert_eq!(branch.trim(), "ctxloom/reviewer");
-    assert!(Path::new(&checkout.path).join("README.md").exists());
+    assert!(exists(Path::new(&checkout.path).join("README.md")));
 }
 
 // j002200 "Two isolated runs share no workspace between them".
@@ -154,7 +157,7 @@ fn two_isolated_runs_share_no_workspace() {
 fn a_worktree_outside_git_is_unavailable_not_a_refusal() {
     let f = Fixture::new();
     let plain = f.home.join("plain");
-    std::fs::create_dir_all(&plain).unwrap();
+    mkdirs(&plain);
     let mut request = f.request("amber-quiet-heron", "reviewer");
     request.project_dir = plain.display().to_string();
     match f.adapter().prepare(&request) {
@@ -172,15 +175,15 @@ fn the_per_agent_config_never_appears_in_the_projects_git_status() {
     let f = Fixture::new();
     let checkout = f.prepared("amber-quiet-heron", "reviewer");
     let wt = Path::new(&checkout.path);
-    std::fs::create_dir_all(wt.join(".claude")).unwrap();
-    std::fs::write(wt.join(".claude/settings.json"), "{}").unwrap();
-    std::fs::write(wt.join("CLAUDE.md"), "context").unwrap();
-    std::fs::write(wt.join(".mcp.json"), "{}").unwrap();
-    std::fs::create_dir_all(wt.join(".ctxloom/cache")).unwrap();
-    std::fs::write(wt.join(".ctxloom/cache/x"), "x").unwrap();
+    mkdirs(wt.join(".claude"));
+    put(wt.join(".claude/settings.json"), "{}");
+    put(wt.join("CLAUDE.md"), "context");
+    put(wt.join(".mcp.json"), "{}");
+    mkdirs(wt.join(".ctxloom/cache"));
+    put(wt.join(".ctxloom/cache/x"), "x");
     assert_eq!(git(&f.project, &["status", "--porcelain"]).trim(), "");
     assert_eq!(git(wt, &["status", "--porcelain"]).trim(), "");
-    let exclude = std::fs::read_to_string(f.project.join(".git/info/exclude")).unwrap();
+    let exclude = slurp(f.project.join(".git/info/exclude"));
     assert!(exclude.contains(EXCLUDE_HEADER), "{exclude}");
     for pattern in PATTERNS {
         assert!(exclude.contains(pattern), "{pattern} in {exclude}");
@@ -193,7 +196,7 @@ fn preparing_twice_writes_the_exclude_block_once() {
     let f = Fixture::new();
     f.prepared("amber-quiet-heron", "one");
     f.prepared("amber-quiet-heron", "two");
-    let exclude = std::fs::read_to_string(f.project.join(".git/info/exclude")).unwrap();
+    let exclude = slurp(f.project.join(".git/info/exclude"));
     assert_eq!(exclude.matches(EXCLUDE_HEADER).count(), 1, "{exclude}");
     assert_eq!(exclude.matches("CLAUDE.md").count(), 1, "{exclude}");
 }
@@ -204,11 +207,11 @@ fn preparing_twice_writes_the_exclude_block_once() {
 fn a_resume_re_enters_the_agents_own_checkout() {
     let f = Fixture::new();
     let first = f.prepared("amber-quiet-heron", "reviewer");
-    std::fs::write(Path::new(&first.path).join("wip.txt"), "in flight").unwrap();
+    put(Path::new(&first.path).join("wip.txt"), "in flight");
     let again = f.prepared("amber-quiet-heron", "reviewer");
     assert!(again.reused);
     assert_eq!(again.path, first.path);
-    assert!(Path::new(&again.path).join("wip.txt").exists());
+    assert!(exists(Path::new(&again.path).join("wip.txt")));
 }
 
 // Go: a path collision is not proof of ownership: anything else at the path
@@ -217,17 +220,14 @@ fn a_resume_re_enters_the_agents_own_checkout() {
 fn something_else_at_the_agents_path_is_refused_and_left_alone() {
     let f = Fixture::new();
     let path = f.work_dir("amber-quiet-heron").join("ctxloom-wt-reviewer");
-    std::fs::create_dir_all(&path).unwrap();
-    std::fs::write(path.join("mine.txt"), "mine").unwrap();
+    mkdirs(&path);
+    put(path.join("mine.txt"), "mine");
     let refused = f
         .adapter()
         .prepare(&f.request("amber-quiet-heron", "reviewer"))
         .unwrap_err();
     assert_eq!(refused.code(), "worktree-git-unadoptable");
-    assert_eq!(
-        std::fs::read_to_string(path.join("mine.txt")).unwrap(),
-        "mine"
-    );
+    assert_eq!(slurp(path.join("mine.txt")), "mine");
 }
 
 // Go: findWorkWorktrees: only ctxloom-wt-* directories directly under a
@@ -237,8 +237,8 @@ fn scratch_lists_only_ctxloom_checkouts_under_session_work_dirs() {
     let f = Fixture::new();
     let a = f.prepared("amber-quiet-heron", "a");
     let b = f.prepared("brisk-copper-moth", "b");
-    std::fs::create_dir_all(f.work_dir("amber-quiet-heron").join("ctxloom-tmp-a")).unwrap();
-    std::fs::write(f.work_dir("amber-quiet-heron").join("ctxloom-wt-file"), "x").unwrap();
+    mkdirs(f.work_dir("amber-quiet-heron").join("ctxloom-tmp-a"));
+    put(f.work_dir("amber-quiet-heron").join("ctxloom-wt-file"), "x");
     let foreign = f.home.join("workspace/worktrees/proj--stale");
     git(
         &f.project,
@@ -272,7 +272,7 @@ fn scratch_of_a_home_where_nothing_ever_ran_is_empty() {
 #[test]
 fn a_session_is_known_by_its_directory() {
     let f = Fixture::new();
-    std::fs::create_dir_all(f.home.join(".ctxloom/sessions/amber-swift-owl")).unwrap();
+    mkdirs(f.home.join(".ctxloom/sessions/amber-swift-owl"));
     let ws = f.adapter();
     assert!(ws.session_known("amber-swift-owl").unwrap());
     assert!(!ws.session_known("nobody").unwrap());
@@ -287,13 +287,13 @@ fn inspect_reads_clean_dirty_and_ignored_only_trees() {
     let clean = f.prepared("amber-quiet-heron", "clean");
     let dirty = f.prepared("amber-quiet-heron", "dirty");
     let ignored = f.prepared("amber-quiet-heron", "ignored");
-    std::fs::write(Path::new(&dirty.path).join("in-flight.go"), "// wip\n").unwrap();
-    std::fs::write(Path::new(&ignored.path).join("CLAUDE.md"), "ignored\n").unwrap();
+    put(Path::new(&dirty.path).join("in-flight.go"), "// wip\n");
+    put(Path::new(&ignored.path).join("CLAUDE.md"), "ignored\n");
     let ws = f.adapter();
     assert_eq!(
         ws.inspect(&clean.path),
         Standing::Resolved {
-            repo_dir: f.project.canonicalize().unwrap().display().to_string(),
+            repo_dir: canonical(&f.project).display().to_string(),
             safety: Safety::Clean
         }
     );
@@ -317,7 +317,7 @@ fn inspect_reads_clean_dirty_and_ignored_only_trees() {
 fn inspect_of_a_directory_in_no_repository_is_unresolved() {
     let f = Fixture::new();
     let plain = f.home.join("plain");
-    std::fs::create_dir_all(&plain).unwrap();
+    mkdirs(&plain);
     assert!(matches!(
         f.adapter().inspect(&plain.display().to_string()),
         Standing::Unresolved(_)
@@ -332,7 +332,7 @@ fn removing_a_clean_checkout_removes_it_its_registration_and_its_merged_branch()
     let checkout = f.prepared("amber-quiet-heron", "clean");
     let removal = f.adapter().remove(&checkout.repo_dir, &checkout.path);
     assert_eq!(removal, Removal::Removed);
-    assert!(!Path::new(&checkout.path).exists());
+    assert!(!exists(&checkout.path));
     let listed = git(&f.project, &["worktree", "list", "--porcelain"]);
     assert!(!listed.contains("ctxloom-wt-clean"), "{listed}");
     let branches = git(&f.project, &["branch", "--list", "ctxloom/clean"]);
@@ -349,7 +349,7 @@ fn an_unmerged_branch_is_kept() {
     let f = Fixture::new();
     let checkout = f.prepared("amber-quiet-heron", "work");
     let wt = Path::new(&checkout.path);
-    std::fs::write(wt.join("feature.txt"), "feature").unwrap();
+    put(wt.join("feature.txt"), "feature");
     git(wt, &["add", "-A"]);
     git(wt, &["commit", "-q", "-m", "feature"]);
     assert_eq!(
@@ -367,10 +367,10 @@ fn removing_a_checkout_with_uncommitted_work_leaves_it_in_place() {
     let f = Fixture::new();
     let checkout = f.prepared("amber-quiet-heron", "wip");
     let wip = Path::new(&checkout.path).join("in-flight.go");
-    std::fs::write(&wip, "// WIP-MARKER\n").unwrap();
+    put(&wip, "// WIP-MARKER\n");
     let removal = f.adapter().remove(&checkout.repo_dir, &checkout.path);
     assert!(matches!(removal, Removal::Left(_)), "{removal:?}");
-    assert_eq!(std::fs::read_to_string(&wip).unwrap(), "// WIP-MARKER\n");
+    assert_eq!(slurp(&wip), "// WIP-MARKER\n");
     let listed = git(&f.project, &["worktree", "list", "--porcelain"]);
     assert!(listed.contains("ctxloom-wt-wip"), "{listed}");
 }
@@ -392,21 +392,21 @@ fn a_dirty_nested_worktree_keeps_its_parent_in_place() {
             &inner.display().to_string(),
         ],
     );
-    std::fs::write(inner.join("nested-wip.txt"), "nested").unwrap();
+    put(inner.join("nested-wip.txt"), "nested");
     let removal = f.adapter().remove(&parent.repo_dir, &parent.path);
     assert!(matches!(removal, Removal::Left(_)), "{removal:?}");
-    assert!(inner.join("nested-wip.txt").exists());
+    assert!(exists(inner.join("nested-wip.txt")));
 }
 
 fn exclude_of(f: &Fixture) -> String {
-    std::fs::read_to_string(f.project.join(".git/info/exclude")).unwrap()
+    slurp(f.project.join(".git/info/exclude"))
 }
 
 #[test]
 fn a_directory_outside_git_says_it_is_not_a_repository() {
     let f = Fixture::new();
     let plain = f.home.join("plain");
-    std::fs::create_dir_all(&plain).unwrap();
+    mkdirs(&plain);
     let mut request = f.request("amber-quiet-heron", "reviewer");
     request.project_dir = plain.display().to_string();
     let why = match f.adapter().prepare(&request) {
@@ -451,7 +451,7 @@ fn a_checkout_registered_on_another_branch_is_refused() {
 #[test]
 fn the_exclude_block_starts_a_fresh_file_without_a_blank_line() {
     let f = Fixture::new();
-    std::fs::write(f.project.join(".git/info/exclude"), "").unwrap();
+    put(f.project.join(".git/info/exclude"), "");
     f.prepared("amber-quiet-heron", "one");
     assert!(
         exclude_of(&f).starts_with(EXCLUDE_HEADER),
@@ -463,7 +463,7 @@ fn the_exclude_block_starts_a_fresh_file_without_a_blank_line() {
 #[test]
 fn the_exclude_block_follows_an_unterminated_line_on_a_line_of_its_own() {
     let f = Fixture::new();
-    std::fs::write(f.project.join(".git/info/exclude"), "mine").unwrap();
+    put(f.project.join(".git/info/exclude"), "mine");
     f.prepared("amber-quiet-heron", "one");
     assert!(
         exclude_of(&f).starts_with(&format!("mine\n{EXCLUDE_HEADER}\n")),
@@ -475,7 +475,7 @@ fn the_exclude_block_follows_an_unterminated_line_on_a_line_of_its_own() {
 #[test]
 fn the_exclude_block_follows_a_terminated_line_with_no_blank_between() {
     let f = Fixture::new();
-    std::fs::write(f.project.join(".git/info/exclude"), "mine\n").unwrap();
+    put(f.project.join(".git/info/exclude"), "mine\n");
     f.prepared("amber-quiet-heron", "one");
     assert!(
         exclude_of(&f).starts_with(&format!("mine\n{EXCLUDE_HEADER}\n")),
@@ -488,14 +488,14 @@ fn the_exclude_block_follows_a_terminated_line_with_no_blank_between() {
 #[test]
 fn a_tracked_config_path_is_marked_skip_worktree() {
     let f = Fixture::new();
-    std::fs::write(f.project.join("CLAUDE.md"), "tracked").unwrap();
+    put(f.project.join("CLAUDE.md"), "tracked");
     git(&f.project, &["add", "-A"]);
     git(&f.project, &["commit", "-q", "-m", "tracked config"]);
     let checkout = f.prepared("amber-quiet-heron", "reviewer");
     let wt = Path::new(&checkout.path);
     let flags = git(wt, &["ls-files", "-v", "CLAUDE.md"]);
     assert!(flags.starts_with("S "), "{flags}");
-    std::fs::write(wt.join("CLAUDE.md"), "overwritten by the run").unwrap();
+    put(wt.join("CLAUDE.md"), "overwritten by the run");
     assert_eq!(git(wt, &["status", "--porcelain"]).trim(), "");
 }
 
@@ -503,8 +503,8 @@ fn a_tracked_config_path_is_marked_skip_worktree() {
 fn a_work_dir_that_cannot_be_read_is_an_error_for_its_own_session() {
     let f = Fixture::new();
     let work = f.work_dir("amber-quiet-heron");
-    std::fs::create_dir_all(work.parent().unwrap()).unwrap();
-    std::fs::write(&work, "not a directory").unwrap();
+    mkdirs(work.parent().unwrap());
+    put(&work, "not a directory");
     let error = f.adapter().scratch(Some("amber-quiet-heron")).unwrap_err();
     assert_eq!(error.code(), "worktree-git-unreadable");
 }
@@ -522,24 +522,27 @@ fn only_a_single_path_segment_names_a_session() {
 
 #[test]
 fn paths_are_the_same_when_equal_or_when_they_resolve_alike() {
-    let dir = tempfile::tempdir().unwrap();
-    let real = dir.path().join("real");
-    std::fs::create_dir(&real).unwrap();
-    let link = dir.path().join("link");
-    std::os::unix::fs::symlink(&real, &link).unwrap();
-    let gone = dir.path().join("gone");
-    assert!(same_path(&gone, &gone), "equal, though neither exists");
-    assert!(same_path(&real, &link));
-    assert!(!same_path(&real, &gone));
+    let dir = root();
+    let real = dir.root().join("real");
+    mkdirs(&real);
+    let link_path = dir.root().join("link");
+    link(&real, &link_path);
+    let gone = dir.root().join("gone");
+    assert!(
+        same_path(&*fs(), &gone, &gone),
+        "equal, though neither exists"
+    );
+    assert!(same_path(&*fs(), &real, &link_path));
+    assert!(!same_path(&*fs(), &real, &gone));
 }
 
 #[test]
 fn worktrees_nested_under_a_symlinked_target_are_found_by_their_resolved_paths() {
-    let dir = tempfile::tempdir().unwrap();
-    let real = dir.path().join("real");
-    std::fs::create_dir(&real).unwrap();
-    let link = dir.path().join("link");
-    std::os::unix::fs::symlink(&real, &link).unwrap();
+    let dir = root();
+    let real = dir.root().join("real");
+    mkdirs(&real);
+    let link_path = dir.root().join("link");
+    link(&real, &link_path);
     let listed = vec![
         Listed {
             path: real.clone(),
@@ -550,11 +553,14 @@ fn worktrees_nested_under_a_symlinked_target_are_found_by_their_resolved_paths()
             branch: None,
         },
         Listed {
-            path: dir.path().join("elsewhere"),
+            path: dir.root().join("elsewhere"),
             branch: None,
         },
     ];
-    assert_eq!(nested_under(&listed, &link), vec![real.join("inner")]);
+    assert_eq!(
+        nested_under(&*fs(), &listed, &link_path),
+        vec![real.join("inner")]
+    );
 }
 
 #[test]
@@ -577,7 +583,7 @@ fn a_clean_nested_worktree_is_removed_with_its_parent() {
         f.adapter().remove(&parent.repo_dir, &parent.path),
         Removal::Removed
     );
-    assert!(!inner.exists());
+    assert!(!exists(&inner));
     let listed = git(&f.project, &["worktree", "list", "--porcelain"]);
     assert!(!listed.contains("inner"), "{listed}");
 }
@@ -585,7 +591,6 @@ fn a_clean_nested_worktree_is_removed_with_its_parent() {
 // S11 hardening: a hung git stops the run with a diagnostic, and never reads
 // as "not a repository", "clean" or "removed".
 mod hung_git {
-    use std::os::unix::fs::PermissionsExt;
     use std::time::Duration;
 
     use super::*;
@@ -593,15 +598,14 @@ mod hung_git {
 
     /// A workspace whose git is a script that never finishes, with a tiny
     /// limit, over the fixture's home.
-    fn hung(fixture: &Fixture) -> (tempfile::TempDir, GitWorkspaces) {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("git");
-        std::fs::write(&path, "#!/bin/sh\nexec sleep 30\n").unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let git = Git::new(path, Duration::from_millis(20));
+    fn hung(fixture: &Fixture) -> (file_system::Rooted, GitWorkspaces) {
+        let dir = root();
+        let path = dir.root().join("git");
+        put_exec(&path, "#!/bin/sh\nexec sleep 30\n");
+        let git = Git::new(fs(), path, Duration::from_millis(20));
         // Run once, so the script is past the moment another thread's fork
         // may hold it open for writing (ETXTBSY); every use after is plain.
-        while matches!(git.run(dir.path(), &["warm"]), Err(GitError::Said(why)) if why.contains("busy"))
+        while matches!(git.run(dir.root(), &["warm"]), Err(GitError::Said(why)) if why.contains("busy"))
         {
             std::thread::yield_now();
         }
@@ -610,6 +614,9 @@ mod hung_git {
 
     #[test]
     fn preparing_with_a_hung_git_fails_with_the_timeout_not_a_degrade() {
+        if !runs_scripts() {
+            return;
+        }
         let fixture = Fixture::new();
         let (_stub, workspaces) = hung(&fixture);
         let request = fixture.request("amber-quiet-heron", "member-1");
@@ -617,14 +624,18 @@ mod hung_git {
             panic!("a hung git was read as an answer");
         };
         assert_eq!(failure.code(), "worktree-git-git-timed-out");
-        assert!(!fixture
-            .work_dir("amber-quiet-heron")
-            .join(checkout_name("member-1"))
-            .exists());
+        assert!(!exists(
+            fixture
+                .work_dir("amber-quiet-heron")
+                .join(checkout_name("member-1"))
+        ));
     }
 
     #[test]
     fn inspecting_with_a_hung_git_resolves_nothing() {
+        if !runs_scripts() {
+            return;
+        }
         let fixture = Fixture::new();
         let (_stub, workspaces) = hung(&fixture);
         let standing = workspaces.inspect(&fixture.project.display().to_string());
@@ -636,6 +647,9 @@ mod hung_git {
 
     #[test]
     fn removing_with_a_hung_git_leaves_the_checkout_in_place() {
+        if !runs_scripts() {
+            return;
+        }
         let fixture = Fixture::new();
         let checkout = fixture.prepared("amber-quiet-heron", "member-1");
         let (_stub, workspaces) = hung(&fixture);
@@ -643,6 +657,6 @@ mod hung_git {
             panic!("a hung git removed a checkout");
         };
         assert!(why.contains("did not finish within 20ms"), "{why}");
-        assert!(Path::new(&checkout.path).is_dir());
+        assert!(is_dir(&checkout.path));
     }
 }

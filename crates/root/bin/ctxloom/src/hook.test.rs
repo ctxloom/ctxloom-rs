@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use super::{binary, Env, Ran};
+use crate::tests::files;
 
 impl Env {
     /// Run `ctxloom args` with `stdin` on its standard input and `vars` in its
@@ -48,17 +49,13 @@ impl Env {
 /// Every path under `dir`, relative to it, sorted.
 fn tree(dir: &Path) -> Vec<PathBuf> {
     fn walk(dir: &Path, root: &Path, found: &mut Vec<PathBuf>) {
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
+        for path in files::children(dir) {
             found.push(
                 path.strip_prefix(root)
                     .expect("under the root")
                     .to_path_buf(),
             );
-            if path.is_dir() {
+            if files::is_dir(&path) {
                 walk(&path, root, found);
             }
         }

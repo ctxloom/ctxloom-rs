@@ -123,6 +123,14 @@ pub trait Executables {
     fn find(&self, name: &str) -> Option<String>;
 }
 
+/// The environment ctxloom was launched in, as far as credentials go: whether
+/// a variable is exported with a value, and nothing more. The value is not on
+/// offer, so no use case can print or store it.
+pub trait ExportedVars {
+    /// Whether `name` is exported with a non-empty value.
+    fn is_exported(&self, name: &str) -> bool;
+}
+
 /// Where the configuration came from.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Source {

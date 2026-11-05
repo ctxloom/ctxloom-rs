@@ -10,6 +10,7 @@
 use serde_json::Value;
 
 use super::library::{contains_value, entries, reports_as, Project, MINIMAL_CONFIG};
+use crate::tests::files;
 
 /// An outline's `<flags>` column: the three rows every `@json-default` table has.
 const FORMATS: [&[&str]; 3] = [&[], &["--format", "json"], &["--format", "text"]];
@@ -315,15 +316,7 @@ fn vault_with_reviewer() -> Project {
     );
     let script = format!("{SKILL_ROOT}/skills/reviewer/scripts/run.sh");
     project.write(&script, "#!/bin/sh\n# SCRIPT-MARKER-reviewer-2b7e40\n");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(
-            project.dir().join(&script),
-            std::fs::Permissions::from_mode(0o755),
-        )
-        .expect("the script made executable");
-    }
+    files::set_mode(project.dir().join(&script), 0o755);
     project.write(
         &format!("{SKILL_ROOT}/skills/.reviewer.meta.yaml"),
         "executable:\n  - scripts/run.sh\n",
@@ -758,14 +751,8 @@ fn test_list_answers_which_binary_each_registered_name_resolves_to() {
         "schema_version: 8\ncompanions: [acme]\n",
     );
     let bin = project.dir().join("bin");
-    std::fs::create_dir_all(&bin).unwrap();
     let exe = bin.join("ctxloom-companion-acme");
-    std::fs::write(&exe, "#!/bin/sh\n").unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
+    files::put_exec(&exe, "#!/bin/sh\n");
     let path = format!(
         "{}:{}",
         bin.display(),
@@ -1126,11 +1113,14 @@ fn test_the_project_is_the_nearest_ctxloom_up_from_the_working_directory() {
     let project = Project::initialized();
     project.bundle("demo");
     let deeper = project.dir().join("sub/deeper");
-    std::fs::create_dir_all(&deeper).unwrap();
+    files::mkdirs(&deeper);
     let ran = project.run_in(&deeper, &["bundle", "list", "--format", "json"]);
     ran.succeeds();
     assert_eq!(reports_as(&ran.json(), "[name=demo].version"), "1.0.0");
-    assert!(!deeper.join(".ctxloom").exists(), "reading creates nothing");
+    assert!(
+        !files::exists(deeper.join(".ctxloom")),
+        "reading creates nothing"
+    );
 }
 
 // docs/environment.md: the minimal config is all a project needs

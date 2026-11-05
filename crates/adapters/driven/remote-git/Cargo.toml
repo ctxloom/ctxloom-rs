@@ -16,7 +16,6 @@ os.workspace = true
 
 [dev-dependencies]
 file-system = { workspace = true, features = ["test-support"] }
-tempfile.workspace = true
 
 [features]
 test-support = []

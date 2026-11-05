@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use angzarr_presentation::{write_json, Format};
 use cli_support::EXIT_REFUSED;
 use isolation_application::{IsolationError, WorktreeUse};
-use reclaim_application::{parse_age, ReclaimError, SweepRequest};
+use reclaim_application::{purge_cutoff, ReclaimError, SweepConfig, SweepRequest};
 use session_index::View;
 use sessions_application::{
     dead_letter_line, AppError, DeadLetter, ImportRequest, ImportService, KeepRequest, ListQuery,
@@ -56,7 +56,7 @@ impl Failure {
 }
 
 /// Run `session`'s command on `service`, writing its answer to `out`.
-pub fn run<S: SessionService + ImportService + WorktreeUse>(
+pub fn run<S: SessionService + ImportService + WorktreeUse + SweepConfig>(
     session: &Session,
     service: &mut S,
     format: Format,
@@ -135,7 +135,7 @@ fn rows(views: &[View], format: Format, out: &mut dyn Write) -> Result<Done, Fai
     Ok(Done::default())
 }
 
-async fn execute<S: SessionService + ImportService + WorktreeUse>(
+async fn execute<S: SessionService + ImportService + WorktreeUse + SweepConfig>(
     session: &Session,
     service: &mut S,
     format: Format,
@@ -362,7 +362,7 @@ async fn remove<S: SessionService + WorktreeUse>(
 
 /// `session sweep`: report every session's fate, and with `--yes` act on
 /// exactly that.
-async fn sweep<S: SessionService + WorktreeUse>(
+async fn sweep<S: SessionService + WorktreeUse + SweepConfig>(
     service: &mut S,
     args: &SweepArgs,
     format: Format,
@@ -375,12 +375,8 @@ async fn sweep<S: SessionService + WorktreeUse>(
         seconds: now,
         nanos: 0,
     };
-    let purge_cutoff = args
-        .purge_older_than
-        .as_deref()
-        .map(|age| parse_age("--purge-older-than", age, now))
-        .transpose()
-        .map_err(reclaim_failure)?;
+    let purge_cutoff =
+        purge_cutoff(args.purge_older_than.as_deref(), service, now).map_err(reclaim_failure)?;
     let report = reclaim_application::sweep(
         service,
         &SweepRequest {

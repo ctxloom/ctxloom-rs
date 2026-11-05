@@ -13,15 +13,17 @@ mod core_link;
 mod error;
 mod isolation;
 mod library;
+mod process_env;
 #[cfg(feature = "test-support")]
 mod seed;
 mod setup;
+mod sweep_config;
 
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use config_files::{find_app_dir, AppDir, Surroundings};
+use config_files::{find_app_dir, AppDir, ConfigFilesFs, Surroundings};
 use ctxloom_store_sqlite::{SqliteStores, Stores};
 use file_system::{Fs, Os};
 use harp_names::HarpNames;
@@ -29,6 +31,7 @@ use isolation_application::{IsolationError, Report, WorktreeUse, Worktrees};
 use liveness::LockFiles;
 use ports::Names;
 use project_registry::{Environment, ProjectRegistry};
+use reclaim_application::SweepConfig;
 use session_files::{GoDirs, SessionDirs};
 use sessions_application::{
     AppError, BindRequest, Bound, ImportReport, ImportRequest, ImportService, Importer,
@@ -47,8 +50,10 @@ pub use core_link::InProcessCore;
 pub use error::diagnostic_samples;
 pub use error::{LibError, EN_US};
 pub use library::LibraryCommands;
+pub use process_env::ProcessEnv;
 #[cfg(feature = "test-support")]
 pub use seed::Seed;
+pub use sweep_config::SweepSettings;
 
 /// A newly minted session's harp: two adjectives and a noun.
 pub fn session_name() -> String {
@@ -82,6 +87,14 @@ pub struct Sessions {
     pub importer: ImportUseCase,
     /// The scratch worktrees sessions left behind (S11).
     pub worktrees: Worktrees<GitWorkspaces, LockFiles>,
+    /// `session_purge_age`, for a sweep given no `--purge-older-than`.
+    pub settings: SweepSettings,
+}
+
+impl SweepConfig for Sessions {
+    fn purge_age(&mut self) -> Result<Option<String>, ctxloom_ports::Failure> {
+        self.settings.purge_age()
+    }
 }
 
 impl WorktreeUse for Sessions {
@@ -220,7 +233,7 @@ impl Wiring {
         PathSearch {
             fs: Arc::clone(&self.fs),
             dirs: std::env::var_os("PATH")
-                .map(|path| std::env::split_paths(&path).collect())
+                .map(|path| self.fs.os().flavor().split_search_path_os(&path))
                 .unwrap_or_default(),
         }
     }
@@ -255,8 +268,19 @@ impl Wiring {
                 System,
             ),
             worktrees: Worktrees::new(
-                GitWorkspaces::new(self.home.clone()),
+                GitWorkspaces::new(Arc::clone(&self.fs), self.home.clone()),
                 LockFiles::new(Arc::clone(&self.fs), self.home.clone()),
+            ),
+            settings: SweepSettings::new(
+                Arc::new(ConfigFilesFs::new(
+                    Arc::clone(&self.fs),
+                    self.locate().1,
+                    &self.home,
+                )),
+                // Overrides are text: a variable that is not UTF-8 is none.
+                std::env::vars_os()
+                    .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
+                    .collect(),
             ),
         }
     }
@@ -281,3 +305,7 @@ impl Wiring {
 #[cfg(test)]
 #[path = "lib.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "fixtures.test.rs"]
+mod fixtures;

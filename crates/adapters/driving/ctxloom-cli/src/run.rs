@@ -10,6 +10,7 @@ use clap::{Command, FromArgMatches};
 use cli_support::say_warning;
 use isolation_application::WorktreeUse;
 use library_application::Flags;
+use reclaim_application::SweepConfig;
 use serde::Serialize;
 use sessions_application::{BindRequest, ImportService, SessionService};
 
@@ -31,7 +32,7 @@ pub trait Services {
     /// The commands another crate owns, joined to this command line.
     fn extension(&mut self) -> &mut dyn Extension;
     /// The sessions use cases (`session` and the hooks that bind a session).
-    type Sessions: SessionService + ImportService + WorktreeUse;
+    type Sessions: SessionService + ImportService + WorktreeUse + SweepConfig;
 
     /// The sessions use cases, built when first asked for: a command that
     /// needs none (the statusline hook) works where there is no home.

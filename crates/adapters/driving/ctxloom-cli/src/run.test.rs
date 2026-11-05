@@ -102,6 +102,12 @@ impl SessionService for NoSessions {
 
 impl isolation_application::WorktreeUse for NoSessions {}
 
+impl reclaim_application::SweepConfig for NoSessions {
+    fn purge_age(&mut self) -> Result<Option<String>, ctxloom_ports::Failure> {
+        unreachable!("no session command is run here")
+    }
+}
+
 impl ImportService for NoSessions {
     async fn import(&mut self, _: ImportRequest) -> Result<ImportReport, AppError> {
         unreachable!("no session command is run here")

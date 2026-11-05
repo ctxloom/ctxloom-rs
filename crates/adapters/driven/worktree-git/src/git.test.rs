@@ -1,19 +1,18 @@
 //! Running git: which variables are scrubbed, and what a failure says.
 
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::time::Duration;
 
 use super::{environment, is_local, local_variables, Git, GitError, DEFAULT_TIMEOUT};
+use crate::fixtures::{exists, fs, put, put_exec, root, runs_scripts};
 
 /// A "git" that is a script, in a directory of its own.
-fn stub(body: &str) -> (tempfile::TempDir, Git, Duration) {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("git");
-    std::fs::write(&path, body).unwrap();
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+fn stub(body: &str) -> (file_system::Rooted, Git, Duration) {
+    let dir = root();
+    let path = dir.root().join("git");
+    put_exec(&path, body);
     let tiny = Duration::from_millis(20);
-    (dir, Git::new(path, tiny), tiny)
+    (dir, Git::new(fs(), path, tiny), tiny)
 }
 
 /// `git.run`, asked again while the system says the script is busy: another
@@ -29,7 +28,7 @@ fn settled(git: &Git, dir: &Path, args: &[&str]) -> Result<String, GitError> {
 }
 
 fn run(dir: &Path, args: &[&str]) -> Result<String, String> {
-    Git::default().run(dir, args).map_err(|e| e.to_string())
+    Git::on(fs()).run(dir, args).map_err(|e| e.to_string())
 }
 
 fn names(list: &[&str]) -> Option<Vec<String>> {
@@ -77,21 +76,21 @@ fn the_environment_keeps_the_callers_and_never_prompts() {
 
 #[test]
 fn a_silent_failure_is_named_by_the_command_not_its_flags() {
-    let dir = tempfile::tempdir().unwrap();
-    std::fs::write(dir.path().join("a"), "1").unwrap();
-    std::fs::write(dir.path().join("b"), "2").unwrap();
-    let said = run(dir.path(), &["diff", "--no-index", "--quiet", "a", "b"]).unwrap_err();
+    let dir = root();
+    put(dir.root().join("a"), "1");
+    put(dir.root().join("b"), "2");
+    let said = run(dir.root(), &["diff", "--no-index", "--quiet", "a", "b"]).unwrap_err();
     assert_eq!(said, "git diff: exit status: 1");
 }
 
 #[test]
 fn a_directory_that_cannot_be_entered_is_told_apart_from_a_missing_git() {
-    let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join("file");
-    std::fs::write(&file, "x").unwrap();
+    let dir = root();
+    let file = dir.root().join("file");
+    put(&file, "x");
     let said = run(&file, &["status"]).unwrap_err();
     assert!(said.starts_with("git status: "), "{said}");
-    let gone = run(&dir.path().join("gone"), &["status"]).unwrap_err();
+    let gone = run(&dir.root().join("gone"), &["status"]).unwrap_err();
     assert!(gone.starts_with("git status: "), "{gone}");
     assert!(
         !gone.contains("binary"),
@@ -102,17 +101,20 @@ fn a_directory_that_cannot_be_entered_is_told_apart_from_a_missing_git() {
 
 #[test]
 fn a_missing_git_is_named_as_one_whatever_the_directory() {
-    let dir = tempfile::tempdir().unwrap();
-    let git = Git::new(dir.path().join("no-such-git"), DEFAULT_TIMEOUT);
-    let said = git.run(dir.path(), &["status"]).unwrap_err().to_string();
+    let dir = root();
+    let git = Git::new(fs(), dir.root().join("no-such-git"), DEFAULT_TIMEOUT);
+    let said = git.run(dir.root(), &["status"]).unwrap_err().to_string();
     assert_eq!(said, "the git binary was not found on PATH");
 }
 
 // S11 hardening: a git that hangs is killed at its limit, not waited on.
 #[test]
 fn a_git_that_outlives_its_limit_is_killed_reaped_and_named() {
+    if !runs_scripts() {
+        return;
+    }
     let (dir, git, tiny) = stub("#!/bin/sh\nexec sleep 30\n");
-    let error = settled(&git, dir.path(), &["--no-pager", "status"]).unwrap_err();
+    let error = settled(&git, dir.root(), &["--no-pager", "status"]).unwrap_err();
     let GitError::TimedOut {
         command,
         timeout,
@@ -128,17 +130,18 @@ fn a_git_that_outlives_its_limit_is_killed_reaped_and_named() {
         "git status did not finish within 20ms and was killed"
     );
     // Reaped, not left a zombie: a reaped process has no /proc entry.
-    #[cfg(target_os = "linux")]
-    assert!(
-        !Path::new(&format!("/proc/{pid}")).exists(),
-        "pid {pid} was not reaped"
-    );
+    if exists("/proc/self") {
+        assert!(!exists(format!("/proc/{pid}")), "pid {pid} was not reaped");
+    }
 }
 
 #[test]
 fn a_timeout_is_a_diagnostic_and_a_failure_of_git_is_not() {
+    if !runs_scripts() {
+        return;
+    }
     let (dir, git, _) = stub("#!/bin/sh\nexec sleep 30\n");
-    let timed_out = settled(&git, dir.path(), &["status"]).unwrap_err();
+    let timed_out = settled(&git, dir.root(), &["status"]).unwrap_err();
     let diagnostic = timed_out.diagnostic().expect("a diagnostic");
     assert_eq!(
         crate::WorktreeError::GitTimedOut {
@@ -152,12 +155,15 @@ fn a_timeout_is_a_diagnostic_and_a_failure_of_git_is_not() {
 
 #[test]
 fn a_git_that_finishes_within_its_limit_is_not_disturbed() {
+    if !runs_scripts() {
+        return;
+    }
     // Output larger than a pipe's buffer, then a failure's own words.
     let (dir, _, _) = stub("#!/bin/sh\nif [ \"$1\" = fail ]; then echo oops >&2; exit 3; fi\nhead -c 200000 /dev/zero | tr '\\0' x\n");
-    let git = Git::new(dir.path().join("git"), Duration::from_secs(60));
-    let out = settled(&git, dir.path(), &["big"]).unwrap();
+    let git = Git::new(fs(), dir.root().join("git"), Duration::from_secs(60));
+    let out = settled(&git, dir.root(), &["big"]).unwrap();
     assert_eq!(out.len(), 200_000);
-    let said = settled(&git, dir.path(), &["fail"]).unwrap_err();
+    let said = settled(&git, dir.root(), &["fail"]).unwrap_err();
     assert_eq!(said, GitError::Said("oops".to_string()));
 }
 

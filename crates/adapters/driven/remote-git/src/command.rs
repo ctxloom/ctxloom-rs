@@ -130,7 +130,7 @@ fn drain<R: Read + Send + 'static>(pipe: Option<R>) -> std::thread::JoinHandle<V
 pub(crate) fn local_variables() -> &'static Option<Vec<String>> {
     static LOCAL: OnceLock<Option<Vec<String>>> = OnceLock::new();
     LOCAL.get_or_init(|| {
-        let top = if cfg!(windows) { "C:\\" } else { "/" };
+        let top = os::host().flavor().top();
         let output = output_within(
             Command::new("git")
                 .args(["rev-parse", "--local-env-vars"])

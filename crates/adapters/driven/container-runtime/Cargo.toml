@@ -8,11 +8,13 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+file-system.workspace = true
 isolation-ports.workspace = true
 
 [dev-dependencies]
+file-system = { workspace = true, features = ["test-support"] }
 mutants.workspace = true
-tempfile.workspace = true
+os = { workspace = true, features = ["test-support"] }
 
 [lints]
 workspace = true

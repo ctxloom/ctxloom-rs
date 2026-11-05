@@ -1,0 +1,19 @@
+[package]
+name = "auth-application"
+version = "0.1.0"
+description = "ctxloom auth status (S12): whether each engine's credential is exported, never its value; shared with the doctor's credentials check"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+ctxloom-ports.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+mutants.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

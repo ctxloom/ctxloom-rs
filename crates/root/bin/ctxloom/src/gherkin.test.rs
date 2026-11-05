@@ -14,8 +14,9 @@ use cucumber::gherkin::Step;
 use cucumber::{given, then, when, World as _};
 use serde_json::Value;
 
-use super::library::{at, Project};
+use super::library::{at, reports_as, Project};
 use super::Ran;
+use crate::tests::files;
 
 const DAY: u64 = 86_400;
 
@@ -138,12 +139,10 @@ impl World {
             }
             if session.summary {
                 let dir = self.output_dir(&session.harp);
-                std::fs::create_dir_all(&dir).expect("the output dir");
-                std::fs::write(dir.join("essence.md"), "an older ctxloom's summary\n")
-                    .expect("a summary");
+                files::put(dir.join("essence.md"), "an older ctxloom's summary\n");
             }
             if session.kind == "running" {
-                let lock = File::open(
+                let lock = files::open_read(
                     self.project
                         .home()
                         .join(".ctxloom/sessions")
@@ -190,11 +189,11 @@ impl World {
     /// Make the project a git repository, once, with one commit.
     fn git_backed(&self) {
         let project = self.project.dir();
-        if project.join(".git").exists() {
+        if files::exists(project.join(".git")) {
             return;
         }
         self.git(project, &["init", "-q"]);
-        std::fs::write(project.join("README.md"), "hello\n").expect("a file");
+        files::put(project.join("README.md"), "hello\n");
         self.git(project, &["add", "README.md"]);
         self.git(project, &["commit", "-q", "-m", "initial"]);
     }
@@ -234,13 +233,12 @@ impl World {
                 ],
             );
             if dirty {
-                std::fs::write(dir.join("in-flight.go"), format!("// {WIP_MARKER}\n"))
-                    .expect("uncommitted work");
+                files::put(dir.join("in-flight.go"), format!("// {WIP_MARKER}\n"));
             }
             self.planted_scratch.push((harp, name, dirty));
         }
         for (branch, dir) in std::mem::take(&mut self.foreign) {
-            std::fs::create_dir_all(dir.parent().expect("a parent")).expect("a parent");
+            files::mkdirs(dir.parent().expect("a parent"));
             self.git(
                 self.project.dir(),
                 &[
@@ -252,15 +250,19 @@ impl World {
                     &dir.display().to_string(),
                 ],
             );
-            std::fs::write(dir.join("feature.txt"), "unmerged work\n").expect("a file");
+            files::put(dir.join("feature.txt"), "unmerged work\n");
             self.git(&dir, &["add", "-A"]);
             self.git(&dir, &["commit", "-q", "-m", "unmerged feature work"]);
-            std::fs::write(dir.join("uncommitted.txt"), format!("{WIP_MARKER}\n")).expect("a file");
+            files::put(dir.join("uncommitted.txt"), format!("{WIP_MARKER}\n"));
             self.planted_foreign.push(dir);
         }
     }
 
     fn run(&mut self, line: &str) {
+        self.run_with(line, None);
+    }
+
+    fn run_with(&mut self, line: &str, input: Option<&str>) {
         self.seed();
         self.seed_scratch();
         let words = split(line);
@@ -271,7 +273,10 @@ impl World {
             .iter()
             .map(|(k, v)| (k.as_str(), v.as_str()))
             .collect();
-        self.ran = Some(self.project.run_with(&env, &args));
+        self.ran = Some(match input {
+            Some(input) => self.project.run_input(&args, input, &env),
+            None => self.project.run_with(&env, &args),
+        });
     }
 
     fn ran(&self) -> &Ran {
@@ -469,6 +474,11 @@ fn run(w: &mut World, line: String) {
     w.run(&line);
 }
 
+#[when(expr = "I run {string} with input:")]
+fn run_with_input(w: &mut World, step: &Step, line: String) {
+    w.run_with(&line, Some(&doc(step)));
+}
+
 #[when(regex = r"^Alice .*:$")]
 fn alice_runs(w: &mut World, step: &Step) {
     w.run(&doc(step));
@@ -508,6 +518,44 @@ fn output_lacks(w: &mut World, text: String) {
     w.ran().lacks(&text);
 }
 
+#[then(expr = "the output reports {string} as {string}")]
+fn output_reports(w: &mut World, path: String, value: String) {
+    let ran = w.ran();
+    match serde_json::from_str::<Value>(&ran.stdout) {
+        Ok(doc) => assert_eq!(reports_as(&doc, &path), value, "{}", ran.said()),
+        Err(_) => {
+            ran.contains(&value);
+        }
+    }
+}
+
+/// Go: "exactly N home files match" a glob below the home, one `*` per
+/// path segment.
+#[then(expr = "exactly {int} home files match {string}")]
+fn home_files_match(w: &mut World, count: usize, pattern: String) {
+    fn walk(dir: &Path, rel: &str, parts: &[&str], found: &mut usize) {
+        let Some((first, rest)) = parts.split_first() else {
+            *found += 1;
+            return;
+        };
+        for path in files::children(dir) {
+            let name = path
+                .file_name()
+                .expect("a name")
+                .to_string_lossy()
+                .into_owned();
+            let ok = *first == "*" || *first == name;
+            if ok {
+                walk(&path, &format!("{rel}/{name}"), rest, found);
+            }
+        }
+    }
+    let parts: Vec<&str> = pattern.split('/').collect();
+    let mut found = 0;
+    walk(w.project.home(), "", &parts, &mut found);
+    assert_eq!(found, count, "{pattern}");
+}
+
 #[then(expr = "the file {string} exists")]
 fn file_exists(w: &mut World, rel: String) {
     assert!(w.project.exists(&rel), "{rel} should exist");
@@ -531,13 +579,16 @@ fn file_contains_times(w: &mut World, rel: String, text: String, times: usize) {
 
 #[then(expr = "the home file {string} exists")]
 fn home_exists(w: &mut World, rel: String) {
-    assert!(w.project.home().join(&rel).exists(), "{rel} should exist");
+    assert!(
+        files::exists(w.project.home().join(&rel)),
+        "{rel} should exist"
+    );
 }
 
 #[then(expr = "the home file {string} does not exist")]
 fn home_absent(w: &mut World, rel: String) {
     assert!(
-        !w.project.home().join(&rel).exists(),
+        !files::exists(w.project.home().join(&rel)),
         "{rel} should not exist"
     );
 }
@@ -551,7 +602,7 @@ fn home_lacks(w: &mut World, rel: String, text: String) {
 #[then(expr = "the output file {string} of session {string} exists")]
 fn output_file_exists(w: &mut World, file: String, harp: String) {
     let path = w.output_dir(&harp).join(&file);
-    assert!(path.exists(), "{} should exist", path.display());
+    assert!(files::exists(&path), "{} should exist", path.display());
 }
 
 #[then("the output is valid JSON")]
@@ -653,11 +704,10 @@ fn sweep_names(w: &mut World, a: String, b: String) {
 #[then("every byte of every session is still on disk")]
 fn bytes_on_disk(w: &mut World) {
     let sessions = w.project.home().join(".ctxloom/sessions");
-    for entry in std::fs::read_dir(&sessions).expect("sessions") {
-        let path = entry.expect("an entry").path();
-        if path.is_dir() {
+    for path in files::children(&sessions) {
+        if files::is_dir(&path) {
             assert!(
-                path.join("transcripts/transcript.jsonl").exists(),
+                files::exists(path.join("transcripts/transcript.jsonl")),
                 "{} lost its transcript",
                 path.display()
             );
@@ -674,9 +724,7 @@ fn sweep_skipped(w: &mut World, running: String, unproven: String) {
         .contains(&format!("ctxloom session purge {unproven} --even-if-live"));
     for harp in [running, unproven] {
         assert!(
-            w.session_dir(&harp)
-                .join("transcripts/transcript.jsonl")
-                .exists(),
+            files::exists(w.session_dir(&harp).join("transcripts/transcript.jsonl")),
             "{harp} was touched"
         );
     }
@@ -685,10 +733,17 @@ fn sweep_skipped(w: &mut World, running: String, unproven: String) {
 #[then(expr = "the machine-written bulk of {string} is gone")]
 fn bulk_gone(w: &mut World, harp: String) {
     assert!(
-        !w.session_dir(&harp)
-            .join("transcripts/transcript.jsonl")
-            .exists(),
+        !files::exists(w.session_dir(&harp).join("transcripts/transcript.jsonl")),
         "{harp}'s transcript is still there: {}",
+        w.ran().said()
+    );
+}
+
+#[then(expr = "the machine-written bulk of {string} is still there")]
+fn bulk_still_there(w: &mut World, harp: String) {
+    assert!(
+        files::exists(w.session_dir(&harp).join("transcripts/transcript.jsonl")),
+        "{harp}'s transcript is gone: {}",
         w.ran().said()
     );
 }
@@ -696,9 +751,7 @@ fn bulk_gone(w: &mut World, harp: String) {
 #[then(expr = "the sweep kept the transcript of {string} and named {string}")]
 fn sweep_kept(w: &mut World, harp: String, named: String) {
     assert!(
-        w.session_dir(&harp)
-            .join("transcripts/transcript.jsonl")
-            .exists(),
+        files::exists(w.session_dir(&harp).join("transcripts/transcript.jsonl")),
         "{harp}'s transcript was destroyed"
     );
     w.ran().contains(&harp).contains(&named);
@@ -725,7 +778,7 @@ fn only_clean_gone(w: &mut World) {
     let mut problems = Vec::new();
     for (harp, name, _) in &w.planted_scratch {
         let dir = w.scratch_dir(harp, name);
-        let gone = !dir.is_dir();
+        let gone = !files::is_dir(&dir);
         let reapable = name == "clean" && w.reapable(harp);
         if reapable && !gone {
             problems.push(format!(
@@ -751,7 +804,7 @@ fn wip_spared(w: &mut World) {
         .collect();
     assert!(!wip.is_empty(), "no uncommitted work was seeded");
     for (harp, name, _) in wip {
-        let body = std::fs::read_to_string(w.scratch_dir(harp, name).join("in-flight.go"))
+        let body = files::read(w.scratch_dir(harp, name).join("in-flight.go"))
             .unwrap_or_else(|e| panic!("the uncommitted work in {harp} is GONE: {e}"));
         assert!(body.contains(WIP_MARKER), "{body}");
     }
@@ -771,7 +824,10 @@ fn nothing_safe(w: &mut World, harp: String) {
         .collect();
     assert!(!own.is_empty(), "no worktree was seeded under {harp}");
     for (h, name, _) in own {
-        assert!(w.scratch_dir(h, name).is_dir(), "{h}'s {name} was REMOVED");
+        assert!(
+            files::is_dir(w.scratch_dir(h, name)),
+            "{h}'s {name} was REMOVED"
+        );
     }
     // An action verb that changed nothing refuses.
     w.ran().fails().contains("skipped");
@@ -784,7 +840,7 @@ fn foreign_untouched(w: &mut World) {
         "no foreign worktree was seeded"
     );
     for dir in &w.planted_foreign {
-        assert!(dir.is_dir(), "{} was removed", dir.display());
+        assert!(files::is_dir(dir), "{} was removed", dir.display());
         w.ran().lacks(&dir.display().to_string());
     }
 }
@@ -823,6 +879,11 @@ fn feature(path: &str) {
 }
 
 #[test]
+fn test_auth_feature() {
+    feature("cli/auth.feature");
+}
+
+#[test]
 fn test_clean_feature() {
     feature("cli/clean.feature");
 }
@@ -850,6 +911,11 @@ fn test_session_reclaim_feature() {
 #[test]
 fn test_sweep_feature() {
     feature("journeys/j001300_sweep.feature");
+}
+
+#[test]
+fn test_sweep_config_feature() {
+    feature("journeys/j001300_sweep_config.feature");
 }
 
 #[test]

@@ -13,6 +13,7 @@ use std::collections::BTreeSet;
 use harp_core::{ADJECTIVES, NOUNS};
 
 use super::{run, Env};
+use crate::tests::files;
 
 const SESSION: &str = "0197a5c0-1b6e-7a41-8c3d-5e2f4a9b7d10";
 const OTHER_SESSION: &str = "0197a5c0-1b6e-7a41-8c3d-5e2f4a9b7d11";
@@ -92,11 +93,11 @@ fn test_the_store_opens_under_the_home_s_projects_directory() {
         "it says where: {}",
         ran.said()
     );
-    let bytes = std::fs::read(&db).unwrap_or_else(|e| panic!("{}: {e}", db.display()));
+    let bytes = files::read_bytes(&db).unwrap_or_else(|e| panic!("{}: {e}", db.display()));
     assert!(bytes.starts_with(b"SQLite format 3\0"), "a SQLite database");
     let beside = env.home().join(".ctxloom/projects").join(&project);
     assert!(
-        !beside.join("state.db").exists(),
+        !files::exists(beside.join("state.db")),
         "taskloom's store is not ctxloom's (D26)"
     );
 }
@@ -108,11 +109,14 @@ fn test_the_store_never_opens_under_the_real_home() {
     let ran = env.run(&["test", "open-store", &project]);
     assert_eq!(ran.code, 0, "{}", ran.said());
     let made = env.home().join(".ctxloom/projects").join(&project);
-    assert!(made.join("ctxloom.db").exists(), "made under the temp home");
+    assert!(
+        files::exists(made.join("ctxloom.db")),
+        "made under the temp home"
+    );
     if let Some(real) = std::env::var_os("HOME") {
         let there = std::path::Path::new(&real)
             .join(".ctxloom/projects")
             .join(&project);
-        assert!(!there.exists(), "{} was made", there.display());
+        assert!(!files::exists(&there), "{} was made", there.display());
     }
 }

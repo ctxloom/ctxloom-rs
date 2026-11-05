@@ -15,7 +15,7 @@ os.workspace = true
 
 [dev-dependencies]
 file-system = { workspace = true, features = ["test-support"] }
-tempfile.workspace = true
+os = { workspace = true, features = ["test-support"] }
 
 [features]
 test-support = ["ctxloom-ports/test-support"]

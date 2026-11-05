@@ -41,6 +41,7 @@ use ctxloom_ports::{Executables, Source};
 use ports::ProjectIdentity;
 
 use super::{LibError, Wiring};
+use crate::fixtures::{canonical, exists, mkdirs, put_mode, remove_dir, root, unix};
 
 /// The process's environment is one: tests that set it take this first.
 pub(crate) static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -48,6 +49,7 @@ pub(crate) static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 /// A hold on the process's environment and working directory: what a test
 /// sets is put back when it ends, however it ends.
 struct Env {
+    _root: file_system::Rooted,
     saved: Vec<(OsString, Option<OsString>)>,
     cwd: Option<PathBuf>,
     dir: PathBuf,
@@ -57,13 +59,14 @@ struct Env {
 impl Env {
     /// A world of the test's own: `<dir>/home` as HOME, and none of the
     /// variables the wiring reads set.
-    fn new(name: &str) -> Env {
+    fn new(_name: &str) -> Env {
         let held = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = std::env::temp_dir().join(format!("wiring-env-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("home")).unwrap();
-        std::fs::create_dir_all(dir.join("work")).unwrap();
+        let temp = root();
+        let dir = temp.root().to_path_buf();
+        mkdirs(dir.join("home"));
+        mkdirs(dir.join("work"));
         let mut env = Env {
+            _root: temp,
             saved: Vec::new(),
             cwd: std::env::current_dir().ok(),
             dir,
@@ -118,7 +121,6 @@ impl Drop for Env {
                 None => std::env::remove_var(var),
             }
         }
-        let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
 
@@ -148,12 +150,10 @@ fn test_no_home_is_refused_naming_the_variable_whether_unset_or_empty() {
     assert_eq!(from_process().err(), Some(LibError::NoHome { variable }));
 }
 
-#[cfg(unix)]
 #[test]
 fn test_a_home_that_is_not_utf_8_is_taken_as_it_is() {
-    use std::os::unix::ffi::OsStringExt;
     let mut env = Env::new("homebytes");
-    let odd = OsString::from_vec(vec![b'/', b'h', 0xff, b'x']);
+    let odd = os::not_unicode("/h");
     env.set("HOME", &odd);
     let wiring = from_process().ok().unwrap();
     assert_eq!(wiring.home().as_os_str(), odd.as_os_str());
@@ -163,9 +163,9 @@ fn test_a_home_that_is_not_utf_8_is_taken_as_it_is() {
 fn test_the_wiring_is_made_though_the_working_directory_is_gone_and_surroundings_say_dot() {
     let env = Env::new("nocwd");
     let gone = env.dir.join("gone");
-    std::fs::create_dir_all(&gone).unwrap();
+    mkdirs(&gone);
     std::env::set_current_dir(&gone).unwrap();
-    std::fs::remove_dir(&gone).unwrap();
+    remove_dir(&gone);
     let wiring = from_process().expect("only what needs the cwd fails");
     assert_eq!(wiring.surroundings().cwd, Path::new("."));
 }
@@ -193,12 +193,10 @@ fn test_the_surroundings_are_the_root_variable_the_cwd_the_home_and_the_temp_dir
     );
 }
 
-#[cfg(unix)]
 #[test]
 fn test_a_root_variable_that_is_not_utf_8_reads_as_unset() {
-    use std::os::unix::ffi::OsStringExt;
     let mut env = Env::new("rootbytes");
-    env.set("CTXLOOM_ROOT", OsString::from_vec(vec![b'/', 0xff]));
+    env.set("CTXLOOM_ROOT", os::not_unicode("/"));
     let wiring = from_process().ok().unwrap();
     assert_eq!(wiring.surroundings().root_env, None);
 }
@@ -216,24 +214,21 @@ fn test_locating_with_no_root_and_no_app_dir_is_the_homes() {
 #[test]
 fn test_locating_walks_up_from_the_cwd_to_the_nearest_app_dir() {
     let env = Env::new("locate-walk");
-    std::fs::create_dir_all(env.work().join(".ctxloom")).unwrap();
-    std::fs::create_dir_all(env.work().join("a/b")).unwrap();
+    mkdirs(env.work().join(".ctxloom"));
+    mkdirs(env.work().join("a/b"));
     std::env::set_current_dir(env.work().join("a/b")).unwrap();
     let wiring = from_process().ok().unwrap();
     let (_, app) = wiring.locate();
     assert_eq!(app.source, Source::Project);
-    assert_eq!(
-        app.path.canonicalize().unwrap(),
-        env.work().join(".ctxloom").canonicalize().unwrap()
-    );
+    assert_eq!(canonical(&app.path), canonical(env.work().join(".ctxloom")));
 }
 
 #[test]
 fn test_locating_stops_at_the_temp_dir_the_variable_names() {
     let mut env = Env::new("locate-tmp");
     // the temporary directory is `work` itself, and has an app dir: not a project
-    std::fs::create_dir_all(env.work().join(".ctxloom")).unwrap();
-    std::fs::create_dir_all(env.work().join("sub")).unwrap();
+    mkdirs(env.work().join(".ctxloom"));
+    mkdirs(env.work().join("sub"));
     env.set("TMPDIR", env.work());
     std::env::set_current_dir(env.work().join("sub")).unwrap();
     let wiring = from_process().ok().unwrap();
@@ -257,24 +252,22 @@ fn test_locating_honours_a_root_that_is_a_directory_and_says_one_that_is_not() {
 }
 
 /// An executable file `name` in `dir`.
-#[cfg(unix)]
 fn executable(dir: &Path, name: &str, mode: u32) {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::create_dir_all(dir).unwrap();
-    let at = dir.join(name);
-    std::fs::write(&at, "#!/bin/sh\n").unwrap();
-    std::fs::set_permissions(&at, std::fs::Permissions::from_mode(mode)).unwrap();
+    mkdirs(dir);
+    put_mode(dir.join(name), "#!/bin/sh\n", mode);
 }
 
-#[cfg(unix)]
 #[test]
 fn test_programs_are_found_on_the_path_in_its_order_and_only_if_executable_files() {
+    if !unix() {
+        return;
+    }
     let mut env = Env::new("path");
     let (first, second) = (env.dir.join("first"), env.dir.join("second"));
     executable(&first, "both", 0o644);
     executable(&first, "plain", 0o755);
     executable(&second, "both", 0o755);
-    std::fs::create_dir_all(second.join("adir")).unwrap();
+    mkdirs(second.join("adir"));
     env.set(
         "PATH",
         std::env::join_paths([&first, &second]).expect("a path"),
@@ -343,15 +336,10 @@ fn test_an_empty_project_variable_pins_nothing_and_a_read_finds_no_project() {
     assert_eq!(minted.id.split('-').count(), 3, "a minted harp id");
 }
 
-#[cfg(unix)]
 #[test]
 fn test_a_project_variable_that_is_not_utf_8_pins_nothing() {
-    use std::os::unix::ffi::OsStringExt;
     let mut env = Env::new("pinned-bytes");
-    env.set(
-        "CTXLOOM_PROJECT_ID",
-        OsString::from_vec(vec![b'p', 0xff, b'q']),
-    );
+    env.set("CTXLOOM_PROJECT_ID", os::not_unicode("p"));
     let wiring = from_process().ok().unwrap();
     let mut sessions = wiring.sessions();
     assert_eq!(sessions.use_cases.identity.for_read(None).unwrap(), None);
@@ -361,18 +349,18 @@ fn test_a_project_variable_that_is_not_utf_8_pins_nothing() {
 fn test_the_root_variable_makes_the_work_root_and_the_project_is_marked_there() {
     let mut env = Env::new("workroot");
     let root = env.dir.join("elsewhere");
-    std::fs::create_dir_all(&root).unwrap();
+    mkdirs(&root);
     env.set("CTXLOOM_ROOT", &root);
     let wiring = from_process().ok().unwrap();
     let mut sessions = wiring.sessions();
     let project = sessions.use_cases.identity.for_write(None).unwrap();
     assert_eq!(
         project.root.as_deref().map(Path::new),
-        Some(root.canonicalize().unwrap().as_path())
+        Some(canonical(&root).as_path())
     );
-    assert!(root.join(".project-id").exists(), "marked at the root");
+    assert!(exists(root.join(".project-id")), "marked at the root");
     assert!(
-        !env.work().join(".project-id").exists(),
+        !exists(env.work().join(".project-id")),
         "not in the working directory"
     );
 }
@@ -424,12 +412,10 @@ fn test_a_config_override_in_the_environment_reaches_the_library() {
 /// `std::env::vars`, which panics on any variable that is not UTF-8, so one
 /// such variable anywhere in the process's environment takes the whole
 /// program down when the library is wired.
-#[cfg(unix)]
 #[test]
 #[should_panic(expected = "Result::unwrap()")]
 fn test_a_variable_that_is_not_utf_8_stops_the_library_being_wired() {
-    use std::os::unix::ffi::OsStringExt;
     let mut env = Env::new("library-bytes");
-    env.set("A0_NOT_UTF8", OsString::from_vec(vec![0xff, 0xfe]));
+    env.set("A0_NOT_UTF8", os::not_unicode(""));
     let _ = crate::library::build(None);
 }

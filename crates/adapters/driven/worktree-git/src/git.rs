@@ -9,8 +9,10 @@ use std::fmt;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
+
+use file_system::{Fs, Kind};
 
 use crate::error::WorktreeError;
 
@@ -27,14 +29,9 @@ const POLL: Duration = Duration::from_millis(5);
 /// has. The seam tests narrow to a stub program and a tiny limit.
 #[derive(Clone, Debug)]
 pub struct Git {
+    fs: Arc<dyn Fs>,
     program: PathBuf,
     timeout: Duration,
-}
-
-impl Default for Git {
-    fn default() -> Git {
-        Git::new("git", DEFAULT_TIMEOUT)
-    }
 }
 
 /// Why a git invocation did not succeed.
@@ -150,7 +147,7 @@ fn spawn_failure(e: &std::io::Error, label: &str) -> String {
 fn local_variables() -> &'static Option<Vec<String>> {
     static LOCAL: OnceLock<Option<Vec<String>>> = OnceLock::new();
     LOCAL.get_or_init(|| {
-        let top = if cfg!(windows) { "C:\\" } else { "/" };
+        let top = os::host().flavor().top();
         let output = output_within(
             Command::new("git")
                 .args(["rev-parse", "--local-env-vars"])
@@ -194,13 +191,26 @@ fn environment() -> Vec<(OsString, OsString)> {
 }
 
 impl Git {
+    /// The git on PATH, each invocation bounded by [`DEFAULT_TIMEOUT`]; `fs`
+    /// is the filesystem its working directories are on.
+    pub fn on(fs: Arc<dyn Fs>) -> Git {
+        Git::new(fs, "git", DEFAULT_TIMEOUT)
+    }
+
     /// `program` (a path, or a name looked up on PATH), each invocation
     /// bounded by `timeout`.
-    pub fn new(program: impl Into<PathBuf>, timeout: Duration) -> Git {
+    pub fn new(fs: Arc<dyn Fs>, program: impl Into<PathBuf>, timeout: Duration) -> Git {
         Git {
+            fs,
             program: program.into(),
             timeout,
         }
+    }
+
+    fn is_dir(&self, dir: &Path) -> bool {
+        self.fs
+            .metadata(dir)
+            .is_ok_and(|meta| meta.kind == Kind::Dir)
     }
 
     /// `git args` in `dir`: stdout on success, git's own words on failure.
@@ -220,7 +230,7 @@ impl Git {
         let output = output_within(&mut command, label, self.timeout).map_err(|e| match e {
             // A spawn that finds nothing is the program missing or the
             // directory missing; only the directory can be checked here.
-            GitError::Said(_) if !dir.is_dir() => {
+            GitError::Said(_) if !self.is_dir(dir) => {
                 GitError::Said(format!("git {label}: {} is not a directory", dir.display()))
             }
             other => other,

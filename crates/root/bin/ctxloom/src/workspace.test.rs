@@ -1,6 +1,7 @@
 //! The workspace's own invariants: the lock holds one of each angzarr crate,
 //! and no commit position is anywhere in the sources.
 
+use crate::tests::files;
 use std::path::Path;
 
 /// angzarr crates a lock must hold exactly once, whatever pulls them in:
@@ -127,16 +128,12 @@ fn banned() -> [String; 4] {
 
 /// Every file under `dir`, but build output and VCS state.
 fn files(dir: &Path, found: &mut Vec<std::path::PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let name = entry.file_name();
+    for path in files::children(dir) {
+        let name = path.file_name().expect("a name");
         if name == "target" || name == ".git" {
             continue;
         }
-        if path.is_dir() {
+        if files::is_dir(&path) {
             files(&path, found);
         } else {
             found.push(path);
@@ -157,7 +154,7 @@ fn test_no_store_wide_position_is_anywhere_in_the_workspace_sources() {
     assert!(!all.is_empty(), "scanned nothing under {}", root.display());
     let mut hits = Vec::new();
     for path in all {
-        let Ok(text) = std::fs::read_to_string(&path) else {
+        let Ok(text) = files::read(&path) else {
             continue;
         };
         for term in banned() {

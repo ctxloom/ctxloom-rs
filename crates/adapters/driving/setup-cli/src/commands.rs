@@ -11,7 +11,24 @@ fn flag(name: &'static str, help: &'static str) -> Arg {
 
 /// The nouns this adds to the command line.
 pub fn nouns() -> Vec<Command> {
-    vec![clean(), doctor(), init()]
+    vec![auth(), clean(), doctor(), init()]
+}
+
+fn auth() -> Command {
+    Command::new("auth")
+        .about("Show how engines authenticate and whether each credential is exported")
+        .long_about(
+            "Every agent ctxloom spawns uses one long-lived token you mint and export: for \
+             claude, run 'claude setup-token' and export CLAUDE_CODE_OAUTH_TOKEN, or export it \
+             from your secret manager.\n\n\
+             ctxloom never collects, stores or mints a credential. It reads the token from the \
+             environment it is launched in, so this reports whether each is exported and never \
+             its value, and there is no command that takes one.",
+        )
+        .after_help("Examples:\n  ctxloom auth\n  ctxloom auth status")
+        .subcommand(Command::new("status").about(
+            "Show whether each engine's credential is present in the environment (never its value)",
+        ))
 }
 
 fn clean() -> Command {

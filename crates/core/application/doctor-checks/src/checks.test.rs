@@ -1,6 +1,11 @@
 //! The pure checks. Go: `cli/doctor.feature` and `doctor_cmd_checks_test.go`
 //! (release/0.7).
 
+use std::sync::Arc;
+
+use auth_application::Auth;
+use ctxloom_ports::ExportedVars;
+
 use crate::checks::{self, Status};
 use crate::hooks::Stale;
 
@@ -153,4 +158,125 @@ fn registered_hooks_are_ok_and_none_is_info() {
     );
     assert_eq!(checks::hooks(&on).status, Status::Ok);
     assert_eq!(checks::hooks(&[]).status, Status::Info);
+}
+
+/// The variables a launch exports.
+struct Exports(&'static [&'static str]);
+
+impl ExportedVars for Exports {
+    fn is_exported(&self, name: &str) -> bool {
+        self.0.contains(&name)
+    }
+}
+
+const TOKEN: &[&str] = &["CLAUDE_CODE_OAUTH_TOKEN"];
+
+fn credentials(layers: &[&str], exported: &'static [&'static str]) -> checks::Check {
+    let layers: Vec<String> = layers.iter().map(ToString::to_string).collect();
+    checks::credentials(&layers, &Auth::new(Arc::new(Exports(exported))))
+}
+
+// doctor.feature: "A missing agent credential is a fail row with run's fix".
+#[test]
+fn a_missing_claude_token_is_a_fail_row_with_runs_fix() {
+    let check = credentials(&["schema_version: 8\n"], &[]);
+    assert_eq!(check.marker, "DOCTOR-CHECK-CREDENTIALS-m5");
+    assert_eq!(check.status, Status::Fail);
+    assert!(check.detail.contains("claude-code"), "{}", check.detail);
+    assert!(check
+        .detail
+        .contains("CLAUDE_CODE_OAUTH_TOKEN is not exported"));
+    assert!(check.remedy.contains("claude setup-token"));
+}
+
+#[test]
+fn an_exported_token_is_ok_and_the_row_says_it_does_not_test_acceptance() {
+    let check = credentials(&["schema_version: 8\n"], TOKEN);
+    assert_eq!(check.status, Status::Ok);
+    assert!(
+        check.detail.contains("claude-code (auth token)"),
+        "{}",
+        check.detail
+    );
+    assert!(check
+        .detail
+        .contains("does not test whether the engine accepts it"));
+    assert_eq!(check.remedy, "");
+}
+
+// No project and no config at all is the shipped default: claude-code.
+#[test]
+fn with_no_config_at_all_the_shipped_default_engine_is_checked() {
+    assert_eq!(credentials(&[], &[]).status, Status::Fail);
+    assert_eq!(credentials(&[], TOKEN).status, Status::Ok);
+}
+
+// Go: the mode is the human's session auth (`auth:`); a login is shared in
+// place and reads nothing from the environment.
+#[test]
+fn login_mode_needs_no_credential_from_the_environment() {
+    let check = credentials(&["schema_version: 8\nauth: login\n"], &[]);
+    assert_eq!(check.status, Status::Info);
+    assert!(check
+        .detail
+        .contains("no configured engine needs a credential from you"));
+}
+
+#[test]
+fn the_auth_mode_of_the_highest_layer_wins() {
+    let home = "schema_version: 8\nauth: login\n";
+    let project = "schema_version: 8\nauth: token\n";
+    assert_eq!(credentials(&[home, project], &[]).status, Status::Fail);
+    assert_eq!(credentials(&[project, home], &[]).status, Status::Info);
+}
+
+// Go: a backend is one a configured label or agent resolves to.
+#[test]
+fn an_authored_label_replaces_the_shipped_default_engine() {
+    let config = "schema_version: 8\nllm:\n  configs:\n    local:\n      type: mock\n";
+    let check = credentials(&[config], &[]);
+    assert_eq!(check.status, Status::Info, "{}", check.detail);
+}
+
+#[test]
+fn a_labels_engine_is_checked_whatever_the_label_is_called() {
+    let config = "schema_version: 8\nllm:\n  configs:\n    work:\n      type: claude-code\n";
+    assert_eq!(credentials(&[config], &[]).status, Status::Fail);
+}
+
+#[test]
+fn opencode_is_keyless_without_its_optional_key_and_never_fails() {
+    let config = "schema_version: 8\nllm:\n  configs:\n    oc:\n      type: opencode\n";
+    let check = credentials(&[config], &[]);
+    assert_eq!(check.status, Status::Ok);
+    assert!(
+        check.detail.contains("opencode (auth token)"),
+        "{}",
+        check.detail
+    );
+}
+
+#[test]
+fn an_agent_naming_an_engine_directly_is_checked_too() {
+    let config = "schema_version: 8\nllm:\n  configs:\n    local:\n      type: mock\nagents:\n  dev:\n    llm: claude-code\n";
+    assert_eq!(credentials(&[config], &[]).status, Status::Fail);
+}
+
+#[test]
+fn an_agent_naming_a_label_is_checked_as_that_labels_engine() {
+    let config = "schema_version: 8\nllm:\n  configs:\n    local:\n      type: mock\n    work:\n      type: claude-code\nagents:\n  dev:\n    llm: work\n";
+    assert_eq!(credentials(&[config], &[]).status, Status::Fail);
+}
+
+#[test]
+fn a_later_layer_overrides_a_label_of_an_earlier_one() {
+    let home = "schema_version: 8\nllm:\n  configs:\n    work:\n      type: claude-code\n";
+    let project = "schema_version: 8\nllm:\n  configs:\n    work:\n      type: mock\n";
+    assert_eq!(credentials(&[home, project], &[]).status, Status::Info);
+}
+
+#[test]
+fn a_config_that_will_not_parse_is_the_setup_markers_to_report_and_checks_the_default() {
+    let check = credentials(&["schema_version: [unclosed\n"], &[]);
+    assert_eq!(check.status, Status::Fail);
 }

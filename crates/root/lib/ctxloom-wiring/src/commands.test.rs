@@ -43,6 +43,7 @@ fn test_only_the_bundle_noun_gains_the_publishing_verbs() {
 /// the test's own, the root and project variables unset. The environment is
 /// the process's, so one test holds it at a time and puts it back.
 struct World {
+    _root: file_system::Rooted,
     dir: PathBuf,
     saved: Vec<(&'static str, Option<std::ffi::OsString>)>,
     cwd: PathBuf,
@@ -52,21 +53,27 @@ struct World {
 use crate::tests::ENV_LOCK as WORLD;
 
 impl World {
-    fn new(name: &str) -> World {
+    fn new(_name: &str) -> World {
         let held = WORLD.lock().unwrap_or_else(|e| e.into_inner());
-        let dir =
-            std::env::temp_dir().join(format!("ctxloom-wiring-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("home")).unwrap();
-        std::fs::create_dir_all(dir.join("work")).unwrap();
+        let temp = crate::fixtures::root();
+        let dir = temp.root().to_path_buf();
+        crate::fixtures::mkdirs(dir.join("home"));
+        crate::fixtures::mkdirs(dir.join("work"));
         let cwd = std::env::current_dir().unwrap();
-        let vars = ["HOME", "CTXLOOM_ROOT", "CTXLOOM_PROJECT_ID"];
+        let vars = [
+            "HOME",
+            "CTXLOOM_ROOT",
+            "CTXLOOM_PROJECT_ID",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+        ];
         let saved = vars.iter().map(|v| (*v, std::env::var_os(v))).collect();
         std::env::set_var("HOME", dir.join("home"));
         std::env::remove_var("CTXLOOM_ROOT");
         std::env::remove_var("CTXLOOM_PROJECT_ID");
+        std::env::remove_var("CLAUDE_CODE_OAUTH_TOKEN");
         std::env::set_current_dir(dir.join("work")).unwrap();
         World {
+            _root: temp,
             dir,
             saved,
             cwd,
@@ -84,7 +91,6 @@ impl Drop for World {
                 None => std::env::remove_var(var),
             }
         }
-        let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
 
@@ -118,9 +124,9 @@ fn run_line(commands: &mut Commands, line: &[&str]) -> (u8, String, String) {
 /// The names of the files under `dir`, relative to it, sorted.
 fn files_under(dir: &std::path::Path) -> Vec<String> {
     fn walk(root: &std::path::Path, at: &std::path::Path, out: &mut Vec<String>) {
-        for entry in std::fs::read_dir(at).unwrap() {
-            let path = entry.unwrap().path();
-            if path.is_dir() {
+        for (name, is_dir) in crate::fixtures::entries(at) {
+            let path = at.join(name);
+            if is_dir {
                 walk(root, &path, out);
             } else {
                 out.push(path.strip_prefix(root).unwrap().display().to_string());
@@ -156,6 +162,50 @@ fn test_a_setup_command_is_run_over_the_home() {
         out.contains(&format!("\"path\": \"{home}/.ctxloom/cache/bundles\"")),
         "{out}"
     );
+}
+
+// The sweep's purge age is read from the configuration of the project the
+// process is in (`session_purge_age`), through the wired sessions.
+#[test]
+fn test_the_wired_sessions_read_the_purge_age_from_the_project_config() {
+    use reclaim_application::SweepConfig;
+    let world = World::new("purge-age");
+    let mut sessions = crate::Wiring::from_process().unwrap().sessions();
+    assert_eq!(sessions.purge_age().unwrap(), None);
+    crate::fixtures::mkdirs(world.dir.join("work/.ctxloom"));
+    crate::fixtures::put_mode(
+        world.dir.join("work/.ctxloom/config.yaml"),
+        "schema_version: 8\nsession_purge_age: 45d\n",
+        0o644,
+    );
+    let mut sessions = crate::Wiring::from_process().unwrap().sessions();
+    assert_eq!(sessions.purge_age().unwrap(), Some("45d".to_string()));
+}
+
+// auth.feature, over the process's own environment.
+#[test]
+fn test_auth_status_reads_the_launch_environment_and_never_its_values() {
+    let _world = World::new("auth");
+    let (code, out, _) = run_line(&mut Commands::new(), &["auth", "status"]);
+    assert_eq!(code, 0);
+    assert!(out.contains("\"present\": false"), "{out}");
+    std::env::set_var("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-fixture-not-real"); // gitleaks:allow
+    let (code, out, err) = run_line(&mut Commands::new(), &["auth", "status"]);
+    assert_eq!(code, 0);
+    assert!(out.contains("\"present\": true"), "{out}");
+    assert!(!out.contains("fixture-not-real") && !err.contains("fixture-not-real"));
+}
+
+// doctor.feature: the credentials row is read from the same environment.
+#[test]
+fn test_doctor_fails_without_the_token_and_passes_with_it() {
+    let _world = World::new("doctor-credentials");
+    let (code, out, _) = run_line(&mut Commands::new(), &["doctor"]);
+    assert_eq!(code, 3);
+    assert!(out.contains("DOCTOR-CHECK-CREDENTIALS-m5"), "{out}");
+    std::env::set_var("CLAUDE_CODE_OAUTH_TOKEN", "x");
+    let (code, _, _) = run_line(&mut Commands::new(), &["doctor"]);
+    assert_eq!(code, 0);
 }
 
 #[test]

@@ -32,7 +32,7 @@ pub mod write;
 mod yamlout;
 
 pub use agents::ENGINES;
-pub use config::Flags;
+pub use config::{load as load_config, Flags};
 pub use config_show::ConfigShown;
 #[cfg(any(test, feature = "test-support"))]
 pub use error::diagnostic_samples;

@@ -304,6 +304,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
+name = "auth-application"
+version = "0.1.0"
+dependencies = [
+ "ctxloom-ports",
+ "mutants",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -484,7 +494,8 @@ name = "companion-probe"
 version = "0.1.0"
 dependencies = [
  "ctxloom-ports",
- "tempfile",
+ "file-system",
+ "os",
 ]
 
 [[package]]
@@ -533,9 +544,10 @@ dependencies = [
 name = "container-runtime"
 version = "0.1.0"
 dependencies = [
+ "file-system",
  "isolation-ports",
  "mutants",
- "tempfile",
+ "os",
 ]
 
 [[package]]
@@ -669,6 +681,7 @@ dependencies = [
  "deps-application",
  "editor-process",
  "file-lock",
+ "file-system",
  "forge-github",
  "futures",
  "harp-core",
@@ -677,6 +690,7 @@ dependencies = [
  "isolation-application",
  "library",
  "library-application",
+ "os",
  "reclaim-application",
  "serde_json",
  "session-cli",
@@ -686,7 +700,6 @@ dependencies = [
  "setup-application",
  "setup-cli",
  "surface-ports",
- "tempfile",
  "worktree-git",
 ]
 
@@ -699,9 +712,11 @@ dependencies = [
  "clap",
  "clap_complete",
  "cli-support",
+ "ctxloom-ports",
  "hook-cli",
  "isolation-application",
  "library-application",
+ "reclaim-application",
  "serde",
  "serde_json",
  "session-cli",
@@ -738,6 +753,7 @@ dependencies = [
  "angzarr-embedded-host",
  "angzarr-presentation",
  "angzarr-yaml",
+ "auth-application",
  "cache-files",
  "clap",
  "companion-probe",
@@ -1007,6 +1023,7 @@ name = "doctor-checks"
 version = "0.1.0"
 dependencies = [
  "angzarr-yaml",
+ "auth-application",
  "ctxloom-ports",
  "mutants",
  "serde",
@@ -1033,7 +1050,6 @@ dependencies = [
  "ctxloom-ports",
  "file-system",
  "os",
- "tempfile",
 ]
 
 [[package]]
@@ -2861,7 +2877,6 @@ dependencies = [
  "deps-ports",
  "file-system",
  "os",
- "tempfile",
 ]
 
 [[package]]
@@ -3205,6 +3220,7 @@ dependencies = [
  "angzarr-presentation",
  "clap",
  "cli-support",
+ "ctxloom-ports",
  "isolation-application",
  "mutants",
  "reclaim-application",
@@ -3310,6 +3326,7 @@ version = "0.1.0"
 dependencies = [
  "angzarr-diagnostic",
  "angzarr-presentation",
+ "auth-application",
  "clap",
  "cli-support",
  "ctxloom-ports",
@@ -3319,6 +3336,7 @@ dependencies = [
  "mutants",
  "reclaim-application",
  "serde",
+ "serde_json",
  "sessions-application",
 ]
 
@@ -4641,9 +4659,10 @@ name = "worktree-git"
 version = "0.1.0"
 dependencies = [
  "angzarr-diagnostic",
+ "file-system",
  "isolation-ports",
  "mutants",
- "tempfile",
+ "os",
 ]
 
 [[package]]

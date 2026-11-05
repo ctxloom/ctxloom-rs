@@ -4,6 +4,7 @@
 
 use super::super::library::{reports_as, Project};
 use super::World;
+use crate::tests::files;
 
 const URL: &str = "file:///tmp/acceptance-remote.git";
 
@@ -316,7 +317,7 @@ fn test_a_registry_that_declares_no_schema_generation_is_refused() {
 fn test_a_remote_registered_at_the_root_is_listed_from_a_subdirectory() {
     let world = with_origin();
     let docs = world.project.dir().join("docs");
-    std::fs::create_dir_all(&docs).expect("a subdirectory");
+    files::mkdirs(&docs);
     world
         .project
         .run_in(&docs, &["remote", "list"])
@@ -330,7 +331,7 @@ fn test_registering_a_first_remote_outside_any_project_creates_a_usable_home_reg
     let project = Project::bare();
     let home = project.dir().parent().expect("the root").join("home");
     assert!(
-        !home.join(".ctxloom").exists(),
+        !files::exists(home.join(".ctxloom")),
         "the home has no .ctxloom yet"
     );
     project
@@ -339,14 +340,14 @@ fn test_registering_a_first_remote_outside_any_project_creates_a_usable_home_reg
             &["remote", "create", "origin", URL, "--forge", "git"],
         )
         .succeeds();
-    let dir = std::fs::metadata(home.join(".ctxloom")).expect("the home .ctxloom");
-    use std::os::unix::fs::PermissionsExt;
-    assert_eq!(
-        dir.permissions().mode() & 0o700,
-        0o700,
-        "readable, writable and searchable by its owner"
-    );
-    let registry =
-        std::fs::read_to_string(home.join(".ctxloom/remotes.yaml")).expect("remotes.yaml");
+    // Where the host has permission bits at all.
+    if let Some(mode) = files::mode_of(home.join(".ctxloom")) {
+        assert_eq!(
+            mode & 0o700,
+            0o700,
+            "readable, writable and searchable by its owner"
+        );
+    }
+    let registry = files::read(home.join(".ctxloom/remotes.yaml")).expect("remotes.yaml");
     assert!(registry.contains("origin"), "{registry}");
 }

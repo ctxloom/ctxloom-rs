@@ -1,17 +1,19 @@
 //! Go's `companions.Verify` (`companions.go`): the probe is
 //! `<bin> loadout --format yaml`; it must succeed and print something.
 
-use std::os::unix::fs::PermissionsExt;
 use std::time::Instant;
+
+use file_system::{Fs, Perms, Rooted};
+use os::Mode;
 
 use super::*;
 
-fn script(body: &str) -> (tempfile::TempDir, String) {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("ctxloom-companion-x");
-    std::fs::write(&path, body).unwrap();
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let shown = path.to_str().unwrap().to_string();
+fn script(body: &str) -> (Rooted, String) {
+    let dir = Rooted::temp().unwrap();
+    let path = os::fixture("/ctxloom-companion-x");
+    dir.write_atomic(&path, body.as_bytes(), Perms::Exact(Mode::from_bits(0o755)))
+        .unwrap();
+    let shown = dir.real_path(&path).unwrap().to_str().unwrap().to_string();
     (dir, shown)
 }
 
@@ -40,7 +42,7 @@ fn test_the_probe_is_loadout_format_yaml() {
     let (dir, path) = script("#!/bin/sh\necho \"$@\" > \"$(dirname \"$0\")/args\"\necho x\n");
     settled(&ProcessProbe::standard(), &path).unwrap();
     assert_eq!(
-        std::fs::read_to_string(dir.path().join("args")).unwrap(),
+        dir.read_to_string(&os::fixture("/args")).unwrap(),
         "loadout --format yaml\n"
     );
 }

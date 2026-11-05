@@ -36,8 +36,7 @@ fn write(fs: &Rooted, dirs: &SessionDirs, rel: &str, body: &str) -> PathBuf {
 
 /// Set a file's mtime, on the real file the seam re-roots it to.
 fn touch(fs: &Rooted, path: &Path, seconds: u64) {
-    let real = fs.real_path(path).unwrap();
-    let file = std::fs::OpenOptions::new().write(true).open(real).unwrap();
+    let file = fs.open(path, Open::Append(Mode::FILE)).unwrap();
     file.set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(seconds))
         .unwrap();
 }
@@ -316,10 +315,11 @@ fn a_symlinked_directory_and_a_symlinked_sidecar_are_not_sessions() {
     .unwrap();
     let dir = sessions.join("loose-quiet-heron");
     fs.create_dir_all(&dir, Mode::from_bits(0o755)).unwrap();
-    let real = fs
-        .real_path(&sessions.join("real-quiet-heron/session.yaml"))
-        .unwrap();
-    std::os::unix::fs::symlink(real, fs.real_path(&dir).unwrap().join("session.yaml")).unwrap();
+    fs.symlink_dir(
+        &sessions.join("real-quiet-heron/session.yaml"),
+        &dir.join("session.yaml"),
+    )
+    .unwrap();
     let harps: Vec<String> = go
         .go_sessions()
         .unwrap()
