@@ -703,13 +703,14 @@ mod credentials {
     fn test_the_header_reaches_git_as_configuration_from_the_environment() {
         let c = with_token(cache());
         let credential = c.remotes.credential("https://example.test/o/r");
-        let out = command::run_with(
-            None,
-            &["config", "--get", "http.https://example.test/.extraheader"],
-            None,
-            &credential,
-        )
-        .expect("git sees the header");
+        let out = command::Git::default()
+            .run_with(
+                None,
+                &["config", "--get", "http.https://example.test/.extraheader"],
+                None,
+                &credential,
+            )
+            .expect("git sees the header");
         let seen = String::from_utf8_lossy(&out);
         assert!(seen.starts_with("AUTHORIZATION: basic "), "{seen}");
     }
@@ -756,5 +757,88 @@ mod credentials {
                 .expect("resolves"),
         );
         assert!(keyed.remotes.credential(&origin.url()).pairs().is_empty());
+    }
+}
+
+// S11 hardening: a hung git fails the call at its limit, with the limit named,
+// and is never read as an answer about the repository.
+mod hung_git {
+    use super::*;
+    use crate::command::tests::{stub, HANGS};
+
+    const TIMED_OUT: &str = "did not finish within 20ms and was killed";
+
+    /// The cache's directory, over a git that never finishes.
+    fn hung(c: &Cache) -> (tempfile::TempDir, GitRemotes) {
+        let (dir, git) = stub(HANGS);
+        let cwd = std::env::current_dir().expect("a working directory");
+        let fs = Arc::new(Os::new(os::host(), &cwd).expect("the filesystem"));
+        (
+            dir,
+            GitRemotes::new(fs, c.dir.path().to_path_buf()).with_git(git),
+        )
+    }
+
+    #[test]
+    fn a_clone_that_hangs_fails_and_leaves_nothing_behind() {
+        let origin = Origin::new();
+        demo(&origin);
+        let c = cache();
+        let (_stub, remotes) = hung(&c);
+        let why = remotes.ensure(&origin.url()).unwrap_err();
+        assert_eq!(why, format!("git clone: {TIMED_OUT}"));
+        let dir = remotes.clone_dir(&origin.url()).unwrap();
+        assert!(
+            !dir.exists(),
+            "a partial clone was left at {}",
+            dir.display()
+        );
+    }
+
+    #[test]
+    fn a_fetch_that_hangs_fails_and_the_clone_stays_readable() {
+        let origin = Origin::new();
+        demo(&origin);
+        let c = cache();
+        c.remotes.ensure(&origin.url()).unwrap();
+        let (_stub, remotes) = hung(&c);
+        let why = remotes.refresh(&origin.url()).unwrap_err();
+        assert_eq!(why, format!("git fetch: {TIMED_OUT}"));
+        assert!(c.remotes.tags(&origin.url()).is_ok());
+    }
+
+    #[test]
+    fn a_directory_whose_git_hangs_is_not_called_repository_free() {
+        let origin = Origin::new();
+        let c = cache();
+        let (_stub, remotes) = hung(&c);
+        let why = remotes
+            .local_repository(&origin.work.display().to_string())
+            .unwrap_err();
+        assert_eq!(why, format!("git rev-parse: {TIMED_OUT}"));
+    }
+
+    #[test]
+    fn a_read_whose_git_hangs_fails_at_the_limit() {
+        let origin = Origin::new();
+        demo(&origin);
+        let c = cache();
+        c.remotes.ensure(&origin.url()).unwrap();
+        let (_stub, remotes) = hung(&c);
+        let why = remotes.tags(&origin.url()).unwrap_err();
+        assert_eq!(why, format!("git tag: {TIMED_OUT}"));
+    }
+
+    #[test]
+    fn a_publish_whose_git_hangs_fails_and_clears_its_working_clone() {
+        let origin = Origin::new();
+        demo(&origin);
+        let c = cache();
+        let (_stub, remotes) = hung(&c);
+        let files = BTreeMap::from([("a.txt".to_string(), b"a".to_vec())]);
+        let why = remotes.publish(&origin.url(), &files, "msg").unwrap_err();
+        assert_eq!(why, format!("git clone: {TIMED_OUT}"));
+        let left: Vec<_> = std::fs::read_dir(c.dir.path()).unwrap().flatten().collect();
+        assert!(left.is_empty(), "{left:?}");
     }
 }

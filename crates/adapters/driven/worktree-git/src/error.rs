@@ -15,6 +15,10 @@ pub enum WorktreeError {
     },
     /// A session's work directory could not be read.
     Unreadable { path: String, why: String },
+    /// A git invocation did not finish within its limit; it was killed. The
+    /// run is not degraded to the live directory: a hung git says nothing
+    /// about whether a worktree could be made.
+    GitTimedOut { command: String, timeout: String },
 }
 
 impl fmt::Display for WorktreeError {
@@ -28,6 +32,7 @@ impl Diagnostic for WorktreeError {
         match self {
             WorktreeError::Unadoptable { .. } => code!("unadoptable"),
             WorktreeError::Unreadable { .. } => code!("unreadable"),
+            WorktreeError::GitTimedOut { .. } => code!("git-timed-out"),
         }
     }
 
@@ -41,6 +46,10 @@ impl Diagnostic for WorktreeError {
             WorktreeError::Unreadable { path, why } => {
                 vec![("path", path.as_str().into()), ("why", why.as_str().into())]
             }
+            WorktreeError::GitTimedOut { command, timeout } => vec![
+                ("command", command.as_str().into()),
+                ("timeout", timeout.as_str().into()),
+            ],
         }
     }
 }
@@ -63,6 +72,10 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(WorktreeError::Unreadable {
             path: "/work".to_string(),
             why: "permission denied".to_string(),
+        }),
+        Box::new(WorktreeError::GitTimedOut {
+            command: "worktree".to_string(),
+            timeout: "30s".to_string(),
         }),
     ]
 }

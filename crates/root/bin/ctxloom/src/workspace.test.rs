@@ -28,6 +28,86 @@ fn test_the_lock_holds_one_of_each_angzarr_crate() {
     assert!(wrong.is_empty(), "one of each is required: {wrong:?}");
 }
 
+/// The git-sourced crates the lock holds more than once, as of this pin. Each
+/// is a duplicate to be gone when the pins agree (`angzarr-embedded-host-config`
+/// comes in at two angzarr-embedded revs: ours, and the one taskloom's graph
+/// was built on). The list names what is, so a NEW duplicate fails the test and
+/// a duplicate that goes (so its entry is stale) fails it too.
+const KNOWN_DUPLICATED: [&str; 1] = ["angzarr-embedded-host-config"];
+
+/// Every package of the lock that comes from git, by name, each with the
+/// source it comes from.
+fn git_packages(lock: &str) -> Vec<(String, String)> {
+    let mut found = Vec::new();
+    for block in lock.split("\n\n") {
+        let field = |key: &str| {
+            block
+                .lines()
+                .find_map(|l| l.strip_prefix(key)?.strip_prefix(" = \""))
+                .and_then(|v| v.strip_suffix('"'))
+        };
+        if let (Some(name), Some(source)) = (field("name"), field("source")) {
+            if source.starts_with("git+") {
+                found.push((name.to_string(), source.to_string()));
+            }
+        }
+    }
+    found
+}
+
+#[test]
+fn test_every_git_pinned_crate_is_in_the_lock_once_but_the_known_duplicates() {
+    let lock = include_str!("../../../../../Cargo.lock");
+    let packages = git_packages(lock);
+    assert!(
+        packages.len() > 20,
+        "the lock holds git crates: {}",
+        packages.len()
+    );
+    let mut names: Vec<&str> = packages.iter().map(|(n, _)| n.as_str()).collect();
+    names.sort_unstable();
+    let mut twice: Vec<&str> = names
+        .windows(2)
+        .filter(|w| w[0] == w[1])
+        .map(|w| w[0])
+        .collect();
+    twice.dedup();
+    assert_eq!(
+        twice, KNOWN_DUPLICATED,
+        "git crates held more than once (a new one, or a known one gone)"
+    );
+    // a duplicate is never of one source twice: it is two revs
+    for name in KNOWN_DUPLICATED {
+        let mut sources: Vec<&str> = packages
+            .iter()
+            .filter(|(n, _)| n == name)
+            .map(|(_, s)| s.as_str())
+            .collect();
+        sources.sort_unstable();
+        sources.dedup();
+        assert!(sources.len() > 1, "{name}: {sources:?}");
+    }
+}
+
+#[test]
+fn test_the_git_pins_of_the_one_of_each_crates_are_the_pins_of_one_repository_each() {
+    let lock = include_str!("../../../../../Cargo.lock");
+    let packages = git_packages(lock);
+    for name in ONE_OF_EACH {
+        let sources: Vec<&str> = packages
+            .iter()
+            .filter(|(n, _)| n == name)
+            .map(|(_, s)| s.as_str())
+            .collect();
+        assert_eq!(sources.len(), 1, "{name}: {sources:?}");
+        assert!(
+            sources[0].contains("github.com/angzarr-io/"),
+            "{name}: {}",
+            sources[0]
+        );
+    }
+}
+
 /// The four names no source may carry (the store has no commit position:
 /// ctxloom reads by stream position). Spelled in pieces so this file does
 /// not hold them itself, which keeps the scan free of any exclusion.

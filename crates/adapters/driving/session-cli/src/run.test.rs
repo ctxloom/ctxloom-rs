@@ -45,6 +45,8 @@ struct Fake {
     imports: usize,
     wt_report: Option<isolation_application::Report>,
     wt_asked: Vec<(Option<String>, bool)>,
+    /// Answer every worktree question with a refusal that is not "no session".
+    wt_fails: bool,
     /// `session_purge_age` as the fake configuration has it.
     configured_age: Option<String>,
     /// What was asked of the configuration.
@@ -65,6 +67,13 @@ impl isolation_application::WorktreeUse for Fake {
         apply: bool,
     ) -> Result<isolation_application::Report, isolation_application::IsolationError> {
         self.wt_asked.push((harp.map(str::to_string), apply));
+        if self.wt_fails {
+            return Err(isolation_application::IsolationError::NothingRemoved {
+                harp: harp.unwrap_or_default().to_string(),
+                spared: 0,
+                skipped: 0,
+            });
+        }
         self.wt_report
             .clone()
             .ok_or(isolation_application::IsolationError::NoSession {
@@ -1423,6 +1432,179 @@ fn a_sweep_that_failed_while_acting_exits_nonzero_but_a_report_of_a_failure_does
     let failure = ran.result.unwrap_err();
     assert_eq!(failure.error.code(), "session-cli-sweep-failed");
     assert_eq!(failure.exit, 1);
+}
+
+// ------------------------------------------- purge reaps the session's worktrees
+
+// j001300 / session.feature "Emptying a session ...": `session purge` covers
+// the scratch worktrees living inside the session, through the worktree leaf's
+// own verdicts.
+#[test]
+fn purge_with_yes_reaps_the_sessions_scratch_worktrees_and_reports_them() {
+    use isolation_application::Verdict;
+    let mut fake = Fake {
+        removal: Some(plan(true)),
+        wt_report: Some(wt_report(
+            vec![
+                checkout("amber-swift-owl", "clean", Verdict::Reaped, ""),
+                checkout(
+                    "amber-swift-owl",
+                    "wip",
+                    Verdict::Spared,
+                    "has uncommitted changes",
+                ),
+            ],
+            true,
+        )),
+        ..Fake::default()
+    };
+    let ran = go(
+        &mut fake,
+        Format::Text,
+        &["purge", "amber-swift-owl", "--yes"],
+    );
+    assert_eq!(
+        fake.wt_asked,
+        vec![(Some("amber-swift-owl".to_string()), true)]
+    );
+    assert!(ran.out.contains("ctxloom-wt-clean"), "{}", ran.out);
+    assert!(
+        ran.out.contains("removed 1, spared 1, skipped 0"),
+        "{}",
+        ran.out
+    );
+    // The purge itself succeeded; a spared checkout is not a failure of it.
+    assert!(ran.result.unwrap().notices.is_empty());
+}
+
+#[test]
+fn purge_with_yes_carries_the_worktree_report_in_json() {
+    use isolation_application::Verdict;
+    let mut fake = Fake {
+        removal: Some(plan(true)),
+        wt_report: Some(wt_report(
+            vec![checkout("amber-swift-owl", "clean", Verdict::Reaped, "")],
+            true,
+        )),
+        ..Fake::default()
+    };
+    let doc = json_of(&go(
+        &mut fake,
+        Format::Json,
+        &["purge", "amber-swift-owl", "--yes"],
+    ));
+    assert_eq!(doc["applied"], true);
+    assert_eq!(doc["worktrees"]["reaped"], 1);
+    assert_eq!(doc["worktrees"]["worktrees"][0]["verdict"], "reaped");
+}
+
+#[test]
+fn a_purge_of_a_session_with_no_worktrees_is_unchanged() {
+    let mut fake = Fake {
+        removal: Some(plan(true)),
+        wt_report: Some(wt_report(Vec::new(), true)),
+        ..Fake::default()
+    };
+    let doc = json_of(&go(
+        &mut fake,
+        Format::Json,
+        &["purge", "amber-swift-owl", "--yes"],
+    ));
+    assert!(doc.get("worktrees").is_none(), "{doc}");
+    let ran = go(
+        &mut fake,
+        Format::Text,
+        &["purge", "amber-swift-owl", "--yes"],
+    );
+    assert!(!ran.out.contains("scratch worktrees"), "{}", ran.out);
+}
+
+#[test]
+fn a_purge_of_a_session_with_no_directory_still_succeeds() {
+    // The default Fake answers NoSession to every worktree question.
+    let mut fake = Fake {
+        removal: Some(plan(true)),
+        ..Fake::default()
+    };
+    let ran = go(
+        &mut fake,
+        Format::Text,
+        &["purge", "amber-swift-owl", "--yes"],
+    );
+    assert!(ran.result.is_ok());
+    assert_eq!(fake.wt_asked.len(), 1);
+}
+
+#[test]
+fn purge_without_yes_only_previews_the_worktrees() {
+    use isolation_application::Verdict;
+    let mut fake = Fake {
+        removal: Some(plan(false)),
+        wt_report: Some(wt_report(
+            vec![checkout("amber-swift-owl", "clean", Verdict::Reapable, "")],
+            false,
+        )),
+        ..Fake::default()
+    };
+    let ran = go(&mut fake, Format::Text, &["purge", "amber-swift-owl"]);
+    assert_eq!(
+        fake.wt_asked,
+        vec![(Some("amber-swift-owl".to_string()), false)]
+    );
+    assert!(ran.out.contains("reapable"), "{}", ran.out);
+    assert_eq!(ran.result.unwrap().notices.len(), 1);
+}
+
+#[test]
+fn a_refused_purge_reaps_nothing() {
+    let mut refused = plan(false);
+    refused.refusal = Some(Refusal::Retained {
+        harp: "amber-swift-owl".to_string(),
+        detail: "it ended an hour ago".to_string(),
+    });
+    let mut fake = Fake {
+        removal: Some(refused),
+        wt_report: Some(wt_report(Vec::new(), true)),
+        ..Fake::default()
+    };
+    let ran = go(
+        &mut fake,
+        Format::Json,
+        &["purge", "amber-swift-owl", "--yes"],
+    );
+    assert!(ran.result.is_err());
+    assert!(fake.wt_asked.is_empty(), "{:?}", fake.wt_asked);
+}
+
+#[test]
+fn only_purge_empties_the_worktrees_not_remove_or_transcript_purge() {
+    for words in [
+        vec!["remove", "amber-swift-owl", "--yes"],
+        vec!["transcript", "purge", "amber-swift-owl", "--yes"],
+    ] {
+        let mut fake = Fake {
+            removal: Some(plan(true)),
+            wt_report: Some(wt_report(Vec::new(), true)),
+            ..Fake::default()
+        };
+        let _ = go(&mut fake, Format::Json, &words);
+        assert!(fake.wt_asked.is_empty(), "{words:?}: {:?}", fake.wt_asked);
+    }
+}
+
+#[test]
+fn a_worktree_failure_during_a_purge_is_reported_not_swallowed() {
+    let mut fake = Fake {
+        removal: Some(plan(true)),
+        wt_fails: true,
+        ..Fake::default()
+    };
+    let ran = go(
+        &mut fake,
+        Format::Json,
+        &["purge", "amber-swift-owl", "--yes"],
+    );
+    assert!(ran.result.is_err());
 }
 
 // The sweep's purge-age rule: `--purge-older-than`, else `session_purge_age`;

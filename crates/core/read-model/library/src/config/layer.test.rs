@@ -248,3 +248,89 @@ fn test_a_null_in_a_higher_layer_neither_replaces_nor_adds() {
     assert_eq!(text(&m, "workspace"), "worktree");
     assert!(get(&m, "session_reap_age").is_none(), "{m:?}");
 }
+
+// ---------------------------------------------------------------- characterization
+//
+// Pinned before the layer mechanics may move (A0): which note each kind of
+// text gives, and what comes back with it.
+
+fn notes_of(text: &str) -> Vec<Note> {
+    read(text).expect("readable").notes
+}
+
+#[test]
+fn test_the_generation_boundaries_give_these_notes_exactly() {
+    assert_eq!(
+        notes_of("schema_version: 9\nk: v\n"),
+        [Note::Newer {
+            found: 9,
+            current: u64::from(CURRENT)
+        }]
+    );
+    assert_eq!(
+        notes_of("schema_version: 6\nk: v\n"),
+        [Note::Older {
+            found: 6,
+            oldest: u64::from(OLDEST)
+        }]
+    );
+    assert_eq!(
+        notes_of("k: v\n"),
+        [Note::Older {
+            found: 0,
+            oldest: u64::from(OLDEST)
+        }],
+        "an unstamped file is generation 0"
+    );
+    assert!(notes_of("schema_version: 7\nk: v\n").is_empty());
+    assert!(notes_of("schema_version: 8\nk: v\n").is_empty());
+    assert_eq!(notes_of("schema_version: abc\nk: v\n"), [Note::NotInteger]);
+    assert_eq!(notes_of("schema_version: -1\nk: v\n"), [Note::NotInteger]);
+    assert_eq!(notes_of("schema_version: [8]\nk: v\n"), [Note::NotInteger]);
+}
+
+#[test]
+fn test_a_stamp_with_spaces_around_its_number_is_read() {
+    assert!(notes_of("schema_version: \" 8 \"\nk: v\n").is_empty());
+}
+
+#[test]
+fn test_a_layer_that_gave_a_note_is_read_as_written_and_a_current_one_is_stamped() {
+    let newer = read("schema_version: 9\nk: v\n").expect("readable");
+    assert_eq!(
+        newer.value.get("schema_version").and_then(Value::as_str),
+        Some("9")
+    );
+    let old = read("schema_version: 7\nk: v\n").expect("readable");
+    assert_eq!(
+        old.value.get("schema_version").and_then(Value::as_str),
+        Some("8"),
+        "migrated in memory, stamped with the current generation"
+    );
+}
+
+#[test]
+fn test_an_empty_text_a_comment_and_a_null_are_all_keyless() {
+    for text in ["", "# only a comment\n", "~\n", "{}\n"] {
+        let read = read(text).expect("readable");
+        assert_eq!(read.notes, [Note::Keyless], "{text:?}");
+        assert_eq!(read.value, Value::Map(Vec::new()), "{text:?}");
+    }
+}
+
+#[test]
+fn test_text_that_is_a_list_or_a_scalar_is_not_a_mapping() {
+    for text in ["- a\n- b\n", "just words\n", "3\n"] {
+        assert!(
+            matches!(read(text), Err(ConfigError::NotAMapping)),
+            "{text:?}"
+        );
+    }
+}
+
+#[test]
+fn test_merging_no_layers_is_an_empty_mapping_and_a_non_mapping_layer_adds_nothing() {
+    assert_eq!(merge_layers(&[]), Value::Map(Vec::new()));
+    let scalar_layer = Value::Scalar("x".to_string());
+    assert_eq!(merge_layers(&[scalar_layer]), Value::Map(Vec::new()));
+}

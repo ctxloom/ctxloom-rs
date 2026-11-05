@@ -13,6 +13,12 @@
 //! The same adapter finds the scratch checkouts a crashed run left behind and
 //! removes them WIP-safely: nested worktrees first, each checked, never
 //! forced, and a doubtful state is never read as clean.
+//!
+//! Every git invocation is bounded (thirty seconds, Go's: [`DEFAULT_TIMEOUT`]):
+//! a git that hangs is killed and reaped, and stops a run with a
+//! `GitTimedOut` diagnostic rather than reading as "not a repository". The
+//! program and the limit are [`Git`], which tests narrow to a stub script and
+//! a tiny limit.
 
 mod error;
 mod git;
@@ -21,6 +27,7 @@ mod workspace;
 #[cfg(any(test, feature = "test-support"))]
 pub use error::diagnostic_samples;
 pub use error::{WorktreeError, EN_US};
+pub use git::{Git, GitError, DEFAULT_TIMEOUT};
 pub use workspace::{branch_of, checkout_name, sanitize, GitWorkspaces, EXCLUDE_HEADER};
 
 #[cfg(test)]

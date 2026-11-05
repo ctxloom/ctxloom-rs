@@ -143,3 +143,17 @@ Feature: session worktrees - the scratch checkouts a session left behind
     When I run "ctxloom session purge amber-quiet-heron --yes"
     Then the uncommitted work is still there, spared in place
     And the scratch worktree is still registered with git
+
+  # The other half of the same rule: emptying a session reaches the verdicts the
+  # worktree leaf reaches, so the clean tree of an ended session goes and the
+  # one holding uncommitted work is spared in place. (Go's `session purge`
+  # reaped through isolation.ReapWorktrees; the Rust purge once left every
+  # worktree behind.)
+  Scenario: Emptying a session reaps the clean scratch worktree and spares the dirty one
+    Given a finished session "amber-quiet-heron" whose transcript retention has passed
+    And session "amber-quiet-heron" left a clean scratch worktree
+    And session "amber-quiet-heron" left a scratch worktree holding uncommitted work
+    When I run "ctxloom session purge amber-quiet-heron --yes"
+    Then only the clean, provably-orphaned worktree is gone from disk
+    And the uncommitted work is still there, spared in place
+    And the scratch worktree is still registered with git

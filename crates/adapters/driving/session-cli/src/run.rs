@@ -304,7 +304,7 @@ async fn edit<S: SessionService>(
     Ok(dead_letters(&renamed.dead_letters))
 }
 
-async fn remove<S: SessionService>(
+async fn remove<S: SessionService + WorktreeUse>(
     service: &mut S,
     args: &RemoveArgs,
     scope: Scope,
@@ -321,9 +321,25 @@ async fn remove<S: SessionService>(
         })
         .await
         .map_err(failure)?;
+    // Emptying a session covers the scratch worktrees living inside it, and
+    // reaches exactly the verdicts the worktree leaf reaches on its own (Go:
+    // `session purge` drove isolation.ReapWorktrees). A refused purge touches
+    // nothing; a session with no directory has none.
+    let worktrees = if scope == Scope::Purge && removal.refusal.is_none() {
+        match service.worktrees(Some(&args.harp), args.yes) {
+            Ok(report) => Some(report).filter(|r| !r.worktrees.is_empty()),
+            Err(IsolationError::NoSession { .. }) => None,
+            Err(error) => return Err(isolation_failure(error)),
+        }
+    } else {
+        None
+    };
     wrote(match format {
-        Format::Json => write_json(out, &RemovalDoc::of(&removal)),
-        Format::Text => removal_text(&removal, out),
+        Format::Json => write_json(out, &RemovalDoc::of(&removal, worktrees.as_ref())),
+        Format::Text => removal_text(&removal, out).and_then(|()| match &worktrees {
+            Some(report) => worktrees_text(report, out),
+            None => Ok(()),
+        }),
     })?;
     let mut done = dead_letters(&removal.dead_letters);
     if let Some(refusal) = removal.refusal {
@@ -409,7 +425,7 @@ fn reclaim_failure(error: ReclaimError) -> Failure {
     }
 }
 
-async fn transcripts<S: SessionService>(
+async fn transcripts<S: SessionService + WorktreeUse>(
     service: &mut S,
     transcript: &Transcript,
     format: Format,
