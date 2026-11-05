@@ -5,6 +5,9 @@
 # The gates are gates/gates.just (or $GATES_JUST, to measure another version).
 # MEASURE=1 also prints each case's lines and bytes.
 set -euo pipefail
+# Under a git hook, git exports variables naming the real repository; the
+# fixtures' own git commands must not inherit them.
+while IFS= read -r v; do unset "$v"; done < <(git rev-parse --local-env-vars)
 here=$(cd "$(dirname "$0")" && pwd)
 gates=${GATES_JUST:-$here/../gates/gates.just}
 tmp=$(mktemp -d)

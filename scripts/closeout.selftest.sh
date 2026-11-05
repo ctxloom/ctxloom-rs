@@ -3,6 +3,9 @@
 # Every gate runs even after one fails; the summary names the failures; the
 # exit code follows; mutants-batch gets the base argument.
 set -euo pipefail
+# Under a git hook, git exports variables naming the real repository; the
+# fixtures' own git commands must not inherit them.
+while IFS= read -r v; do unset "$v"; done < <(git rev-parse --local-env-vars)
 here=$(cd "$(dirname "$0")" && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT

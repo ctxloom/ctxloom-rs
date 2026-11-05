@@ -29,7 +29,11 @@ poll=${MUTANTS_POLL:-5}
 cap=${MUTANTS_SURVIVORS_MAX:-15}
 read -ra gate <<< "${MUTANTS_GATE:-just mutants-staged}"
 
-g() { env -u GIT_INDEX_FILE -u GIT_DIR -u GIT_WORK_TREE git "$@"; }
+# Run from a git hook, git exports variables naming the real repository, and
+# the throwaway worktree must not inherit them.
+scrub=(env)
+while IFS= read -r var; do scrub+=(-u "$var"); done < <(git rev-parse --local-env-vars)
+g() { "${scrub[@]}" git "$@"; }
 
 top=$(g rev-parse --show-toplevel)
 head=${2:-HEAD}

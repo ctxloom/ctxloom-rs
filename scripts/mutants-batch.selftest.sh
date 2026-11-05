@@ -6,6 +6,9 @@
 # merge-base with main; and the worktree and what the run left running are
 # gone afterwards.
 set -euo pipefail
+# Under a git hook, git exports variables naming the real repository; the
+# fixtures' own git commands must not inherit them.
+while IFS= read -r v; do unset "$v"; done < <(git rev-parse --local-env-vars)
 here=$(cd "$(dirname "$0")" && pwd)
 tmp=$(mktemp -d)
 trap 'pkill -KILL -f -- "$tmp" 2>/dev/null || true; rm -rf "$tmp"' EXIT
