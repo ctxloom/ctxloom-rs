@@ -3,11 +3,12 @@
 //! decided by a fixed table; nothing is decided by a model). Both report
 //! first and act only on `yes`.
 //!
-//! The sweep acts through the sessions use cases (`session purge`), so it
-//! inherits every refusal they make: a session whose lock does not prove it
-//! dead, one marked keep, one whose transcript is within its retention. The
-//! scratch worktrees and the reclaim of the disposable members of old
-//! sessions are S11's and S6's: they are not decided here.
+//! The sweep acts through the sessions use cases (`session purge`) and the
+//! worktree leaf (`session worktrees purge`), so it inherits every refusal
+//! they make: a session whose lock does not prove it dead, one marked keep,
+//! one whose transcript is within its retention, and a scratch worktree with
+//! uncommitted work, spared in place. The reclaim of the disposable members
+//! of old sessions is S6's: it is not decided here.
 
 mod age;
 mod clean;

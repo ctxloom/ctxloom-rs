@@ -1,0 +1,14 @@
+[package]
+name = "isolation-ports"
+version = "0.1.0"
+description = "The ports the isolation use cases need from outside (S11): the workspaces a run lives in, the container runtimes on the machine, the backends and the companions' tooling declarations"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+
+[lints]
+workspace = true

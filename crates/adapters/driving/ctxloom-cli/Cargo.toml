@@ -14,6 +14,7 @@ cli-support.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
 hook-cli.workspace = true
+isolation-application.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 session-cli.workspace = true

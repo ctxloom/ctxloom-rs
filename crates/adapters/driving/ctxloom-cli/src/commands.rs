@@ -168,7 +168,14 @@ pub fn command(version: &str, nouns: Vec<Command>) -> Command {
 /// The groups whose bare form runs their default verb rather than printing
 /// their usage (D28: "a bare namespace runs its default verb"; Go's
 /// `groupNodeDefault`). A group added by a later slice names itself here.
-pub const BARE_RUNS_DEFAULT: [&str; 3] = ["session", "transcript", "init"];
+pub const BARE_RUNS_DEFAULT: [&str; 6] = [
+    "session",
+    "transcript",
+    "init",
+    "worktrees",
+    "tooling",
+    "container",
+];
 
 fn without_help_command(command: Command) -> Command {
     let names: Vec<String> = command

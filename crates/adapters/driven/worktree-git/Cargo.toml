@@ -1,0 +1,23 @@
+[package]
+name = "worktree-git"
+version = "0.1.0"
+description = "The Workspaces port over the git command line (S11): a per-agent worktree on its own branch in the session's work directory, the scratch checkouts a crashed run left behind, and their WIP-safe removal"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+isolation-ports.workspace = true
+
+[dev-dependencies]
+mutants.workspace = true
+tempfile.workspace = true
+
+[features]
+# `diagnostic_samples`, for other crates' catalog tests.
+test-support = []
+
+[lints]
+workspace = true

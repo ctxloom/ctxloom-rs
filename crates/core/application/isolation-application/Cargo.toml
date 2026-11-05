@@ -1,0 +1,28 @@
+[package]
+name = "isolation-application"
+version = "0.1.0"
+description = "The isolation use cases (S11): session worktrees list and purge, and container check, build, prune, scaffold and tooling, over the isolation ports"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+ctxloom-ports.workspace = true
+isolation.workspace = true
+isolation-ports.workspace = true
+serde.workspace = true
+session-ports.workspace = true
+
+[dev-dependencies]
+isolation = { workspace = true, features = ["test-support"] }
+mutants.workspace = true
+serde_json.workspace = true
+
+[features]
+# `diagnostic_samples`, for other crates' catalog tests.
+test-support = ["isolation/test-support"]
+
+[lints]
+workspace = true
