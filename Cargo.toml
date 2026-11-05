@@ -127,15 +127,18 @@ container-cli = { path = "crates/adapters/driving/container-cli" }
 # ctxloom-lib, the shared substrate (S2): the driving edge's call, failure, notices
 # and argument shims. Pinned by full commit over https, as taskloom pins it;
 # its angzarr pins are the ones above.
-cli-support = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "32e96fd910fce013770f044692a0377eec6cfb25" }
+cli-support = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "847b9d559e21f94784758baccdd86f782d2521b2" }
 # process-env (S3): the environment read once into a snapshot the composition root hands down.
-process-env = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "32e96fd910fce013770f044692a0377eec6cfb25" }
+process-env = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "847b9d559e21f94784758baccdd86f782d2521b2" }
 # project-dir (S4): the ancestor walk with injected rules, and the checked project id.
-project-dir = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "32e96fd910fce013770f044692a0377eec6cfb25" }
+project-dir = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "847b9d559e21f94784758baccdd86f782d2521b2" }
 # run-within (S6): a program run under a deadline, its tree killed, its output bounded.
-run-within = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "32e96fd910fce013770f044692a0377eec6cfb25" }
+run-within = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "847b9d559e21f94784758baccdd86f782d2521b2" }
 # duration-text (S9): a span or date as an age, and the cutoff it makes.
-duration-text = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "32e96fd910fce013770f044692a0377eec6cfb25" }
+duration-text = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "847b9d559e21f94784758baccdd86f782d2521b2" }
+# sqlite-store-opener (S5): places and opens a project's SQLite store under a file name the caller
+# names, refusing a store from before the embedded store; ctxloom-store-sqlite is its adapter.
+sqlite-store-opener = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "847b9d559e21f94784758baccdd86f782d2521b2" }
 
 # HTTP for forge-github (owner, 2026-11-04): the blocking client, so the
 # synchronous CLI holds no runtime of its own, and the TLS stack chosen below.

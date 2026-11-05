@@ -6,7 +6,10 @@
 //!
 //! - [`Stores::open`] opens the project's store to write, making its
 //!   directory and the file (migrated if need be).
-//! - Errors are this crate's, with the store's own text as `ext_err_txt`.
+//! - The opening is `sqlite-store-opener`'s: this crate is the file name, the
+//!   placement under the home and the [`ProjectStores`] port. A store from
+//!   before the embedded store is refused ([`OpenError::PredatesEmbedded`]).
+//! - Errors are the opener's and the project id's, each under its own code.
 
 mod error;
 
@@ -16,20 +19,24 @@ use std::sync::Arc;
 use angzarr_embedded::angzarr_store_sqlite::SqliteStore;
 use angzarr_embedded::StoreError;
 use file_system::Fs;
-use os::Mode;
 use ports::Project;
 use session_ports::ProjectStores;
+use sqlite_store_opener::Opener;
 
+pub use error::StoreOpenError;
 #[cfg(any(test, feature = "test-support"))]
-pub use error::diagnostic_samples;
-pub use error::{StoreOpenError, EN_US};
+pub use sqlite_store_opener::diagnostic_samples;
+pub use sqlite_store_opener::{OpenError, EN_US};
 
 /// The app's directory under a home.
 const APP_DIR: &str = ".ctxloom";
 
+/// The store's file name: beside taskloom's `state.db`, never the same file.
+const FILE_NAME: &str = "ctxloom.db";
+
 /// The ctxloom stores under one home.
 pub struct Stores {
-    fs: Arc<dyn Fs>,
+    opener: Opener,
     home: PathBuf,
 }
 
@@ -37,7 +44,7 @@ impl Stores {
     /// The stores under `home`, on `fs`; none opened yet.
     pub fn new(fs: Arc<dyn Fs>, home: impl Into<PathBuf>) -> Stores {
         Stores {
-            fs,
+            opener: Opener::new(fs, FILE_NAME),
             home: home.into(),
         }
     }
@@ -50,55 +57,31 @@ impl Stores {
     /// projects directory.
     pub fn path(&self, project: &str) -> Result<PathBuf, StoreOpenError> {
         project_dir::project_dir(&self.home, APP_DIR, project)
-            .map(|dir| dir.join("ctxloom.db"))
+            .map(|dir| self.opener.file_in(&dir))
             .map_err(StoreOpenError::UnsafeProject)
     }
 
     /// `project`'s store, read-only: `None` where it has no database, and
-    /// nothing is made.
+    /// nothing is made. A store from before the embedded store is refused.
     pub async fn open_existing(&self, project: &str) -> Result<Option<SqliteStore>, StoreError> {
         let path = self
             .path(project)
-            .map_err(|e| StoreError::Unavailable(e.cause()))?;
-        let real = self.fs.real_path(&path).map_err(|e| {
-            StoreError::Unavailable(
-                StoreOpenError::Unplaced {
-                    path: path.display().to_string(),
-                    detail: e.to_string(),
-                }
-                .cause(),
-            )
-        })?;
-        SqliteStore::open_existing(&real).await
+            .map_err(StoreOpenError::into_store_error)?;
+        self.opener
+            .open_existing(&path)
+            .await
+            .map_err(OpenError::into_store_error)
     }
 
     /// `project`'s store, opened to write: its directory and file made and
-    /// migrated if need be.
+    /// migrated if need be. A store from before the embedded store is
+    /// refused.
     pub async fn open(&self, project: &str) -> Result<SqliteStore, StoreOpenError> {
         let path = self.path(project)?;
-        let shown = path.display().to_string();
-        if let Some(dir) = path.parent() {
-            // As std's create_dir_all makes them: 0777 before the umask.
-            self.fs
-                .create_dir_all(dir, Mode::from_bits(0o777))
-                .map_err(|e| StoreOpenError::CreateDir {
-                    path: dir.display().to_string(),
-                    detail: e.to_string(),
-                })?;
-        }
-        let real = self
-            .fs
-            .real_path(&path)
-            .map_err(|e| StoreOpenError::Unplaced {
-                path: shown.clone(),
-                detail: e.to_string(),
-            })?;
-        SqliteStore::open(&real)
+        self.opener
+            .open_for_write(&path)
             .await
-            .map_err(|e| StoreOpenError::Open {
-                path: shown,
-                detail: e.to_string(),
-            })
+            .map_err(StoreOpenError::Open)
     }
 }
 
@@ -149,7 +132,7 @@ impl ProjectStores for SqliteStores {
             .stores
             .open(&project.id)
             .await
-            .map_err(|e| StoreError::Unavailable(e.cause()))?;
+            .map_err(StoreOpenError::into_store_error)?;
         Ok(&self
             .held
             .insert(Held {

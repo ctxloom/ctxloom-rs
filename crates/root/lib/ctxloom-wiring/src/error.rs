@@ -75,10 +75,12 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(LibError::NoRuntime {
             detail: "too many open files".to_string(),
         }),
-        Box::new(LibError::Store(StoreOpenError::Open {
-            path: "/home/u/.ctxloom/projects/p/ctxloom.db".to_string(),
-            detail: "locked".to_string(),
-        })),
+        Box::new(LibError::Store(StoreOpenError::Open(
+            ctxloom_store_sqlite::OpenError::Unplaced {
+                path: "/home/u/.ctxloom/projects/p/ctxloom.db".to_string(),
+                detail: "no place on disk".to_string(),
+            },
+        ))),
         Box::new(LibError::Store(StoreOpenError::UnsafeProject(
             project_dir::ProjectDirError::IdSeparator {
                 id: "../escape".to_string(),

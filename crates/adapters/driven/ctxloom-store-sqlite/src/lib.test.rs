@@ -126,7 +126,7 @@ async fn test_a_read_only_store_is_replaced_when_a_write_asks() {
 // Pinned before the store opener may move (A0): where a project's database
 // is, what asking makes and what it does not.
 
-use super::StoreOpenError;
+use super::{OpenError, StoreOpenError};
 use angzarr_diagnostic::Diagnostic;
 use angzarr_embedded::angzarr_ports::Arg as PortArg;
 use angzarr_embedded::StoreError;
@@ -247,18 +247,15 @@ async fn test_a_home_whose_app_dir_is_a_file_cannot_hold_a_store() {
     )
     .unwrap();
     let stores = Stores::new(fs, "/home/u");
-    let Err(StoreOpenError::CreateDir { path, .. }) = stores.open("p").await else {
+    let Err(StoreOpenError::Open(error @ OpenError::CreateDir { .. })) = stores.open("p").await
+    else {
         panic!("the directory cannot be made");
     };
+    let OpenError::CreateDir { path, .. } = &error else {
+        unreachable!()
+    };
     assert_eq!(path, "/home/u/.ctxloom/projects/p");
-    assert_eq!(
-        StoreOpenError::CreateDir {
-            path,
-            detail: String::new()
-        }
-        .code(),
-        "ctxloom-store-sqlite-create-dir"
-    );
+    assert_eq!(error.code(), "sqlite-store-opener-create-dir");
 }
 
 #[tokio::test]
@@ -298,4 +295,109 @@ async fn test_the_project_port_places_the_store_by_id_not_by_the_projects_store_
         .exists(Path::new("/home/u/.ctxloom/projects/p/ctxloom.db"))
         .unwrap());
     assert!(!fs.exists(Path::new("/elsewhere")).unwrap());
+}
+
+// ------------------------------------------------ a store from before the embedded store
+//
+// D7 (the extraction plan): ctxloom-rs inherits the opener's refusal. Before
+// the opener was shared, ctxloom opened any file at `ctxloom.db`, migrating
+// an earlier event store's in place; now it is refused, naming the backup to
+// move it to, and left exactly as it was.
+
+/// An earlier event store's file: one stream of two events under its rules,
+/// its ledger only its first migration. Frozen in testdata.
+const PRE_EMBEDDED: &[u8] = include_bytes!("../testdata/pre-embedded.db");
+
+const DB_DIR: &str = "/home/u/.ctxloom/projects/jolly-mute-magma";
+
+fn earlier_store(fs: &Rooted) -> Vec<u8> {
+    fs.create_dir_all(Path::new(DB_DIR), Mode::from_bits(0o755))
+        .unwrap();
+    let db = Path::new(DB_DIR).join("ctxloom.db");
+    fs.write_atomic(
+        &db,
+        PRE_EMBEDDED,
+        file_system::Perms::Exact(Mode::from_bits(0o644)),
+    )
+    .unwrap();
+    fs.read(&db).unwrap()
+}
+
+fn refusal_args(error: &dyn Diagnostic) -> Vec<(String, String)> {
+    assert_eq!(error.code(), "sqlite-store-opener-predates-embedded");
+    error
+        .args()
+        .into_iter()
+        .map(|(name, arg)| match arg {
+            angzarr_diagnostic::Arg::Str(text) => (name.to_string(), text),
+            other => panic!("{name}: {other:?}"),
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn test_a_store_that_predates_the_embedded_store_is_refused_to_write_and_to_read_and_left_as_it_was(
+) {
+    let fs = Arc::new(Rooted::temp().unwrap());
+    let before = earlier_store(&fs);
+    let stores = Stores::new(fs.clone(), "/home/u");
+    let expected = vec![
+        ("path".to_string(), format!("{DB_DIR}/ctxloom.db")),
+        (
+            "backup".to_string(),
+            format!("{DB_DIR}/ctxloom.db.pre-embedded"),
+        ),
+    ];
+    let error = stores
+        .open("jolly-mute-magma")
+        .await
+        .err()
+        .expect("refused");
+    assert_eq!(refusal_args(&error), expected, "to write");
+    let error = stores
+        .open_existing("jolly-mute-magma")
+        .await
+        .err()
+        .expect("refused");
+    let StoreError::Unavailable(cause) = error else {
+        panic!("not Unavailable: {error:?}");
+    };
+    assert_eq!(cause.code, "sqlite-store-opener-predates-embedded");
+    assert_eq!(
+        cause.args,
+        [
+            ("path", PortArg::Str(expected[0].1.clone())),
+            ("backup", PortArg::Str(expected[1].1.clone())),
+        ],
+        "to read"
+    );
+    assert_eq!(
+        fs.read(&Path::new(DB_DIR).join("ctxloom.db")).unwrap(),
+        before,
+        "the file as it was: not migrated"
+    );
+}
+
+#[tokio::test]
+async fn test_the_port_refuses_a_store_that_predates_the_embedded_store_and_holds_nothing() {
+    let fs = Arc::new(Rooted::temp().unwrap());
+    earlier_store(&fs);
+    let mut stores = super::SqliteStores::new(fs.clone(), "/home/u");
+    let wanted = project("jolly-mute-magma");
+    let error = ProjectStores::open(&mut stores, &wanted)
+        .await
+        .err()
+        .expect("refused to write");
+    let StoreError::Unavailable(cause) = &error else {
+        panic!("not Unavailable: {error:?}");
+    };
+    assert_eq!(cause.code, "sqlite-store-opener-predates-embedded");
+    let error = ProjectStores::open_existing(&mut stores, &wanted)
+        .await
+        .err()
+        .expect("refused to read");
+    let StoreError::Unavailable(cause) = &error else {
+        panic!("not Unavailable: {error:?}");
+    };
+    assert_eq!(cause.code, "sqlite-store-opener-predates-embedded");
 }

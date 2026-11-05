@@ -6,7 +6,7 @@ use std::path::Path;
 
 /// angzarr crates a lock must hold exactly once, whatever pulls them in:
 /// taskloom's `tasks-lib` brings its own graph, so the pins must agree.
-const ONE_OF_EACH: [&str; 6] = [
+const ONE_OF_EACH: [&str; 7] = [
     "angzarr-proto",
     "angzarr-ports",
     "angzarr-diagnostic",
@@ -15,6 +15,7 @@ const ONE_OF_EACH: [&str; 6] = [
     // at two commits (one from a transitive consumer).
     "cli-support",
     "process-env",
+    "sqlite-store-opener",
 ];
 
 #[test]

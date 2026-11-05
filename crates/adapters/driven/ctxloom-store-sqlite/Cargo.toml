@@ -1,7 +1,7 @@
 [package]
 name = "ctxloom-store-sqlite"
 version = "0.1.0"
-description = "A project's ctxloom store: angzarr-store-sqlite's SQLite store at ~/.ctxloom/projects/<id>/ctxloom.db (D26)"
+description = "A project's ctxloom store: angzarr-store-sqlite's SQLite store at ~/.ctxloom/projects/<id>/ctxloom.db (D26), over ctxloom-lib's sqlite-store-opener"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -13,21 +13,25 @@ angzarr-diagnostic.workspace = true
 # `sqlite` feature), at the rev the kernel is built with.
 angzarr-embedded = { workspace = true, features = ["sqlite"] }
 file-system.workspace = true
-os.workspace = true
 project-dir.workspace = true
 # The Project the store is opened for (taskloom's ports, by commit) and the port
 # it implements.
 ports.workspace = true
 session-ports.workspace = true
+# The opening itself: the directory, the path on disk, the refusal of a store
+# from before the embedded store. This crate is the file name and the port.
+sqlite-store-opener.workspace = true
 
 [dev-dependencies]
+sqlite-store-opener = { workspace = true, features = ["test-support"] }
 file-system = { workspace = true, features = ["test-support"] }
+os.workspace = true
 tokio = { workspace = true, features = ["macros"] }
 
 [features]
 # `diagnostic_samples`, for other crates' catalog tests: their dev-dependency
 # turns it on, and no build of a binary does.
-test-support = []
+test-support = ["sqlite-store-opener/test-support"]
 
 [lints]
 workspace = true

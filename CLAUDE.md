@@ -207,8 +207,10 @@ sibling (ctxloom-lib's gates and mutation first) and bumping its rev.
 
 A project's store is angzarr-store-sqlite's `SqliteStore` (through
 angzarr-embedded's `sqlite` feature), opened at
-`~/.ctxloom/projects/<project-id>/ctxloom.db` by `ctxloom-store-sqlite`,
-beside taskloom's `state.db` and never the same file (D26). All file I/O goes
+`~/.ctxloom/projects/<project-id>/ctxloom.db` by `ctxloom-store-sqlite` (the
+file name, the placement and the port, over ctxloom-lib's `sqlite-store-opener`,
+which refuses a store from before the embedded store, `ctxloom.db.pre-embedded`
+naming its backup), beside taskloom's `state.db` and never the same file (D26). All file I/O goes
 through the `file-system` seam, so a test under a temporary home touches
 nothing else. ctxloom writes no SQL of its own.
 
