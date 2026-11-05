@@ -15,7 +15,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use deps_ports::{CopyOutcome, DepsFiles, RepoTree, Why};
+use deps_ports::{BundleSlot, CopyOutcome, DepsFiles, RepoTree, Why};
 use file_system::{Fs, Kind, Perms};
 use os::Mode;
 
@@ -89,20 +89,20 @@ impl DepsFiles for ProjectFiles {
         self.write_text(&self.lock_file(), text)
     }
 
-    fn is_installed(&self, identity: &str, sha: &str) -> bool {
-        installed::is_installed(self, identity, sha)
+    fn is_installed(&self, slot: &BundleSlot, sha: &str) -> bool {
+        installed::is_installed(self, slot, sha)
     }
 
-    fn install(&self, identity: &str, sha: &str, tree: &RepoTree) -> Result<(), Why> {
-        installed::install(self, identity, sha, tree)
+    fn install(&self, slot: &BundleSlot, sha: &str, tree: &RepoTree) -> Result<(), Why> {
+        installed::install(self, slot, sha, tree)
     }
 
-    fn installed_path(&self, identity: &str, sha: &str) -> String {
-        installed::path(self, identity, sha)
+    fn installed_path(&self, slot: &BundleSlot, sha: &str) -> String {
+        installed::path(self, slot, sha)
     }
 
-    fn read_installed(&self, identity: &str, sha: &str) -> Result<Option<RepoTree>, Why> {
-        installed::read(self, identity, sha)
+    fn read_installed(&self, slot: &BundleSlot, sha: &str) -> Result<Option<RepoTree>, Why> {
+        installed::read(self, slot, sha)
     }
 
     fn prune(&self, keep: &[(String, String)]) -> Result<Vec<String>, Why> {

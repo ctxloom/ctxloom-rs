@@ -74,11 +74,6 @@ allow = ["*"]
 # the entry goes with it (a stale one fails).
 
 [[exception]]
-from = "deps-files"
-to = "deps"
-reason = "debt: the installed-cache reader uses the deps read model's pure address and constraint functions (cache_segments, looks_like_commit); fix: move those functions to deps-ports (or the wire crate), where a driven adapter may see them"
-
-[[exception]]
 from = "remote-git"
 to = "deps"
 reason = "debt: the git remote adapter uses the deps read model's pure cache_segments for the cache path; fix: as deps-files, move it to deps-ports"

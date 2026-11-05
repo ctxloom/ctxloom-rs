@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use ctxloom_ports::{Change, ContentRepo, Failure, TreeFiles};
 use deps_ports::{
-    CopyOutcome, DepsFiles, Endpoint, Forge, ForgeRepo, Opened, PullRequest, Remotes, RepoFile,
-    RepoTree, Why,
+    BundleSlot, CopyOutcome, DepsFiles, Endpoint, Forge, ForgeRepo, Opened, PullRequest, Remotes,
+    RepoFile, RepoTree, Why,
 };
 
 use crate::Deps;
@@ -466,11 +466,12 @@ impl DepsFiles for FakeFiles {
         Ok(())
     }
 
-    fn is_installed(&self, identity: &str, sha: &str) -> bool {
-        self.installed_at(identity, sha).is_some()
+    fn is_installed(&self, slot: &BundleSlot, sha: &str) -> bool {
+        self.installed_at(&slot.identity, sha).is_some()
     }
 
-    fn install(&self, identity: &str, sha: &str, tree: &RepoTree) -> Result<(), Why> {
+    fn install(&self, slot: &BundleSlot, sha: &str, tree: &RepoTree) -> Result<(), Why> {
+        let identity = &slot.identity;
         let mut state = self.state();
         if state.fail_install {
             return Err("disk full".to_string());
@@ -482,12 +483,12 @@ impl DepsFiles for FakeFiles {
         Ok(())
     }
 
-    fn installed_path(&self, _identity: &str, sha: &str) -> String {
+    fn installed_path(&self, _slot: &BundleSlot, sha: &str) -> String {
         format!("/p/.ctxloom/cache/bundles/{sha}")
     }
 
-    fn read_installed(&self, identity: &str, sha: &str) -> Result<Option<RepoTree>, Why> {
-        Ok(self.installed_at(identity, sha))
+    fn read_installed(&self, slot: &BundleSlot, sha: &str) -> Result<Option<RepoTree>, Why> {
+        Ok(self.installed_at(&slot.identity, sha))
     }
 
     fn prune(&self, keep: &[(String, String)]) -> Result<Vec<String>, Why> {

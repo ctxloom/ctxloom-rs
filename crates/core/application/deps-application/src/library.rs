@@ -7,7 +7,7 @@ use deps::short;
 use deps_ports::{Failure, InstalledBundle, RemoteHit, RemoteLibrary, RemoteSearch};
 use library::tree::read_tree;
 
-use crate::Deps;
+use crate::{cache, Deps};
 
 impl RemoteLibrary for Deps {
     fn installed(&self) -> Result<Vec<InstalledBundle>, Failure> {
@@ -23,7 +23,10 @@ impl RemoteLibrary for Deps {
             if entry.sha.is_empty() {
                 continue;
             }
-            if let Ok(Some(tree)) = self.files.read_installed(identity, &entry.sha) {
+            let Ok(slot) = cache::slot(&remote) else {
+                continue;
+            };
+            if let Ok(Some(tree)) = self.files.read_installed(&slot, &entry.sha) {
                 let name = names.lookup_url(&remote.url).map_or_else(
                     || identity.clone(),
                     |r| format!("{}/{}", r.name, remote.bundle),
@@ -32,7 +35,7 @@ impl RemoteLibrary for Deps {
                     reference: identity.clone(),
                     name,
                     sha: entry.sha.clone(),
-                    path: self.files.installed_path(identity, &entry.sha),
+                    path: self.files.installed_path(&slot, &entry.sha),
                     url: remote.url,
                     executable: tree
                         .iter()

@@ -15,6 +15,7 @@ use deps::plan::{self, Pin};
 use deps::reference::RemoteRef;
 use pin_changes::{diff_pin, PinChange, Side};
 
+use crate::cache;
 use crate::closure::{Mode, Walk};
 use crate::pull::disclosed;
 use crate::views::UpgradeReport;
@@ -138,7 +139,9 @@ impl Deps {
     /// The bundle's tree at a commit: the installed one where it is, else the
     /// clone's.
     fn tree_at(&self, remote: &RemoteRef, sha: &str) -> Result<pin_changes::Tree, String> {
-        if let Ok(Some(tree)) = self.files.read_installed(&remote.identity, sha) {
+        if let Ok(Some(tree)) =
+            cache::slot(remote).and_then(|slot| self.files.read_installed(&slot, sha))
+        {
             return Ok(disclosed(&tree));
         }
         match self.remotes.read_bundle(&remote.url, sha, &remote.bundle) {
@@ -156,11 +159,12 @@ impl Deps {
             let Some(remote) = RemoteRef::parse(&pin.identity) else {
                 continue;
             };
-            let outcome = self
-                .remotes
-                .read_bundle(&pin.url, &pin.hash, &remote.bundle)
-                .and_then(|tree| tree.ok_or_else(|| "no such bundle".to_string()))
-                .and_then(|tree| self.files.install(&pin.identity, &pin.hash, &tree));
+            let outcome = cache::slot(&remote).and_then(|slot| {
+                self.remotes
+                    .read_bundle(&pin.url, &pin.hash, &remote.bundle)
+                    .and_then(|tree| tree.ok_or_else(|| "no such bundle".to_string()))
+                    .and_then(|tree| self.files.install(&slot, &pin.hash, &tree))
+            });
             if let Err(detail) = outcome {
                 notices.push(Notice::with_fix(
                     format!(

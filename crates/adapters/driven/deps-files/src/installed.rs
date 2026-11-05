@@ -2,9 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use deps::address::cache_segments;
-use deps::reference::RemoteRef;
-use deps_ports::{RepoFile, RepoTree, Why};
+use deps_ports::{BundleSlot, RepoFile, RepoTree, Why};
 use file_system::Perms;
 use os::Mode;
 
@@ -21,46 +19,39 @@ fn root(files: &ProjectFiles) -> PathBuf {
     files.app_dir.join(BELOW_APP_DIR)
 }
 
-/// The directory holding every commit installed for `identity`.
-fn bundle_dir(files: &ProjectFiles, identity: &str) -> Result<PathBuf, Why> {
-    let remote = RemoteRef::parse(identity)
-        .ok_or_else(|| format!("{identity} is not a remote bundle reference"))?;
-    let segments =
-        cache_segments(&remote.url).ok_or_else(|| format!("{} names no repository", remote.url))?;
+/// The directory holding every commit installed for `slot`'s bundle.
+fn bundle_dir(files: &ProjectFiles, slot: &BundleSlot) -> PathBuf {
     let mut dir = root(files);
-    for segment in segments {
+    for segment in slot
+        .repository
+        .segments()
+        .iter()
+        .chain(slot.bundle.segments())
+    {
         dir.push(segment);
     }
-    // The reference parser has cleaned the path: no empty, `.` or `..` part,
-    // and none that climbs out of the repository.
-    for part in remote.bundle.split('/') {
-        dir.push(part);
-    }
-    Ok(dir)
+    dir
 }
 
 /// Where the tree installed for `identity` at `sha` is (or would be).
-pub(crate) fn path(files: &ProjectFiles, identity: &str, sha: &str) -> String {
-    bundle_dir(files, identity)
-        .map(|dir| dir.join(sha).display().to_string())
-        .unwrap_or_default()
+pub(crate) fn path(files: &ProjectFiles, slot: &BundleSlot, sha: &str) -> String {
+    bundle_dir(files, slot).join(sha).display().to_string()
 }
 
-pub(crate) fn is_installed(files: &ProjectFiles, identity: &str, sha: &str) -> bool {
-    bundle_dir(files, identity)
-        .map(|dir| dir.join(sha).join("bundle.yaml"))
-        .is_ok_and(|manifest| files.fs.exists(&manifest).unwrap_or(false))
+pub(crate) fn is_installed(files: &ProjectFiles, slot: &BundleSlot, sha: &str) -> bool {
+    let manifest = bundle_dir(files, slot).join(sha).join("bundle.yaml");
+    files.fs.exists(&manifest).unwrap_or(false)
 }
 
 /// Install the tree, replacing whatever was installed for the identity: the new
 /// tree is written beside, then the old ones go and it is renamed into place.
 pub(crate) fn install(
     files: &ProjectFiles,
-    identity: &str,
+    slot: &BundleSlot,
     sha: &str,
     tree: &RepoTree,
 ) -> Result<(), Why> {
-    let base = bundle_dir(files, identity)?;
+    let base = bundle_dir(files, slot);
     files
         .fs
         .create_dir_all(&base, Mode::from_bits(0o755))
@@ -72,7 +63,7 @@ pub(crate) fn install(
         .fs
         .make_temp_dir(&base, ".install-")
         .map_err(|e| e.to_string())?;
-    let written = write_tree(files, &staging, identity, tree);
+    let written = write_tree(files, &staging, &slot.identity, tree);
     if let Err(why) = written {
         let _ = files.fs.remove_dir_all(&staging);
         return Err(why);
@@ -139,10 +130,10 @@ fn installed_trees(files: &ProjectFiles, base: &Path) -> Vec<String> {
 
 pub(crate) fn read(
     files: &ProjectFiles,
-    identity: &str,
+    slot: &BundleSlot,
     sha: &str,
 ) -> Result<Option<RepoTree>, Why> {
-    let dir = bundle_dir(files, identity)?.join(sha);
+    let dir = bundle_dir(files, slot).join(sha);
     if !files.fs.exists(&dir.join("bundle.yaml")).unwrap_or(false) {
         return Ok(None);
     }

@@ -14,6 +14,7 @@ use deps::reference::RemoteRef;
 use deps_ports::{RepoTree, Why};
 use pin_changes::{diff_pin, PinChange, Side, Tree, TreeFile};
 
+use crate::cache;
 use crate::closure::{Mode, Walk};
 use crate::views::{
     ConstraintChangeView, FailedItem, PullReport, ReconcileView, SyncItem, UncheckedRemote,
@@ -148,7 +149,8 @@ impl Deps {
                 .entries
                 .get(&pin.identity)
                 .is_some_and(|entry| entry.sha == pin.hash);
-            let present = self.files.is_installed(&pin.identity, &pin.hash);
+            let present = cache::slot_of(&pin.identity)
+                .is_ok_and(|slot| self.files.is_installed(&slot, &pin.hash));
             if pinned && present && !force {
                 out.skipped.push(item(pin, "skipped", ""));
                 continue;
@@ -199,7 +201,8 @@ impl Deps {
                 pin.hash.get(..7).unwrap_or(&pin.hash)
             ));
         }
-        self.files.install(&pin.identity, &pin.hash, &tree)?;
+        self.files
+            .install(&cache::slot(&remote)?, &pin.hash, &tree)?;
         Ok(tree)
     }
 

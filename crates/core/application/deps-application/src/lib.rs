@@ -13,6 +13,7 @@
 //! - Absence is authority only from a repository this run proved it could
 //!   read.
 
+mod cache;
 mod check;
 mod closure;
 mod discover;

@@ -10,10 +10,16 @@
 //! - [`RemoteLibrary`]: what the library reads of all that: the installed
 //!   bundles, a short reference spelled out, and a search of the remotes.
 //!
+//! The cache paths the adapters keep things under ([`CachePath`], [`Repository`],
+//! [`BundleSlot`]) are computed by the application and handed across as data.
+//!
 //! A failure carries git's own account (third-party text, shown as it is): a
 //! reason is something to say, not a code to branch on.
 
 use std::collections::BTreeMap;
+
+mod cache;
+pub use cache::{BundleSlot, CachePath, Repository};
 
 use angzarr_diagnostic::Diagnostic;
 
@@ -176,18 +182,18 @@ pub trait DepsFiles {
     /// Write the lock (atomically).
     fn write_lock(&self, text: &str) -> Result<(), Why>;
 
-    /// Whether the bundle `identity` is installed at `sha`.
-    fn is_installed(&self, identity: &str, sha: &str) -> bool;
+    /// Whether the bundle of `slot` is installed at `sha`.
+    fn is_installed(&self, slot: &BundleSlot, sha: &str) -> bool;
 
-    /// Install the tree of `identity` at `sha`, replacing whatever was
+    /// Install the tree of the bundle of `slot` at `sha`, replacing whatever was
     /// installed for the identity.
-    fn install(&self, identity: &str, sha: &str, tree: &RepoTree) -> Result<(), Why>;
+    fn install(&self, slot: &BundleSlot, sha: &str, tree: &RepoTree) -> Result<(), Why>;
 
-    /// Where the tree installed for `identity` at `sha` is, as shown.
-    fn installed_path(&self, identity: &str, sha: &str) -> String;
+    /// Where the tree installed for the bundle of `slot` at `sha` is, as shown.
+    fn installed_path(&self, slot: &BundleSlot, sha: &str) -> String;
 
-    /// The tree installed for `identity` at `sha`; none where it is not.
-    fn read_installed(&self, identity: &str, sha: &str) -> Result<Option<RepoTree>, Why>;
+    /// The tree installed for the bundle of `slot` at `sha`; none where it is not.
+    fn read_installed(&self, slot: &BundleSlot, sha: &str) -> Result<Option<RepoTree>, Why>;
 
     /// Remove every installed tree not in `keep` (an identity at a commit);
     /// the identities whose trees went.

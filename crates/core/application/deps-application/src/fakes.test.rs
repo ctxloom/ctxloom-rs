@@ -2,7 +2,7 @@
 //! held here.
 
 use ctxloom_ports::ContentRepo;
-use deps_ports::{DepsFiles, Remotes};
+use deps_ports::{BundleSlot, CachePath, DepsFiles, Remotes};
 
 use super::*;
 
@@ -32,6 +32,15 @@ fn test_a_branch_resolves_to_its_commit() {
     assert_eq!(remotes.resolve_ref(URL, "topic"), Ok(first));
 }
 
+fn slot(identity: &str) -> BundleSlot {
+    let path = || CachePath::new(vec!["x".to_string()]).expect("a plain name");
+    BundleSlot {
+        identity: identity.to_string(),
+        repository: path(),
+        bundle: path(),
+    }
+}
+
 #[test]
 fn test_the_files_say_where_they_are() {
     let files = FakeFiles::default();
@@ -43,8 +52,8 @@ fn test_the_files_say_where_they_are() {
 fn test_a_prune_names_only_identities_no_tree_of_which_is_kept() {
     let files = FakeFiles::default();
     let tree = RepoTree::new();
-    files.install("kept", "a", &tree).expect("installs");
-    files.install("gone", "b", &tree).expect("installs");
+    files.install(&slot("kept"), "a", &tree).expect("installs");
+    files.install(&slot("gone"), "b", &tree).expect("installs");
     // `kept` is locked at a commit other than the installed one.
     let gone = files
         .prune(&[("kept".to_string(), "other".to_string())])
