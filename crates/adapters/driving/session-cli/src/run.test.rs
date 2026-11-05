@@ -7,12 +7,11 @@
 use angzarr_presentation::Format;
 use clap::{Args, Command, FromArgMatches};
 use serde_json::{json, Value};
-use session_index::{Captured, SessionRecord, State, View};
 use sessions_application::{
-    dead_letter_sample, AppError, BindRequest, Bound, Class, FilePlan, ImportReport, ImportRequest,
-    ImportService, Imported, KeepRequest, Kept, Left, ListQuery, PlanItem, Refusal, Removal,
-    RemoveRequest, RenameRequest, Renamed, SearchQuery, SessionService, ShowQuery, TranscriptQuery,
-    TranscriptRow, Why,
+    dead_letter_sample, AppError, BindRequest, Bound, Captured, Class, FilePlan, ImportReport,
+    ImportRequest, ImportService, Imported, KeepRequest, Kept, Left, ListQuery, PlanItem, Refusal,
+    Removal, RemoveRequest, RenameRequest, Renamed, SearchQuery, SessionRecord, SessionService,
+    ShowQuery, State, TranscriptQuery, TranscriptRow, View, Why,
 };
 
 use super::run;

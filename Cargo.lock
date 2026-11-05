@@ -3352,7 +3352,6 @@ dependencies = [
  "reclaim-application",
  "serde",
  "serde_json",
- "session-index",
  "sessions-application",
  "tokio",
 ]

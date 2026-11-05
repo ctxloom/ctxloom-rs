@@ -8,10 +8,9 @@ use std::io::{self, Write};
 use angzarr_diagnostic::{Arg, Diagnostic};
 use angzarr_presentation::text;
 use serde::Serialize;
-use session_index::stamp;
-use session_index::{Captured, View};
 use sessions_application::{
-    Class, FilePlan, ImportReport, PlanItem, Removal, Renamed, Scope, TranscriptRow,
+    stamp, Captured, Class, FilePlan, ImportReport, PlanItem, Removal, Renamed, Scope,
+    TranscriptRow, View, NO_SUMMARY,
 };
 
 /// One session as `session list` and `search` row it.
@@ -172,7 +171,7 @@ impl ShowDoc {
 /// `renderSessionShow`).
 pub(crate) fn show_text(view: &View, out: &mut dyn Write) -> io::Result<()> {
     let record = &view.record;
-    let title = view.title.as_deref().unwrap_or(session_index::NO_SUMMARY);
+    let title = view.title.as_deref().unwrap_or(NO_SUMMARY);
     writeln!(out, "{}\n{title}\n", record.harp)?;
     writeln!(out, "state:    {}", view.state.as_str())?;
     writeln!(out, "engine:   {}", record.engine)?;

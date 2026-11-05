@@ -94,11 +94,6 @@ to = "deps"
 reason = "debt: the git remote adapter uses the deps read model's pure cache_segments for the cache path; fix: as deps-files, move it to deps-ports"
 
 [[exception]]
-from = "session-cli"
-to = "session-index"
-reason = "debt: the session commands render the session-index read model's View, Captured and stamp directly; fix: the sessions application returns its own view types, or a presentation crate renders them"
-
-[[exception]]
 from = "session-files"
 to = "sessions"
 reason = "debt: the session-file reader validates harp names with the sessions domain's validate; fix: expose the check through session-ports"

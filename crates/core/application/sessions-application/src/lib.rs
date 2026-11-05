@@ -45,7 +45,7 @@ pub use import::{
 };
 pub use ports::{Project, Timestamp};
 pub use service::{registry, Service, SessionService};
-pub use session_index::{State, View, STATES};
+pub use session_index::{stamp, Captured, SessionRecord, State, View, NO_SUMMARY, STATES};
 pub use types::{
     BindRequest, Bound, Class, FilePlan, KeepRequest, Kept, ListQuery, PlanItem, Removal,
     RemoveRequest, RenameRequest, Renamed, Scope, SearchQuery, ShowQuery, TranscriptQuery,

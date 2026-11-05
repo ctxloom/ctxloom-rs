@@ -9,11 +9,10 @@ use angzarr_presentation::{write_json, Format};
 use cli_support::EXIT_REFUSED;
 use isolation_application::{IsolationError, WorktreeUse};
 use reclaim_application::{purge_cutoff, ReclaimError, SweepConfig, SweepRequest};
-use session_index::View;
 use sessions_application::{
     dead_letter_line, AppError, DeadLetter, ImportRequest, ImportService, KeepRequest, ListQuery,
     RemoveRequest, RemovedNothing, RenameRequest, Scope, SearchQuery, SessionService, ShowQuery,
-    State, Timestamp, TranscriptQuery, STATES,
+    State, Timestamp, TranscriptQuery, View, STATES,
 };
 
 use crate::render::{
