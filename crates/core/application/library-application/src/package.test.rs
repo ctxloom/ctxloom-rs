@@ -114,6 +114,62 @@ fn test_a_skill_arrives_whole_under_its_frontmatter_name() {
     );
 }
 
+const VAULT: &[(&str, &str)] = &[
+    ENVELOPE,
+    (
+        "skills/reviewer/SKILL.md",
+        "---\nname: reviewer\ndescription: R\n---\nReview.\n",
+    ),
+    (
+        "skills/planner/SKILL.md",
+        "---\nname: planner\ndescription: P\n---\nPlan.\n",
+    ),
+    ("prompts/review.md", "---\ndescription: r\n---\nREVIEW-BODY"),
+    ("prompts/plan.md", "---\ndescription: p\n---\nPLAN-BODY"),
+];
+
+fn vault_package(profile: &'static str) -> crate::EnginePackage {
+    let project: &'static [(&'static str, &'static str)] =
+        Box::leak(Box::new([ENVELOPE, ("profiles/dev.yaml", profile)]));
+    Setup {
+        bundles: &[("vault", VAULT), ("project", project)],
+        layers: &[CONFIG],
+        ..Setup::default()
+    }
+    .library()
+    .package(&plain(), &PackageRequest::default())
+    .result
+    .expect("a package")
+}
+
+// cli/skill.feature "Profile skill curation exports only the curated skill,
+// not the bundle's other one" (Go's composite assembly: a profile that
+// curates skills exports those, not every skill of the bundles it includes).
+#[test]
+fn test_a_profile_that_curates_skills_exports_only_those() {
+    let p = vault_package("bundles: [vault]\nskills: [vault#skills/reviewer]\n");
+    let names: Vec<&str> = p.skills.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(names, vec!["reviewer"]);
+}
+
+// The same profile without curation exports every skill its bundles hold.
+#[test]
+fn test_a_profile_that_curates_nothing_exports_every_bundle_skill() {
+    let p = vault_package("bundles: [vault]\n");
+    let mut names: Vec<&str> = p.skills.iter().map(|s| s.name.as_str()).collect();
+    names.sort_unstable();
+    assert_eq!(names, vec!["planner", "reviewer"]);
+}
+
+// Go's composite assembly treats commands alike: curated commands replace the
+// bundles' whole set.
+#[test]
+fn test_a_profile_that_curates_commands_exports_only_those() {
+    let p = vault_package("bundles: [vault]\ncommands: [vault#commands/review]\n");
+    let names: Vec<&str> = p.commands.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, vec!["vault/review"]);
+}
+
 // manage.feature: a server the bundle ships is carried; ctxloom's own, served
 // by the session's endpoint, is carried as such (and registers nothing at
 // rest).

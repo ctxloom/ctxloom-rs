@@ -179,8 +179,10 @@ impl Project {
         Ok(package)
     }
 
-    /// The commands and skills of the bundles the profiles include, then the
-    /// ones they curate by reference; each once.
+    /// The commands and skills the profiles curate by reference when they
+    /// curate any of that kind; otherwise those of the bundles they include.
+    /// Each once (Go's composite assembly: a curation replaces the bundles'
+    /// set, it does not add to it).
     fn items_of(
         &self,
         _set: &[library::profile::ResolvedProfile],
@@ -193,18 +195,22 @@ impl Project {
             let Ok(entry) = self.catalog.lookup(reference) else {
                 continue;
             };
-            for (name, command) in &entry.bundle.commands {
-                let full = format!("{}/{name}", entry.name);
-                if commands.insert(full.clone()) {
-                    package.commands.push(PackagedCommand {
-                        name: full,
-                        description: command.description.clone(),
-                        body: command.body.content.clone(),
-                    });
+            if selection.commands.is_empty() {
+                for (name, command) in &entry.bundle.commands {
+                    let full = format!("{}/{name}", entry.name);
+                    if commands.insert(full.clone()) {
+                        package.commands.push(PackagedCommand {
+                            name: full,
+                            description: command.description.clone(),
+                            body: command.body.content.clone(),
+                        });
+                    }
                 }
             }
-            for name in entry.bundle.skills.keys() {
-                self.add_skill(&entry.name, name, &mut skills, package);
+            if selection.skills.is_empty() {
+                for name in entry.bundle.skills.keys() {
+                    self.add_skill(&entry.name, name, &mut skills, package);
+                }
             }
         }
         for ask in &selection.commands {
