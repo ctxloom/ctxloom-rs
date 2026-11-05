@@ -14,7 +14,7 @@ publish = false
 # angzarr-ports and angzarr-diagnostic (and one of every angzarr crate). The
 # pins agree: angzarr-embedded 9db9299, angzarr core dd59566, angzarr-cli
 # b47c357 and angzarr-platform 7b448a8 are one line of revs, taskloom's `ports`
-# (71bfc28) and ctxloom-lib's crates (c66dd6b) are built on the same ones, and
+# (71bfc28) and ctxloom-lib's crates (32e96fd) are built on the same ones, and
 # moving any of them moves the others with it.
 #
 # angzarr-proto, angzarr-ports and angzarr-store-sqlite are reached through
@@ -127,15 +127,15 @@ container-cli = { path = "crates/adapters/driving/container-cli" }
 # ctxloom-lib, the shared substrate (S2): the driving edge's call, failure, notices
 # and argument shims. Pinned by full commit over https, as taskloom pins it;
 # its angzarr pins are the ones above.
-cli-support = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "c66dd6bdfc8618618ba832b1f9ee6019580fdab7" }
+cli-support = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "32e96fd910fce013770f044692a0377eec6cfb25" }
 # process-env (S3): the environment read once into a snapshot the composition root hands down.
-process-env = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "c66dd6bdfc8618618ba832b1f9ee6019580fdab7" }
+process-env = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "32e96fd910fce013770f044692a0377eec6cfb25" }
 # project-dir (S4): the ancestor walk with injected rules, and the checked project id.
-project-dir = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "c66dd6bdfc8618618ba832b1f9ee6019580fdab7" }
+project-dir = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "32e96fd910fce013770f044692a0377eec6cfb25" }
 # run-within (S6): a program run under a deadline, its tree killed, its output bounded.
-run-within = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "c66dd6bdfc8618618ba832b1f9ee6019580fdab7" }
+run-within = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "32e96fd910fce013770f044692a0377eec6cfb25" }
 # duration-text (S9): a span or date as an age, and the cutoff it makes.
-duration-text = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "c66dd6bdfc8618618ba832b1f9ee6019580fdab7" }
+duration-text = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "32e96fd910fce013770f044692a0377eec6cfb25" }
 
 # HTTP for forge-github (owner, 2026-11-04): the blocking client, so the
 # synchronous CLI holds no runtime of its own, and the TLS stack chosen below.

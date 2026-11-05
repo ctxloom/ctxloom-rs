@@ -127,9 +127,17 @@ clippy reads the nearest `clippy.toml`. A crate's own `clippy.toml` would
 replace it, so none has one. It repeats the root `clippy.toml`'s settings,
 and `just lint` refuses to run if they disagree.
 
-## Architecture: hexagonal around CQRS/ES (checked in review)
+## Architecture: hexagonal around CQRS/ES (checked by `just lint-arch`, and in review)
 
-Dependencies point inward; a review refuses a change that breaks these:
+Dependencies point inward; a review refuses a change that breaks these, and
+`just lint-arch` (part of `just lint`) holds every edge between workspace
+crates to `arch-rules.toml`: a table of which role (`crates/<ring>/<role>`)
+may depend on which, with the known departures listed as exceptions, each with
+its reason and a fix (debt; a stale one fails). The lint is ctxloom-lib's
+`arch-lint`, installed at the pinned commit into `~/.cache/ctxloom-arch-lint`.
+A dev-dependency finding is a warning.
+
+The rules:
 
 - The core depends on nothing outside it: no I/O, async runtime or clock in
   decide, apply or a projection.

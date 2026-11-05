@@ -1,0 +1,153 @@
+# The architecture lint's rules (templates/arch-gates.just runs it): which
+# role may depend on which. A crate's role is its directory,
+# crates/<ring>/<role>/<crate> giving <ring>/<role>. Copy to the repository's
+# top level as arch-rules.toml and edit; the table is data, so another
+# repository supplies its own.
+#
+# Each role lists what its crates may depend on, over every normal and build
+# edge between workspace members: a role (`core/wire`), a glob over roles
+# (`core/*`; `*` is any run of characters, `/` included) or `@class` (a crate
+# whose name matches a pattern under [classes]). A role not listed is
+# refused: a new tier gets its rule before it gets code. Edges to crates
+# outside the workspace are not examined.
+layout = "crates"
+
+# The roles whose dev-dependency edges are examined, more leniently: the same
+# table, but a finding is a warning (it fails only under --deny-warnings).
+dev_checked = ["adapters/driven", "adapters/driving"]
+
+[classes]
+# The driving adapters' shared presentation crates: domain-free, and what the
+# CLI and the server both write through.
+presentation = ["presentation", "*-presentation"]
+# Shared infrastructure crates every driven adapter may use, listed by name.
+support = []
+
+[roles."core/wire"]
+allow = ["core/wire"]
+rule = "the core depends on the core only"
+
+[roles."core/domain"]
+allow = ["core/domain", "core/wire"]
+rule = "the core depends on the core only, and a domain never depends on a read model"
+
+[roles."core/read-model"]
+allow = ["core/read-model", "core/domain", "core/wire"]
+rule = "the core depends on the core only, and a read model never depends on the application layer"
+
+[roles."core/ports"]
+allow = ["core/ports", "core/domain", "core/wire"]
+rule = "the core depends on the core only"
+
+[roles."core/application"]
+allow = ["core/*"]
+rule = "the core depends on the core only"
+
+[roles."adapters/driven"]
+allow = ["core/ports", "core/wire", "@support"]
+rule = "a driven adapter sees only ports and wire types, never another adapter"
+
+[roles."adapters/driving"]
+allow = ["core/application", "@presentation"]
+rule = "a driving adapter sees only the application layer and the presentation crates, never another adapter"
+
+# The composition root (the binaries and their wiring library) may depend on
+# anything; nothing else lists either, so nothing but the root depends on the
+# root.
+[roles."root/bin"]
+allow = ["*"]
+
+[roles."root/lib"]
+allow = ["*"]
+
+# A known departure, kept as debt: from, to, optionally kind ("normal",
+# "build" or "dev"), and why. One that matches no finding is stale and fails.
+# [[exception]]
+# from = "some-crate"
+# to = "other-crate"
+# kind = "dev"
+# reason = "why this stands"
+
+# Exceptions: the audit's finding that these rules were enforced in review only,
+# and what running the lint first found (2026-11-05). Each is debt, not a
+# decision: the departure stands until the fix named in its reason lands, and
+# the entry goes with it (a stale one fails).
+
+[[exception]]
+from = "ctxloom-cli"
+to = "hook-cli"
+reason = "debt: the top-level CLI mounts the hook command crate as a clap subcommand and dispatches to it, a driving adapter on a driving adapter; fix: mount the per-domain command crates from the composition root (ctxloom-wiring), or share the command types through a presentation crate"
+
+[[exception]]
+from = "ctxloom-cli"
+to = "session-cli"
+reason = "debt: as hook-cli: the top-level CLI mounts the session command crate as a subcommand and dispatches to it"
+
+[[exception]]
+from = "deps-cli"
+to = "deps"
+reason = "debt: the command names the read model's registry Edit type (deps::registry::Edit) in its translation; fix: the application layer owns or re-exports the type"
+
+[[exception]]
+from = "deps-cli"
+to = "pin-changes"
+reason = "debt: the text rendering calls the pin-changes read model's own renderers (new_pins_text, pin_changes_text) directly; fix: a presentation crate for the text, or the application layer returning it"
+
+[[exception]]
+from = "deps-files"
+to = "deps"
+reason = "debt: the installed-cache reader uses the deps read model's pure address and constraint functions (cache_segments, looks_like_commit); fix: move those functions to deps-ports (or the wire crate), where a driven adapter may see them"
+
+[[exception]]
+from = "remote-git"
+to = "deps"
+reason = "debt: the git remote adapter uses the deps read model's pure cache_segments for the cache path; fix: as deps-files, move it to deps-ports"
+
+[[exception]]
+from = "session-cli"
+to = "session-index"
+reason = "debt: the session commands render the session-index read model's View, Captured and stamp directly; fix: the sessions application returns its own view types, or a presentation crate renders them"
+
+[[exception]]
+from = "session-files"
+to = "sessions"
+reason = "debt: the session-file reader validates harp names with the sessions domain's validate; fix: expose the check through session-ports"
+
+# Dev-dependency findings (warnings): the tests of a driving adapter build the
+# ports' types because the application services they fake speak them.
+
+[[exception]]
+from = "ctxloom-cli"
+to = "ctxloom-ports"
+kind = "dev"
+reason = "debt: the tests' fake services return ctxloom-ports' Failure, the type the application's services speak; fix: the application layer re-exports its services' error types"
+
+[[exception]]
+from = "deps-cli"
+to = "deps-ports"
+kind = "dev"
+reason = "debt: the tests build deps-ports' ForgeRepo to feed the application's search; fix: as ctxloom-cli"
+
+[[exception]]
+from = "session-cli"
+to = "ctxloom-ports"
+kind = "dev"
+reason = "debt: the tests' fake services return ctxloom-ports' Failure; fix: as ctxloom-cli"
+
+[[exception]]
+from = "setup-cli"
+to = "ctxloom-ports"
+kind = "dev"
+reason = "debt: the tests construct ctxloom-ports' types for the setup application's services; fix: as ctxloom-cli"
+
+[[exception]]
+from = "surface-cli"
+to = "surface-ports"
+kind = "dev"
+reason = "debt: the tests implement surface-ports' ForeignFiles and read its SurfaceError and EN_US; fix: as ctxloom-cli"
+
+[[exception]]
+from = "embedded-edge"
+to = "trees"
+kind = "dev"
+reason = "the known case: the adapter's tests construct the trees domain's commands (TreeCommand, FoundTree, OccupyTree) to drive the embedded runtime; fix: build them through a port, or move the test to the application layer"

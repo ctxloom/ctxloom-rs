@@ -466,7 +466,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 [[package]]
 name = "cli-support"
 version = "0.1.0"
-source = "git+https://github.com/ctxloom/ctxloom-lib?rev=c66dd6bdfc8618618ba832b1f9ee6019580fdab7#c66dd6bdfc8618618ba832b1f9ee6019580fdab7"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=32e96fd910fce013770f044692a0377eec6cfb25#32e96fd910fce013770f044692a0377eec6cfb25"
 dependencies = [
  "angzarr-diagnostic",
  "angzarr-presentation",
@@ -1054,7 +1054,7 @@ checksum = "669a445ee724c5c69b1b06fe0b63e70a1c84bc9bb7d9696cd4f4e3ec45050408"
 [[package]]
 name = "duration-text"
 version = "0.1.0"
-source = "git+https://github.com/ctxloom/ctxloom-lib?rev=c66dd6bdfc8618618ba832b1f9ee6019580fdab7#c66dd6bdfc8618618ba832b1f9ee6019580fdab7"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=32e96fd910fce013770f044692a0377eec6cfb25#32e96fd910fce013770f044692a0377eec6cfb25"
 dependencies = [
  "angzarr-diagnostic",
 ]
@@ -2665,7 +2665,7 @@ dependencies = [
 [[package]]
 name = "process-env"
 version = "0.1.0"
-source = "git+https://github.com/ctxloom/ctxloom-lib?rev=c66dd6bdfc8618618ba832b1f9ee6019580fdab7#c66dd6bdfc8618618ba832b1f9ee6019580fdab7"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=32e96fd910fce013770f044692a0377eec6cfb25#32e96fd910fce013770f044692a0377eec6cfb25"
 dependencies = [
  "os",
 ]
@@ -2684,7 +2684,7 @@ dependencies = [
 [[package]]
 name = "project-dir"
 version = "0.1.0"
-source = "git+https://github.com/ctxloom/ctxloom-lib?rev=c66dd6bdfc8618618ba832b1f9ee6019580fdab7#c66dd6bdfc8618618ba832b1f9ee6019580fdab7"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=32e96fd910fce013770f044692a0377eec6cfb25#32e96fd910fce013770f044692a0377eec6cfb25"
 dependencies = [
  "angzarr-diagnostic",
  "file-system",
@@ -3000,7 +3000,7 @@ dependencies = [
 [[package]]
 name = "run-within"
 version = "0.1.0"
-source = "git+https://github.com/ctxloom/ctxloom-lib?rev=c66dd6bdfc8618618ba832b1f9ee6019580fdab7#c66dd6bdfc8618618ba832b1f9ee6019580fdab7"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=32e96fd910fce013770f044692a0377eec6cfb25#32e96fd910fce013770f044692a0377eec6cfb25"
 dependencies = [
  "angzarr-diagnostic",
  "file-system",
@@ -3354,7 +3354,6 @@ dependencies = [
  "serde",
  "serde_json",
  "session-index",
- "sessions",
  "sessions-application",
  "tokio",
 ]

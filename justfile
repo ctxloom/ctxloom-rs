@@ -13,6 +13,15 @@ TOP := `git rev-parse --show-toplevel`
 
 import 'gates/gates.just'
 import 'gates/os-gates.just'
+import 'gates/arch-gates.just'
+
+# What gates/arch-gates.just takes from this justfile: the arch-lint binary, built
+# from the same ctxloom-lib commit the workspace pins (arch_lint_rev, kept
+# equal to Cargo.toml's by `_arch-lint-ready`'s check) and installed once per
+# commit into the user's cache, shared by every worktree.
+arch_lint_rev := "32e96fd910fce013770f044692a0377eec6cfb25"
+arch_lint_root := env_var_or_default("XDG_CACHE_HOME", env_var("HOME") / ".cache") / "ctxloom-arch-lint" / arch_lint_rev
+arch_lint := arch_lint_root / "bin/arch-lint"
 
 # The staged tree is a sibling of the checkout, not under target/: cargo
 # reads .cargo/config.toml from every parent directory, so under the checkout
@@ -61,15 +70,29 @@ build:
     exec just --justfile {{TOP}}/justfile _run build workspace cargo \
         cargo build "${terse[@]}" --manifest-path {{TOP}}/Cargo.toml --workspace
 
+# Install the arch-lint binary at the pinned ctxloom-lib commit, unless it is
+# there; and refuse a pin that differs from the one Cargo.toml has.
+[private]
+_arch-lint-ready:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! grep -q 'ctxloom-lib", rev = "{{arch_lint_rev}}"' {{TOP}}/Cargo.toml; then
+        echo "FAIL lint-arch: arch_lint_rev in the justfile is not the ctxloom-lib rev Cargo.toml pins" >&2
+        exit 1
+    fi
+    [ -x '{{arch_lint}}' ] && exit 0
+    cargo install --quiet --git https://github.com/ctxloom/ctxloom-lib --rev {{arch_lint_rev}} \
+        arch-lint --locked --root '{{arch_lint_root}}' 2>&1 | tail -n 20
+
 # Clippy, warnings denied, including the core's purity rules
-# (crates/core/clippy.toml), after `lint-os`: lefthook's `clippy` step. Clippy
+# (crates/core/clippy.toml), after `lint-os` and `lint-arch`: lefthook's `clippy` step. Clippy
 # reads only the nearest clippy.toml, so the core's repeats the root's nesting
 # threshold and every method the root's disallows (the file I/O the
 # file-system seam holds); refuse to lint if they differ.
 [group('check')]
 [doc("Clippy, warnings denied, with the core's purity rules and the OS-cfg check")]
 [no-exit-message]
-lint:
+lint: lint-arch
     #!/usr/bin/env bash
     set -euo pipefail
     root=$(grep '^excessive-nesting-threshold' {{TOP}}/clippy.toml)

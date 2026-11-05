@@ -24,7 +24,6 @@ tokio.workspace = true
 [dev-dependencies]
 ctxloom-ports.workspace = true
 mutants.workspace = true
-sessions = { workspace = true }
 sessions-application = { workspace = true, features = ["test-support"] }
 
 
