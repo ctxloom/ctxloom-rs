@@ -1,0 +1,24 @@
+[package]
+name = "taskloom-cli-client"
+version = "0.1.0"
+description = "The Tasks port by running the taskloom CLI and parsing its JSON (S8): ctxloom keeps no tasks of its own, and taskloom stays a separate program"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+process-env.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tasks-ports.workspace = true
+time.workspace = true
+
+[dev-dependencies]
+file-system = { workspace = true, features = ["test-support"] }
+mutants.workspace = true
+os = { workspace = true, features = ["test-support"] }
+
+[lints]
+workspace = true

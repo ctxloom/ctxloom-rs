@@ -120,6 +120,8 @@ isolation-ports = { path = "crates/core/ports/isolation-ports" }
 isolation = { path = "crates/core/read-model/isolation" }
 isolation-application = { path = "crates/core/application/isolation-application" }
 worktree-git = { path = "crates/adapters/driven/worktree-git" }
+tasks-ports = { path = "crates/core/ports/tasks-ports" }
+taskloom-cli-client = { path = "crates/adapters/driven/taskloom-cli-client" }
 container-runtime = { path = "crates/adapters/driven/container-runtime" }
 container-cli = { path = "crates/adapters/driving/container-cli" }
 # ctxloom-lib, the shared substrate (S2): the driving edge's call, failure, notices

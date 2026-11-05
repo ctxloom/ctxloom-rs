@@ -15,6 +15,7 @@ cache-files.workspace = true
 container-cli.workspace = true
 isolation-application.workspace = true
 worktree-git.workspace = true
+tasks-ports.workspace = true
 config-files.workspace = true
 content-fs.workspace = true
 editor-process.workspace = true
@@ -72,6 +73,7 @@ test-support = [
     "container-cli/test-support",
     "isolation-application/test-support",
     "worktree-git/test-support",
+    "tasks-ports/test-support",
     "scheduler/test-support",
     "scheduler-loop/test-support",
 ]

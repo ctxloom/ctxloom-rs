@@ -697,6 +697,7 @@ dependencies = [
  "setup-application",
  "setup-cli",
  "surface-ports",
+ "tasks-ports",
  "worktree-git",
 ]
 
@@ -807,6 +808,7 @@ dependencies = [
  "surface-files",
  "surface-ports",
  "system",
+ "tasks-ports",
  "tokio",
  "trees",
  "uuid",
@@ -3888,6 +3890,29 @@ dependencies = [
  "rand 0.9.5",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "taskloom-cli-client"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "file-system",
+ "mutants",
+ "os",
+ "process-env",
+ "serde",
+ "serde_json",
+ "tasks-ports",
+ "time",
+]
+
+[[package]]
+name = "tasks-ports"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "mutants",
 ]
 
 [[package]]

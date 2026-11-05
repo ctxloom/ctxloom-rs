@@ -169,6 +169,7 @@ impl Services for Wired {
         all.extend(setup_cli::diagnostic_samples());
         all.extend(isolation_application::diagnostic_samples());
         all.extend(worktree_git::diagnostic_samples());
+        all.extend(tasks_ports::diagnostic_samples());
         all.extend(container_cli::diagnostic_samples());
         all.extend(scheduler::diagnostic_samples());
         all.extend(scheduler_loop::diagnostic_samples());

@@ -207,6 +207,7 @@ fn test_the_binary_reports_the_diagnostics_of_every_crate_composed_in() {
         "setup-application",
         "setup-cli",
         "surface-ports",
+        "tasks-ports",
         "worktree-git",
     ];
     assert_eq!(

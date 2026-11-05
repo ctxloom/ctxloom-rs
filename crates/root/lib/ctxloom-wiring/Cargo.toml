@@ -50,6 +50,7 @@ isolation-application.workspace = true
 container-cli.workspace = true
 container-runtime.workspace = true
 worktree-git.workspace = true
+tasks-ports.workspace = true
 project-registry.workspace = true
 session-files.workspace = true
 sessions-application.workspace = true
