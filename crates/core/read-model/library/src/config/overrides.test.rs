@@ -336,3 +336,181 @@ fn test_partitions_stop_at_sixteen_words() {
     assert_eq!(partitions(&words(16)).len(), 1 << 15);
     assert!(partitions(&words(17)).is_empty());
 }
+
+// ---------------------------------------------------------------- characterization
+//
+// Pinned before the intake mechanics may move to the shared repository (A0):
+// what `read` takes from the environment and the flags, in what order, and
+// the exact words of what it refuses or warns of.
+
+fn pairs(of: &[(&str, &str)]) -> Vec<(String, String)> {
+    of.iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
+}
+
+#[test]
+fn test_the_prefix_is_the_ctxloom_config_underscore_in_capitals() {
+    assert_eq!(ENV_PREFIX, "CTXLOOM_CONFIG_");
+}
+
+#[test]
+fn test_only_variables_that_begin_with_the_exact_prefix_are_overrides() {
+    let (found, problems) = read(
+        &pairs(&[
+            ("ctxloom_config_LOWER", "x"),
+            ("XCTXLOOM_CONFIG_PRE", "x"),
+            ("CTXLOOM_CONFIG", "x"),
+            ("CTXLOOM_CONFIGX", "x"),
+            ("CTXLOOM_CONFIG_", "no suffix"),
+            ("CTXLOOM_CONFIG_REAL", "x"),
+            ("PATH", "/bin"),
+        ]),
+        &[],
+    );
+    assert!(problems.is_empty());
+    let names: Vec<&str> = found.env.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(names, ["REAL"]);
+}
+
+#[test]
+fn test_overrides_come_sorted_by_name_whatever_the_order_given() {
+    let (found, _) = read(
+        &pairs(&[
+            ("CTXLOOM_CONFIG_B", "2"),
+            ("CTXLOOM_CONFIG_A", "1"),
+            ("CTXLOOM_CONFIG_C", "3"),
+        ]),
+        &["z=1".to_string(), "m=2".to_string(), "a=3".to_string()],
+    );
+    let env: Vec<&str> = found.env.iter().map(|(n, _)| n.as_str()).collect();
+    let flags: Vec<&str> = found.flags.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!((env, flags), (vec!["A", "B", "C"], vec!["a", "m", "z"]));
+}
+
+#[test]
+fn test_a_later_config_set_of_the_same_path_replaces_the_earlier() {
+    let sets = vec!["k=1".to_string(), "other=x".to_string(), "k=2".to_string()];
+    let (found, problems) = read(&[], &sets);
+    assert!(problems.is_empty());
+    assert_eq!(
+        found.flags,
+        [
+            ("k".to_string(), scalar("2")),
+            ("other".to_string(), scalar("x"))
+        ]
+    );
+}
+
+#[test]
+fn test_a_config_set_splits_at_the_first_equals_only() {
+    let (found, _) = read(&[], &["a.b=c=d".to_string(), "e=".to_string()]);
+    assert_eq!(
+        found.flags,
+        [
+            ("a.b".to_string(), scalar("c=d")),
+            ("e".to_string(), scalar(""))
+        ]
+    );
+}
+
+#[test]
+fn test_the_problems_of_bad_config_sets_are_worded_exactly_and_the_rest_are_read() {
+    let sets = vec![
+        "no-equals".to_string(),
+        "=blank".to_string(),
+        "good=1".to_string(),
+        "".to_string(),
+    ];
+    let (found, problems) = read(&[], &sets);
+    assert_eq!(
+        problems,
+        [
+            "--config-set \"no-equals\": expected <path>=<value>",
+            "--config-set \"=blank\": empty path before \"=\"",
+            "--config-set \"\": expected <path>=<value>",
+        ]
+    );
+    assert_eq!(found.flags, [("good".to_string(), scalar("1"))]);
+}
+
+#[test]
+fn test_the_environment_alone_gives_no_problems_whatever_it_holds() {
+    let (found, problems) = read(&pairs(&[("CTXLOOM_CONFIG_A", "=,=")]), &[]);
+    assert!(problems.is_empty());
+    assert_eq!(found.env.len(), 1);
+}
+
+#[test]
+fn test_a_list_value_keeps_its_blank_items_and_trims_the_others() {
+    assert_eq!(
+        coerce("a,,b"),
+        Value::Seq(vec![scalar("a"), scalar(""), scalar("b")])
+    );
+    assert_eq!(coerce(","), Value::Seq(vec![scalar(""), scalar("")]));
+    assert_eq!(
+        coerce(" a , b "),
+        Value::Seq(vec![scalar("a"), scalar("b")])
+    );
+    // a lone value keeps its spaces, and "empty" is a text
+    assert_eq!(coerce(" a "), scalar(" a "));
+    assert_eq!(coerce(""), scalar(""));
+}
+
+#[test]
+fn test_a_number_or_a_bool_with_a_comma_in_it_is_still_a_list_of_texts() {
+    // the number and bool checks are on the whole text: "1,2" is neither
+    assert_eq!(coerce("1,2"), Value::Seq(vec![scalar("1"), scalar("2")]));
+    assert_eq!(
+        coerce("true,false"),
+        Value::Seq(vec![scalar("true"), scalar("false")])
+    );
+    assert_eq!(coerce("1.5"), scalar("1.5"));
+    assert_eq!(coerce("-3"), scalar("-3"));
+}
+
+#[test]
+fn test_an_override_that_names_nothing_known_is_warned_of_in_these_words() {
+    let out = apply_with("", &[("NOPE_AT_ALL", "x")], &["Odd.Path=1"], &[]);
+    assert_eq!(
+        out.warnings,
+        [
+            "CTXLOOM_CONFIG_NOPE_AT_ALL does not match any known config key (resolved as NOPE.AT.ALL); setting it anyway",
+            "--config-set Odd.Path does not match any known config key (resolved as Odd.Path); setting it anyway",
+        ]
+    );
+    assert!(out.errors.is_empty());
+}
+
+#[test]
+fn test_an_ambiguous_environment_name_is_refused_in_these_words() {
+    let out = apply_with("Ab: 1\nAB: 2\n", &[("AB", "3")], &[], &[]);
+    assert_eq!(
+        out.errors,
+        ["CTXLOOM_CONFIG_AB: ambiguous override -- config has both \"AB\" and \"Ab\"; cannot tell which was meant (env/flag names lose case information)"]
+    );
+    assert_eq!(at(&out.value, "Ab"), Some(&scalar("1")), "left as it was");
+}
+
+#[test]
+fn test_a_refused_value_is_still_set_and_the_error_says_who_set_it() {
+    let refuse = |_: &[String], _: &Value| -> Verdict { Err("not allowed".to_string()) };
+    let (overrides, _) = read(&pairs(&[("CTXLOOM_CONFIG_K", "v")]), &["f=1".to_string()]);
+    let out = apply(&parse(""), &overrides, &known(&["k", "f"]), &refuse);
+    assert_eq!(
+        out.errors,
+        [
+            "CTXLOOM_CONFIG_K: env set \"k\" to a value the schema refuses: not allowed",
+            "--config-set f: --config-set set \"f\" to a value the schema refuses: not allowed",
+        ]
+    );
+    assert_eq!(at(&out.value, "k"), Some(&scalar("v")));
+    assert_eq!(at(&out.value, "f"), Some(&scalar("1")));
+}
+
+#[test]
+fn test_a_base_that_is_no_mapping_is_replaced_by_one() {
+    let (overrides, _) = read(&[], &["a=1".to_string()]);
+    let out = apply(&Value::Null, &overrides, &known(&["a"]), &no_check);
+    assert_eq!(out.value, parse("a: 1\n"));
+}
