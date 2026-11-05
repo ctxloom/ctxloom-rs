@@ -546,6 +546,24 @@ fn test_apply_will_not_write_through_a_link() {
 }
 
 #[test]
+fn test_apply_removes_a_link_itself_when_it_is_the_last_part() {
+    let (fs, repo) = empty_repo();
+    fs.create_dir_all(Path::new("/outside"), Mode::from_bits(0o755))
+        .unwrap();
+    repo.apply("demo", &[write("bundle.yaml", "b")]).unwrap();
+    fs.symlink_dir(Path::new("/outside"), &bundle_file("demo", "skills"))
+        .unwrap();
+    repo.apply(
+        "demo",
+        &[Change::Remove {
+            path: "skills".to_string(),
+        }],
+    )
+    .unwrap();
+    assert!(fs.metadata(Path::new("/outside")).is_ok());
+}
+
+#[test]
 fn test_a_bundle_name_that_climbs_is_refused_for_every_write() {
     let (_fs, repo) = empty_repo();
     for bad in ["../x", "/abs", "", "a/../b"] {

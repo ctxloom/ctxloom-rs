@@ -444,7 +444,22 @@ fn test_mcp_set_edit_and_the_bare_noun() {
         JSON_EXPLICIT,
     );
     assert!(ran.refused().contains("unsupported-format"));
-    assert!(refused_code(&library, &["mcp"], TEXT).contains("mcp-bare"));
+    // json that nobody asked for (the default, off a terminal) is not json
+    let unasked = How {
+        explicit: None,
+        terminal: false,
+        degraded: false,
+    };
+    let said = refused_code(&library, &["mcp"], unasked);
+    assert!(
+        said.contains("mcp-bare") && !said.contains("mcp-bare-json"),
+        "{said}"
+    );
+    let said = refused_code(&library, &["mcp"], TEXT);
+    assert!(
+        said.contains("mcp-bare") && !said.contains("mcp-bare-json"),
+        "{said}"
+    );
     assert!(refused_code(&library, &["mcp"], JSON).contains("mcp-bare-json"));
 }
 

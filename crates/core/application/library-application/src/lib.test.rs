@@ -623,3 +623,17 @@ fn test_viewing_a_bundle_dumps_its_tree_or_one_item() {
         Err(AppError::ViewPath { .. } | AppError::NotViewable { .. })
     ));
 }
+
+// The in-memory content repository refuses what the real one does: a path
+// that leaves the bundle, and writes nothing of the batch.
+#[test]
+fn test_the_fake_content_repo_refuses_a_path_that_climbs() {
+    use ctxloom_ports::{Change, ContentRepo, Put};
+    let (_, mem) = Setup::default().fixture();
+    let err = mem.apply("demo", &[Change::Write(Put::file("../x", b"evil"))]);
+    assert!(err.is_err());
+    assert!(mem.paths("demo").is_empty());
+    assert!(mem
+        .apply("demo", &[Change::Write(Put::file("ok.md", b"fine"))])
+        .is_ok());
+}

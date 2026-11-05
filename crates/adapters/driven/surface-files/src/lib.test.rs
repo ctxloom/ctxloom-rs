@@ -471,3 +471,37 @@ fn test_removing_a_file_leaves_the_directories_that_still_hold_something() {
     assert!(!f.fs.exists(&f.at("a/b")).unwrap());
     assert!(f.get("a/keep").is_some());
 }
+
+#[test]
+fn test_delivering_again_keeps_the_place_among_another_engines_claims() {
+    let f = Fixture::new();
+    f.deliver("one", Kind::Context, &[section("AGENTS.md", "first")]);
+    f.deliver("two", Kind::Context, &[section("AGENTS.md", "second")]);
+    let before = f.get("AGENTS.md").unwrap();
+    f.deliver("two", Kind::Context, &[section("AGENTS.md", "second")]);
+    assert_eq!(f.get("AGENTS.md").unwrap(), before);
+    assert!(before.find("first") < before.find("second"), "{before}");
+}
+
+#[test]
+fn test_claims_to_one_file_are_delivered_in_the_order_given_each_time() {
+    let f = Fixture::new();
+    let claims = [set("s.json", "a", "1"), set("s.json", "b", "2")];
+    f.deliver("e", Kind::Settings, &claims);
+    f.deliver("e", Kind::Settings, &claims);
+    let held = f.get("s.json").unwrap();
+    assert!(held.find("\"a\"") < held.find("\"b\""), "{held}");
+}
+
+#[test]
+fn test_a_delivery_names_only_the_files_it_claims_not_those_it_let_go() {
+    let f = Fixture::new();
+    f.deliver(
+        "e",
+        Kind::Settings,
+        &[set("s.json", "a", "1"), set("t.json", "b", "2")],
+    );
+    let again = f.deliver("e", Kind::Settings, &[set("s.json", "a", "1")]);
+    assert_eq!(again.files, vec!["s.json".to_string()]);
+    assert!(f.get("t.json").is_none());
+}
