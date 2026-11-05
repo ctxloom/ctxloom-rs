@@ -361,3 +361,11 @@ fn test_a_pull_that_is_refused_answers_the_refusal_code() {
     let said = puller.pull().unwrap_err();
     assert!(said.contains("not-registered"), "{said}");
 }
+
+#[test]
+fn test_a_container_command_is_run_and_reports_what_it_found() {
+    let world = World::new("container");
+    let (code, out, _) = run_line(&mut world.commands(), &["container", "check"]);
+    assert_eq!(code, 0);
+    assert!(!out.trim().is_empty(), "container check wrote nothing");
+}
