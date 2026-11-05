@@ -125,20 +125,20 @@ impl Diagnostic for AppError {
 }
 
 /// The domain's refusal of a command, as a use case answers it.
-impl From<kernel_runner::Refusal<SessionRejection>> for AppError {
-    fn from(refusal: kernel_runner::Refusal<SessionRejection>) -> AppError {
+impl From<angzarr_embedded_runner::Refusal<SessionRejection>> for AppError {
+    fn from(refusal: angzarr_embedded_runner::Refusal<SessionRejection>) -> AppError {
         AppError::Rejected(refusal.report)
     }
 }
 
 /// What kept a command from being decided at all.
-impl From<kernel_runner::Unrun> for AppError {
-    fn from(unrun: kernel_runner::Unrun) -> AppError {
+impl From<angzarr_embedded_runner::Unrun> for AppError {
+    fn from(unrun: angzarr_embedded_runner::Unrun) -> AppError {
         match unrun {
-            kernel_runner::Unrun::GaveUp { attempts, error } => {
+            angzarr_embedded_runner::Unrun::GaveUp { attempts, error } => {
                 AppError::GaveUp { attempts, error }
             }
-            kernel_runner::Unrun::Failed(report) => AppError::Failed(report),
+            angzarr_embedded_runner::Unrun::Failed(report) => AppError::Failed(report),
         }
     }
 }

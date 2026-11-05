@@ -1,11 +1,13 @@
 //! Writing sessions: keep, bind and remove. A write finds its session as a
 //! read does, then runs one command through angzarr-embedded's kernel
-//! (kernel-runner's `Runner`), which retries it.
+//! (angzarr-embedded-runner's `Runner`), which retries it.
 
 use angzarr_diagnostic::{Diagnostic, Report};
 use angzarr_embedded::v1::{CommandBook, Cover, Uuid};
 use angzarr_embedded::{CommandBookExt, Handled, OnRetryable};
-use kernel_runner::Runner;
+use angzarr_embedded_runner::Runner;
+
+use crate::bridge::Port;
 use ports::{Clock, CommandIds, Delay, Jitter, Project, ProjectIdentity};
 use session_index::{Retained, Retention, SessionRecord};
 use session_ports::{Liveness, LockState, ProjectStores, SessionFiles};
@@ -83,8 +85,8 @@ where
         let command_id = self.clock.command_id();
         let mut runner = Runner {
             registry: self.read.registry,
-            clock: &mut *self.clock,
-            delay: &mut *self.delay,
+            clock: &mut Port(&mut *self.clock),
+            delay: &mut Port(&mut *self.delay),
             retry: self.retry,
             dead_letters: &mut *self.dead_letters,
         };
@@ -157,8 +159,8 @@ where
         let command_id = self.clock.command_id();
         let mut runner = Runner {
             registry: self.read.registry,
-            clock: &mut *self.clock,
-            delay: &mut *self.delay,
+            clock: &mut Port(&mut *self.clock),
+            delay: &mut Port(&mut *self.delay),
             retry: self.retry,
             dead_letters: &mut *self.dead_letters,
         };

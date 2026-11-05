@@ -114,6 +114,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "angzarr-embedded-runner"
+version = "0.1.0"
+source = "git+https://github.com/angzarr-io/angzarr-embedded?rev=9db929911aa1b06db9ea68321a0bc91c49ff108e#9db929911aa1b06db9ea68321a0bc91c49ff108e"
+dependencies = [
+ "angzarr-diagnostic",
+ "angzarr-embedded",
+]
+
+[[package]]
 name = "angzarr-ports"
 version = "0.1.0"
 source = "git+https://github.com/angzarr-io/angzarr?rev=dd59566a017474732a344caf3d1c8fc26d90481b#dd59566a017474732a344caf3d1c8fc26d90481b"
@@ -835,7 +844,7 @@ dependencies = [
  "globwalk",
  "humantime",
  "inventory",
- "itertools 0.13.0",
+ "itertools",
  "lazy-regex",
  "linked-hash-map",
  "once_cell",
@@ -853,7 +862,7 @@ checksum = "9e19cd9e8e7cfd79fbf844eb6a7334117973c01f6bad35571262b00891e60f1c"
 dependencies = [
  "cucumber-expressions",
  "inflections",
- "itertools 0.13.0",
+ "itertools",
  "proc-macro2",
  "quote",
  "regex",
@@ -1122,7 +1131,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2020,15 +2029,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "itertools"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
-dependencies = [
- "either",
-]
-
-[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2052,17 +2052,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cde48f36530cbd91b65f050101e6c056d6eb743cea2a8f0f19beef69c6742ff8"
 dependencies = [
  "scopeguard",
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "kernel-runner"
-version = "0.1.0"
-source = "git+https://github.com/ctxloom/taskloom?rev=71bfc28f9700d04729b92687fd47a0ec2cba8deb#71bfc28f9700d04729b92687fd47a0ec2cba8deb"
-dependencies = [
- "angzarr-diagnostic",
- "angzarr-embedded",
- "ports",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2716,8 +2706,8 @@ version = "0.14.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "03da047801ff44bb6a4d407d4860c05fd70bb81714e6b2f3812603d5b145b042"
 dependencies = [
- "heck 0.4.1",
- "itertools 0.14.0",
+ "heck 0.5.0",
+ "itertools",
  "log",
  "multimap",
  "petgraph",
@@ -2736,7 +2726,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -3063,7 +3053,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3402,8 +3392,8 @@ version = "0.1.0"
 dependencies = [
  "angzarr-diagnostic",
  "angzarr-embedded",
+ "angzarr-embedded-runner",
  "angzarr-yaml",
- "kernel-runner",
  "mutants",
  "ports",
  "serde",
@@ -3959,10 +3949,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3972,7 +3962,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
 dependencies = [
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4630,7 +4620,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

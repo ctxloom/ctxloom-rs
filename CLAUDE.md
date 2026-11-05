@@ -98,8 +98,8 @@ Slice S4 (sessions) adds:
 
 A session's state is its lock's verdict, never its end stamp; its title is the
 first prompt of its transcript; `hud` renders and records nothing. The
-kernel's retry is taskloom's `kernel-runner` (a git pin) until the embedded
-pin moves to `angzarr-embedded-runner`. Rows and refusals say what was not
+kernel's retry is `angzarr-embedded-runner`'s (the embedded pin). A read catches
+up fresh each time; nothing caches a project's index. Rows and refusals say what was not
 done and the command that would, in the message, so the json envelope carries
 it too. A crate's catalog is `locales/en-US/messages.ftl`, ids the full code.
 

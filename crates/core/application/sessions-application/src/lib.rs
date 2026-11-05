@@ -9,7 +9,7 @@
 //! Each reaches its project through the project identity port (taskloom's
 //! `ports`), its store through [`session_ports::ProjectStores`], and a write
 //! runs its commands through angzarr-embedded's kernel through
-//! kernel-runner's `Runner`, which retries them. A read is the session index
+//! angzarr-embedded-runner's `Runner`, which retries them. A read is the session index
 //! caught up from the store. The ports are the only way out: this crate does
 //! no I/O, keeps no clock and starts no runtime.
 //!
@@ -18,6 +18,7 @@
 //! Renaming waits on the session-name claims (D5 Q1) and the importer on the
 //! stable ids: neither is here.
 
+mod bridge;
 mod error;
 mod go_sidecar;
 mod import;

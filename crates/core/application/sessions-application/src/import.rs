@@ -12,7 +12,9 @@ use std::future::Future;
 use angzarr_diagnostic::{code, Arg, Diagnostic, Report};
 use angzarr_embedded::v1::{CommandBook, Cover, Uuid};
 use angzarr_embedded::{CommandBookExt, Handled, OnRetryable, Registry};
-use kernel_runner::Runner;
+use angzarr_embedded_runner::Runner;
+
+use crate::bridge::Port;
 use ports::{Clock, CommandIds, Delay, Jitter, Project, ProjectIdentity};
 use session_ports::{GoSession, GoSessions, ProjectStores};
 use sessions::{
@@ -131,7 +133,7 @@ impl<I, S, G, C, D> Importer<I, S, G, C, D> {
             go,
             clock,
             delay,
-            retry: kernel_runner::KERNEL_RETRY,
+            retry: angzarr_embedded_runner::KERNEL_RETRY,
             registry: crate::registry(),
             dead_letters: Vec::new(),
         }
@@ -273,8 +275,8 @@ where
         let store = self.stores.open(project).await.map_err(crate::failed)?;
         let mut runner = Runner {
             registry: &self.registry,
-            clock: &mut self.clock,
-            delay: &mut self.delay,
+            clock: &mut Port(&mut self.clock),
+            delay: &mut Port(&mut self.delay),
             retry: self.retry,
             dead_letters: &mut self.dead_letters,
         };

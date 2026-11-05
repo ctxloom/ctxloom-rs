@@ -6,11 +6,12 @@ use std::path::Path;
 
 /// angzarr crates a lock must hold exactly once, whatever pulls them in:
 /// taskloom's `tasks-lib` brings its own graph, so the pins must agree.
-const ONE_OF_EACH: [&str; 7] = [
+const ONE_OF_EACH: [&str; 8] = [
     "angzarr-proto",
     "angzarr-ports",
     "angzarr-diagnostic",
     "angzarr-embedded",
+    "angzarr-embedded-runner",
     // ctxloom-lib's: its own angzarr pins are ours, so it must not be held
     // at two commits (one from a transitive consumer).
     "cli-support",

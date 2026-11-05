@@ -3,10 +3,10 @@
 //! ([`ProjectStores::open_existing`]) and creates nothing: reading the record
 //! touches nothing (session.feature).
 
+use angzarr_diagnostic::Report;
 use angzarr_embedded::Registry;
-use kernel_runner::ProjectLists;
 use ports::{Project, ProjectIdentity};
-use session_index::{only_state, title_of, Captured, SessionIndexes, SessionRecord, State, View};
+use session_index::{only_state, title_of, Captured, SessionIndex, SessionRecord, State, View};
 use session_ports::{Liveness, LockState, ProjectStores, SessionFiles};
 
 use crate::{failed, AppError, ListQuery, SearchQuery, ShowQuery, TranscriptQuery, TranscriptRow};
@@ -19,7 +19,6 @@ pub(crate) struct Reading<'s, I, S, F, L> {
     pub files: &'s mut F,
     pub liveness: &'s mut L,
     pub registry: &'s Registry,
-    pub indexes: &'s mut ProjectLists<SessionIndexes>,
 }
 
 impl<I, S, F, L> Reading<'_, I, S, F, L>
@@ -52,12 +51,16 @@ where
         let Some(store) = self.stores.open_existing(project).await.map_err(failed)? else {
             return Ok(Vec::new());
         };
-        let index = self
-            .indexes
-            .caught_up(project, store, self.registry)
+        // Caught up fresh, from nothing: a read is the store as it is now.
+        let mut catch_up = SessionIndex::catch_up();
+        let caught = catch_up
+            .step(store, self.registry.catalog())
             .await
-            .map_err(AppError::Failed)?;
-        let records = index.index().records();
+            .map_err(|error| AppError::Failed(Report::of(&error)))?;
+        if let Some((_, error)) = caught.failures().first() {
+            return Err(AppError::Failed(Report::of(error)));
+        }
+        let records = catch_up.projector().index().records();
         Ok(records)
     }
 

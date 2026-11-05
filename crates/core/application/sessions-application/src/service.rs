@@ -5,9 +5,8 @@
 use std::future::Future;
 
 use angzarr_embedded::{OnRetryable, Registry};
-use kernel_runner::KERNEL_RETRY;
+use angzarr_embedded_runner::KERNEL_RETRY;
 use ports::{Clock, CommandIds, Delay, Jitter, ProjectIdentity};
-use session_index::SessionIndexes;
 use session_ports::{Liveness, ProjectStores, SessionFiles};
 use sessions::{NameClaimAggregate, SessionAggregate};
 
@@ -92,7 +91,6 @@ pub struct Service<I, S, F, L, C, D> {
     /// How many days a session's transcript is kept after it ended.
     pub retention_days: u64,
     pub(crate) registry: Registry,
-    pub(crate) indexes: kernel_runner::ProjectLists<SessionIndexes>,
     /// The dead letters the use case's kernel calls answered, taken into its
     /// result, or its error.
     pub(crate) dead_letters: Vec<DeadLetter>,
@@ -110,7 +108,6 @@ impl<I, S, F, L, C, D> Service<I, S, F, L, C, D> {
             retry: KERNEL_RETRY,
             retention_days: DEFAULT_RETENTION_DAYS,
             registry: registry(),
-            indexes: kernel_runner::ProjectLists::new(session_index::SessionIndex::catch_up),
             dead_letters: Vec::new(),
         }
     }
@@ -125,7 +122,6 @@ impl<I, S, F, L, C, D> Service<I, S, F, L, C, D> {
             files: &mut self.files,
             liveness: &mut self.liveness,
             registry: &self.registry,
-            indexes: &mut self.indexes,
         }
     }
 
@@ -138,7 +134,6 @@ impl<I, S, F, L, C, D> Service<I, S, F, L, C, D> {
                 files: &mut self.files,
                 liveness: &mut self.liveness,
                 registry: &self.registry,
-                indexes: &mut self.indexes,
             },
             clock: &mut self.clock,
             delay: &mut self.delay,

@@ -107,6 +107,26 @@ fn a_listing_holds_the_sessions_of_the_current_project() {
     );
 }
 
+// Design (queue-runner swap, unnamed-corsage): a read catches up fresh, so
+// each of two consecutive reads sees a record written between them.
+#[test]
+fn each_of_two_consecutive_reads_sees_a_record_written_between_them() {
+    let mut svc = service();
+    svc.seed(HERE, 1, "amber-swift-owl", NOW - 2 * DAY, None);
+    assert_eq!(svc.harps(ListQuery::default()), ["amber-swift-owl"]);
+    svc.seed(HERE, 2, "brisk-copper-moth", NOW - DAY, None);
+    assert_eq!(
+        svc.harps(ListQuery::default()),
+        ["brisk-copper-moth", "amber-swift-owl"],
+        "the second read sees the record written after the first"
+    );
+    svc.seed(HERE, 3, "calm-dusty-wren", NOW, None);
+    assert_eq!(
+        svc.harps(ListQuery::default()),
+        ["calm-dusty-wren", "brisk-copper-moth", "amber-swift-owl"]
+    );
+}
+
 // session.feature: "--all reaches past the current project".
 #[test]
 fn all_reaches_past_the_current_project() {

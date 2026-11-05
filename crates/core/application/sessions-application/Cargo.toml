@@ -13,7 +13,7 @@ angzarr-embedded.workspace = true
 # Go's session.yaml, read through the one reader (versioned, strict).
 angzarr-yaml.workspace = true
 # Each command run through the kernel, as every context runs one.
-kernel-runner.workspace = true
+angzarr-embedded-runner.workspace = true
 ports.workspace = true
 session-index.workspace = true
 serde.workspace = true
