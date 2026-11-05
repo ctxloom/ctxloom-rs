@@ -581,3 +581,68 @@ fn a_clean_nested_worktree_is_removed_with_its_parent() {
     let listed = git(&f.project, &["worktree", "list", "--porcelain"]);
     assert!(!listed.contains("inner"), "{listed}");
 }
+
+// S11 hardening: a hung git stops the run with a diagnostic, and never reads
+// as "not a repository", "clean" or "removed".
+mod hung_git {
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::Duration;
+
+    use super::*;
+    use crate::{Git, GitError};
+
+    /// A workspace whose git is a script that never finishes, with a tiny
+    /// limit, over the fixture's home.
+    fn hung(fixture: &Fixture) -> (tempfile::TempDir, GitWorkspaces) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("git");
+        std::fs::write(&path, "#!/bin/sh\nexec sleep 30\n").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let git = Git::new(path, Duration::from_millis(20));
+        // Run once, so the script is past the moment another thread's fork
+        // may hold it open for writing (ETXTBSY); every use after is plain.
+        while matches!(git.run(dir.path(), &["warm"]), Err(GitError::Said(why)) if why.contains("busy"))
+        {
+            std::thread::yield_now();
+        }
+        (dir, fixture.adapter().with_git(git))
+    }
+
+    #[test]
+    fn preparing_with_a_hung_git_fails_with_the_timeout_not_a_degrade() {
+        let fixture = Fixture::new();
+        let (_stub, workspaces) = hung(&fixture);
+        let request = fixture.request("amber-quiet-heron", "member-1");
+        let Err(failure) = workspaces.prepare(&request) else {
+            panic!("a hung git was read as an answer");
+        };
+        assert_eq!(failure.code(), "worktree-git-git-timed-out");
+        assert!(!fixture
+            .work_dir("amber-quiet-heron")
+            .join(checkout_name("member-1"))
+            .exists());
+    }
+
+    #[test]
+    fn inspecting_with_a_hung_git_resolves_nothing() {
+        let fixture = Fixture::new();
+        let (_stub, workspaces) = hung(&fixture);
+        let standing = workspaces.inspect(&fixture.project.display().to_string());
+        let Standing::Unresolved(why) = standing else {
+            panic!("a hung git resolved a repository: {standing:?}");
+        };
+        assert!(why.contains("did not finish within 20ms"), "{why}");
+    }
+
+    #[test]
+    fn removing_with_a_hung_git_leaves_the_checkout_in_place() {
+        let fixture = Fixture::new();
+        let checkout = fixture.prepared("amber-quiet-heron", "member-1");
+        let (_stub, workspaces) = hung(&fixture);
+        let Removal::Left(why) = workspaces.remove(&checkout.repo_dir, &checkout.path) else {
+            panic!("a hung git removed a checkout");
+        };
+        assert!(why.contains("did not finish within 20ms"), "{why}");
+        assert!(Path::new(&checkout.path).is_dir());
+    }
+}

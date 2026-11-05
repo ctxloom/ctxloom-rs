@@ -275,10 +275,16 @@ pub(crate) struct RemovalDoc {
     applied: bool,
     index_entry_removed: bool,
     files: FilesDoc,
+    /// The scratch worktrees a purge reached, when it reached any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    worktrees: Option<isolation_application::Report>,
 }
 
 impl RemovalDoc {
-    pub(crate) fn of(removal: &Removal) -> RemovalDoc {
+    pub(crate) fn of(
+        removal: &Removal,
+        worktrees: Option<&isolation_application::Report>,
+    ) -> RemovalDoc {
         let FilePlan {
             destroy,
             keep,
@@ -296,6 +302,7 @@ impl RemovalDoc {
                 bytes_freed: *bytes_freed,
                 populations: ["transcript"],
             },
+            worktrees: worktrees.cloned(),
         }
     }
 }
