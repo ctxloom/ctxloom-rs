@@ -92,3 +92,13 @@ fn a_missing_git_is_named_as_one() {
 fn the_default_limit_is_gos_sixty_second_sync() {
     assert_eq!(DEFAULT_TIMEOUT, Duration::from_secs(60));
 }
+
+#[test]
+fn a_git_that_cannot_be_started_for_another_reason_is_not_called_missing() {
+    // A directory is found but cannot be executed.
+    let dir = tempfile::tempdir().unwrap();
+    let git = Git::new(dir.path(), DEFAULT_TIMEOUT);
+    let why = git.run(Some(dir.path()), &["status"], None).unwrap_err();
+    assert!(why.starts_with("git status: "), "{why}");
+    assert!(!why.contains("not found"), "{why}");
+}
