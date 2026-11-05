@@ -14,9 +14,11 @@ deps-ports.workspace = true
 file-system.workspace = true
 os.workspace = true
 process-env.workspace = true
+run-within.workspace = true
 
 [dev-dependencies]
 file-system = { workspace = true, features = ["test-support"] }
+run-within = { workspace = true, features = ["test-support"] }
 
 [features]
 test-support = []

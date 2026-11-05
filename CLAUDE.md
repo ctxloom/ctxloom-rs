@@ -152,8 +152,8 @@ Dependencies point inward; a review refuses a change that breaks these:
 The lock holds ONE `angzarr-embedded`, `angzarr-proto`, `angzarr-ports` and
 `angzarr-diagnostic` (a test reads Cargo.lock). Every pin in `Cargo.toml` is
 a full commit. The angzarr pins are one line (angzarr-embedded 9db9299,
-core dd59566, angzarr-cli b47c357, angzarr-platform 5771284); taskloom's
-crates (12e83b0) and ctxloom-lib's (b2e6699) are built on it, so moving one
+core dd59566, angzarr-cli b47c357, angzarr-platform 7b448a8); taskloom's
+crates (71bfc28) and ctxloom-lib's (c66dd6b) are built on it, so moving one
 moves all. The lock holds one of every angzarr crate. The platform crates (`os`, `file-system`, `file-lock`) are
 angzarr-platform's, and `angzarr-presentation` and `angzarr-diagnostic` are
 angzarr core's, all `Apache-2.0 OR BSD-3-Clause`; this workspace is
@@ -166,6 +166,22 @@ full commit over https. Its angzarr pins are this workspace's, and the lock
 holds one `cli-support` (the same test). The application's own global flags
 (`library_application::Flags`) ride in the call as `Call<Flags>`'s `globals`;
 ctxloom-lib itself knows no ctxloom word (its vocabulary check).
+
+Every adapter that runs a program (`remote-git`, `worktree-git`,
+`companion-probe`, `container-runtime`, `taskloom-cli-client`) runs it
+through ctxloom-lib's `run-within`: the program under a deadline, its whole
+process tree killed when the deadline passes (not only the program: a git
+hook or a shell's `sleep` would otherwise live on holding the pipes), its
+output bounded per stream, and the wait for that output bounded too
+(`drain_grace`, two seconds), so a descendant that outlives a program that
+exited cannot hang the caller. The program's environment is exactly the one
+the adapter gives; its tests need `run-within`'s `test-support`, which waits
+out ETXTBSY. Limits (os::process's): a descendant that calls `setsid` or
+`setpgid` escapes the kill, and the program runs in a process group of its
+own, so a Ctrl-C at the terminal does not reach it: a caller that must stop
+a run on Ctrl-C hears `Os::stop_signal` and ends the tree itself.
+All of ctxloom-lib's crates are pinned at one rev (`cli-support`,
+`process-env`, `project-dir`, `run-within`), and so is each family above.
 
 ## Co-developing a sibling or ctxloom-lib
 

@@ -10,6 +10,7 @@ publish.workspace = true
 [dependencies]
 angzarr-diagnostic.workspace = true
 process-env.workspace = true
+run-within.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tasks-ports.workspace = true
@@ -19,6 +20,7 @@ time.workspace = true
 file-system = { workspace = true, features = ["test-support"] }
 mutants.workspace = true
 os = { workspace = true, features = ["test-support"] }
+run-within = { workspace = true, features = ["test-support"] }
 
 [lints]
 workspace = true

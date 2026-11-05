@@ -1,13 +1,17 @@
 //! The runtimes on the machine.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use file_system::{Fs, Kind};
 use isolation_ports::{ContainerRuntimes, RuntimeFacts, RUNTIMES};
 use process_env::EnvSnapshot;
+use run_within::{run_within, Spec, Within};
+
+/// How long, once a runtime has answered, its output is waited for: a helper
+/// it started that outlives it can hold the pipes open.
+const DRAIN_GRACE: Duration = Duration::from_secs(2);
 
 /// Runtimes found on a `PATH`.
 pub struct HostRuntimes {
@@ -15,6 +19,7 @@ pub struct HostRuntimes {
     env: Arc<EnvSnapshot>,
     pub(crate) dirs: Vec<PathBuf>,
     pub(crate) answer_within: Duration,
+    pub(crate) drain_grace: Duration,
 }
 
 impl HostRuntimes {
@@ -31,7 +36,15 @@ impl HostRuntimes {
             env,
             dirs,
             answer_within,
+            drain_grace: DRAIN_GRACE,
         }
+    }
+
+    /// The same, waiting `grace` for an answered runtime's output (two
+    /// seconds by default).
+    pub fn drain_grace(mut self, grace: Duration) -> HostRuntimes {
+        self.drain_grace = grace;
+        self
     }
 
     /// `env`'s `PATH`, with ten seconds to answer.
@@ -53,31 +66,16 @@ impl HostRuntimes {
         self.fs.real_path(&found).ok()
     }
 
-    /// Run `bin args`, bounded: whether it exited 0 in time. A runtime that
-    /// never answers is killed, not waited on.
+    /// Run `bin args` in the runtimes' environment, bounded: whether it
+    /// exited 0 in time. A runtime that never answers is killed with
+    /// everything it started, not waited on.
     fn answers(&self, bin: &Path, args: &[&str]) -> bool {
-        let Ok(mut child) = Command::new(bin)
-            .args(args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-        else {
-            return false;
-        };
-        let deadline = Instant::now() + self.answer_within;
-        loop {
-            match child.try_wait() {
-                Ok(Some(status)) => return status.success(),
-                Ok(None) if Instant::now() >= deadline => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return false;
-                }
-                Ok(None) => std::thread::sleep(Duration::from_millis(5)),
-                Err(_) => return false,
-            }
-        }
+        let spec = Spec::new(bin).args(args).envs(self.env.vars());
+        let within = Within::new(self.answer_within).drain_grace(self.drain_grace);
+        run_within(&spec, &within)
+            .ok()
+            .and_then(|outcome| outcome.status)
+            .is_some_and(|status| status.success())
     }
 }
 

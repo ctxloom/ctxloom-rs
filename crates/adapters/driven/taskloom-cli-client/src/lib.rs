@@ -13,20 +13,16 @@
 //! failing taskloom prints `{code, args, message}` on standard error.
 
 use std::ffi::OsString;
-use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 
 use angzarr_diagnostic::Report;
 use process_env::EnvSnapshot;
+use run_within::{run_within, RunError, Spec, Within};
 use serde::Deserialize;
 use tasks_ports::{DeferredTask, Tasks, TasksError};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
-
-mod process;
-
-use process::{output_within, Unfinished};
 
 /// The variable naming the taskloom program.
 pub const BIN_VAR: &str = "TASKLOOM_BIN";
@@ -34,12 +30,17 @@ pub const BIN_VAR: &str = "TASKLOOM_BIN";
 /// How long one taskloom run may take.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// How long, once a run is over, its output is waited for: a helper taskloom
+/// started that outlives it can hold the pipes open.
+pub const DEFAULT_DRAIN_GRACE: Duration = Duration::from_secs(2);
+
 /// Asks taskloom, for one project.
 #[derive(Clone, Debug)]
 pub struct TaskloomCli {
     program: OsString,
     project: String,
     timeout: Duration,
+    drain_grace: Duration,
     env: Arc<EnvSnapshot>,
 }
 
@@ -55,6 +56,7 @@ impl TaskloomCli {
             program,
             project: project.into(),
             timeout: DEFAULT_TIMEOUT,
+            drain_grace: DEFAULT_DRAIN_GRACE,
             env,
         }
     }
@@ -62,6 +64,12 @@ impl TaskloomCli {
     /// The same client with `timeout` as the limit on a run.
     pub fn with_timeout(mut self, timeout: Duration) -> TaskloomCli {
         self.timeout = timeout;
+        self
+    }
+
+    /// The same client waiting `grace` for a finished run's output.
+    pub fn with_drain_grace(mut self, grace: Duration) -> TaskloomCli {
+        self.drain_grace = grace;
         self
     }
 
@@ -73,33 +81,30 @@ impl TaskloomCli {
 impl Tasks for TaskloomCli {
     fn deferred(&self) -> Result<Vec<DeferredTask>, TasksError> {
         let program = self.name();
-        let mut command = Command::new(&self.program);
-        command
+        let spec = Spec::new(&self.program)
             .args(["tasks", "list", "--status", "Deferred", "--format", "json"])
             .args(["--project", &self.project])
-            .env_clear()
             .envs(self.env.vars());
-        let output = match output_within(&mut command, self.timeout) {
+        let within = Within::new(self.timeout).drain_grace(self.drain_grace);
+        let output = match run_within(&spec, &within) {
             Ok(output) => output,
-            Err(Unfinished::TimedOut) => {
-                return Err(TasksError::TimedOut {
-                    program,
-                    timeout: format!("{:?}", self.timeout),
-                })
-            }
-            Err(Unfinished::Failed(e)) if e.kind() == std::io::ErrorKind::NotFound => {
-                return Err(TasksError::NotFound { program })
-            }
-            Err(Unfinished::Failed(e)) => {
+            Err(RunError::NotFound { .. }) => return Err(TasksError::NotFound { program }),
+            Err(other) => {
                 return Err(TasksError::Unrunnable {
                     program,
-                    why: e.to_string(),
+                    why: other.io().to_string(),
                 })
             }
         };
+        let Some(status) = output.status else {
+            return Err(TasksError::TimedOut {
+                program,
+                timeout: format!("{:?}", self.timeout),
+            });
+        };
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if !output.status.success() {
-            let exit = output.status.to_string();
+        if !status.success() {
+            let exit = status.to_string();
             return Err(match envelope(&stderr) {
                 Some(cause) => TasksError::Refused {
                     program,

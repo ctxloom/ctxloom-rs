@@ -51,11 +51,12 @@ impl Backends for Engines {
 struct Registered {
     library: Rc<Library>,
     flags: Flags,
+    env: Arc<EnvSnapshot>,
 }
 
 impl Companions for Registered {
     fn tooling(&self) -> Result<Vec<Tooling>, PortFailure> {
-        let probe = ProcessProbe::standard();
+        let probe = ProcessProbe::standard(Arc::clone(&self.env));
         let Ok(rows) = self.library.companion_list(&self.flags).result else {
             return Ok(Vec::new());
         };
@@ -105,6 +106,7 @@ pub(crate) fn container(
         Registered {
             library: Rc::clone(&library),
             flags,
+            env: Arc::clone(env),
         },
         UserFilesFs::new(wiring.fs()),
     );

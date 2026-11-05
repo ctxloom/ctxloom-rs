@@ -26,26 +26,14 @@ fn env(vars: &[(&str, &str)]) -> Arc<EnvSnapshot> {
 }
 
 /// A `taskloom` that is a script in a directory of its own, and a client for
-/// project `p1` running it. The script has been started once before it is
-/// handed over, so another thread's fork no longer holds it open for writing
-/// (ETXTBSY: "Text file busy").
+/// project `p1` running it (`run-within` waits out the moment another
+/// thread's fork may hold the script open for writing).
 fn stub(body: &str) -> (Rooted, TaskloomCli) {
     let dir = Rooted::temp().unwrap();
     let path = os::fixture("/taskloom");
     dir.write_atomic(&path, body.as_bytes(), Perms::Exact(Mode::from_bits(0o755)))
         .unwrap();
     let real = dir.real_path(&path).unwrap();
-    loop {
-        match Command::new(&real).arg("warm").spawn() {
-            Ok(mut child) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                break;
-            }
-            Err(e) if e.to_string().contains("busy") => std::thread::yield_now(),
-            Err(e) => panic!("{e}"),
-        }
-    }
     let shown = real.to_str().unwrap();
     let cli = TaskloomCli::new(env(&[(BIN_VAR, shown), ("PATH", SHELL_PATH)]), "p1")
         .with_timeout(Duration::from_secs(20));
@@ -184,15 +172,7 @@ fn taskloom_runs_in_exactly_the_injected_environment() {
         ]),
         "p1",
     );
-    // Asked again while the system says the script is busy (ETXTBSY).
-    let tasks = loop {
-        match cli.deferred() {
-            Err(TasksError::Unrunnable { why, .. }) if why.contains("busy") => {
-                std::thread::yield_now();
-            }
-            other => break other,
-        }
-    };
+    let tasks = cli.deferred();
     tasks.unwrap();
     let seen = read(&dir, "seen");
     assert!(seen.contains("CTXLOOM_ROOT=/injected\n"), "{seen}");
@@ -432,4 +412,37 @@ fn deferred_since_keeps_its_fraction_and_honors_its_offset() {
         cli.deferred().unwrap()[0].deferred_since,
         Some(Duration::new(1_793_854_782, 500_000_000))
     );
+}
+
+#[test]
+fn a_helper_taskloom_started_is_killed_with_it() {
+    if !runs_scripts() {
+        return;
+    }
+    // The helper holds taskloom's pipes; the limit is long enough for the
+    // script to have started it.
+    let (dir, cli) = stub("#!/bin/sh\nsleep 30 &\necho $! > \"$(dirname \"$0\")/helper\"\nwait\n");
+    let cli = cli.with_timeout(Duration::from_secs(1));
+    let started = std::time::Instant::now();
+    assert!(matches!(cli.deferred(), Err(TasksError::TimedOut { .. })));
+    assert!(started.elapsed() < Duration::from_secs(10));
+    let pid = read(&dir, "helper");
+    let host =
+        file_system::Os::new(os::host(), std::path::Path::new(os::host().flavor().top())).unwrap();
+    let stat = std::path::Path::new("/proc").join(pid.trim()).join("stat");
+    // Gone, or a zombie nobody has reaped yet (an orphan waits for init).
+    let state = host.read_to_string(&stat).unwrap_or_default();
+    assert!(state.is_empty() || state.contains(") Z "), "{state}");
+}
+
+#[test]
+fn a_helper_that_outlives_taskloom_does_not_hold_the_caller() {
+    if !runs_scripts() {
+        return;
+    }
+    let (_dir, cli) = stub("#!/bin/sh\nsleep 5 &\necho '[]'\n");
+    let cli = cli.with_drain_grace(Duration::from_millis(50));
+    let started = std::time::Instant::now();
+    assert_eq!(cli.deferred().unwrap(), vec![]);
+    assert!(started.elapsed() < Duration::from_secs(4));
 }

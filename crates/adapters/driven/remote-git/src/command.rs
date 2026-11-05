@@ -1,16 +1,16 @@
 //! Running git: the environment scrubbed, non-interactive, its own account of
 //! a failure kept, and bounded in time: a git that does not finish within its
-//! limit is killed and reaped, never waited on.
+//! limit is killed with everything it started, and the wait for its output is
+//! bounded too (`run-within`).
 
 use std::ffi::OsString;
-use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
 use std::sync::{Arc, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use deps_ports::Why;
 use process_env::EnvSnapshot;
+use run_within::{run_within, RunError, Spec, Within};
 
 use crate::auth::Credential;
 
@@ -19,8 +19,9 @@ use crate::auth::Credential;
 /// a fetch, a push) has that long on its own.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// How often a running git is asked whether it has finished.
-const POLL: Duration = Duration::from_millis(5);
+/// How long, once a git is over, its output is waited for: a helper it
+/// started that outlives it can hold the pipes open.
+const DRAIN_GRACE: Duration = Duration::from_secs(2);
 
 /// The git the remotes run: which program, and how long each invocation has.
 /// The seam tests narrow to a stub program and a tiny limit.
@@ -28,20 +29,10 @@ const POLL: Duration = Duration::from_millis(5);
 pub struct Git {
     program: PathBuf,
     timeout: Duration,
+    /// How long, once a git is over, its output is waited for.
+    drain_grace: Duration,
     /// The environment git inherits, less the repository-location variables.
     env: Arc<EnvSnapshot>,
-}
-
-/// Why a run produced no output.
-pub(crate) enum Unfinished {
-    /// It could not be started or waited on.
-    Failed(std::io::Error),
-    /// It did not finish within its limit; it was killed and reaped.
-    TimedOut {
-        /// The killed process, for a test that must show it gone.
-        #[cfg(test)]
-        pid: u32,
-    },
 }
 
 /// Why a git invocation did not succeed, with git's words.
@@ -60,65 +51,6 @@ impl Failed {
     }
 }
 
-/// `command` run to its end with `stdin` fed to it, or killed and reaped at
-/// `timeout`.
-pub(crate) fn output_within(
-    command: &mut Command,
-    stdin: Option<&[u8]>,
-    timeout: Duration,
-) -> Result<Output, Unfinished> {
-    command.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = command.spawn().map_err(Unfinished::Failed)?;
-    #[cfg(test)]
-    let pid = child.id();
-    if let (Some(bytes), Some(mut pipe)) = (stdin, child.stdin.take()) {
-        // A broken pipe means git stopped reading; its exit says why.
-        let _ = pipe.write_all(bytes);
-    }
-    // Read as it comes, so a git with much to say is never stuck on a full
-    // pipe while this waits for it to end.
-    let stdout = drain(child.stdout.take());
-    let stderr = drain(child.stderr.take());
-    let deadline = Instant::now() + timeout;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) if Instant::now() >= deadline => {
-                let _ = child.kill();
-                let _ = child.wait();
-                // The readers end with whatever still holds the pipes (a
-                // helper git started outlives the git it was killed with).
-                return Err(Unfinished::TimedOut {
-                    #[cfg(test)]
-                    pid,
-                });
-            }
-            Ok(None) => std::thread::sleep(POLL),
-            Err(e) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(Unfinished::Failed(e));
-            }
-        }
-    };
-    Ok(Output {
-        status,
-        stdout: stdout.join().unwrap_or_default(),
-        stderr: stderr.join().unwrap_or_default(),
-    })
-}
-
-fn drain<R: Read + Send + 'static>(pipe: Option<R>) -> std::thread::JoinHandle<Vec<u8>> {
-    let mut pipe = pipe;
-    std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        if let Some(pipe) = pipe.as_mut() {
-            let _ = pipe.read_to_end(&mut bytes);
-        }
-        bytes
-    })
-}
-
 /// The variables git itself says are local to a repository: `GIT_DIR` and its
 /// siblings, and the numbered config overrides `git -c` exports. Asked of git
 /// once, from the filesystem root with an empty environment, so nothing of
@@ -128,21 +60,19 @@ pub(crate) fn local_variables() -> &'static Option<Vec<String>> {
     static LOCAL: OnceLock<Option<Vec<String>>> = OnceLock::new();
     LOCAL.get_or_init(|| {
         let top = os::host().flavor().top();
-        let output = output_within(
-            Command::new("git")
-                .args(["rev-parse", "--local-env-vars"])
-                .current_dir(top)
-                .env_clear()
-                .stdin(Stdio::null()),
-            None,
-            DEFAULT_TIMEOUT,
+        let spec = Spec::new("git")
+            .args(["rev-parse", "--local-env-vars"])
+            .current_dir(top);
+        let output = run_within(
+            &spec,
+            &Within::new(DEFAULT_TIMEOUT).drain_grace(DRAIN_GRACE),
         )
         .ok()?;
         let names: Vec<String> = String::from_utf8_lossy(&output.stdout)
             .split_whitespace()
             .map(str::to_string)
             .collect();
-        (output.status.success() && !names.is_empty()).then_some(names)
+        (output.status.is_some_and(|s| s.success()) && !names.is_empty()).then_some(names)
     })
 }
 
@@ -185,8 +115,16 @@ impl Git {
         Git {
             program: program.into(),
             timeout,
+            drain_grace: DRAIN_GRACE,
             env,
         }
+    }
+
+    /// The same, waiting `grace` for a finished git's output (two seconds
+    /// by default).
+    pub fn drain_grace(mut self, grace: Duration) -> Git {
+        self.drain_grace = grace;
+        self
     }
 
     /// Run `git args` in `dir` (the process's working directory where none),
@@ -223,38 +161,37 @@ impl Git {
         credential: &Credential,
     ) -> Result<Vec<u8>, Failed> {
         let label = args.first().copied().unwrap_or("");
-        let mut command = Command::new(&self.program);
-        command
+        let mut spec = Spec::new(&self.program)
             .args(args)
-            .env_clear()
             .envs(environment(&self.env))
-            .envs(credential.pairs().iter().map(|(k, v)| (k, v)))
-            .stdin(if stdin.is_some() {
-                Stdio::piped()
-            } else {
-                Stdio::null()
-            });
+            .envs(credential.pairs().iter().map(|(k, v)| (k, v)));
         if let Some(dir) = dir {
-            command.current_dir(dir);
+            spec = spec.current_dir(dir);
         }
-        let output = output_within(&mut command, stdin, self.timeout).map_err(|e| match e {
-            Unfinished::TimedOut { .. } => Failed::TimedOut(format!(
-                "git {label}: did not finish within {:?} and was killed",
-                self.timeout
-            )),
-            Unfinished::Failed(e) if e.kind() == std::io::ErrorKind::NotFound => Failed::Said(
+        if let Some(bytes) = stdin {
+            spec = spec.stdin(bytes);
+        }
+        let within = Within::new(self.timeout).drain_grace(self.drain_grace);
+        let output = run_within(&spec, &within).map_err(|e| match e {
+            RunError::NotFound { .. } => Failed::Said(
                 "the git binary was not found on PATH (it is required to reach a remote)"
                     .to_string(),
             ),
-            Unfinished::Failed(e) => Failed::Said(format!("git {label}: {e}")),
+            other => Failed::Said(format!("git {label}: {}", other.io())),
         })?;
-        if output.status.success() {
+        let Some(status) = output.status else {
+            return Err(Failed::TimedOut(format!(
+                "git {label}: did not finish within {:?} and was killed",
+                self.timeout
+            )));
+        };
+        if status.success() {
             return Ok(output.stdout);
         }
         let said = String::from_utf8_lossy(&output.stderr);
         let said = credential.redact(said.trim());
         Err(Failed::Said(if said.is_empty() {
-            format!("git {label}: {}", output.status)
+            format!("git {label}: {status}")
         } else {
             format!("git {label}: {said}")
         }))

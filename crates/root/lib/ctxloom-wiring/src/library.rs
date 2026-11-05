@@ -92,7 +92,7 @@ pub(crate) fn build(
         user: Arc::new(UserFilesFs::new(Arc::clone(&fs))),
         scaffold: Arc::new(ScaffoldFs::new(Arc::clone(&fs), &around.cwd)),
         editor: Arc::new(ProcessEditor::new(Arc::clone(&fs), &around.temp_root)),
-        probe: Arc::new(ProcessProbe::standard()),
+        probe: Arc::new(ProcessProbe::standard(Arc::clone(wiring.env()))),
     };
     let library = Library::new(
         Arc::new(content),

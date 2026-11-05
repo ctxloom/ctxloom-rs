@@ -597,7 +597,7 @@ mod hung_git {
     use std::time::Duration;
 
     use super::*;
-    use crate::{Git, GitError};
+    use crate::Git;
 
     /// A workspace whose git is a script that never finishes, with a tiny
     /// limit, over the fixture's home.
@@ -611,12 +611,6 @@ mod hung_git {
             Duration::from_millis(20),
             crate::fixtures::env(),
         );
-        // Run once, so the script is past the moment another thread's fork
-        // may hold it open for writing (ETXTBSY); every use after is plain.
-        while matches!(git.run(dir.root(), &["warm"]), Err(GitError::Said(why)) if why.contains("busy"))
-        {
-            std::thread::yield_now();
-        }
         (dir, fixture.adapter().with_git(git))
     }
 

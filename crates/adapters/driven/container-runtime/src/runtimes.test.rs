@@ -26,22 +26,6 @@ fn script(fs: &Rooted, dir: &Path, name: &str, body: &str) {
     let text = format!("#!/bin/sh\n{body}\n");
     fs.write_atomic(&path, text.as_bytes(), Perms::Exact(Mode::from_bits(0o755)))
         .unwrap();
-    let real = fs.real_path(&path).unwrap();
-    // Another test thread forking while the file was open for writing leaves
-    // it "text file busy" for a moment; wait that out so a spawn is honest.
-    for _ in 0..200 {
-        match std::process::Command::new(&real).spawn() {
-            Ok(mut child) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return;
-            }
-            Err(e) if e.raw_os_error() == Some(26) => {
-                std::thread::sleep(Duration::from_millis(10));
-            }
-            Err(_) => return,
-        }
-    }
 }
 
 /// The snapshot the runtimes' markers are read from: none of its own.
@@ -174,4 +158,68 @@ fn the_path_of_the_environment_is_split_without_empty_entries() {
     assert_eq!(found.dirs, expected);
     assert!(found.dirs.iter().all(|d| !d.as_os_str().is_empty()));
     assert_eq!(found.answer_within, Duration::from_secs(10));
+    assert_eq!(found.drain_grace, Duration::from_secs(2));
+}
+
+// The runtime is run in the runtimes' environment, and only that one.
+#[test]
+fn a_runtime_runs_in_exactly_the_environment_it_was_given() {
+    let (fs, bin) = machine();
+    script(
+        &fs,
+        &bin,
+        "docker",
+        "[ \"${MARK-unset}\" = seen ] && [ \"${OTHER-unset}\" = unset ]",
+    );
+    let with = |vars: &[(&str, &str)]| {
+        HostRuntimes::new(
+            fs.clone(),
+            Arc::new(EnvSnapshot::of(vars.iter().copied())),
+            vec![bin.clone()],
+            Duration::from_secs(5),
+        )
+        .installed()
+    };
+    assert!(with(&[("MARK", "seen")])[0].reachable);
+    assert!(!with(&[("MARK", "seen"), ("OTHER", "x")])[0].reachable);
+    assert!(!with(&[])[0].reachable);
+}
+
+// What a runtime started goes with it when it is killed.
+#[test]
+fn a_helper_a_runtime_started_is_killed_with_it() {
+    let (fs, bin) = machine();
+    script(
+        &fs,
+        &bin,
+        "docker",
+        "sleep 30 &\necho $! > \"$(dirname \"$0\")/helper\"\nwait",
+    );
+    let slow = HostRuntimes::new(fs.clone(), env(), vec![bin.clone()], Duration::from_secs(1));
+    let started = std::time::Instant::now();
+    assert!(!slow.installed()[0].reachable);
+    assert!(started.elapsed() < Duration::from_secs(10));
+    let pid = fs.read_to_string(&bin.join("helper")).unwrap();
+    let stat = Path::new("/proc").join(pid.trim()).join("stat");
+    let host = file_system::Os::new(os::host(), Path::new(os::host().flavor().top())).unwrap();
+    // Gone, or a zombie nobody has reaped yet (an orphan waits for init).
+    let state = host.read_to_string(&stat).unwrap_or_default();
+    assert!(state.is_empty() || state.contains(") Z "), "{state}");
+}
+
+// A helper that outlives an answering runtime does not hold the caller.
+#[test]
+fn a_helper_that_outlives_the_runtime_does_not_hold_the_caller() {
+    let (fs, bin) = machine();
+    script(&fs, &bin, "docker", "sleep 5 &\nexit 0");
+    let found = HostRuntimes::new(
+        fs.clone(),
+        env(),
+        vec![bin.clone()],
+        Duration::from_secs(30),
+    )
+    .drain_grace(Duration::from_millis(50));
+    let started = std::time::Instant::now();
+    assert!(found.installed()[0].reachable);
+    assert!(started.elapsed() < Duration::from_secs(4));
 }

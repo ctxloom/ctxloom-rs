@@ -1,25 +1,21 @@
 //! Running git under a time limit: a git that hangs is killed and reaped, and
 //! the failure says so.
 
-use std::process::Command;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use super::{output_within, Failed, Git, Unfinished, DEFAULT_TIMEOUT};
+use super::{Failed, Git, DEFAULT_TIMEOUT};
 use crate::auth::Credential;
-use crate::fixtures::{env, exists, put_exec, root, runs_scripts};
+use crate::fixtures::{env, exists, put_exec, root, runs_scripts, slurp};
 
 const TINY: Duration = Duration::from_millis(20);
 
-/// A "git" that is a script, in a directory of its own, run once so it is past
-/// the moment another thread's fork may hold it open for writing (ETXTBSY).
+/// A "git" that is a script, in a directory of its own (`run-within` waits
+/// out the moment another thread's fork may hold it open for writing).
 pub(crate) fn stub(body: &str) -> (file_system::Rooted, Git) {
     let dir = root();
     let path = dir.root().join("git");
     put_exec(&path, body);
     let git = Git::new(&path, TINY, env());
-    while matches!(git.run(Some(dir.root()), &["warm"], None), Err(why) if why.contains("busy")) {
-        std::thread::yield_now();
-    }
     (dir, git)
 }
 
@@ -37,21 +33,40 @@ fn a_git_that_outlives_its_limit_is_killed_reaped_and_named() {
     assert_eq!(why, "git fetch: did not finish within 20ms and was killed");
 }
 
+/// Whether the process is gone: no `/proc` entry, or a zombie nobody has
+/// reaped yet (an orphan waits for init).
+fn gone(pid: &str) -> bool {
+    !exists(format!("/proc/{pid}")) || slurp(format!("/proc/{pid}/stat")).contains(") Z ")
+}
+
 #[test]
-fn the_killed_process_is_reaped_not_left_a_zombie() {
+fn a_helper_the_git_started_is_killed_with_it() {
+    if !runs_scripts() || !exists("/proc/self") {
+        return;
+    }
+    // The helper holds git's pipes, as a hook or a credential helper would.
+    let (dir, _) = stub("#!/bin/sh\nsleep 30 &\necho $! > \"$(dirname \"$0\")/helper\"\nwait\n");
+    let git = Git::new(dir.root().join("git"), Duration::from_secs(1), env());
+    let started = Instant::now();
+    let why = git.run(Some(dir.root()), &["fetch"], None).unwrap_err();
+    assert!(why.contains("did not finish"), "{why}");
+    assert!(started.elapsed() < Duration::from_secs(10));
+    let pid = slurp(dir.root().join("helper"));
+    assert!(gone(pid.trim()), "the helper {pid} outlived the git");
+}
+
+#[test]
+fn a_helper_that_outlives_a_finished_git_does_not_hold_the_caller() {
     if !runs_scripts() {
         return;
     }
-    let (dir, _) = stub(HANGS);
-    let mut command = Command::new(dir.root().join("git"));
-    command.stdin(std::process::Stdio::null());
-    let Err(Unfinished::TimedOut { pid }) = output_within(&mut command, None, TINY) else {
-        panic!("a hung process finished");
-    };
-    // A reaped process has no /proc entry; a zombie keeps one.
-    if exists("/proc/self") {
-        assert!(!exists(format!("/proc/{pid}")), "pid {pid} was not reaped");
-    }
+    let (dir, _) = stub("#!/bin/sh\nsleep 5 &\necho fetched\n");
+    let git = Git::new(dir.root().join("git"), Duration::from_secs(30), env())
+        .drain_grace(Duration::from_millis(50));
+    let started = Instant::now();
+    let out = git.run(Some(dir.root()), &["fetch"], None).unwrap();
+    assert_eq!(out, b"fetched\n");
+    assert!(started.elapsed() < Duration::from_secs(4));
 }
 
 #[test]

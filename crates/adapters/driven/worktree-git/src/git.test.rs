@@ -1,10 +1,10 @@
 //! Running git: which variables are scrubbed, and what a failure says.
 
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::{environment, is_local, local_variables, Git, GitError, DEFAULT_TIMEOUT};
-use crate::fixtures::{env, exists, fs, put, put_exec, root, runs_scripts};
+use crate::fixtures::{env, exists, fs, put, put_exec, root, runs_scripts, slurp};
 
 /// A "git" that is a script, in a directory of its own.
 fn stub(body: &str) -> (file_system::Rooted, Git, Duration) {
@@ -13,18 +13,6 @@ fn stub(body: &str) -> (file_system::Rooted, Git, Duration) {
     put_exec(&path, body);
     let tiny = Duration::from_millis(20);
     (dir, Git::new(fs(), path, tiny, env()), tiny)
-}
-
-/// `git.run`, asked again while the system says the script is busy: another
-/// thread's fork may hold the file open for writing a moment (ETXTBSY).
-fn settled(git: &Git, dir: &Path, args: &[&str]) -> Result<String, GitError> {
-    for _ in 0..1000 {
-        match git.run(dir, args) {
-            Err(GitError::Said(why)) if why.contains("busy") => std::thread::yield_now(),
-            other => return other,
-        }
-    }
-    git.run(dir, args)
 }
 
 fn run(dir: &Path, args: &[&str]) -> Result<String, String> {
@@ -120,13 +108,8 @@ fn a_git_that_outlives_its_limit_is_killed_reaped_and_named() {
         return;
     }
     let (dir, git, tiny) = stub("#!/bin/sh\nexec sleep 30\n");
-    let error = settled(&git, dir.root(), &["--no-pager", "status"]).unwrap_err();
-    let GitError::TimedOut {
-        command,
-        timeout,
-        pid,
-    } = &error
-    else {
+    let error = git.run(dir.root(), &["--no-pager", "status"]).unwrap_err();
+    let GitError::TimedOut { command, timeout } = &error else {
         panic!("not a timeout: {error:?}");
     };
     assert_eq!(command, "status", "named by the command, not its flags");
@@ -135,10 +118,41 @@ fn a_git_that_outlives_its_limit_is_killed_reaped_and_named() {
         error.to_string(),
         "git status did not finish within 20ms and was killed"
     );
-    // Reaped, not left a zombie: a reaped process has no /proc entry.
-    if exists("/proc/self") {
-        assert!(!exists(format!("/proc/{pid}")), "pid {pid} was not reaped");
+}
+
+/// Whether the process is gone: no `/proc` entry, or a zombie nobody has
+/// reaped yet (an orphan waits for init).
+fn gone(pid: &str) -> bool {
+    !exists(format!("/proc/{pid}")) || slurp(format!("/proc/{pid}/stat")).contains(") Z ")
+}
+
+#[test]
+fn a_hook_the_git_started_is_killed_with_it() {
+    if !runs_scripts() || !exists("/proc/self") {
+        return;
     }
+    // The hook holds git's pipes, as a real one would.
+    let (dir, _, _) = stub("#!/bin/sh\nsleep 30 &\necho $! > \"$(dirname \"$0\")/hook\"\nwait\n");
+    let git = Git::new(fs(), dir.root().join("git"), Duration::from_secs(1), env());
+    let started = Instant::now();
+    let error = git.run(dir.root(), &["checkout"]).unwrap_err();
+    assert!(matches!(error, GitError::TimedOut { .. }), "{error:?}");
+    assert!(started.elapsed() < Duration::from_secs(10));
+    let pid = slurp(dir.root().join("hook"));
+    assert!(gone(pid.trim()), "the hook {pid} outlived the git");
+}
+
+#[test]
+fn a_hook_that_outlives_a_finished_git_does_not_hold_the_caller() {
+    if !runs_scripts() {
+        return;
+    }
+    let (dir, _, _) = stub("#!/bin/sh\nsleep 5 &\necho done\n");
+    let git = Git::new(fs(), dir.root().join("git"), Duration::from_secs(30), env())
+        .drain_grace(Duration::from_millis(50));
+    let started = Instant::now();
+    assert_eq!(git.run(dir.root(), &["gc"]).unwrap(), "done\n");
+    assert!(started.elapsed() < Duration::from_secs(4));
 }
 
 #[test]
@@ -147,7 +161,7 @@ fn a_timeout_is_a_diagnostic_and_a_failure_of_git_is_not() {
         return;
     }
     let (dir, git, _) = stub("#!/bin/sh\nexec sleep 30\n");
-    let timed_out = settled(&git, dir.root(), &["status"]).unwrap_err();
+    let timed_out = git.run(dir.root(), &["status"]).unwrap_err();
     let diagnostic = timed_out.diagnostic().expect("a diagnostic");
     assert_eq!(
         crate::WorktreeError::GitTimedOut {
@@ -167,9 +181,9 @@ fn a_git_that_finishes_within_its_limit_is_not_disturbed() {
     // Output larger than a pipe's buffer, then a failure's own words.
     let (dir, _, _) = stub("#!/bin/sh\nif [ \"$1\" = fail ]; then echo oops >&2; exit 3; fi\nhead -c 200000 /dev/zero | tr '\\0' x\n");
     let git = Git::new(fs(), dir.root().join("git"), Duration::from_secs(60), env());
-    let out = settled(&git, dir.root(), &["big"]).unwrap();
+    let out = git.run(dir.root(), &["big"]).unwrap();
     assert_eq!(out.len(), 200_000);
-    let said = settled(&git, dir.root(), &["fail"]).unwrap_err();
+    let said = git.run(dir.root(), &["fail"]).unwrap_err();
     assert_eq!(said, GitError::Said("oops".to_string()));
 }
 
