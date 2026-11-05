@@ -687,6 +687,8 @@ dependencies = [
  "process-env",
  "project-dir",
  "reclaim-application",
+ "scheduler",
+ "scheduler-loop",
  "serde_json",
  "session-cli",
  "session-files",
@@ -793,6 +795,8 @@ dependencies = [
  "run-ports",
  "runs",
  "runs-application",
+ "scheduler",
+ "scheduler-loop",
  "session-files",
  "session-ports",
  "sessions",
@@ -3067,6 +3071,74 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9cb23c424d8ee841bb4d813677ca237e2a610067d594fec130f87d6093495ab5"
 dependencies = [
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "scheduler"
+version = "0.1.0"
+dependencies = [
+ "angzarr-build",
+ "angzarr-diagnostic",
+ "angzarr-embedded",
+ "angzarr-embedded-macros",
+ "mutants",
+ "prost",
+ "prost-types",
+ "scheduler-proto",
+ "time",
+ "uuid",
+]
+
+[[package]]
+name = "scheduler-due"
+version = "0.1.0"
+dependencies = [
+ "angzarr-embedded",
+ "mutants",
+ "scheduler",
+]
+
+[[package]]
+name = "scheduler-fixture"
+version = "0.1.0"
+dependencies = [
+ "angzarr-build",
+ "angzarr-embedded",
+ "angzarr-embedded-macros",
+ "mutants",
+ "prost",
+ "prost-types",
+ "scheduler",
+]
+
+[[package]]
+name = "scheduler-loop"
+version = "0.1.0"
+dependencies = [
+ "angzarr-diagnostic",
+ "angzarr-embedded",
+ "mutants",
+ "scheduler",
+ "scheduler-due",
+ "scheduler-fixture",
+ "scheduler-ports",
+]
+
+[[package]]
+name = "scheduler-ports"
+version = "0.1.0"
+dependencies = [
+ "angzarr-embedded",
+ "mutants",
+]
+
+[[package]]
+name = "scheduler-proto"
+version = "0.1.0"
+dependencies = [
+ "angzarr-build",
+ "prost",
+ "prost-types",
 ]
 
 [[package]]

@@ -1,0 +1,22 @@
+[package]
+name = "scheduler-ports"
+version = "0.1.0"
+description = "What the scheduler's loop needs from outside: the clock, and its test doubles"
+edition.workspace = true
+rust-version.workspace = true
+# Liftable into angzarr-embedded (scheduler.plan.md OD-13): its licence, not the workspace's.
+license = "Apache-2.0 OR BSD-3-Clause"
+publish.workspace = true
+
+[dependencies]
+angzarr-embedded.workspace = true
+
+[dev-dependencies]
+mutants.workspace = true
+
+[features]
+# The fakes (`FakeClock`, `RecordingWait`), for other crates' tests.
+test-support = []
+
+[lints]
+workspace = true

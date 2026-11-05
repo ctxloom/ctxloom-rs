@@ -1,0 +1,30 @@
+[package]
+name = "scheduler-loop"
+version = "0.1.0"
+description = "The scheduler's clock loop: tick(now) over a held due model fires the alarms that are due; run(clock, wait) repeats it"
+edition.workspace = true
+rust-version.workspace = true
+# Liftable into angzarr-embedded (scheduler.plan.md OD-13): its licence, not the workspace's.
+license = "Apache-2.0 OR BSD-3-Clause"
+publish.workspace = true
+
+[dependencies]
+angzarr-diagnostic.workspace = true
+angzarr-embedded.workspace = true
+scheduler.workspace = true
+scheduler-due.workspace = true
+scheduler-ports.workspace = true
+
+[dev-dependencies]
+angzarr-embedded = { workspace = true, features = ["test-support"] }
+scheduler = { workspace = true, features = ["test-support"] }
+scheduler-fixture.workspace = true
+scheduler-ports = { workspace = true, features = ["test-support"] }
+mutants.workspace = true
+
+[features]
+# `diagnostic_samples`, for other crates' catalog tests.
+test-support = []
+
+[lints]
+workspace = true

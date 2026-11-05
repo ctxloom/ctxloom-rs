@@ -198,6 +198,8 @@ fn test_the_binary_reports_the_diagnostics_of_every_crate_composed_in() {
         "library-application",
         "project-dir",
         "reclaim-application",
+        "scheduler",
+        "scheduler-loop",
         "session-cli",
         "session-files",
         "sessions",

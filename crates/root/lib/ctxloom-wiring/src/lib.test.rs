@@ -490,6 +490,14 @@ fn test_the_catalog_has_the_shared_project_dir_messages_and_the_samples_carry_it
         "project-dir's catalog"
     );
     assert!(sources.contains(&crate::EN_US), "this crate's own");
+    assert!(
+        sources.contains(&scheduler::EN_US),
+        "the scheduler's catalog"
+    );
+    assert!(
+        sources.contains(&scheduler_loop::EN_US),
+        "the scheduler loop's catalog"
+    );
     let codes: Vec<String> = crate::diagnostic_samples()
         .iter()
         .map(|d| d.code().to_string())

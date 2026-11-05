@@ -36,6 +36,8 @@ session-cli.workspace = true
 session-files.workspace = true
 sessions-application.workspace = true
 sessions.workspace = true
+scheduler.workspace = true
+scheduler-loop.workspace = true
 process-env.workspace = true
 project-dir.workspace = true
 
@@ -70,6 +72,8 @@ test-support = [
     "container-cli/test-support",
     "isolation-application/test-support",
     "worktree-git/test-support",
+    "scheduler/test-support",
+    "scheduler-loop/test-support",
 ]
 
 [dev-dependencies]

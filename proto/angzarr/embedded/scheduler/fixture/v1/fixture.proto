@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+// A TEST-ONLY domain that consumes the scheduler: it records a deadline,
+// asks the scheduler for an alarm at it (its own policy), withdraws it when
+// closed, and records the AlarmReached it is told of if it still matches its
+// own arming. It exists so the scheduler's end-to-end path is proven without
+// any application domain (crates/core/domain/scheduler-fixture, publish=false).
+package angzarr.embedded.scheduler.fixture.v1;
+
+import "google/protobuf/timestamp.proto";
+import "io/angzarr/v1/options.proto";
+
+message DummyState {
+  option (io.angzarr.v1.component) = {
+    kind: COMPONENT_KIND_AGGREGATE
+    domain: "dummy"
+    name: "Dummy"
+  };
+
+  google.protobuf.Timestamp deadline = 1;
+}
+
+// Set (or move) the deadline.
+message SetDeadline {
+  option (io.angzarr.v1.command) = {
+    component: "angzarr.embedded.scheduler.fixture.v1.DummyState"
+    emits: ["angzarr.embedded.scheduler.fixture.v1.DeadlineSet"]
+  };
+
+  google.protobuf.Timestamp deadline = 1;
+}
+
+// Close the dummy: its deadline no longer matters.
+message Close {
+  option (io.angzarr.v1.command) = {
+    component: "angzarr.embedded.scheduler.fixture.v1.DummyState"
+    emits: ["angzarr.embedded.scheduler.fixture.v1.Closed"]
+  };
+}
+
+message DeadlineSet {
+  option (io.angzarr.v1.event) = {component: "angzarr.embedded.scheduler.fixture.v1.DummyState"};
+
+  google.protobuf.Timestamp deadline = 1;
+}
+
+message Closed {
+  option (io.angzarr.v1.event) = {component: "angzarr.embedded.scheduler.fixture.v1.DummyState"};
+}
+
+// The dummy's own event for a deadline that passed while it was still open.
+message DeadlinePassed {
+  option (io.angzarr.v1.event) = {component: "angzarr.embedded.scheduler.fixture.v1.DummyState"};
+
+  google.protobuf.Timestamp at = 1;
+}
