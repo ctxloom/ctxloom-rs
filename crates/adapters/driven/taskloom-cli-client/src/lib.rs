@@ -174,12 +174,11 @@ fn envelope(stderr: &str) -> Option<Report> {
         #[serde(default)]
         message: String,
     }
-    let start = if stderr.trim_start().starts_with('{') {
-        0
-    } else {
-        stderr.find("\n{")? + 1
-    };
-    let envelope: Envelope = serde_json::from_str(&stderr[start..]).ok()?;
+    // The whole of it, else from each line that opens an object (the parse
+    // ignores the line break before it).
+    let envelope: Envelope = std::iter::once(stderr)
+        .chain(stderr.match_indices("\n{").map(|(at, _)| &stderr[at..]))
+        .find_map(|candidate| serde_json::from_str(candidate).ok())?;
     let mut report = Report::new(envelope.code);
     for (name, value) in envelope.args {
         let text = match value {
