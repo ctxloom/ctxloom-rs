@@ -100,6 +100,11 @@ fn fragment(w: &mut World, name: String, bundle: String) {
     w.common.project.fragment(&bundle, &name);
 }
 
+#[given(expr = "a command {string} in bundle {string} exists")]
+fn command(w: &mut World, name: String, bundle: String) {
+    w.common.project.command(&bundle, &name);
+}
+
 #[given(expr = "a profile {string} with bundle {string}")]
 fn profile(w: &mut World, name: String, bundle: String) {
     w.common.project.profile(&name, &bundle);
@@ -508,6 +513,18 @@ fn team_mcp(w: &mut World, engine: String) {
 }
 
 #[then(
+    regex = r"^the materialized (\S+) MCP configuration registers no server under ctxloom's own name$"
+)]
+fn team_mcp_no_ctxloom(w: &mut World, engine: String) {
+    let target = team_target(w, &engine);
+    let mcp = w.common.project.json_file(&format!("{target}/.mcp.json"));
+    let servers = mcp["mcpServers"]
+        .as_object()
+        .unwrap_or_else(|| panic!("{engine}: no mcpServers table: {mcp}"));
+    assert!(!servers.contains_key("ctxloom"), "{engine}: {mcp}");
+}
+
+#[then(
     regex = r"^the materialized (\S+) hook configuration carries the shared hook's command, in its own native shape$"
 )]
 fn team_hook(w: &mut World, engine: String) {
@@ -551,7 +568,16 @@ fn nowhere(w: &mut World, engine: String, what: String) {
 }
 
 #[then(regex = r"^the materialize report names each surface (\S+) does not carry, with a reason$")]
-fn report_names(w: &mut World, _engine: String) {
+fn report_names(w: &mut World, engine: String) {
+    if w.common.text_asked() {
+        // Go's text arm: the report says "NOT carried" and names each surface.
+        let said = w.ran().output();
+        assert!(said.contains("NOT carried"), "{engine}: {said}");
+        for surface in ["mcp", "hooks", "commands"] {
+            assert!(said.contains(surface), "{surface}: {said}");
+        }
+        return;
+    }
     let doc = w.json();
     let carried = doc["engines"][0]["not_carried"].to_string();
     for surface in ["mcp", "hooks", "commands"] {
