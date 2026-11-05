@@ -11,7 +11,8 @@ publish.workspace = true
 ctxloom-ports.workspace = true
 
 [dev-dependencies]
-tempfile.workspace = true
+file-system = { workspace = true, features = ["test-support"] }
+os = { workspace = true, features = ["test-support"] }
 
 [lints]
 workspace = true

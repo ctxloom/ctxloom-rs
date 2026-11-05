@@ -100,19 +100,26 @@ fn every_matching_marker_is_reported() {
     }
 }
 
-// The real machine reads the filesystem and the environment as they are.
+// The real machine reads files through the seam, and the environment as it is.
 #[test]
 fn the_real_machine_reads_files_and_the_environment() {
+    use std::sync::Arc;
+
+    use file_system::{Fs, Perms, Rooted};
+    use os::Mode;
+
     use super::Real;
-    let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join("marker");
-    std::fs::write(&file, "contents").unwrap();
+    let fs = Arc::new(Rooted::temp().unwrap());
+    let file = os::fixture("/marker");
+    fs.write_atomic(&file, b"contents", Perms::Exact(Mode::FILE))
+        .unwrap();
     let file = file.display().to_string();
-    let missing = dir.path().join("missing").display().to_string();
-    assert!(Real.exists(&file));
-    assert!(!Real.exists(&missing));
-    assert_eq!(Real.read(&file).as_deref(), Some("contents"));
-    assert_eq!(Real.read(&missing), None);
-    assert!(!Real.var("PATH").is_empty());
-    assert_eq!(Real.var("CTXLOOM_SURELY_UNSET_VARIABLE"), "");
+    let missing = os::fixture("/missing").display().to_string();
+    let real = Real::new(fs);
+    assert!(real.exists(&file));
+    assert!(!real.exists(&missing));
+    assert_eq!(real.read(&file).as_deref(), Some("contents"));
+    assert_eq!(real.read(&missing), None);
+    assert!(!real.var("PATH").is_empty());
+    assert_eq!(real.var("CTXLOOM_SURELY_UNSET_VARIABLE"), "");
 }

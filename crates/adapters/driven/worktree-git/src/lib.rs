@@ -33,3 +33,7 @@ pub use workspace::{branch_of, checkout_name, sanitize, GitWorkspaces, EXCLUDE_H
 #[cfg(test)]
 #[path = "error.test.rs"]
 mod error_tests;
+
+#[cfg(test)]
+#[path = "fixtures.test.rs"]
+mod fixtures;

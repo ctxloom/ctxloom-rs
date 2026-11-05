@@ -14,7 +14,6 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use cucumber::gherkin::Step;
@@ -23,6 +22,7 @@ use serde_json::Value;
 
 use super::library::{at, reports_as, Project};
 use super::Ran;
+use crate::tests::files;
 
 #[derive(cucumber::World)]
 #[world(init = Self::new)]
@@ -33,7 +33,7 @@ struct World {
     /// The words of the last command line.
     line: String,
     /// Fake companions, and the empty directory that hides the runtimes.
-    bin: Option<tempfile::TempDir>,
+    bin: Option<file_system::Rooted>,
     recorded: Option<BTreeMap<String, Vec<u8>>>,
 }
 
@@ -63,16 +63,16 @@ impl World {
     /// The directory of fakes, put first on the PATH with the system's.
     fn bin(&mut self) -> &Path {
         if self.bin.is_none() {
-            let dir = tempfile::tempdir().expect("a directory for the fakes");
-            let mut paths = vec![dir.path().to_path_buf()];
-            paths.extend(std::env::split_paths(
+            let dir = files::root();
+            let mut paths = vec![dir.root().to_path_buf()];
+            paths.extend(files::search_path(
                 &std::env::var_os("PATH").unwrap_or_default(),
             ));
             let path = std::env::join_paths(paths).expect("a PATH");
             self.bin = Some(dir);
             self.set_env("PATH", path.to_string_lossy().into_owned());
         }
-        self.bin.as_ref().expect("just made").path()
+        self.bin.as_ref().expect("just made").root()
     }
 
     fn run(&mut self, line: &str) {
@@ -108,9 +108,7 @@ impl World {
             "#!/bin/sh\ncase \"$1\" in\n  loadout) printf 'init:\\n  tooling: \"%s\"\\n' '{marker}: install the tools this companion content needs.';;\n  version) printf '{{\"name\":\"{bin}\",\"version\":\"0.0.0-fixture\"}}\\n';;\nesac\n"
         );
         let path = self.bin().join(&bin);
-        std::fs::write(&path, script).expect("a fake companion");
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
-            .expect("made executable");
+        files::put_exec(&path, &script);
     }
 }
 
@@ -147,8 +145,8 @@ fn project_file(w: &mut World, step: &Step, rel: String) {
 #[given("no container runtime is installed")]
 fn no_runtime(w: &mut World) {
     // PATH holds neither docker nor podman, nor anything else.
-    let empty = tempfile::tempdir().expect("an empty directory");
-    let path = empty.path().to_string_lossy().into_owned();
+    let empty = files::root();
+    let path = empty.root().to_string_lossy().into_owned();
     w.bin = Some(empty);
     w.set_env("PATH", path);
 }

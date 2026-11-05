@@ -192,8 +192,7 @@ fn test_a_whole_file_keeps_its_execute_bit_and_a_dry_run_writes_nothing() {
     assert!(dry.changed);
     assert!(f.get("skills/x/run.sh").is_none());
     f.deliver("e", Kind::Skills, &[claim]);
-    #[cfg(unix)]
-    {
+    if f.fs.os().flavor() == os::Flavor::Unix {
         assert_eq!(f.mode_of(&f.at("skills/x/run.sh")) & 0o111, 0o111);
     }
     let again = f.store.release(&f.target, "e", Kind::Skills, true).unwrap();

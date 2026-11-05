@@ -75,6 +75,7 @@ angzarr-embedded = { workspace = true, features = ["test-support"] }
 tokio = { workspace = true, features = ["macros", "rt"] }
 deps-application = { workspace = true, features = ["test-support"] }
 mutants.workspace = true
+file-system = { workspace = true, features = ["test-support"] }
 
 [features]
 # `diagnostic_samples`, for other crates' catalog tests, and the seed the

@@ -2,6 +2,7 @@
 //! lock_protocol}`, and every spelling of version agrees.
 
 use super::Env;
+use crate::tests::files;
 
 /// What ctxloom's lock reaper requires of a running binary, at least.
 const LOCK_PROTOCOL_FLOOR: u64 = 2;
@@ -22,7 +23,7 @@ fn test_version_in_json_is_name_version_and_lock_protocol() {
     let protocol = doc["lock_protocol"].as_u64().expect("an integer");
     assert!(protocol >= LOCK_PROTOCOL_FLOOR, "{doc}");
     assert_eq!(ran.stderr, "");
-    let written: Vec<_> = std::fs::read_dir(env.home()).unwrap().collect();
+    let written = files::fs().read_dir(env.home()).unwrap();
     assert!(written.is_empty(), "the probe writes nothing: {written:?}");
 }
 

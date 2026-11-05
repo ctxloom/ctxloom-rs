@@ -97,7 +97,7 @@ pub(crate) fn container(
         no_companions: call.no_companions,
     };
     let containers = Containers::new(
-        HostRuntimes::from_process(),
+        HostRuntimes::from_process(wiring.fs()),
         Engines {
             names: crate::commands::engines().names(),
             library: Rc::clone(&library),

@@ -17,6 +17,7 @@ use std::process::Command;
 use serde_json::Value;
 
 use super::{repo_root, run};
+use crate::tests::files;
 
 /// A crate of the dependency graph: its name and its directory.
 struct Package {
@@ -58,12 +59,12 @@ fn owner<'a>(code: &str, packages: &'a [Package]) -> Option<&'a Package> {
 /// The `$variables` of `code`'s message in the crate's en-US catalogs: the
 /// message's own lines, up to the next message. None when no catalog has it.
 fn message_vars(package: &Package, code: &str) -> Option<BTreeSet<String>> {
-    let catalogs = std::fs::read_dir(package.dir.join("locales/en-US")).ok()?;
-    for entry in catalogs.flatten() {
-        if entry.path().extension().is_none_or(|e| e != "ftl") {
+    let catalogs = files::children(package.dir.join("locales/en-US"));
+    for entry in catalogs {
+        if entry.extension().is_none_or(|e| e != "ftl") {
             continue;
         }
-        let text = std::fs::read_to_string(entry.path()).ok()?;
+        let text = files::read(&entry).ok()?;
         let mut lines = text
             .lines()
             .skip_while(|l| !l.starts_with(&format!("{code} =")));

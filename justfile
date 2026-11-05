@@ -9,6 +9,7 @@
 TOP := `git rev-parse --show-toplevel`
 
 import 'gates/gates.just'
+import 'gates/os-gates.just'
 
 # The staged tree is a sibling of the checkout, not under target/: cargo
 # reads .cargo/config.toml from every parent directory, so under the checkout
@@ -34,6 +35,17 @@ mutation_thresholds := "crates/core/domain=90 crates/core/read-model=90 crates/c
 # workspace.
 workspace_wide := "Cargo.toml Cargo.lock rust-toolchain.toml proto/* .cargo/config.toml .cargo/config"
 
+# The cargo arguments `check-windows` (gates/os-gates.just) compiles for a
+# Windows target: driven adapters that use the platform seams, without C
+# dependencies (those need a mingw C compiler).
+windows_packages := "-p content-fs -p config-files -p cache-files -p surface-files -p remote-git -p liveness -p session-files -p deps-files -p editor-process"
+
+# Where this machine's checkout of ctxloom-lib's templates/clippy-disallowed.toml
+# is, the canonical OS and filesystem list `lint-clippy-sync` compares
+# clippy.toml with. A sibling checkout of the repository by default; set
+# CTXLOOM_LIB_TEMPLATE to the file's path elsewhere (a worktree).
+clippy_template := env("CTXLOOM_LIB_TEMPLATE", TOP + "/../ctxloom-lib/templates/clippy-disallowed.toml")
+
 # Build every crate. Needs protoc on PATH and access to github.com (angzarr-proto).
 [no-exit-message]
 build:
@@ -45,9 +57,10 @@ build:
         cargo build "${terse[@]}" --manifest-path {{TOP}}/Cargo.toml --workspace
 
 # Clippy, warnings denied, including the core's purity rules
-# (crates/core/clippy.toml): lefthook's `clippy` step. Clippy reads only the
-# nearest clippy.toml, so the core's repeats the root's nesting threshold;
-# refuse to lint if they differ.
+# (crates/core/clippy.toml), after `lint-os`: lefthook's `clippy` step. Clippy
+# reads only the nearest clippy.toml, so the core's repeats the root's nesting
+# threshold and every method the root's disallows (the file I/O the
+# file-system seam holds); refuse to lint if they differ.
 [no-exit-message]
 lint:
     #!/usr/bin/env bash
@@ -58,6 +71,13 @@ lint:
         echo "FAIL lint: clippy.toml ($root) and crates/core/clippy.toml ($core) disagree on nesting" >&2
         exit 1
     fi
+    paths() { grep -o 'path = "[^"]*"' "$1" | sort -u; }
+    missing=$(comm -23 <(paths {{TOP}}/clippy.toml) <(paths {{TOP}}/crates/core/clippy.toml) | tr '\n' ' ')
+    if [ -n "$missing" ]; then
+        echo "FAIL lint: crates/core/clippy.toml does not disallow what clippy.toml does: $missing" >&2
+        exit 1
+    fi
+    {{TOP}}/scripts/os-cfg-check.sh
     terse=(-q --message-format=short)
     [ "${VERBOSE:-}" = 1 ] && terse=()
     exec just --justfile {{TOP}}/justfile _run lint workspace cargo \

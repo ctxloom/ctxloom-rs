@@ -123,18 +123,18 @@ pub(crate) fn parse_one(text: &str) -> Value {
 /// what a process needs to start, and this directory as its home and its
 /// working directory. Never the real home.
 pub(crate) struct Env {
-    home: tempfile::TempDir,
+    home: file_system::Rooted,
 }
 
 impl Env {
     pub(crate) fn new() -> Env {
         Env {
-            home: tempfile::tempdir().expect("a temporary home"),
+            home: files::root(),
         }
     }
 
     pub(crate) fn home(&self) -> &Path {
-        self.home.path()
+        self.home.root()
     }
 
     /// Run `ctxloom args`.
@@ -164,6 +164,9 @@ pub(crate) fn run(args: &[&str]) -> Ran {
 pub(crate) fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
 }
+
+#[path = "files.test.rs"]
+pub(crate) mod files;
 
 #[path = "catalog.test.rs"]
 mod catalog;

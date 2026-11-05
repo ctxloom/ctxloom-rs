@@ -1,10 +1,13 @@
 //! The adapter.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
+use file_system::{Fs, Kind, Perms};
 use isolation_ports::{
     Checkout, Failure, Prepared, Removal, Request, Safety, Scratch, Standing, Workspaces,
 };
+use os::Mode;
 
 use crate::error::WorktreeError;
 use crate::git::{Git, GitError};
@@ -61,16 +64,18 @@ pub fn branch_of(checkout: &str) -> String {
 
 /// Workspaces under one home's sessions.
 pub struct GitWorkspaces {
+    fs: Arc<dyn Fs>,
     sessions: PathBuf,
     git: Git,
 }
 
 impl GitWorkspaces {
     /// The sessions under `home` (`<home>/.ctxloom/sessions`).
-    pub fn new(home: impl Into<PathBuf>) -> GitWorkspaces {
+    pub fn new(fs: Arc<dyn Fs>, home: impl Into<PathBuf>) -> GitWorkspaces {
         GitWorkspaces {
             sessions: home.into().join(".ctxloom").join("sessions"),
-            git: Git::default(),
+            git: Git::on(Arc::clone(&fs)),
+            fs,
         }
     }
 
@@ -110,8 +115,8 @@ fn worktree_list(git: &Git, repo: &Path) -> Result<Vec<Listed>, GitError> {
 
 /// Whether two paths name the same directory: equal, or both resolvable and
 /// equal once resolved (a symlinked temp dir or home).
-fn same_path(a: &Path, b: &Path) -> bool {
-    a == b || matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y)
+fn same_path(fs: &dyn Fs, a: &Path, b: &Path) -> bool {
+    a == b || matches!((fs.canonicalize(a), fs.canonicalize(b)), (Ok(x), Ok(y)) if x == y)
 }
 
 /// Whether `dir` is inside a work tree. A git that hangs says nothing either
@@ -124,7 +129,7 @@ fn is_repo(git: &Git, dir: &Path) -> Result<bool, WorktreeError> {
 }
 
 /// The repository's common git directory, absolute.
-fn common_dir(git: &Git, dir: &Path) -> Result<PathBuf, GitError> {
+fn common_dir(fs: &dyn Fs, git: &Git, dir: &Path) -> Result<PathBuf, GitError> {
     let out = git.run(dir, &["rev-parse", "--git-common-dir"])?;
     let path = PathBuf::from(out.trim());
     let path = if path.is_absolute() {
@@ -132,7 +137,7 @@ fn common_dir(git: &Git, dir: &Path) -> Result<PathBuf, GitError> {
     } else {
         dir.join(path)
     };
-    Ok(path.canonicalize().unwrap_or(path))
+    Ok(fs.canonicalize(&path).unwrap_or(path))
 }
 
 /// Go's `unsafeToRemove`: uncommitted changes, ignored files, or a state git
@@ -178,8 +183,14 @@ fn add_checkout(git: &Git, project: &Path, path: &Path, branch: &str) -> Result<
 /// Go's `reuseExistingCheckout`: whether the agent's path is its own earlier
 /// checkout (registered on the agent's branch), to be re-entered; anything
 /// else there is a refusal.
-fn reuse(git: &Git, project: &Path, path: &Path, branch: &str) -> Result<bool, WorktreeError> {
-    if !path.exists() {
+fn reuse(
+    fs: &dyn Fs,
+    git: &Git,
+    project: &Path,
+    path: &Path,
+    branch: &str,
+) -> Result<bool, WorktreeError> {
+    if !fs.exists(path).unwrap_or(false) {
         return Ok(false);
     }
     let refuse = |why: String| WorktreeError::Unadoptable {
@@ -191,7 +202,7 @@ fn reuse(git: &Git, project: &Path, path: &Path, branch: &str) -> Result<bool, W
         e.diagnostic()
             .unwrap_or_else(|| refuse(format!("git worktree list failed: {e}")))
     })?;
-    match listed.iter().find(|w| same_path(&w.path, path)) {
+    match listed.iter().find(|w| same_path(fs, &w.path, path)) {
         Some(w) if w.branch.as_deref() == Some(branch) => Ok(true),
         Some(w) => Err(refuse(format!(
             "it is registered on branch {}",
@@ -206,13 +217,13 @@ fn reuse(git: &Git, project: &Path, path: &Path, branch: &str) -> Result<bool, W
 /// Hide the per-agent config from the project's git status: the block of
 /// patterns in the shared common-dir `info/exclude`, appended where missing
 /// (idempotent, and shared-safe among concurrent agents). Best-effort.
-fn exclude_config(git: &Git, project: &Path, patterns: &[String]) {
-    let Ok(common) = common_dir(git, project) else {
+fn exclude_config(fs: &dyn Fs, git: &Git, project: &Path, patterns: &[String]) {
+    let Ok(common) = common_dir(fs, git, project) else {
         return;
     };
     let info = common.join("info");
     let file = info.join("exclude");
-    let existing = std::fs::read_to_string(&file).unwrap_or_default();
+    let existing = fs.read_to_string(&file).unwrap_or_default();
     let held: Vec<&str> = existing.lines().map(str::trim).collect();
     let missing: Vec<&String> = patterns
         .iter()
@@ -233,8 +244,8 @@ fn exclude_config(git: &Git, project: &Path, patterns: &[String]) {
         text.push_str(pattern);
         text.push('\n');
     }
-    if std::fs::create_dir_all(&info).is_ok() {
-        let _ = std::fs::write(&file, text);
+    if fs.create_dir_all(&info, Mode::from_bits(0o777)).is_ok() {
+        let _ = fs.write_atomic(&file, text.as_bytes(), Perms::KeepOr(Mode::FILE));
     }
 }
 
@@ -261,8 +272,8 @@ fn skip_tracked(git: &Git, checkout: &Path, patterns: &[String]) {
 
 /// The checkouts directly under a session's work directory. A missing work
 /// directory is none; any other failure to read it is an error.
-fn checkouts_in(work: &Path, harp: &str) -> Result<Vec<Scratch>, Failure> {
-    let entries = match std::fs::read_dir(work) {
+fn checkouts_in(fs: &dyn Fs, work: &Path, harp: &str) -> Result<Vec<Scratch>, Failure> {
+    let entries = match fs.read_dir(work) {
         Ok(entries) => entries,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(e) => {
@@ -273,12 +284,12 @@ fn checkouts_in(work: &Path, harp: &str) -> Result<Vec<Scratch>, Failure> {
         }
     };
     let mut found: Vec<Scratch> = entries
-        .flatten()
-        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
-        .filter(|e| e.file_name().to_string_lossy().starts_with(PREFIX))
+        .into_iter()
+        .filter(|e| e.kind == Kind::Dir)
+        .filter(|e| e.name.to_string_lossy().starts_with(PREFIX))
         .map(|e| Scratch {
             harp: harp.to_string(),
-            path: e.path().display().to_string(),
+            path: work.join(&e.name).display().to_string(),
         })
         .collect();
     found.sort_by(|a, b| a.path.cmp(&b.path));
@@ -313,9 +324,9 @@ fn delete_merged_branch(git: &Git, repo: &Path, branch: &str) {
 }
 
 /// The worktrees strictly under `target`, deepest first.
-fn nested_under(listed: &[Listed], target: &Path) -> Vec<PathBuf> {
+fn nested_under(fs: &dyn Fs, listed: &[Listed], target: &Path) -> Vec<PathBuf> {
     let mut prefixes = vec![target.to_path_buf()];
-    if let Ok(resolved) = target.canonicalize() {
+    if let Ok(resolved) = fs.canonicalize(target) {
         if resolved != target {
             prefixes.push(resolved);
         }
@@ -345,7 +356,8 @@ impl Workspaces for GitWorkspaces {
         }
         let path = Path::new(&request.work_dir).join(checkout_name(&request.agent));
         let branch = branch_of(&path.display().to_string());
-        let reused = reuse(git, project, &path, &branch).map_err(|e| Box::new(e) as Failure)?;
+        let reused =
+            reuse(&*self.fs, git, project, &path, &branch).map_err(|e| Box::new(e) as Failure)?;
         if !reused {
             if let Err(why) = add_checkout(git, project, &path, &branch) {
                 if let Some(timed_out) = why.diagnostic() {
@@ -354,7 +366,7 @@ impl Workspaces for GitWorkspaces {
                 return Ok(Prepared::Unavailable(format!("worktree add: {why}")));
             }
         }
-        exclude_config(git, project, &request.artifact_patterns);
+        exclude_config(&*self.fs, git, project, &request.artifact_patterns);
         skip_tracked(git, &path, &request.artifact_patterns);
         Ok(Prepared::Checkout(Checkout {
             path: path.display().to_string(),
@@ -365,7 +377,11 @@ impl Workspaces for GitWorkspaces {
     }
 
     fn session_known(&self, harp: &str) -> Result<bool, Failure> {
-        Ok(is_name(harp) && self.sessions.join(harp).is_dir())
+        Ok(is_name(harp)
+            && self
+                .fs
+                .metadata(&self.sessions.join(harp))
+                .is_ok_and(|meta| meta.kind == Kind::Dir))
     }
 
     fn scratch(&self, harp: Option<&str>) -> Result<Vec<Scratch>, Failure> {
@@ -373,20 +389,22 @@ impl Workspaces for GitWorkspaces {
             if !is_name(harp) {
                 return Ok(Vec::new());
             }
-            return checkouts_in(&self.sessions.join(harp).join("work"), harp);
+            return checkouts_in(&*self.fs, &self.sessions.join(harp).join("work"), harp);
         }
-        let Ok(entries) = std::fs::read_dir(&self.sessions) else {
+        let Ok(entries) = self.fs.read_dir(&self.sessions) else {
             return Ok(Vec::new());
         };
         let mut all = Vec::new();
-        for entry in entries.flatten() {
-            if !entry.file_type().is_ok_and(|t| t.is_dir()) {
+        for entry in entries {
+            if entry.kind != Kind::Dir {
                 continue;
             }
-            let name = entry.file_name().to_string_lossy().into_owned();
+            let name = entry.name.to_string_lossy().into_owned();
             // A session whose work directory cannot be read has nothing to
             // sweep; only a single-session question reports it.
-            if let Ok(found) = checkouts_in(&entry.path().join("work"), &name) {
+            if let Ok(found) =
+                checkouts_in(&*self.fs, &self.sessions.join(&name).join("work"), &name)
+            {
                 all.extend(found);
             }
         }
@@ -396,7 +414,7 @@ impl Workspaces for GitWorkspaces {
 
     fn inspect(&self, path: &str) -> Standing {
         let (git, dir) = (&self.git, Path::new(path));
-        match common_dir(git, dir) {
+        match common_dir(&*self.fs, git, dir) {
             Err(why) => Standing::Unresolved(why.to_string()),
             Ok(common) => Standing::Resolved {
                 repo_dir: common
@@ -419,7 +437,7 @@ impl Workspaces for GitWorkspaces {
                 ))
             }
         };
-        for inner in nested_under(&listed, target) {
+        for inner in nested_under(&*self.fs, &listed, target) {
             if let Safety::Unsafe(why) = unsafe_to_remove(git, &inner) {
                 return Removal::Left(format!(
                     "nested worktree {} {why}; left in place to preserve it",
@@ -441,7 +459,7 @@ impl Workspaces for GitWorkspaces {
         }
         let _ = git.run(repo, &["worktree", "prune"]);
         delete_merged_branch(git, repo, &branch_of(path));
-        if target.exists() {
+        if self.fs.exists(target).unwrap_or(false) {
             Removal::Left("it is still on disk after git removed it".to_string())
         } else {
             Removal::Removed

@@ -77,7 +77,8 @@ harp-core.workspace = true
 cucumber.workspace = true
 futures = "0.3"
 serde_json.workspace = true
-tempfile.workspace = true
+file-system = { workspace = true, features = ["test-support"] }
+os = { workspace = true, features = ["test-support"] }
 
 [lints]
 workspace = true

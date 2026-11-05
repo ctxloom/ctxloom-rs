@@ -11,19 +11,18 @@
 use std::path::PathBuf;
 
 use super::library::{reports_as, Project};
+use crate::tests::files;
 
 const HOME_CONFIG: &str = ".ctxloom/config.yaml";
 
 /// A directory of fake companions, and the `PATH` that finds them first.
 struct Bin {
-    dir: tempfile::TempDir,
+    dir: file_system::Rooted,
 }
 
 impl Bin {
     fn new() -> Bin {
-        Bin {
-            dir: tempfile::tempdir().expect("a directory for the fakes"),
-        }
+        Bin { dir: files::root() }
     }
 
     /// `ctxloom-companion-<name>`, answering the loadout probe and counting
@@ -33,7 +32,7 @@ impl Bin {
             &format!("ctxloom-companion-{name}"),
             &format!(
                 "#!/bin/sh\necho \"$@\" >> \"{}/ran.log\"\ncase \"$1\" in\n  loadout) printf 'run:\\n  version: 1.0.0\\n';;\n  version) printf '{{\"name\":\"{name}\",\"version\":\"1\"}}\\n';;\nesac\n",
-                self.dir.path().display()
+                self.dir.root().display()
             ),
         )
     }
@@ -49,20 +48,14 @@ impl Bin {
     }
 
     fn script(&self, file: &str, body: &str) -> PathBuf {
-        let path = self.dir.path().join(file);
-        std::fs::write(&path, body).expect("a fake companion");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
-                .expect("made executable");
-        }
+        let path = self.dir.root().join(file);
+        files::put_exec(&path, body);
         path
     }
 
     fn path(&self) -> String {
-        let mut paths = vec![self.dir.path().to_path_buf()];
-        paths.extend(std::env::split_paths(
+        let mut paths = vec![self.dir.root().to_path_buf()];
+        paths.extend(files::search_path(
             &std::env::var_os("PATH").unwrap_or_default(),
         ));
         std::env::join_paths(paths)
@@ -72,7 +65,7 @@ impl Bin {
     }
 
     fn ran(&self) -> String {
-        std::fs::read_to_string(self.dir.path().join("ran.log")).unwrap_or_default()
+        files::read(self.dir.root().join("ran.log")).unwrap_or_default()
     }
 }
 

@@ -484,7 +484,8 @@ name = "companion-probe"
 version = "0.1.0"
 dependencies = [
  "ctxloom-ports",
- "tempfile",
+ "file-system",
+ "os",
 ]
 
 [[package]]
@@ -532,9 +533,10 @@ dependencies = [
 name = "container-runtime"
 version = "0.1.0"
 dependencies = [
+ "file-system",
  "isolation-ports",
  "mutants",
- "tempfile",
+ "os",
 ]
 
 [[package]]
@@ -668,6 +670,7 @@ dependencies = [
  "deps-application",
  "editor-process",
  "file-lock",
+ "file-system",
  "forge-github",
  "futures",
  "harp-core",
@@ -676,6 +679,7 @@ dependencies = [
  "isolation-application",
  "library",
  "library-application",
+ "os",
  "reclaim-application",
  "serde_json",
  "session-cli",
@@ -685,7 +689,6 @@ dependencies = [
  "setup-application",
  "setup-cli",
  "surface-ports",
- "tempfile",
  "worktree-git",
 ]
 
@@ -1031,7 +1034,6 @@ dependencies = [
  "ctxloom-ports",
  "file-system",
  "os",
- "tempfile",
 ]
 
 [[package]]
@@ -2859,7 +2861,6 @@ dependencies = [
  "deps-ports",
  "file-system",
  "os",
- "tempfile",
 ]
 
 [[package]]
@@ -4638,9 +4639,10 @@ name = "worktree-git"
 version = "0.1.0"
 dependencies = [
  "angzarr-diagnostic",
+ "file-system",
  "isolation-ports",
  "mutants",
- "tempfile",
+ "os",
 ]
 
 [[package]]

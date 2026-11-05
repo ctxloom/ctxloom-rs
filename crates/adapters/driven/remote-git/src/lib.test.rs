@@ -10,6 +10,10 @@ use deps_ports::Remotes;
 use file_system::Os;
 
 use super::*;
+use crate::fixtures::{
+    canonical, exists, is_dir, link, mkdirs, names, put, put_exec, remove, rename, root,
+    runs_scripts, slurp,
+};
 
 /// git in `dir`, with an identity of its own; its stdout.
 fn git(dir: &Path, args: &[&str]) -> String {
@@ -48,17 +52,17 @@ fn identify() {
 
 /// A bare repository and the working clone that pushes to it.
 struct Origin {
-    root: tempfile::TempDir,
+    root: file_system::Rooted,
     bare: PathBuf,
     work: PathBuf,
 }
 
 impl Origin {
     fn new() -> Origin {
-        let root = tempfile::tempdir().expect("a temporary directory");
-        let (bare, work) = (root.path().join("remote.git"), root.path().join("work"));
-        git(root.path(), &["init", "--bare", "-b", "main", "remote.git"]);
-        git(root.path(), &["init", "-b", "main", "work"]);
+        let root = root();
+        let (bare, work) = (root.root().join("remote.git"), root.root().join("work"));
+        git(root.root(), &["init", "--bare", "-b", "main", "remote.git"]);
+        git(root.root(), &["init", "-b", "main", "work"]);
         git(
             &work,
             &["remote", "add", "origin", bare.to_str().expect("utf-8")],
@@ -75,12 +79,11 @@ impl Origin {
     fn commit(&self, files: &[(&str, &str, bool)]) -> String {
         for (path, text, executable) in files {
             let at = self.work.join(path);
-            std::fs::create_dir_all(at.parent().expect("a parent")).expect("a directory");
-            std::fs::write(&at, text).expect("a file");
+            mkdirs(at.parent().expect("a parent"));
             if *executable {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&at, std::fs::Permissions::from_mode(0o755))
-                    .expect("a mode");
+                put_exec(&at, text);
+            } else {
+                put(&at, text);
             }
         }
         git(&self.work, &["add", "-A"]);
@@ -91,7 +94,7 @@ impl Origin {
 
     fn remove(&self, paths: &[&str]) -> String {
         for path in paths {
-            std::fs::remove_file(self.work.join(path)).expect("a file to remove");
+            remove(self.work.join(path));
         }
         git(&self.work, &["add", "-A"]);
         git(&self.work, &["commit", "-q", "-m", "remove"]);
@@ -109,21 +112,21 @@ impl Origin {
 
     /// The remote taken off the air: its repository renamed away.
     fn vanish(&self) {
-        std::fs::rename(&self.bare, self.root.path().join("remote.git.gone")).expect("renamed");
+        rename(&self.bare, self.root.root().join("remote.git.gone"));
     }
 }
 
 struct Cache {
     remotes: GitRemotes,
-    dir: tempfile::TempDir,
+    dir: file_system::Rooted,
 }
 
 fn cache() -> Cache {
-    let dir = tempfile::tempdir().expect("a temporary cache");
+    let dir = root();
     let cwd = std::env::current_dir().expect("a working directory");
     let fs = Arc::new(Os::new(os::host(), &cwd).expect("the filesystem"));
     Cache {
-        remotes: GitRemotes::new(fs, dir.path().to_path_buf()),
+        remotes: GitRemotes::new(fs, dir.root().to_path_buf()),
         dir,
     }
 }
@@ -152,12 +155,12 @@ fn test_ensure_clones_once_and_does_not_fetch_a_clone_it_has() {
     c.remotes.ensure(&origin.url()).expect("clones");
     let dir = c.remotes.clone_dir(&origin.url()).expect("a directory");
     assert!(
-        dir.starts_with(c.dir.path()) && dir.join(".git").is_dir(),
+        dir.starts_with(c.dir.root()) && is_dir(dir.join(".git")),
         "{}",
         dir.display()
     );
     assert!(
-        !dir.join(BUNDLE).exists(),
+        !exists(dir.join(BUNDLE)),
         "no checkout: nothing is read from a working tree"
     );
     let second = origin.commit(&[(&format!("{BUNDLE}/demo/fragments/b.md"), "B\n", false)]);
@@ -183,10 +186,10 @@ fn test_refresh_clones_what_is_not_there_and_a_failed_clone_leaves_nothing_behin
     demo(&origin);
     let c = cache();
     c.remotes.refresh(&origin.url()).expect("clones");
-    let missing = format!("file://{}/nowhere.git", origin.root.path().display());
+    let missing = format!("file://{}/nowhere.git", origin.root.root().display());
     let refused = c.remotes.ensure(&missing).expect_err("no such repository");
     assert!(refused.starts_with("git clone: "), "{refused}");
-    assert!(!c.remotes.clone_dir(&missing).expect("a directory").exists());
+    assert!(!exists(c.remotes.clone_dir(&missing).expect("a directory")));
     assert!(c.remotes.refresh(&missing).is_err());
 }
 
@@ -355,10 +358,10 @@ fn test_a_bundle_is_read_at_a_commit_with_its_bytes_and_modes() {
 fn test_binary_bytes_survive_and_a_link_is_not_a_file_of_the_tree() {
     let origin = Origin::new();
     let dir = origin.work.join(BUNDLE).join("demo");
-    std::fs::create_dir_all(&dir).expect("a directory");
-    std::fs::write(dir.join("bundle.yaml"), "version: 1\n").expect("a file");
-    std::fs::write(dir.join("blob.bin"), [0u8, 1, 2, 255, b'\n', 0, b'\n']).expect("a file");
-    std::os::unix::fs::symlink("/etc/passwd", dir.join("link")).expect("a link");
+    mkdirs(&dir);
+    put(dir.join("bundle.yaml"), "version: 1\n");
+    put(dir.join("blob.bin"), [0u8, 1, 2, 255, b'\n', 0, b'\n']);
+    link(os::fixture("/etc/passwd"), dir.join("link"));
     git(&origin.work, &["add", "-A"]);
     git(&origin.work, &["commit", "-q", "-m", "binary"]);
     git(&origin.work, &["push", "-q", "origin", "main"]);
@@ -478,20 +481,14 @@ fn test_a_path_is_the_file_url_of_the_repository_there() {
         .remotes
         .local_repository(origin.bare.to_str().expect("utf-8"))
         .expect("a repository");
-    assert_eq!(
-        url,
-        format!(
-            "file://{}",
-            origin.bare.canonicalize().expect("a path").display()
-        )
-    );
+    assert_eq!(url, format!("file://{}", canonical(&origin.bare).display()));
     assert!(c
         .remotes
         .local_repository(origin.work.to_str().expect("utf-8"))
         .is_ok());
     let refused = c
         .remotes
-        .local_repository(origin.root.path().to_str().expect("utf-8"))
+        .local_repository(origin.root.root().to_str().expect("utf-8"))
         .expect_err("no repository");
     assert!(refused.contains("holds no git repository"), "{refused}");
 }
@@ -558,11 +555,7 @@ fn test_a_publish_lands_files_as_one_commit_beside_the_history() {
     assert_eq!(again, commit);
     assert_eq!(git(&origin.bare, &["rev-list", "--count", "main"]), "2");
     // No working clone is left in the cache.
-    let leftovers: Vec<_> = std::fs::read_dir(c.dir.path())
-        .expect("the cache")
-        .flatten()
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .collect();
+    let leftovers = names(c.dir.root());
     assert!(leftovers.is_empty(), "{leftovers:?}");
 }
 
@@ -576,7 +569,7 @@ fn test_a_publish_to_a_repository_that_cannot_be_reached_fails_and_leaves_no_clo
     origin.vanish();
     let files = BTreeMap::from([("a.txt".to_string(), b"a".to_vec())]);
     assert!(c.remotes.publish(&url, &files, "m").is_err());
-    let leftovers = std::fs::read_dir(c.dir.path()).expect("the cache").count();
+    let leftovers = names(c.dir.root()).len();
     assert_eq!(leftovers, 0);
 }
 
@@ -586,8 +579,8 @@ fn test_a_publish_to_a_repository_that_cannot_be_reached_fails_and_leaves_no_clo
 fn test_an_inherited_git_dir_does_not_steer_the_repository() {
     let origin = Origin::new();
     let first = demo(&origin);
-    std::env::set_var("GIT_DIR", origin.root.path().join("elsewhere"));
-    std::env::set_var("GIT_WORK_TREE", origin.root.path());
+    std::env::set_var("GIT_DIR", origin.root.root().join("elsewhere"));
+    std::env::set_var("GIT_WORK_TREE", origin.root.root());
     let c = cache();
     c.remotes
         .ensure(&origin.url())
@@ -741,7 +734,7 @@ mod credentials {
         keyed.remotes.ensure(&origin.url()).expect("clones");
         keyed.remotes.refresh(&origin.url()).expect("fetches");
         let dir = keyed.remotes.clone_dir(&origin.url()).expect("a directory");
-        let config = std::fs::read_to_string(dir.join(".git/config")).expect("config");
+        let config = slurp(dir.join(".git/config"));
         assert!(
             !config.contains(TOKEN) && !config.to_lowercase().contains("extraheader"),
             "{config}"
@@ -769,18 +762,21 @@ mod hung_git {
     const TIMED_OUT: &str = "did not finish within 20ms and was killed";
 
     /// The cache's directory, over a git that never finishes.
-    fn hung(c: &Cache) -> (tempfile::TempDir, GitRemotes) {
+    fn hung(c: &Cache) -> (file_system::Rooted, GitRemotes) {
         let (dir, git) = stub(HANGS);
         let cwd = std::env::current_dir().expect("a working directory");
         let fs = Arc::new(Os::new(os::host(), &cwd).expect("the filesystem"));
         (
             dir,
-            GitRemotes::new(fs, c.dir.path().to_path_buf()).with_git(git),
+            GitRemotes::new(fs, c.dir.root().to_path_buf()).with_git(git),
         )
     }
 
     #[test]
     fn a_clone_that_hangs_fails_and_leaves_nothing_behind() {
+        if !runs_scripts() {
+            return;
+        }
         let origin = Origin::new();
         demo(&origin);
         let c = cache();
@@ -789,7 +785,7 @@ mod hung_git {
         assert_eq!(why, format!("git clone: {TIMED_OUT}"));
         let dir = remotes.clone_dir(&origin.url()).unwrap();
         assert!(
-            !dir.exists(),
+            !exists(&dir),
             "a partial clone was left at {}",
             dir.display()
         );
@@ -797,6 +793,9 @@ mod hung_git {
 
     #[test]
     fn a_fetch_that_hangs_fails_and_the_clone_stays_readable() {
+        if !runs_scripts() {
+            return;
+        }
         let origin = Origin::new();
         demo(&origin);
         let c = cache();
@@ -838,7 +837,7 @@ mod hung_git {
         let files = BTreeMap::from([("a.txt".to_string(), b"a".to_vec())]);
         let why = remotes.publish(&origin.url(), &files, "msg").unwrap_err();
         assert_eq!(why, format!("git clone: {TIMED_OUT}"));
-        let left: Vec<_> = std::fs::read_dir(c.dir.path()).unwrap().flatten().collect();
+        let left = names(c.dir.root());
         assert!(left.is_empty(), "{left:?}");
     }
 }

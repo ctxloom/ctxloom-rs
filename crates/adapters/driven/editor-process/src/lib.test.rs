@@ -2,7 +2,7 @@
 //! editors of `steps_fixture.go`: `sh -c <script> editor <tmpfile>`, so `$1`
 //! is the file.
 
-use file_system::Rooted;
+use file_system::{Perms, Rooted};
 use os::Mode;
 
 use super::*;
@@ -59,9 +59,11 @@ fn test_an_editor_that_empties_the_file_returns_nothing() {
 
 #[test]
 fn test_the_editor_is_given_a_file_with_the_name_asked_for_and_mode_0600() {
-    let (_fs, editor) = editor();
-    let witness = tempfile::tempdir().unwrap();
-    let w = witness.path().join("seen");
+    let (fs, editor) = editor();
+    let seen_at = os::fixture("/witness/seen");
+    fs.create_dir_all(seen_at.parent().unwrap(), Mode::from_bits(0o755))
+        .unwrap();
+    let w = fs.real_path(&seen_at).unwrap();
     let w = w.to_str().unwrap();
     let probe = sh(
         "{ basename \"$1\"; cat \"$1\"; stat -c %a \"$1\"; } > \"$0\"",
@@ -69,16 +71,18 @@ fn test_the_editor_is_given_a_file_with_the_name_asked_for_and_mode_0600() {
     );
     editor.edit(&probe, "review.md", "THE CONTENT").unwrap();
     assert_eq!(
-        std::fs::read_to_string(w).unwrap(),
+        fs.read_to_string(&seen_at).unwrap(),
         "review.md\nTHE CONTENT600\n"
     );
 }
 
 #[test]
 fn test_the_editors_arguments_come_before_the_file() {
-    let (_fs, editor) = editor();
-    let witness = tempfile::tempdir().unwrap();
-    let w = witness.path().join("seen");
+    let (fs, editor) = editor();
+    let seen_at = os::fixture("/witness/seen");
+    fs.create_dir_all(seen_at.parent().unwrap(), Mode::from_bits(0o755))
+        .unwrap();
+    let w = fs.real_path(&seen_at).unwrap();
     let w = w.to_str().unwrap();
     let command = EditorCommand {
         program: "sh".to_string(),
@@ -91,7 +95,7 @@ fn test_the_editors_arguments_come_before_the_file() {
     };
     // $0 = w, $1 = first, $2 = the file: its last component names the item.
     editor.edit(&command, "item.md", "x").unwrap();
-    let seen = std::fs::read_to_string(w).unwrap();
+    let seen = fs.read_to_string(&seen_at).unwrap();
     assert!(seen.trim_end().ends_with("/item.md"), "{seen}");
 }
 
@@ -141,14 +145,16 @@ fn test_a_file_name_is_one_name_not_a_path() {
 // config.go openInEditor: the editor edits the file where it is
 #[test]
 fn test_open_runs_the_editor_on_the_file_in_place() {
-    let dir = tempfile::tempdir().unwrap();
-    let fs = Arc::new(file_system::Os::new(os::host(), dir.path()).expect("the real filesystem"));
-    let editor = ProcessEditor::new(fs, dir.path());
-    let file = dir.path().join("config.yaml");
-    std::fs::write(&file, "a: 1\n").unwrap();
+    let root = Rooted::temp().unwrap();
+    let dir = root.root().to_path_buf();
+    let fs = Arc::new(file_system::Os::new(os::host(), &dir).expect("the real filesystem"));
+    let editor = ProcessEditor::new(fs.clone(), &dir);
+    let file = dir.join("config.yaml");
+    fs.write_atomic(&file, b"a: 1\n", Perms::Exact(Mode::FILE))
+        .unwrap();
     let append = sh("printf '# edited\\n' >> \"$1\"", &["editor"]);
     editor.open(&append, file.to_str().unwrap()).unwrap();
-    assert_eq!(std::fs::read_to_string(&file).unwrap(), "a: 1\n# edited\n");
+    assert_eq!(fs.read_to_string(&file).unwrap(), "a: 1\n# edited\n");
     let fails = sh("exit 1", &["editor"]);
     assert_eq!(
         editor

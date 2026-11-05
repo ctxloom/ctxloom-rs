@@ -2,42 +2,49 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use file_system::{Fs, Kind};
 use isolation_ports::{ContainerRuntimes, RuntimeFacts, RUNTIMES};
 
 /// Runtimes found on a `PATH`.
 pub struct HostRuntimes {
-    dirs: Vec<PathBuf>,
-    answer_within: Duration,
+    fs: Arc<dyn Fs>,
+    pub(crate) dirs: Vec<PathBuf>,
+    pub(crate) answer_within: Duration,
 }
 
 impl HostRuntimes {
     /// The runtimes on `dirs`, each given `answer_within` to answer `info`.
-    pub fn new(dirs: Vec<PathBuf>, answer_within: Duration) -> HostRuntimes {
+    pub fn new(fs: Arc<dyn Fs>, dirs: Vec<PathBuf>, answer_within: Duration) -> HostRuntimes {
         HostRuntimes {
+            fs,
             dirs,
             answer_within,
         }
     }
 
     /// The process's `PATH`, with ten seconds to answer.
-    pub fn from_process() -> HostRuntimes {
+    pub fn from_process(fs: Arc<dyn Fs>) -> HostRuntimes {
+        let flavor = fs.os().flavor();
         let dirs = std::env::var_os("PATH")
-            .map(|path| std::env::split_paths(&path).collect())
+            .map(|path| flavor.split_search_path_os(&path))
             .unwrap_or_default();
-        HostRuntimes::new(dirs, Duration::from_secs(10))
+        HostRuntimes::new(fs, dirs, Duration::from_secs(10))
     }
 }
 
 impl HostRuntimes {
     /// The executable `name` on the searched directories.
     fn find(&self, name: &str) -> Option<PathBuf> {
-        use std::os::unix::fs::PermissionsExt;
-        self.dirs.iter().map(|dir| dir.join(name)).find(|path| {
-            path.metadata()
-                .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
-        })
+        let found = self.dirs.iter().map(|dir| dir.join(name)).find(|path| {
+            self.fs
+                .metadata(path)
+                .is_ok_and(|meta| meta.kind == Kind::File && meta.executable)
+        })?;
+        // The command runs on the host's own path, not the caller's.
+        self.fs.real_path(&found).ok()
     }
 
     /// Run `bin args`, bounded: whether it exited 0 in time. A runtime that
@@ -73,7 +80,7 @@ impl ContainerRuntimes for HostRuntimes {
     // (a clean host has none), so no hermetic test can pin the result.
     #[cfg_attr(test, mutants::skip)]
     fn in_container(&self) -> Vec<String> {
-        crate::markers_from(&crate::Real)
+        crate::markers_from(&crate::Real::new(Arc::clone(&self.fs)))
     }
 
     fn installed(&self) -> Vec<RuntimeFacts> {

@@ -220,7 +220,7 @@ impl Wiring {
         PathSearch {
             fs: Arc::clone(&self.fs),
             dirs: std::env::var_os("PATH")
-                .map(|path| std::env::split_paths(&path).collect())
+                .map(|path| self.fs.os().flavor().split_search_path_os(&path))
                 .unwrap_or_default(),
         }
     }
@@ -255,7 +255,7 @@ impl Wiring {
                 System,
             ),
             worktrees: Worktrees::new(
-                GitWorkspaces::new(self.home.clone()),
+                GitWorkspaces::new(Arc::clone(&self.fs), self.home.clone()),
                 LockFiles::new(Arc::clone(&self.fs), self.home.clone()),
             ),
         }
@@ -281,3 +281,7 @@ impl Wiring {
 #[cfg(test)]
 #[path = "lib.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "fixtures.test.rs"]
+mod fixtures;

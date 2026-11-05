@@ -43,6 +43,7 @@ fn test_only_the_bundle_noun_gains_the_publishing_verbs() {
 /// the test's own, the root and project variables unset. The environment is
 /// the process's, so one test holds it at a time and puts it back.
 struct World {
+    _root: file_system::Rooted,
     dir: PathBuf,
     saved: Vec<(&'static str, Option<std::ffi::OsString>)>,
     cwd: PathBuf,
@@ -52,13 +53,12 @@ struct World {
 use crate::tests::ENV_LOCK as WORLD;
 
 impl World {
-    fn new(name: &str) -> World {
+    fn new(_name: &str) -> World {
         let held = WORLD.lock().unwrap_or_else(|e| e.into_inner());
-        let dir =
-            std::env::temp_dir().join(format!("ctxloom-wiring-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("home")).unwrap();
-        std::fs::create_dir_all(dir.join("work")).unwrap();
+        let temp = crate::fixtures::root();
+        let dir = temp.root().to_path_buf();
+        crate::fixtures::mkdirs(dir.join("home"));
+        crate::fixtures::mkdirs(dir.join("work"));
         let cwd = std::env::current_dir().unwrap();
         let vars = ["HOME", "CTXLOOM_ROOT", "CTXLOOM_PROJECT_ID"];
         let saved = vars.iter().map(|v| (*v, std::env::var_os(v))).collect();
@@ -67,6 +67,7 @@ impl World {
         std::env::remove_var("CTXLOOM_PROJECT_ID");
         std::env::set_current_dir(dir.join("work")).unwrap();
         World {
+            _root: temp,
             dir,
             saved,
             cwd,
@@ -84,7 +85,6 @@ impl Drop for World {
                 None => std::env::remove_var(var),
             }
         }
-        let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
 
@@ -113,9 +113,9 @@ fn run_line(commands: &mut Commands, line: &[&str]) -> (u8, String, String) {
 /// The names of the files under `dir`, relative to it, sorted.
 fn files_under(dir: &std::path::Path) -> Vec<String> {
     fn walk(root: &std::path::Path, at: &std::path::Path, out: &mut Vec<String>) {
-        for entry in std::fs::read_dir(at).unwrap() {
-            let path = entry.unwrap().path();
-            if path.is_dir() {
+        for (name, is_dir) in crate::fixtures::entries(at) {
+            let path = at.join(name);
+            if is_dir {
                 walk(root, &path, out);
             } else {
                 out.push(path.strip_prefix(root).unwrap().display().to_string());

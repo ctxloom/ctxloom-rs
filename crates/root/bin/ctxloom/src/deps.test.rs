@@ -21,6 +21,7 @@ use std::process::Command;
 
 use super::library::Project;
 use super::Ran;
+use crate::tests::files;
 
 #[path = "bundle_remote.test.rs"]
 mod bundle_remote;
@@ -63,8 +64,7 @@ pub(crate) fn git_in(dir: &Path, args: &[&str]) -> String {
 fn write_files(dir: &Path, files: &[(String, String)]) {
     for (rel, body) in files {
         let path = dir.join(rel);
-        std::fs::create_dir_all(path.parent().expect("a parent")).expect("a directory");
-        std::fs::write(&path, body).expect("a file");
+        files::put(&path, body);
     }
 }
 
@@ -100,7 +100,7 @@ fn demo_tree(
 /// A project, and the git remotes its scenario seeds.
 pub(crate) struct World {
     pub(crate) project: Project,
-    scratch: tempfile::TempDir,
+    scratch: file_system::Rooted,
     /// Remote name to its bare repository (moved by `becomes unreachable`).
     bare: BTreeMap<String, PathBuf>,
     /// Remote name to the bare repository it was seeded at: the address its
@@ -114,7 +114,7 @@ impl World {
     pub(crate) fn initialized() -> World {
         World {
             project: Project::initialized(),
-            scratch: tempfile::tempdir().expect("a scratch directory"),
+            scratch: files::root(),
             bare: BTreeMap::new(),
             seeded: BTreeMap::new(),
             count: 0,
@@ -133,9 +133,9 @@ impl World {
     /// Go's `SeedRemote`: a bare repository whose `main` holds `files`.
     fn seed_bare(&mut self, files: &[(String, String)]) -> PathBuf {
         self.count += 1;
-        let root = self.scratch.path().join(format!("remote-{}", self.count));
+        let root = self.scratch.root().join(format!("remote-{}", self.count));
         let (bare, work) = (root.join("remote.git"), root.join("work"));
-        std::fs::create_dir_all(&root).expect("a directory");
+        files::mkdirs(&root);
         git_in(&root, &["init", "--bare", "-b", "main", "remote.git"]);
         git_in(&root, &["init", "-b", "main", "work"]);
         write_files(&work, files);
@@ -247,10 +247,10 @@ impl World {
 
     fn work_clone(&mut self, name: &str) -> PathBuf {
         self.count += 1;
-        let work = self.scratch.path().join(format!("work-{}", self.count));
+        let work = self.scratch.root().join(format!("work-{}", self.count));
         let bare = self.bare[name].clone();
         git_in(
-            self.scratch.path(),
+            self.scratch.root(),
             &[
                 "clone",
                 bare.to_str().expect("utf-8"),
@@ -312,7 +312,7 @@ impl World {
     pub(crate) fn unpublish(&mut self, name: &str, paths: &[String]) {
         let work = self.work_clone(name);
         for rel in paths {
-            std::fs::remove_file(work.join(rel)).expect("a file to unpublish");
+            files::remove(work.join(rel));
         }
         git_in(&work, &["add", "-A"]);
         git_in(&work, &["commit", "-m", "unpublish"]);
@@ -337,7 +337,7 @@ impl World {
     pub(crate) fn becomes_unreachable(&mut self, name: &str) {
         let bare = self.bare[name].clone();
         let broken = PathBuf::from(format!("{}.unreachable", bare.display()));
-        std::fs::rename(&bare, &broken).expect("the remote moves away");
+        files::rename(&bare, &broken);
         self.bare.insert(name.to_string(), broken);
     }
 
@@ -362,7 +362,7 @@ impl World {
 
     /// The text of a file of the project, if it is there.
     pub(crate) fn file(&self, rel: &str) -> Option<String> {
-        std::fs::read_to_string(self.project.dir().join(rel)).ok()
+        files::read(self.project.dir().join(rel)).ok()
     }
 
     pub(crate) fn lock(&self) -> String {
@@ -392,12 +392,11 @@ impl World {
 
 /// The first directory below `dir` holding a `.git`.
 fn find_clone(dir: &Path) -> Option<PathBuf> {
-    for entry in std::fs::read_dir(dir).ok()?.flatten() {
-        let path = entry.path();
-        if path.join(".git").is_dir() {
+    for path in files::children(dir) {
+        if files::is_dir(path.join(".git")) {
             return Some(path);
         }
-        if path.is_dir() {
+        if files::is_dir(&path) {
             if let Some(found) = find_clone(&path) {
                 return Some(found);
             }

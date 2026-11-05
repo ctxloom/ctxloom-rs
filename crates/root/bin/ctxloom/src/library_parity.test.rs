@@ -28,6 +28,7 @@ use std::collections::BTreeMap;
 use serde_json::Value;
 
 use super::library::{fixtures, Project};
+use crate::tests::files;
 
 /// Rows where Go's exit 1 is clap's usage refusal in this binary: D28 maps
 /// those to 2.
@@ -72,7 +73,7 @@ struct Row {
 }
 
 fn rows() -> Vec<Row> {
-    let text = std::fs::read_to_string(fixtures().join("parity.tsv")).expect("parity.tsv");
+    let text = files::read(fixtures().join("parity.tsv")).expect("parity.tsv");
     text.lines()
         .filter(|l| !l.is_empty() && !l.starts_with('#'))
         .map(|line| {
@@ -104,7 +105,7 @@ fn rows() -> Vec<Row> {
 
 fn golden(id: &str, extension: &str) -> String {
     let path = fixtures().join("golden").join(format!("{id}.{extension}"));
-    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+    files::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
 }
 
 fn is_dry_run(id: &str) -> bool {
