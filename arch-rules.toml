@@ -84,11 +84,6 @@ to = "session-cli"
 reason = "debt: as hook-cli: the top-level CLI mounts the session command crate as a subcommand and dispatches to it"
 
 [[exception]]
-from = "deps-cli"
-to = "pin-changes"
-reason = "debt: the text rendering calls the pin-changes read model's own renderers (new_pins_text, pin_changes_text) directly; fix: a presentation crate for the text, or the application layer returning it"
-
-[[exception]]
 from = "deps-files"
 to = "deps"
 reason = "debt: the installed-cache reader uses the deps read model's pure address and constraint functions (cache_segments, looks_like_commit); fix: move those functions to deps-ports (or the wire crate), where a driven adapter may see them"

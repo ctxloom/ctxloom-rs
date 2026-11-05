@@ -1,8 +1,7 @@
 use std::collections::BTreeMap;
 
 use super::*;
-use crate::{Change, ExecDelta, ExecSpec, FileChange, ItemChange};
-use deps::version::Compat;
+use deps_application::{Change, Compat, ExecDelta, ExecSpec, FileChange, ItemChange};
 
 const IDENTITY: &str = "ctxloom+git://h/r//bundles/demo";
 

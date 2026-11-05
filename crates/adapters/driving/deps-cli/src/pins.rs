@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::{Change, ExecDelta, ExecSpec, PinChange};
+use deps_application::{Change, ExecDelta, ExecSpec, PinChange};
 
 /// Introduces the first pins a pull made.
 pub const NEW_PINS_HEADER: &str = "New pins, with everything each one brings in:";
@@ -147,5 +147,5 @@ pub fn new_pins_text(changes: &[PinChange]) -> String {
 }
 
 #[cfg(test)]
-#[path = "render.test.rs"]
+#[path = "pins.test.rs"]
 mod tests;

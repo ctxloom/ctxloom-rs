@@ -953,7 +953,7 @@ dependencies = [
  "cli-support",
  "deps-application",
  "deps-ports",
- "pin-changes",
+ "mutants",
  "serde",
  "serde_json",
 ]

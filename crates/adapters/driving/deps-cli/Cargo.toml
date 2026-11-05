@@ -13,13 +13,13 @@ angzarr-presentation.workspace = true
 cli-support.workspace = true
 clap.workspace = true
 deps-application.workspace = true
-pin-changes.workspace = true
 serde.workspace = true
 
 [dev-dependencies]
 angzarr-yaml.workspace = true
 deps-ports.workspace = true
 serde_json.workspace = true
+mutants.workspace = true
 angzarr-presentation = { workspace = true, features = ["test-support"] }
 deps-application = { workspace = true, features = ["test-support"] }
 

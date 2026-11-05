@@ -12,7 +12,6 @@
 
 mod diff;
 mod item;
-mod render;
 
 use std::collections::BTreeMap;
 
@@ -24,7 +23,6 @@ use serde::Serialize;
 
 pub use diff::unified_diff;
 pub use item::{diff_items, fingerprint};
-pub use render::{new_pins_text, pin_changes_text, NEW_PINS_HEADER};
 
 /// One file of a bundle's tree.
 #[derive(Clone, PartialEq, Eq, Debug)]

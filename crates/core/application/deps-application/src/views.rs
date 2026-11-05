@@ -3,7 +3,8 @@
 
 use serde::Serialize;
 
-pub use pin_changes::PinChange;
+pub use deps::version::Compat;
+pub use pin_changes::{Change, ExecDelta, ExecSpec, FileChange, ItemChange, PinChange};
 
 fn not(flag: &bool) -> bool {
     !*flag

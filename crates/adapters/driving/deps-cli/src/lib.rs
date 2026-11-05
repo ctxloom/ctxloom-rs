@@ -10,6 +10,7 @@
 //! written as json or as text, with what it noticed said on the error stream.
 
 mod commands;
+mod pins;
 mod refresh;
 mod text;
 
