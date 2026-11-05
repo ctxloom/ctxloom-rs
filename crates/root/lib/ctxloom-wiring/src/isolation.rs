@@ -112,3 +112,7 @@ pub(crate) fn container(
     );
     container_cli::run(&containers, call, out)
 }
+
+#[cfg(test)]
+#[path = "isolation.test.rs"]
+mod tests;
