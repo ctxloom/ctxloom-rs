@@ -248,7 +248,7 @@ impl Commands {
 }
 
 impl Commands {
-    /// A setup command: `clean`, `doctor` or `init`.
+    /// A setup command: `auth`, `clean`, `doctor` or `init`.
     fn setup(
         &mut self,
         noun: &str,
@@ -259,6 +259,7 @@ impl Commands {
     ) -> Result<u8, Failure> {
         let wired = self.wired().map_err(|e| Failure::new(e, 1))?;
         let uses = setup_cli::UseCases {
+            auth: &wired.setup.auth,
             cleaner: &wired.setup.cleaner,
             doctor: &wired.setup.doctor,
             init: &wired.setup.init,

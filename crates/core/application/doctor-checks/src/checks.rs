@@ -1,5 +1,8 @@
 //! The checks that read only the text they are given.
 
+use std::collections::BTreeMap;
+
+use auth_application::Auth;
 use serde::Serialize;
 
 use crate::hooks::Stale;
@@ -171,6 +174,94 @@ pub fn agents(config: Option<&str>) -> Check {
             unbound.join(", ")
         ),
         "ctxloom agent edit <name> --llm <llm>",
+    )
+}
+
+/// The engines the layers configure, and the mode they authenticate in. The
+/// layers are the config files lowest first, merged as the configuration is:
+/// a label or an agent of a later layer replaces the same name of an earlier
+/// one, and the shipped default (`claude-code`) stands where no layer
+/// authors a label.
+fn engines_and_mode(layers: &[String]) -> (Vec<String>, String) {
+    let scalar = |value: Option<&angzarr_yaml::Value>| match value {
+        Some(angzarr_yaml::Value::Scalar(text)) => Some(text.clone()),
+        _ => None,
+    };
+    let (mut labels, mut agents) = (BTreeMap::new(), BTreeMap::new());
+    let mut mode = String::new();
+    for value in layers.iter().filter_map(|l| angzarr_yaml::parse(l).ok()) {
+        if let Some(auth) = scalar(value.get("auth")) {
+            mode = auth;
+        }
+        if let Some(angzarr_yaml::Value::Map(configs)) =
+            value.get("llm").and_then(|llm| llm.get("configs"))
+        {
+            for (label, entry) in configs {
+                labels.insert(label.clone(), scalar(entry.get("type")).unwrap_or_default());
+            }
+        }
+        if let Some(angzarr_yaml::Value::Map(named)) = value.get("agents") {
+            for (name, agent) in named {
+                agents.insert(name.clone(), scalar(agent.get("llm")).unwrap_or_default());
+            }
+        }
+    }
+    let mut engines: Vec<String> = if labels.is_empty() {
+        vec!["claude-code".to_string()]
+    } else {
+        labels.values().cloned().collect()
+    };
+    // An agent names a label, or an engine outright.
+    engines.extend(
+        agents
+            .values()
+            .filter(|llm| !llm.is_empty())
+            .map(|llm| labels.get(llm).unwrap_or(llm).clone()),
+    );
+    (engines, mode)
+}
+
+/// `CREDENTIALS-m5`: whether the credential every configured engine needs is
+/// exported, in the mode the human's session authenticates in. One that is
+/// not is a `fail`: every run is refused for it. Only presence is read, never
+/// a value, and "present" is not "accepted": whether the engine accepts it is
+/// known only by launching the engine's own CLI.
+pub fn credentials(layers: &[String], auth: &Auth) -> Check {
+    const M: &str = "DOCTOR-CHECK-CREDENTIALS-m5";
+    const N: &str = "credentials";
+    let (engines, mode) = engines_and_mode(layers);
+    let verdicts = auth.needed(&engines, &mode);
+    let missing: Vec<_> = verdicts.iter().filter(|v| !v.ready).collect();
+    if let Some(first) = missing.first() {
+        let detail = missing
+            .iter()
+            .map(|v| format!("{} (auth {}): {} is not exported", v.engine, v.mode, v.var))
+            .collect::<Vec<_>>()
+            .join("; ");
+        return row(M, N, Status::Fail, &detail, first.remedy);
+    }
+    if verdicts.is_empty() {
+        return row(
+            M,
+            N,
+            Status::Info,
+            "no configured engine needs a credential from you",
+            "",
+        );
+    }
+    let present: Vec<String> = verdicts
+        .iter()
+        .map(|v| format!("{} (auth {})", v.engine, v.mode))
+        .collect();
+    row(
+        M,
+        N,
+        Status::Ok,
+        &format!(
+            "every configured engine's credential is present: {} (doctor does not test whether the engine accepts it; launching the engine's own CLI shows that)",
+            present.join(", ")
+        ),
+        "",
     )
 }
 

@@ -58,3 +58,11 @@ fn the_catalog_has_a_message_for_every_sample() {
         assert!(EN_US.1.contains(&format!("{} =", sample.code())));
     }
 }
+
+#[test]
+fn an_unreadable_configuration_exits_one_with_its_causes_code_and_args() {
+    let error = ReclaimError::Config(Box::new(bad_age()));
+    assert_eq!(error.exit_code(), 1);
+    assert_eq!(error.code(), "reclaim-application-bad-age");
+    assert_eq!(error.args().len(), 2);
+}

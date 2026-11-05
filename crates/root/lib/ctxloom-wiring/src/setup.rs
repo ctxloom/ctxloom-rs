@@ -4,6 +4,7 @@
 use std::rc::Rc;
 use std::sync::Arc;
 
+use auth_application::Auth;
 use cache_files::CacheFiles;
 use config_files::{ConfigFilesFs, ScaffoldFs};
 use content_fs::UserFilesFs;
@@ -12,13 +13,14 @@ use doctor_checks::Doctor;
 use init_application::Init;
 use reclaim_application::Cleaner;
 
-use crate::{LibError, Wiring};
+use crate::{LibError, ProcessEnv, Wiring};
 
 /// The nouns these commands own.
-pub(crate) const NOUNS: [&str; 3] = ["clean", "doctor", "init"];
+pub(crate) const NOUNS: [&str; 4] = ["auth", "clean", "doctor", "init"];
 
 /// The setup use cases, built together.
 pub(crate) struct SetupUseCases {
+    pub(crate) auth: Auth,
     pub(crate) cleaner: Cleaner,
     pub(crate) doctor: Doctor,
     pub(crate) init: Init,
@@ -38,6 +40,7 @@ impl SetupUseCases {
             Arc::new(config),
             user.clone(),
             Arc::new(binaries),
+            Auth::new(Arc::new(ProcessEnv::from_process())),
             &home.display().to_string(),
             env!("CARGO_PKG_VERSION"),
         );
@@ -47,6 +50,7 @@ impl SetupUseCases {
             deps,
         );
         Ok(SetupUseCases {
+            auth: Auth::new(Arc::new(ProcessEnv::from_process())),
             cleaner,
             doctor,
             init,

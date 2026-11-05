@@ -1,13 +1,14 @@
 //! `ctxloom doctor` (S12): the deterministic setup checks, one row each,
 //! every row prefixed with a `DOCTOR-CHECK-*` marker shared with the
-//! "ctxloom-doctor" skill. Three of the Go doctor's 26 checks survive
-//! unchanged in subject; the rest are reshaped or left to their slices:
+//! "ctxloom-doctor" skill. Of the Go doctor's 26 checks these ten are ported
+//! (some reshaped); the rest are left to their slices:
 //!
 //! | marker | the check |
 //! |---|---|
 //! | `SETUP-MARKER-e5` | the `.ctxloom` marker and the config's validity |
 //! | `DEPS-a1` | `git` on the PATH and a git identity |
 //! | `AGENTS-b2` | every configured agent names an llm |
+//! | `CREDENTIALS-m5` | the credential each configured engine needs is exported (presence only, never the value); a missing one is a `fail` |
 //! | `VERSION-c3` | the binary's version |
 //! | `HOOKS-TRUST-d4` | ctxloom's hooks registered with the engine (the trust store half is dead since ADR 0037) |
 //! | `GITIGNORE-f6` | no blanket `.ctxloom` ignore rule |
@@ -15,7 +16,7 @@
 //! | `STALE-HOOKS-n5` | no hook entry runs a `ctxloom hook` subcommand this ctxloom lacks |
 //! | `INGESTION-q7` | the stated limit: whether the engine reads what ctxloom wrote |
 //!
-//! Left out here: `CREDENTIALS-m5` (S5's credentials), the run-end and
+//! Left out here: the run-end and
 //! runner/MCP-state checks (S6), the container runtime (S11), and the
 //! lockstep check against the installed taskloom (unruled: D15/D3b).
 //!

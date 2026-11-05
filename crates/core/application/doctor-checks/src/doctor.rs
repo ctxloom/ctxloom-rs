@@ -4,6 +4,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use auth_application::Auth;
 use ctxloom_ports::{ConfigFiles, Executables, Failure, Scope, Source, UserFiles};
 use serde::Serialize;
 
@@ -36,6 +37,7 @@ pub struct Doctor {
     config: Arc<dyn ConfigFiles>,
     files: Arc<dyn UserFiles>,
     executables: Arc<dyn Executables>,
+    auth: Auth,
     home: String,
     version: String,
 }
@@ -45,6 +47,7 @@ impl Doctor {
         config: Arc<dyn ConfigFiles>,
         files: Arc<dyn UserFiles>,
         executables: Arc<dyn Executables>,
+        auth: Auth,
         home: &str,
         version: &str,
     ) -> Doctor {
@@ -52,6 +55,7 @@ impl Doctor {
             config,
             files,
             executables,
+            auth,
             home: home.to_string(),
             version: version.to_string(),
         }
@@ -128,6 +132,11 @@ impl Doctor {
             .ok()
             .flatten()
             .map(|layer| layer.text);
+        let layers: Vec<String> = self
+            .config
+            .layers()
+            .map(|layers| layers.into_iter().map(|layer| layer.text).collect())
+            .unwrap_or_default();
         let settings = self.present(&self.settings_paths());
         let mut stale = Vec::new();
         for (file, text) in &settings {
@@ -144,6 +153,7 @@ impl Doctor {
                 checks::setup_marker(self.root().is_some(), config.as_deref()),
                 deps,
                 checks::agents(config.as_deref()),
+                checks::credentials(&layers, &self.auth),
                 checks::version(&self.version),
                 checks::hooks(&settings),
                 checks::gitignore(gitignore.as_deref()),

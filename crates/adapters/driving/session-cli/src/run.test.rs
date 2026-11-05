@@ -47,6 +47,17 @@ struct Fake {
     wt_asked: Vec<(Option<String>, bool)>,
     /// Answer every worktree question with a refusal that is not "no session".
     wt_fails: bool,
+    /// `session_purge_age` as the fake configuration has it.
+    configured_age: Option<String>,
+    /// What was asked of the configuration.
+    config_asked: usize,
+}
+
+impl reclaim_application::SweepConfig for Fake {
+    fn purge_age(&mut self) -> Result<Option<String>, ctxloom_ports::Failure> {
+        self.config_asked += 1;
+        Ok(self.configured_age.clone())
+    }
 }
 
 impl isolation_application::WorktreeUse for Fake {
@@ -1594,4 +1605,62 @@ fn a_worktree_failure_during_a_purge_is_reported_not_swallowed() {
         &["purge", "amber-swift-owl", "--yes"],
     );
     assert!(ran.result.is_err());
+}
+
+// The sweep's purge-age rule: `--purge-older-than`, else `session_purge_age`;
+// the flag beats the configuration.
+#[test]
+fn a_sweep_without_the_flag_purges_by_the_configured_age() {
+    let mut fake = Fake {
+        views: vec![ended("plan-one")],
+        removal: Some(plan(false)),
+        configured_age: Some("1d".to_string()),
+        ..Fake::default()
+    };
+    let ran = go(&mut fake, Format::Text, &["sweep"]);
+    let done = ran.result.unwrap();
+    assert!(!ran.out.contains("not set"), "{}", ran.out);
+    assert!(ran.out.contains("plan-one"), "{}", ran.out);
+    assert_eq!(fake.remove.len(), 1, "the configured age planned the purge");
+    // The confirming command is the same plain one: the configuration says
+    // the age again when it is run.
+    let command = notice_command(&done);
+    assert!(command.contains("ctxloom session sweep --yes"), "{command}");
+    assert!(!command.contains("--purge-older-than"), "{command}");
+}
+
+#[test]
+fn a_sweeps_flag_beats_the_configured_age() {
+    // The session ended long ago: a 1d flag purges it where a configured
+    // age of 100000d (older than any session) would leave it.
+    let mut fake = Fake {
+        views: vec![ended("plan-one")],
+        removal: Some(plan(false)),
+        configured_age: Some("100000d".to_string()),
+        ..Fake::default()
+    };
+    let ran = go(
+        &mut fake,
+        Format::Json,
+        &["sweep", "--purge-older-than", "1d"],
+    );
+    let doc = json_of(&ran);
+    assert_eq!(doc["rows"][0]["verdict"], "planned");
+    assert_eq!(fake.config_asked, 0);
+}
+
+#[test]
+fn a_configured_age_that_is_none_is_a_usage_error_naming_the_key() {
+    let mut fake = Fake {
+        views: vec![ended("plan-one")],
+        configured_age: Some("soon".to_string()),
+        ..Fake::default()
+    };
+    let failure = go(&mut fake, Format::Text, &["sweep"]).result.unwrap_err();
+    assert_eq!(failure.exit, 2);
+    assert!(failure
+        .error
+        .args()
+        .iter()
+        .any(|(k, a)| *k == "flag" && format!("{a:?}").contains("session_purge_age")));
 }

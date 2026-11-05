@@ -107,6 +107,7 @@ engine-claude = { path = "crates/adapters/driven/engine-claude" }
 engine-mock = { path = "crates/adapters/driven/engine-mock" }
 surface-cli = { path = "crates/adapters/driving/surface-cli" }
 cache-files = { path = "crates/adapters/driven/cache-files" }
+auth-application = { path = "crates/core/application/auth-application" }
 reclaim-application = { path = "crates/core/application/reclaim-application" }
 doctor-checks = { path = "crates/core/application/doctor-checks" }
 init-application = { path = "crates/core/application/init-application" }

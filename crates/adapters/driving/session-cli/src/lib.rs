@@ -175,7 +175,7 @@ pub enum TranscriptVerb {
 
 #[derive(Args, Debug)]
 pub struct SweepArgs {
-    /// Purge ended sessions last active before this age (30d, 12w, 720h) or date (2026-01-01); without it nothing is purged
+    /// Purge ended sessions last active before this age (30d, 12w, 720h) or date (2026-01-01); overriding session_purge_age; without either nothing is purged
     #[arg(long, value_name = "AGE")]
     pub purge_older_than: Option<String>,
     /// Sweep every session on this machine, not only this project's

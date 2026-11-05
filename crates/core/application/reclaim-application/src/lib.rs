@@ -13,6 +13,7 @@
 mod age;
 mod clean;
 mod error;
+mod purge;
 mod sweep;
 
 pub use age::parse_age;
@@ -20,6 +21,7 @@ pub use clean::{CleanReport, CleanTarget, Cleaner, TARGETS};
 #[cfg(any(test, feature = "test-support"))]
 pub use error::diagnostic_samples;
 pub use error::{ReclaimError, EN_US};
+pub use purge::{purge_cutoff, SweepConfig};
 pub use sweep::{sweep, SweepReport, SweepRequest, SweepRow, Verdict};
 
 #[cfg(test)]

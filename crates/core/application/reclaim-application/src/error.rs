@@ -13,6 +13,8 @@ pub enum ReclaimError {
     BadAge { flag: String, value: String },
     /// The cache could not be measured or removed: the adapter's own words.
     Cache(Failure),
+    /// The configuration could not be read.
+    Config(Failure),
     /// A sessions use case failed.
     Sessions(AppError),
     /// A worktree use case failed.
@@ -27,7 +29,7 @@ impl ReclaimError {
             ReclaimError::BadAge { .. } => 2,
             ReclaimError::Sessions(error) => error.exit_code(),
             ReclaimError::Isolation(error) => error.exit_code(),
-            ReclaimError::Cache(_) => 1,
+            ReclaimError::Cache(_) | ReclaimError::Config(_) => 1,
         }
     }
 }
@@ -48,7 +50,7 @@ impl Diagnostic for ReclaimError {
     fn code(&self) -> &str {
         match self {
             ReclaimError::BadAge { .. } => code!("bad-age"),
-            ReclaimError::Cache(cause) => cause.code(),
+            ReclaimError::Cache(cause) | ReclaimError::Config(cause) => cause.code(),
             ReclaimError::Sessions(cause) => cause.code(),
             ReclaimError::Isolation(cause) => cause.code(),
         }
@@ -62,7 +64,7 @@ impl Diagnostic for ReclaimError {
                     ("value", value.as_str().into()),
                 ]
             }
-            ReclaimError::Cache(cause) => cause.args(),
+            ReclaimError::Cache(cause) | ReclaimError::Config(cause) => cause.args(),
             ReclaimError::Sessions(cause) => cause.args(),
             ReclaimError::Isolation(cause) => cause.args(),
         }
