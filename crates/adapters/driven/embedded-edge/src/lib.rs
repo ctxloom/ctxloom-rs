@@ -1,7 +1,7 @@
 //! The driven adapter that implements `run_ports::Edge` over
 //! `angzarr_embedded_host::App` (the owner approved the in-process slice; no
 //! transport). The conversions are pure and tested here; the
-//! whole path over a real `App` is `ctxloom-lib`'s `core_link` test, because a
+//! whole path over a real `App` is `ctxloom-wiring`'s `core_link` test, because a
 //! driven adapter sees ports and never a use case.
 //!
 //! angzarr-embedded stays reusable tooling: nothing of ctxloom (session, run,

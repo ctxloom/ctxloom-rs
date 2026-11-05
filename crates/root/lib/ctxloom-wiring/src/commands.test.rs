@@ -54,7 +54,8 @@ static WORLD: std::sync::Mutex<()> = std::sync::Mutex::new(());
 impl World {
     fn new(name: &str) -> World {
         let held = WORLD.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = std::env::temp_dir().join(format!("ctxloom-lib-{name}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("ctxloom-wiring-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("home")).unwrap();
         std::fs::create_dir_all(dir.join("work")).unwrap();

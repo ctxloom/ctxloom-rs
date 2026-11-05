@@ -113,7 +113,7 @@ fn exited() -> RunnerFact {
 }
 
 // NEW-DESIGN (plan 6.2 "one code path": run_id in S4 and the run domain's
-// root agree): the run domain's root is the id `ctxloom_lib::run_id` derives.
+// root agree): the run domain's root is the id `ctxloom_wiring::run_id` derives.
 #[test]
 fn the_run_domains_root_is_the_id_the_library_derives() {
     let derived = run_id(SESSION, 3).unwrap();

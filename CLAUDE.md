@@ -46,11 +46,11 @@ the architecture; there is no other table of crates.
 - `core/application`: command and query handlers.
 - `adapters/driven`: port implementations (stores, clock, git).
 - `adapters/driving`: the CLI (and later gRPC, MCP): translation only.
-- `root/lib`: the composition root's wiring as a library (`ctxloom-lib`).
+- `root/lib`: the composition root's wiring as a library (`ctxloom-wiring`).
 - `root/bin`: the `ctxloom` binary, the composition root.
 
 Slice S0 made `ctxloom-store-sqlite` (driven), `ctxloom-cli` (driving),
-`ctxloom-lib` (wiring) and the `ctxloom` binary. Slice S1 (library read side)
+`ctxloom-wiring` (wiring) and the `ctxloom` binary. Slice S1 (library read side)
 adds:
 
 - `core/read-model/library` (references, bundles, profiles, composite
@@ -60,7 +60,7 @@ adds:
 - `adapters/driven/{content-fs, config-files}` and `adapters/driving/library-cli`.
 
 The whole command line is parsed by `ctxloom-cli`; a crate that owns more
-nouns joins it through its `Extension` seam (`ctxloom-lib` wires `library-cli`
+nouns joins it through its `Extension` seam (`ctxloom-wiring` wires `library-cli`
 in).
 
 Divergence from Go: a config whose `schema_version` is newer, older or unreadable is refused (exit 2, D15 strict decode); Go warns and continues. A `non_tty_format` of yaml, toml or markdown is refused (D28).
@@ -203,7 +203,7 @@ disclosure), `deps-ports` (`Remotes`, `DepsFiles`, `RemoteLibrary`),
 under `.ctxloom/cache/repos`, read from commits only, never a checkout),
 `deps-files` (remotes.yaml, lock.yaml and the installed trees under
 `.ctxloom/cache/bundles/<segments>/<bundle>/<sha>/`; it stands where the plan
-named `content-fs` for these files), `deps-cli`. `ctxloom-lib`'s `Commands`
+named `content-fs` for these files), `deps-cli`. `ctxloom-wiring`'s `Commands`
 composes them with the library: it merges `bundle push|move` into the
 library's `bundle` noun and owns `remote` and `deps`.
 

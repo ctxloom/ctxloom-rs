@@ -19,7 +19,7 @@ config-files.workspace = true
 content-fs.workspace = true
 editor-process.workspace = true
 ctxloom-cli.workspace = true
-ctxloom-lib.workspace = true
+ctxloom-wiring.workspace = true
 ctxloom-store-sqlite.workspace = true
 file-lock.workspace = true
 library.workspace = true
@@ -44,7 +44,7 @@ sessions.workspace = true
 # them. Off in a release build; the acceptance tests build the binary with it.
 test-support = [
     "ctxloom-cli/test-support",
-    "ctxloom-lib/test-support",
+    "ctxloom-wiring/test-support",
     "ctxloom-store-sqlite/test-support",
     "library/test-support",
     "library-application/test-support",

@@ -7,8 +7,8 @@ const SESSION: &str = "5f0c7a52-1111-5111-8111-000000000001";
 const OTHER: &str = "5f0c7a52-2222-5222-8222-000000000002";
 
 // NEW-DESIGN (plan 3.3, D5 Q4: "root = UUIDv5(session, incarnation)"). Pins
-// the formula S4 already fixed in `ctxloom_lib::run_id`: the incarnation's
-// decimal text, in the session's own UUID namespace (the ctxloom-lib
+// the formula S4 already fixed in `ctxloom_wiring::run_id`: the incarnation's
+// decimal text, in the session's own UUID namespace (the ctxloom-wiring
 // `core_link` test holds the two to each other).
 #[test]
 fn the_run_root_is_the_uuid_v5_of_the_incarnation_in_the_sessions_namespace() {
