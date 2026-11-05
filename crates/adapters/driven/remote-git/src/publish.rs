@@ -9,10 +9,11 @@ use deps_ports::Why;
 use file_system::{Fs, Perms};
 use os::Mode;
 
-use crate::command::{run, text};
+use crate::command::Git;
 use crate::read::default_branch;
 
 pub(crate) fn publish(
+    git: &Git,
     fs: &dyn Fs,
     cache: &Path,
     url: &str,
@@ -24,12 +25,13 @@ pub(crate) fn publish(
     let work = fs
         .make_temp_dir(cache, "publish-")
         .map_err(|e| format!("cannot make a working clone: {e}"))?;
-    let outcome = land(fs, &work, url, files, message);
+    let outcome = land(git, fs, &work, url, files, message);
     let _ = fs.remove_dir_all(&work);
     outcome
 }
 
 fn land(
+    git: &Git,
     fs: &dyn Fs,
     work: &Path,
     url: &str,
@@ -37,9 +39,9 @@ fn land(
     message: &str,
 ) -> Result<String, Why> {
     let target = work.to_string_lossy();
-    run(None, &["clone", "--", url, &target], None)?;
-    let branch = default_branch(work)?;
-    run(
+    git.run(None, &["clone", "--", url, &target], None)?;
+    let branch = default_branch(git, work)?;
+    git.run(
         Some(work),
         &[
             "checkout",
@@ -58,12 +60,15 @@ fn land(
         }
         fs.write_atomic(&at, data, Perms::Exact(Mode::from_bits(0o644)))
             .map_err(|e| format!("cannot write {}: {e}", at.display()))?;
-        run(Some(work), &["add", "--", path], None)?;
+        git.run(Some(work), &["add", "--", path], None)?;
     }
     // Nothing staged is nothing to publish: the commit at the tip stands.
-    if run(Some(work), &["diff", "--cached", "--quiet"], None).is_err() {
-        run(Some(work), &["commit", "--quiet", "-m", message], None)?;
-        run(
+    if git
+        .run(Some(work), &["diff", "--cached", "--quiet"], None)
+        .is_err()
+    {
+        git.run(Some(work), &["commit", "--quiet", "-m", message], None)?;
+        git.run(
             Some(work),
             &[
                 "push",
@@ -74,5 +79,5 @@ fn land(
             None,
         )?;
     }
-    text(work, &["rev-parse", "HEAD"])
+    git.text(work, &["rev-parse", "HEAD"])
 }

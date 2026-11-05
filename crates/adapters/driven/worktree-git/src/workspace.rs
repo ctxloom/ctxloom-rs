@@ -7,7 +7,7 @@ use isolation_ports::{
 };
 
 use crate::error::WorktreeError;
-use crate::git::run;
+use crate::git::{Git, GitError};
 
 /// The header of the block of ctxloom's per-agent config patterns in the
 /// repository's shared `info/exclude` (Go: `gitignore.WorktreeComment`).
@@ -62,6 +62,7 @@ pub fn branch_of(checkout: &str) -> String {
 /// Workspaces under one home's sessions.
 pub struct GitWorkspaces {
     sessions: PathBuf,
+    git: Git,
 }
 
 impl GitWorkspaces {
@@ -69,7 +70,14 @@ impl GitWorkspaces {
     pub fn new(home: impl Into<PathBuf>) -> GitWorkspaces {
         GitWorkspaces {
             sessions: home.into().join(".ctxloom").join("sessions"),
+            git: Git::default(),
         }
+    }
+
+    /// The same workspaces over another git: a program, and how long each of
+    /// its invocations has before it is killed.
+    pub fn with_git(self, git: Git) -> GitWorkspaces {
+        GitWorkspaces { git, ..self }
     }
 }
 
@@ -80,8 +88,8 @@ struct Listed {
     branch: Option<String>,
 }
 
-fn worktree_list(repo: &Path) -> Result<Vec<Listed>, String> {
-    let out = run(repo, &["worktree", "list", "--porcelain"])?;
+fn worktree_list(git: &Git, repo: &Path) -> Result<Vec<Listed>, GitError> {
+    let out = git.run(repo, &["worktree", "list", "--porcelain"])?;
     let mut listed = Vec::new();
     for block in out.split("\n\n") {
         let mut path = None;
@@ -106,13 +114,18 @@ fn same_path(a: &Path, b: &Path) -> bool {
     a == b || matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y)
 }
 
-fn is_repo(dir: &Path) -> bool {
-    run(dir, &["rev-parse", "--is-inside-work-tree"]).is_ok_and(|out| out.trim() == "true")
+/// Whether `dir` is inside a work tree. A git that hangs says nothing either
+/// way, so a timeout is an error and not "no".
+fn is_repo(git: &Git, dir: &Path) -> Result<bool, WorktreeError> {
+    match git.run(dir, &["rev-parse", "--is-inside-work-tree"]) {
+        Ok(out) => Ok(out.trim() == "true"),
+        Err(e) => e.diagnostic().map_or(Ok(false), Err),
+    }
 }
 
 /// The repository's common git directory, absolute.
-fn common_dir(dir: &Path) -> Result<PathBuf, String> {
-    let out = run(dir, &["rev-parse", "--git-common-dir"])?;
+fn common_dir(git: &Git, dir: &Path) -> Result<PathBuf, GitError> {
+    let out = git.run(dir, &["rev-parse", "--git-common-dir"])?;
     let path = PathBuf::from(out.trim());
     let path = if path.is_absolute() {
         path
@@ -124,21 +137,21 @@ fn common_dir(dir: &Path) -> Result<PathBuf, String> {
 
 /// Go's `unsafeToRemove`: uncommitted changes, ignored files, or a state git
 /// would not answer for. An unreadable state is never read as safe.
-fn unsafe_to_remove(dir: &Path) -> Safety {
-    match run(dir, &["--no-optional-locks", "status", "--porcelain"]) {
+fn unsafe_to_remove(git: &Git, dir: &Path) -> Safety {
+    match git.run(dir, &["--no-optional-locks", "status", "--porcelain"]) {
         Ok(out) if out.trim().is_empty() => {}
         _ => {
             return Safety::Unsafe("has uncommitted changes (or unknown state)".to_string());
         }
     }
-    match run(dir, &["status", "--porcelain", "--ignored=matching"]) {
+    match git.run(dir, &["status", "--porcelain", "--ignored=matching"]) {
         Ok(out) if !out.lines().any(|l| l.starts_with("!!")) => Safety::Clean,
         _ => Safety::Unsafe("holds gitignored/excluded files (or unknown state)".to_string()),
     }
 }
 
-fn branch_exists(repo: &Path, branch: &str) -> bool {
-    run(
+fn branch_exists(git: &Git, repo: &Path, branch: &str) -> bool {
+    git.run(
         repo,
         &[
             "rev-parse",
@@ -152,12 +165,12 @@ fn branch_exists(repo: &Path, branch: &str) -> bool {
 
 /// Create the checkout: re-enter the branch an earlier run left, or carve it
 /// from the project's HEAD.
-fn add_checkout(project: &Path, path: &Path, branch: &str) -> Result<(), String> {
+fn add_checkout(git: &Git, project: &Path, path: &Path, branch: &str) -> Result<(), GitError> {
     let shown = path.display().to_string();
-    if branch_exists(project, branch) {
-        run(project, &["worktree", "add", &shown, branch])
+    if branch_exists(git, project, branch) {
+        git.run(project, &["worktree", "add", &shown, branch])
     } else {
-        run(project, &["worktree", "add", "-b", branch, &shown, "HEAD"])
+        git.run(project, &["worktree", "add", "-b", branch, &shown, "HEAD"])
     }
     .map(drop)
 }
@@ -165,7 +178,7 @@ fn add_checkout(project: &Path, path: &Path, branch: &str) -> Result<(), String>
 /// Go's `reuseExistingCheckout`: whether the agent's path is its own earlier
 /// checkout (registered on the agent's branch), to be re-entered; anything
 /// else there is a refusal.
-fn reuse(project: &Path, path: &Path, branch: &str) -> Result<bool, WorktreeError> {
+fn reuse(git: &Git, project: &Path, path: &Path, branch: &str) -> Result<bool, WorktreeError> {
     if !path.exists() {
         return Ok(false);
     }
@@ -174,8 +187,10 @@ fn reuse(project: &Path, path: &Path, branch: &str) -> Result<bool, WorktreeErro
         branch: branch.to_string(),
         why,
     };
-    let listed =
-        worktree_list(project).map_err(|e| refuse(format!("git worktree list failed: {e}")))?;
+    let listed = worktree_list(git, project).map_err(|e| {
+        e.diagnostic()
+            .unwrap_or_else(|| refuse(format!("git worktree list failed: {e}")))
+    })?;
     match listed.iter().find(|w| same_path(&w.path, path)) {
         Some(w) if w.branch.as_deref() == Some(branch) => Ok(true),
         Some(w) => Err(refuse(format!(
@@ -191,8 +206,8 @@ fn reuse(project: &Path, path: &Path, branch: &str) -> Result<bool, WorktreeErro
 /// Hide the per-agent config from the project's git status: the block of
 /// patterns in the shared common-dir `info/exclude`, appended where missing
 /// (idempotent, and shared-safe among concurrent agents). Best-effort.
-fn exclude_config(project: &Path, patterns: &[String]) {
-    let Ok(common) = common_dir(project) else {
+fn exclude_config(git: &Git, project: &Path, patterns: &[String]) {
+    let Ok(common) = common_dir(git, project) else {
         return;
     };
     let info = common.join("info");
@@ -225,17 +240,22 @@ fn exclude_config(project: &Path, patterns: &[String]) {
 
 /// Where the repository TRACKS a config path the run will overwrite, set the
 /// skip-worktree bit, so it cannot merge back. Best-effort.
-fn skip_tracked(checkout: &Path, patterns: &[String]) {
+fn skip_tracked(git: &Git, checkout: &Path, patterns: &[String]) {
     if patterns.is_empty() {
         return;
     }
     let mut args = vec!["ls-files", "-z", "--"];
     args.extend(patterns.iter().map(String::as_str));
-    let Ok(out) = run(checkout, &args) else {
+    let Ok(out) = git.run(checkout, &args) else {
         return;
     };
     for file in out.split('\0').filter(|f| !f.is_empty()) {
-        let _ = run(checkout, &["update-index", "--skip-worktree", file]);
+        // A git that hangs once would hang on every file.
+        if let Err(GitError::TimedOut { .. }) =
+            git.run(checkout, &["update-index", "--skip-worktree", file])
+        {
+            return;
+        }
     }
 }
 
@@ -271,8 +291,9 @@ fn is_name(harp: &str) -> bool {
 }
 
 /// Remove a nested or target worktree through git, never forced.
-fn remove_one(repo: &Path, path: &Path) -> Result<(), String> {
-    run(repo, &["worktree", "remove", &path.display().to_string()]).map(drop)
+fn remove_one(git: &Git, repo: &Path, path: &Path) -> Result<(), GitError> {
+    git.run(repo, &["worktree", "remove", &path.display().to_string()])
+        .map(drop)
 }
 
 /// A merged branch holds nothing the repository does not, and left behind
@@ -281,13 +302,13 @@ fn remove_one(repo: &Path, path: &Path) -> Result<(), String> {
 // `git branch -d` itself refuses an unmerged branch, so the listing check is a
 // second guard whose removal changes nothing observable.
 #[cfg_attr(test, mutants::skip)]
-fn delete_merged_branch(repo: &Path, branch: &str) {
-    let merged = run(
+fn delete_merged_branch(git: &Git, repo: &Path, branch: &str) {
+    let merged = git.run(
         repo,
         &["branch", "--merged", "HEAD", "--format=%(refname:short)"],
     );
     if merged.is_ok_and(|out| out.lines().any(|l| l.trim() == branch)) {
-        let _ = run(repo, &["branch", "-d", branch]);
+        let _ = git.run(repo, &["branch", "-d", branch]);
     }
 }
 
@@ -314,8 +335,9 @@ fn nested_under(listed: &[Listed], target: &Path) -> Vec<PathBuf> {
 
 impl Workspaces for GitWorkspaces {
     fn prepare(&self, request: &Request) -> Result<Prepared, Failure> {
+        let git = &self.git;
         let project = Path::new(&request.project_dir);
-        if !is_repo(project) {
+        if !is_repo(git, project).map_err(|e| Box::new(e) as Failure)? {
             return Ok(Prepared::Unavailable(format!(
                 "worktree isolation: {} is not a git repository",
                 request.project_dir
@@ -323,14 +345,17 @@ impl Workspaces for GitWorkspaces {
         }
         let path = Path::new(&request.work_dir).join(checkout_name(&request.agent));
         let branch = branch_of(&path.display().to_string());
-        let reused = reuse(project, &path, &branch).map_err(|e| Box::new(e) as Failure)?;
+        let reused = reuse(git, project, &path, &branch).map_err(|e| Box::new(e) as Failure)?;
         if !reused {
-            if let Err(why) = add_checkout(project, &path, &branch) {
+            if let Err(why) = add_checkout(git, project, &path, &branch) {
+                if let Some(timed_out) = why.diagnostic() {
+                    return Err(Box::new(timed_out));
+                }
                 return Ok(Prepared::Unavailable(format!("worktree add: {why}")));
             }
         }
-        exclude_config(project, &request.artifact_patterns);
-        skip_tracked(&path, &request.artifact_patterns);
+        exclude_config(git, project, &request.artifact_patterns);
+        skip_tracked(git, &path, &request.artifact_patterns);
         Ok(Prepared::Checkout(Checkout {
             path: path.display().to_string(),
             branch,
@@ -370,23 +395,23 @@ impl Workspaces for GitWorkspaces {
     }
 
     fn inspect(&self, path: &str) -> Standing {
-        let dir = Path::new(path);
-        match common_dir(dir) {
-            Err(why) => Standing::Unresolved(why),
+        let (git, dir) = (&self.git, Path::new(path));
+        match common_dir(git, dir) {
+            Err(why) => Standing::Unresolved(why.to_string()),
             Ok(common) => Standing::Resolved {
                 repo_dir: common
                     .parent()
                     .map_or_else(|| common.clone(), Path::to_path_buf)
                     .display()
                     .to_string(),
-                safety: unsafe_to_remove(dir),
+                safety: unsafe_to_remove(git, dir),
             },
         }
     }
 
     fn remove(&self, repo_dir: &str, path: &str) -> Removal {
-        let (repo, target) = (Path::new(repo_dir), Path::new(path));
-        let listed = match worktree_list(repo) {
+        let (git, repo, target) = (&self.git, Path::new(repo_dir), Path::new(path));
+        let listed = match worktree_list(git, repo) {
             Ok(listed) => listed,
             Err(why) => {
                 return Removal::Left(format!(
@@ -395,27 +420,27 @@ impl Workspaces for GitWorkspaces {
             }
         };
         for inner in nested_under(&listed, target) {
-            if let Safety::Unsafe(why) = unsafe_to_remove(&inner) {
+            if let Safety::Unsafe(why) = unsafe_to_remove(git, &inner) {
                 return Removal::Left(format!(
                     "nested worktree {} {why}; left in place to preserve it",
                     inner.display()
                 ));
             }
-            if let Err(why) = remove_one(repo, &inner) {
+            if let Err(why) = remove_one(git, repo, &inner) {
                 return Removal::Left(format!(
                     "cannot remove nested worktree {}: {why}",
                     inner.display()
                 ));
             }
         }
-        if let Safety::Unsafe(why) = unsafe_to_remove(target) {
+        if let Safety::Unsafe(why) = unsafe_to_remove(git, target) {
             return Removal::Left(format!("it {why}; left in place to preserve WIP"));
         }
-        if let Err(why) = remove_one(repo, target) {
+        if let Err(why) = remove_one(git, repo, target) {
             return Removal::Left(format!("cannot remove it: {why}"));
         }
-        let _ = run(repo, &["worktree", "prune"]);
-        delete_merged_branch(repo, &branch_of(path));
+        let _ = git.run(repo, &["worktree", "prune"]);
+        delete_merged_branch(git, repo, &branch_of(path));
         if target.exists() {
             Removal::Left("it is still on disk after git removed it".to_string())
         } else {
