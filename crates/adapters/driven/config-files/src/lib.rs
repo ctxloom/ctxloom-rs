@@ -68,18 +68,19 @@ pub fn find_app_dir(fs: &dyn Fs, around: &Surroundings) -> AppDir {
         }
         ignored_root = Some(root.to_string());
     }
-    for dir in around.cwd.ancestors() {
-        if dir == around.temp_root {
-            break;
-        }
-        let candidate = dir.join(APP_DIR_NAME);
-        if is_dir(&candidate) {
-            return AppDir {
-                path: candidate,
-                source: Source::Project,
-                ignored_root,
-            };
-        }
+    // The rule is this app's: the nearest `.ctxloom` directory, not looking
+    // at the temporary directory or above it. The walk is the shared crate's.
+    let nearest = project_dir::nearest_ancestor(
+        &around.cwd,
+        |dir| dir == around.temp_root,
+        |dir| project_dir::holds_dir(fs, dir, APP_DIR_NAME),
+    );
+    if let Some(root) = nearest {
+        return AppDir {
+            path: root.join(APP_DIR_NAME),
+            source: Source::Project,
+            ignored_root,
+        };
     }
     AppDir {
         path: around.home.join(APP_DIR_NAME),

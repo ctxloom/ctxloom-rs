@@ -165,6 +165,7 @@ pub fn catalog_sources() -> Vec<angzarr_presentation::Source> {
         file_lock::EN_US,
         file_system::EN_US,
         project_registry::EN_US,
+        project_dir::EN_US,
         ctxloom_store_sqlite::EN_US,
         session_files::EN_US,
     ];
@@ -308,7 +309,7 @@ impl Wiring {
         runtime
             .block_on(stores.open(project))
             .map_err(LibError::Store)?;
-        Ok(stores.path(project))
+        stores.path(project).map_err(LibError::Store)
     }
 }
 

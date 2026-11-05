@@ -454,3 +454,30 @@ fn test_a_variable_that_is_not_utf_8_does_not_stop_the_library_being_wired() {
         Some("text")
     );
 }
+
+#[test]
+fn test_opening_a_store_makes_it_under_the_home_and_names_its_database() {
+    let env = Env::new("open-store");
+    let wiring = from_process().ok().unwrap();
+    let path = wiring.open_store("jolly-mute-magma").ok().unwrap();
+    assert_eq!(
+        path,
+        env.home()
+            .join(".ctxloom/projects/jolly-mute-magma/ctxloom.db")
+    );
+    assert!(exists(&path), "the database is made");
+}
+
+#[test]
+fn test_opening_a_store_for_an_unsafe_project_id_is_refused_and_makes_nothing() {
+    use angzarr_diagnostic::Diagnostic;
+    let env = Env::new("open-store-unsafe");
+    let wiring = from_process().ok().unwrap();
+    let error = wiring.open_store("../escape").expect_err("refused");
+    assert_eq!(error.code(), "ctxloom-wiring-store");
+    assert!(
+        matches!(&error, LibError::Store(inner) if inner.code() == "project-dir-id-separator"),
+        "{error:?}"
+    );
+    assert!(!exists(env.home().join(".ctxloom")));
+}

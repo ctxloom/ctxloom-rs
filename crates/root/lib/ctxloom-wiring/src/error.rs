@@ -79,6 +79,11 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
             path: "/home/u/.ctxloom/projects/p/ctxloom.db".to_string(),
             detail: "locked".to_string(),
         })),
+        Box::new(LibError::Store(StoreOpenError::UnsafeProject(
+            project_dir::ProjectDirError::IdSeparator {
+                id: "../escape".to_string(),
+            },
+        ))),
         #[cfg(feature = "test-support")]
         Box::new(LibError::Seed {
             detail: "no such project".to_string(),

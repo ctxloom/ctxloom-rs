@@ -466,7 +466,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 [[package]]
 name = "cli-support"
 version = "0.1.0"
-source = "git+https://github.com/ctxloom/ctxloom-lib?rev=48145d399e9fca854278ba2dfec5e1b092ed92d7#48145d399e9fca854278ba2dfec5e1b092ed92d7"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=b2e6699cae19149233a68cb5e1527d21880bc2ac#b2e6699cae19149233a68cb5e1527d21880bc2ac"
 dependencies = [
  "angzarr-diagnostic",
  "angzarr-presentation",
@@ -497,6 +497,7 @@ dependencies = [
  "ctxloom-ports",
  "file-system",
  "os",
+ "project-dir",
 ]
 
 [[package]]
@@ -684,6 +685,7 @@ dependencies = [
  "library-application",
  "os",
  "process-env",
+ "project-dir",
  "reclaim-application",
  "serde_json",
  "session-cli",
@@ -733,6 +735,7 @@ dependencies = [
  "file-system",
  "os",
  "ports",
+ "project-dir",
  "session-ports",
  "tokio",
 ]
@@ -783,6 +786,7 @@ dependencies = [
  "os",
  "ports",
  "process-env",
+ "project-dir",
  "project-registry",
  "reclaim-application",
  "remote-git",
@@ -2641,9 +2645,18 @@ dependencies = [
 [[package]]
 name = "process-env"
 version = "0.1.0"
-source = "git+https://github.com/ctxloom/ctxloom-lib?rev=48145d399e9fca854278ba2dfec5e1b092ed92d7#48145d399e9fca854278ba2dfec5e1b092ed92d7"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=b2e6699cae19149233a68cb5e1527d21880bc2ac#b2e6699cae19149233a68cb5e1527d21880bc2ac"
 dependencies = [
  "os",
+]
+
+[[package]]
+name = "project-dir"
+version = "0.1.0"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=b2e6699cae19149233a68cb5e1527d21880bc2ac#b2e6699cae19149233a68cb5e1527d21880bc2ac"
+dependencies = [
+ "angzarr-diagnostic",
+ "file-system",
 ]
 
 [[package]]

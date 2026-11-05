@@ -14,6 +14,7 @@ angzarr-diagnostic.workspace = true
 angzarr-embedded = { workspace = true, features = ["sqlite"] }
 file-system.workspace = true
 os.workspace = true
+project-dir.workspace = true
 # The Project the store is opened for (taskloom's ports, by commit) and the port
 # it implements.
 ports.workspace = true

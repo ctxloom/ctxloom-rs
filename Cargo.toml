@@ -14,7 +14,7 @@ publish = false
 # angzarr-ports and angzarr-diagnostic (and one of every angzarr crate). The
 # pins agree: angzarr-embedded 9db9299, angzarr core dd59566, angzarr-cli
 # b47c357 and angzarr-platform 5771284 are one line of revs, taskloom's `ports`
-# (12e83b0) and ctxloom-lib's crates (48145d3) are built on the same ones, and
+# (12e83b0) and ctxloom-lib's crates (b2e6699) are built on the same ones, and
 # moving any of them moves the others with it.
 #
 # angzarr-proto, angzarr-ports and angzarr-store-sqlite are reached through
@@ -119,9 +119,11 @@ container-cli = { path = "crates/adapters/driving/container-cli" }
 # ctxloom-lib, the shared substrate (S2): the driving edge's call, failure, notices
 # and argument shims. Pinned by full commit over https, as taskloom pins it;
 # its angzarr pins are the ones above.
-cli-support = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "48145d399e9fca854278ba2dfec5e1b092ed92d7" }
+cli-support = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "b2e6699cae19149233a68cb5e1527d21880bc2ac" }
 # process-env (S3): the environment read once into a snapshot the composition root hands down.
-process-env = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "48145d399e9fca854278ba2dfec5e1b092ed92d7" }
+process-env = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "b2e6699cae19149233a68cb5e1527d21880bc2ac" }
+# project-dir (S4): the ancestor walk with injected rules, and the checked project id.
+project-dir = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "b2e6699cae19149233a68cb5e1527d21880bc2ac" }
 
 # HTTP for forge-github (owner, 2026-11-04): the blocking client, so the
 # synchronous CLI holds no runtime of its own, and the TLS stack chosen below.

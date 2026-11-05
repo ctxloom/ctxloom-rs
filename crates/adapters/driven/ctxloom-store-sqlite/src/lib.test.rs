@@ -11,7 +11,7 @@ use super::Stores;
 fn test_a_project_s_database_is_ctxloom_db_in_its_directory() {
     let stores = Stores::new(Arc::new(Rooted::temp().unwrap()), "/home/u");
     assert_eq!(
-        stores.path("jolly-mute-magma"),
+        stores.path("jolly-mute-magma").unwrap(),
         Path::new("/home/u/.ctxloom/projects/jolly-mute-magma/ctxloom.db")
     );
 }
@@ -128,38 +128,85 @@ async fn test_a_read_only_store_is_replaced_when_a_write_asks() {
 
 use super::StoreOpenError;
 use angzarr_diagnostic::Diagnostic;
+use angzarr_embedded::angzarr_ports::Arg as PortArg;
+use angzarr_embedded::StoreError;
 use os::Mode;
 
 #[test]
 fn test_the_path_is_the_home_the_app_dir_projects_the_id_and_the_file_name() {
     let stores = Stores::new(Arc::new(Rooted::temp().unwrap()), "/h");
-    let path = stores.path("p");
+    let path = stores.path("p").unwrap();
     let parts: Vec<_> = path.iter().map(|p| p.to_str().unwrap()).collect();
     assert_eq!(parts, ["/", "h", ".ctxloom", "projects", "p", "ctxloom.db"]);
     // asking where a database is makes nothing
-    assert_eq!(stores.path("p"), path);
+    assert_eq!(stores.path("p").unwrap(), path);
 }
 
+/// Defect (1), fixed: an id that is not one plain name is refused, with the
+/// shared crate's coded diagnostic, rather than joined verbatim (it could
+/// leave the projects directory).
 #[test]
-fn test_the_path_is_the_id_joined_verbatim_with_no_check_of_it() {
-    // Candidate bug, pinned as it is: an id with a separator or dots is not
-    // refused or flattened, so it can leave the projects directory.
+fn test_an_unsafe_project_id_is_refused_with_a_coded_diagnostic() {
     let stores = Stores::new(Arc::new(Rooted::temp().unwrap()), "/h");
-    assert_eq!(
-        stores.path("../x"),
-        Path::new("/h/.ctxloom/projects/../x/ctxloom.db")
-    );
-    assert_eq!(
-        stores.path("a/b"),
-        Path::new("/h/.ctxloom/projects/a/b/ctxloom.db")
-    );
+    let cases = [
+        ("", "project-dir-id-empty"),
+        ("/etc", "project-dir-id-absolute"),
+        ("../x", "project-dir-id-separator"),
+        ("a/b", "project-dir-id-separator"),
+        ("a\\b", "project-dir-id-separator"),
+        ("..", "project-dir-id-relative"),
+        ("a\0b", "project-dir-id-nul"),
+    ];
+    for (id, code) in cases {
+        let error = stores.path(id).expect_err(id);
+        assert_eq!(error.code(), code, "{id:?}");
+        assert!(matches!(error, StoreOpenError::UnsafeProject(_)), "{id:?}");
+        let shown = |a: Vec<(&str, angzarr_diagnostic::Arg)>| format!("{a:?}");
+        assert_eq!(
+            shown(error.args()),
+            if id.is_empty() {
+                "[]".to_string()
+            } else {
+                format!("[(\"id\", Str({id:?}))]")
+            },
+            "{id:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_an_unsafe_project_id_opens_nothing_and_makes_nothing() {
+    let fs = Arc::new(Rooted::temp().unwrap());
+    let stores = Stores::new(fs.clone(), "/h");
+    let error = stores.open("../x").await.err().expect("refused");
+    assert_eq!(error.code(), "project-dir-id-separator");
+    let error = stores.open_existing("../x").await.err().expect("refused");
+    let StoreError::Unavailable(cause) = error else {
+        panic!("not Unavailable: {error:?}");
+    };
+    assert_eq!(cause.code, "project-dir-id-separator");
+    assert_eq!(cause.args, [("id", PortArg::Str("../x".to_string()))]);
+    assert!(!fs.exists(Path::new("/h")).unwrap(), "not even the home");
+}
+
+#[tokio::test]
+async fn test_the_port_refuses_an_unsafe_project_id_too() {
+    let fs = Arc::new(Rooted::temp().unwrap());
+    let mut stores = super::SqliteStores::new(fs.clone(), "/h");
+    assert!(ProjectStores::open(&mut stores, &project("a/b"))
+        .await
+        .is_err());
+    assert!(ProjectStores::open_existing(&mut stores, &project("a/b"))
+        .await
+        .is_err());
+    assert!(!fs.exists(Path::new("/h")).unwrap());
 }
 
 #[test]
 fn test_the_path_is_relative_to_a_relative_home() {
     let stores = Stores::new(Arc::new(Rooted::temp().unwrap()), "rel/home");
     assert_eq!(
-        stores.path("p"),
+        stores.path("p").unwrap(),
         Path::new("rel/home/.ctxloom/projects/p/ctxloom.db")
     );
 }

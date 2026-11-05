@@ -58,7 +58,11 @@ fn owner<'a>(code: &str, packages: &'a [Package]) -> Option<&'a Package> {
 
 /// The `$variables` of `code`'s message in the crate's en-US catalogs: the
 /// message's own lines, up to the next message. None when no catalog has it.
+/// A crate whose build prefixes its catalog with its name (ctxloom-lib's, as
+/// taskloom's) writes the id without that prefix.
 fn message_vars(package: &Package, code: &str) -> Option<BTreeSet<String>> {
+    let bare = code.strip_prefix(&format!("{}-", package.name));
+    let wanted: Vec<&str> = std::iter::once(code).chain(bare).collect();
     let catalogs = files::children(package.dir.join("locales/en-US"));
     for entry in catalogs {
         if entry.extension().is_none_or(|e| e != "ftl") {
@@ -67,7 +71,7 @@ fn message_vars(package: &Package, code: &str) -> Option<BTreeSet<String>> {
         let text = files::read(&entry).ok()?;
         let mut lines = text
             .lines()
-            .skip_while(|l| !l.starts_with(&format!("{code} =")));
+            .skip_while(|l| !wanted.iter().any(|id| l.starts_with(&format!("{id} ="))));
         let Some(first) = lines.next() else { continue };
         let rest = lines.take_while(|l| l.starts_with(' ') || l.is_empty());
         let block: Vec<&str> = std::iter::once(first).chain(rest).collect();
@@ -192,6 +196,7 @@ fn test_the_binary_reports_the_diagnostics_of_every_crate_composed_in() {
         "isolation-application",
         "library",
         "library-application",
+        "project-dir",
         "reclaim-application",
         "session-cli",
         "session-files",

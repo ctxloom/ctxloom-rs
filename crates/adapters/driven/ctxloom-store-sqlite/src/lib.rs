@@ -24,6 +24,9 @@ use session_ports::ProjectStores;
 pub use error::diagnostic_samples;
 pub use error::{StoreOpenError, EN_US};
 
+/// The app's directory under a home.
+const APP_DIR: &str = ".ctxloom";
+
 /// The ctxloom stores under one home.
 pub struct Stores {
     fs: Arc<dyn Fs>,
@@ -40,18 +43,23 @@ impl Stores {
     }
 
     /// Where `project`'s database is: `<home>/.ctxloom/projects/<project>/ctxloom.db`.
-    pub fn path(&self, project: &str) -> PathBuf {
-        self.home
-            .join(".ctxloom")
-            .join("projects")
-            .join(project)
-            .join("ctxloom.db")
+    ///
+    /// Refused where `project` is not one plain name (empty, absolute, with a
+    /// path separator or NUL, or `.` or `..`): the shared `project-dir`
+    /// crate's check, so an id cannot place the database outside the
+    /// projects directory.
+    pub fn path(&self, project: &str) -> Result<PathBuf, StoreOpenError> {
+        project_dir::project_dir(&self.home, APP_DIR, project)
+            .map(|dir| dir.join("ctxloom.db"))
+            .map_err(StoreOpenError::UnsafeProject)
     }
 
     /// `project`'s store, read-only: `None` where it has no database, and
     /// nothing is made.
     pub async fn open_existing(&self, project: &str) -> Result<Option<SqliteStore>, StoreError> {
-        let path = self.path(project);
+        let path = self
+            .path(project)
+            .map_err(|e| StoreError::Unavailable(e.cause()))?;
         let real = self.fs.real_path(&path).map_err(|e| {
             StoreError::Unavailable(
                 StoreOpenError::Unplaced {
@@ -67,7 +75,7 @@ impl Stores {
     /// `project`'s store, opened to write: its directory and file made and
     /// migrated if need be.
     pub async fn open(&self, project: &str) -> Result<SqliteStore, StoreOpenError> {
-        let path = self.path(project);
+        let path = self.path(project)?;
         let shown = path.display().to_string();
         if let Some(dir) = path.parent() {
             // As std's create_dir_all makes them: 0777 before the umask.

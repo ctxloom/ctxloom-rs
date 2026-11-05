@@ -37,6 +37,7 @@ session-files.workspace = true
 sessions-application.workspace = true
 sessions.workspace = true
 process-env.workspace = true
+project-dir.workspace = true
 
 [features]
 # The test-only commands (`ctxloom test ...`): the exit ladder, the --format
@@ -47,6 +48,7 @@ test-support = [
     "ctxloom-cli/test-support",
     "ctxloom-wiring/test-support",
     "ctxloom-store-sqlite/test-support",
+    "project-dir/test-support",
     "library/test-support",
     "library-application/test-support",
     "cache-files/test-support",
