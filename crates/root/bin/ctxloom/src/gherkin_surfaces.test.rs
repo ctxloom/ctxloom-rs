@@ -105,6 +105,14 @@ fn command(w: &mut World, name: String, bundle: String) {
     w.common.project.command(&bundle, &name);
 }
 
+/// Go's fixture: a dedicated `<name>-base` bundle, so the profile stands alone.
+#[given(expr = "a profile {string} exists")]
+fn profile_exists(w: &mut World, name: String) {
+    let base = format!("{name}-base");
+    w.common.project.bundle(&base);
+    w.common.project.profile(&name, &base);
+}
+
 #[given(expr = "a profile {string} with bundle {string}")]
 fn profile(w: &mut World, name: String, bundle: String) {
     w.common.project.profile(&name, &bundle);
@@ -615,6 +623,11 @@ fn skill_marker(w: &mut World, marker: String) {
 #[then(expr = "{string} is executable")]
 fn is_executable(w: &mut World, rel: String) {
     assert!(w.common.project.is_executable(&rel), "{rel}");
+}
+
+#[then(expr = "{string} does not exist")]
+fn does_not_exist(w: &mut World, rel: String) {
+    assert!(!w.common.project.exists(&rel), "{rel} exists");
 }
 
 #[then(expr = "{string} carries the marker {string}")]
