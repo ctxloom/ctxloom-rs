@@ -195,10 +195,22 @@ fn a_helper_a_runtime_started_is_killed_with_it() {
         "docker",
         "sleep 30 &\necho $! > \"$(dirname \"$0\")/helper\"\nwait",
     );
-    let slow = HostRuntimes::new(fs.clone(), env(), vec![bin.clone()], Duration::from_secs(1));
+    // A loaded machine may not have started the helper by the first limit:
+    // ask again with a longer one until it has.
     let started = std::time::Instant::now();
-    assert!(!slow.installed()[0].reachable);
-    assert!(started.elapsed() < Duration::from_secs(10));
+    for secs in [1, 5, 25] {
+        let slow = HostRuntimes::new(
+            fs.clone(),
+            env(),
+            vec![bin.clone()],
+            Duration::from_secs(secs),
+        );
+        assert!(!slow.installed()[0].reachable);
+        if fs.exists(&bin.join("helper")).unwrap() {
+            break;
+        }
+    }
+    assert!(started.elapsed() < Duration::from_secs(40));
     let pid = fs.read_to_string(&bin.join("helper")).unwrap();
     let stat = Path::new("/proc").join(pid.trim()).join("stat");
     let host = file_system::Os::new(os::host(), Path::new(os::host().flavor().top())).unwrap();

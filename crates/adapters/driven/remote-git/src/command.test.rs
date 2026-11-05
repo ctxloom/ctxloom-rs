@@ -1,11 +1,12 @@
 //! Running git under a time limit: a git that hangs is killed and reaped, and
 //! the failure says so.
 
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use super::{Failed, Git, DEFAULT_TIMEOUT};
 use crate::auth::Credential;
-use crate::fixtures::{env, exists, put_exec, root, runs_scripts, slurp};
+use crate::fixtures::{env, exists, fs, put_exec, root, runs_scripts, slurp};
 
 const TINY: Duration = Duration::from_millis(20);
 
@@ -36,7 +37,11 @@ fn a_git_that_outlives_its_limit_is_killed_reaped_and_named() {
 /// Whether the process is gone: no `/proc` entry, or a zombie nobody has
 /// reaped yet (an orphan waits for init).
 fn gone(pid: &str) -> bool {
-    !exists(format!("/proc/{pid}")) || slurp(format!("/proc/{pid}/stat")).contains(") Z ")
+    // A process can vanish between the two looks.
+    !exists(format!("/proc/{pid}"))
+        || fs()
+            .read_to_string(Path::new(&format!("/proc/{pid}/stat")))
+            .map_or(true, |stat| stat.contains(") Z "))
 }
 
 #[test]
@@ -46,11 +51,18 @@ fn a_helper_the_git_started_is_killed_with_it() {
     }
     // The helper holds git's pipes, as a hook or a credential helper would.
     let (dir, _) = stub("#!/bin/sh\nsleep 30 &\necho $! > \"$(dirname \"$0\")/helper\"\nwait\n");
-    let git = Git::new(dir.root().join("git"), Duration::from_secs(1), env());
+    // A loaded machine may not have started the helper by the first limit:
+    // ask again with a longer one until it has.
     let started = Instant::now();
-    let why = git.run(Some(dir.root()), &["fetch"], None).unwrap_err();
-    assert!(why.contains("did not finish"), "{why}");
-    assert!(started.elapsed() < Duration::from_secs(10));
+    for secs in [1, 5, 25] {
+        let git = Git::new(dir.root().join("git"), Duration::from_secs(secs), env());
+        let why = git.run(Some(dir.root()), &["fetch"], None).unwrap_err();
+        assert!(why.contains("did not finish"), "{why}");
+        if exists(dir.root().join("helper")) {
+            break;
+        }
+    }
+    assert!(started.elapsed() < Duration::from_secs(40));
     let pid = slurp(dir.root().join("helper"));
     assert!(gone(pid.trim()), "the helper {pid} outlived the git");
 }

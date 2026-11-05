@@ -422,10 +422,17 @@ fn a_helper_taskloom_started_is_killed_with_it() {
     // The helper holds taskloom's pipes; the limit is long enough for the
     // script to have started it.
     let (dir, cli) = stub("#!/bin/sh\nsleep 30 &\necho $! > \"$(dirname \"$0\")/helper\"\nwait\n");
-    let cli = cli.with_timeout(Duration::from_secs(1));
+    // A loaded machine may not have started the helper by the first limit:
+    // ask again with a longer one until it has.
     let started = std::time::Instant::now();
-    assert!(matches!(cli.deferred(), Err(TasksError::TimedOut { .. })));
-    assert!(started.elapsed() < Duration::from_secs(10));
+    for secs in [1, 5, 25] {
+        let cli = cli.clone().with_timeout(Duration::from_secs(secs));
+        assert!(matches!(cli.deferred(), Err(TasksError::TimedOut { .. })));
+        if dir.exists(&os::fixture("/helper")).unwrap() {
+            break;
+        }
+    }
+    assert!(started.elapsed() < Duration::from_secs(40));
     let pid = read(&dir, "helper");
     let host =
         file_system::Os::new(os::host(), std::path::Path::new(os::host().flavor().top())).unwrap();

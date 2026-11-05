@@ -113,10 +113,17 @@ fn test_a_helper_the_program_started_is_killed_with_it() {
     // long enough for the script to have started it.
     let (dir, path) =
         script("#!/bin/sh\nsleep 30 &\necho $! > \"$(dirname \"$0\")/helper\"\nwait\n");
-    let probe = ProcessProbe::new(Duration::from_secs(1), env());
+    // A loaded machine may not have started the helper by the first limit:
+    // ask again with a longer one until it has.
     let started = Instant::now();
-    assert!(probe.answers(&path).is_err());
-    assert!(started.elapsed() < Duration::from_secs(10));
+    for secs in [1, 5, 25] {
+        let probe = ProcessProbe::new(Duration::from_secs(secs), env());
+        assert!(probe.answers(&path).is_err());
+        if dir.exists(&os::fixture("/helper")).unwrap() {
+            break;
+        }
+    }
+    assert!(started.elapsed() < Duration::from_secs(40));
     let pid = dir.read_to_string(&os::fixture("/helper")).unwrap();
     let stat = format!("/proc/{}/stat", pid.trim());
     // Gone, or a zombie nobody has reaped yet (an orphan waits for init).

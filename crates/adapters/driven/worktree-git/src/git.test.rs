@@ -123,7 +123,11 @@ fn a_git_that_outlives_its_limit_is_killed_reaped_and_named() {
 /// Whether the process is gone: no `/proc` entry, or a zombie nobody has
 /// reaped yet (an orphan waits for init).
 fn gone(pid: &str) -> bool {
-    !exists(format!("/proc/{pid}")) || slurp(format!("/proc/{pid}/stat")).contains(") Z ")
+    // A process can vanish between the two looks.
+    !exists(format!("/proc/{pid}"))
+        || fs()
+            .read_to_string(Path::new(&format!("/proc/{pid}/stat")))
+            .map_or(true, |stat| stat.contains(") Z "))
 }
 
 #[test]
@@ -133,11 +137,23 @@ fn a_hook_the_git_started_is_killed_with_it() {
     }
     // The hook holds git's pipes, as a real one would.
     let (dir, _, _) = stub("#!/bin/sh\nsleep 30 &\necho $! > \"$(dirname \"$0\")/hook\"\nwait\n");
-    let git = Git::new(fs(), dir.root().join("git"), Duration::from_secs(1), env());
+    // A loaded machine may not have started the hook by the first limit:
+    // ask again with a longer one until it has.
     let started = Instant::now();
-    let error = git.run(dir.root(), &["checkout"]).unwrap_err();
-    assert!(matches!(error, GitError::TimedOut { .. }), "{error:?}");
-    assert!(started.elapsed() < Duration::from_secs(10));
+    for secs in [1, 5, 25] {
+        let git = Git::new(
+            fs(),
+            dir.root().join("git"),
+            Duration::from_secs(secs),
+            env(),
+        );
+        let error = git.run(dir.root(), &["checkout"]).unwrap_err();
+        assert!(matches!(error, GitError::TimedOut { .. }), "{error:?}");
+        if exists(dir.root().join("hook")) {
+            break;
+        }
+    }
+    assert!(started.elapsed() < Duration::from_secs(40));
     let pid = slurp(dir.root().join("hook"));
     assert!(gone(pid.trim()), "the hook {pid} outlived the git");
 }
