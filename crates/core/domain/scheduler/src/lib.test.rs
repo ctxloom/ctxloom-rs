@@ -145,3 +145,40 @@ fn every_diagnostic_has_a_message_that_uses_exactly_its_args() {
         assert!(codes.iter().any(|c| c == id), "{id} has no sample");
     }
 }
+
+#[test]
+fn a_cover_is_named_as_its_stream_is() {
+    use angzarr_embedded::v1::{Cover, Uuid};
+    let cover = Cover {
+        domain: "hold".to_string(),
+        root: Some(Uuid::from_bytes([1; 16])),
+        edition: Some("e".to_string()),
+    };
+    assert_eq!(
+        crate::cover_text(&cover),
+        "hold/01010101-0101-0101-0101-010101010101@e"
+    );
+    let no_root = Cover {
+        root: None,
+        edition: None,
+        ..cover
+    };
+    assert_eq!(crate::cover_text(&no_root), "hold/");
+}
+
+#[test]
+fn rejections_display_their_code_and_args() {
+    use crate::SchedulerRejection;
+    assert_eq!(
+        SchedulerRejection::AlarmIdEmpty.to_string(),
+        "scheduler-alarm-id-empty"
+    );
+    assert_eq!(
+        SchedulerRejection::TargetMismatch {
+            stream: "a".into(),
+            target: "b".into()
+        }
+        .to_string(),
+        "scheduler-target-mismatch stream=a target=b"
+    );
+}

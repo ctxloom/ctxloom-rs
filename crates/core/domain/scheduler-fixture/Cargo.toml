@@ -19,6 +19,7 @@ scheduler.workspace = true
 angzarr-build.workspace = true
 
 [dev-dependencies]
+angzarr-embedded = { workspace = true, features = ["test-support"] }
 mutants.workspace = true
 
 [lints]

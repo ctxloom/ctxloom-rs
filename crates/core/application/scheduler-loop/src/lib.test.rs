@@ -419,6 +419,7 @@ fn an_alarm_whose_fact_fails_is_reported_and_stays_due() {
     w.tick(&mut scheduler, 0);
     let tick = ready(scheduler.tick(&kernel, &w.store, at(100))).unwrap();
     assert_eq!(tick.failed.len(), 1);
+    assert!(!tick.failed[0].1.is_empty(), "the failure's code");
     assert!(tick.sent.is_empty());
     // Still due on the next tick, through the real registry.
     assert_eq!(fired_of(&w.tick(&mut scheduler, 100)), vec![(1, 100)]);
@@ -572,9 +573,10 @@ fn a_crash_between_the_firing_and_its_delivery_is_delivered_once_by_resume() {
 
 // The crate's catalog test (the binary's holds the same for the whole graph).
 #[test]
-fn every_diagnostic_has_a_message_that_uses_exactly_its_args() {
+fn samples_are_not_empty_and_every_diagnostic_has_a_message_that_uses_exactly_its_args() {
     let (name, catalog) = EN_US;
     assert_eq!(name, "scheduler-loop");
+    assert_eq!(diagnostic_samples().len(), 1);
     for sample in diagnostic_samples() {
         let code = sample.code();
         assert!(code.starts_with("scheduler-loop-"), "{code} is prefixed");

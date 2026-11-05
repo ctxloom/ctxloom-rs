@@ -378,3 +378,24 @@ fn the_model_is_named_and_reads_the_scheduler_domain() {
     assert_eq!(DueModel::default().name(), "scheduler-due");
     let _: Model = catch_up();
 }
+
+#[test]
+fn an_unreadable_event_fails_the_projector_with_a_code_and_the_type_url() {
+    use angzarr_embedded::ProjectorHandler;
+    let model = DueModel::default();
+    let stranger = EventPage {
+        sequence: 0,
+        payload: Some(Any {
+            type_url: "/toy.v1.Stranger".to_string(),
+            value: vec![],
+        }),
+        meta: None,
+    };
+    let error = ready(model.dispatch(&book(vec![stranger], 1))).unwrap_err();
+    assert!(!error.code.is_empty());
+    assert!(
+        error.extras.values().any(|v| v.contains("toy.v1.Stranger")),
+        "{:?}",
+        error.extras
+    );
+}
