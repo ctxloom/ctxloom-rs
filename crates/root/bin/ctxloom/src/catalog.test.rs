@@ -177,6 +177,7 @@ fn test_the_binary_reports_the_diagnostics_of_every_crate_composed_in() {
     let composed = [
         "cache-files",
         "config-files",
+        "container-cli",
         "content-fs",
         "ctxloom-cli",
         "ctxloom-lib",
@@ -186,6 +187,8 @@ fn test_the_binary_reports_the_diagnostics_of_every_crate_composed_in() {
         "editor-process",
         "hook-cli",
         "init-application",
+        "isolation",
+        "isolation-application",
         "library",
         "library-application",
         "reclaim-application",
@@ -196,6 +199,7 @@ fn test_the_binary_reports_the_diagnostics_of_every_crate_composed_in() {
         "setup-application",
         "setup-cli",
         "surface-ports",
+        "worktree-git",
     ];
     assert_eq!(
         owners.iter().map(String::as_str).collect::<Vec<_>>(),
