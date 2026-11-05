@@ -34,13 +34,11 @@ fn the_name_is_matched_whole() {
     assert!(!env.is_exported("CLAUDE_CODE_OAUTH_TOKEN"));
 }
 
-#[cfg(unix)]
 #[test]
 fn a_value_that_is_not_unicode_still_counts_as_exported() {
-    use std::os::unix::ffi::OsStringExt;
     let env = ProcessEnv::of([(
         OsString::from("CLAUDE_CODE_OAUTH_TOKEN"),
-        OsString::from_vec(vec![0xff, 0xfe]),
+        os::not_unicode("t"),
     )]);
     assert!(env.is_exported("CLAUDE_CODE_OAUTH_TOKEN"));
 }

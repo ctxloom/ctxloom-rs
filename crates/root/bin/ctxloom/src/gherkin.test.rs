@@ -538,14 +538,15 @@ fn home_files_match(w: &mut World, count: usize, pattern: String) {
             *found += 1;
             return;
         };
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().into_owned();
+        for path in files::children(dir) {
+            let name = path
+                .file_name()
+                .expect("a name")
+                .to_string_lossy()
+                .into_owned();
             let ok = *first == "*" || *first == name;
             if ok {
-                walk(&entry.path(), &format!("{rel}/{name}"), rest, found);
+                walk(&path, &format!("{rel}/{name}"), rest, found);
             }
         }
     }
@@ -741,9 +742,7 @@ fn bulk_gone(w: &mut World, harp: String) {
 #[then(expr = "the machine-written bulk of {string} is still there")]
 fn bulk_still_there(w: &mut World, harp: String) {
     assert!(
-        w.session_dir(&harp)
-            .join("transcripts/transcript.jsonl")
-            .exists(),
+        files::exists(w.session_dir(&harp).join("transcripts/transcript.jsonl")),
         "{harp}'s transcript is gone: {}",
         w.ran().said()
     );

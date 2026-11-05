@@ -167,12 +167,12 @@ fn test_the_wired_sessions_read_the_purge_age_from_the_project_config() {
     let world = World::new("purge-age");
     let mut sessions = crate::Wiring::from_process().unwrap().sessions();
     assert_eq!(sessions.purge_age().unwrap(), None);
-    std::fs::create_dir_all(world.dir.join("work/.ctxloom")).unwrap();
-    std::fs::write(
+    crate::fixtures::mkdirs(world.dir.join("work/.ctxloom"));
+    crate::fixtures::put_mode(
         world.dir.join("work/.ctxloom/config.yaml"),
         "schema_version: 8\nsession_purge_age: 45d\n",
-    )
-    .unwrap();
+        0o644,
+    );
     let mut sessions = crate::Wiring::from_process().unwrap().sessions();
     assert_eq!(sessions.purge_age().unwrap(), Some("45d".to_string()));
 }
