@@ -39,7 +39,11 @@ fn test_distilled_forms_are_preferred_unless_turned_off() {
 }
 
 // A config that fails to decode (a value of the wrong shape, in a layer or
-// after the overrides) is the defaults alone.
+// after the overrides) is the defaults alone. Go parity, not a defect: Go's
+// Config.UnmarshalYAML (internal/core/config/config.go:449) returns the
+// decode error before fromDoc, so nothing of the document is applied, and
+// Builder.Decode (reading.go:64) only warns; an override's own key vanishes
+// with the rest.
 #[test]
 fn test_an_unreadable_shape_reduces_the_config_to_nothing() {
     let sound = parse("editor:\n  command: vim\n").unwrap();
