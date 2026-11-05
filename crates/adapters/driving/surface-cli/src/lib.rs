@@ -23,7 +23,10 @@ pub use commands::nouns;
 /// The program's name, for the warnings.
 const PROG: &str = "ctxloom";
 
-pub use cli_support::{Call, Failure};
+pub use cli_support::Failure;
+
+/// One command, with the global flags the library's use cases take.
+pub type Call<'a> = cli_support::Call<'a, Flags>;
 
 /// A setup error as the failure it ends the command in.
 trait IntoFailure {
@@ -64,11 +67,7 @@ pub fn run(
     });
     let cx = Context {
         setup,
-        flags: Flags {
-            degraded: call.degraded,
-            config_set: call.config_set.clone(),
-            no_companions: call.no_companions,
-        },
+        flags: call.globals.clone(),
         format,
         catalog,
     };
@@ -94,7 +93,7 @@ fn emit<T: Serialize>(
     value: &T,
     text: impl FnOnce(&mut dyn Write) -> io::Result<()>,
 ) -> Result<(), Failure> {
-    cli_support::emit(cx.format, out, value, text).map_err(|e| {
+    cli_support::emit_or(cx.format, out, value, text, |e| {
         failed(SetupError::Request {
             detail: format!("the answer could not be written: {e}"),
         })

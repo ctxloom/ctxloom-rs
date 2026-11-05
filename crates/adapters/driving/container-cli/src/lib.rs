@@ -21,7 +21,6 @@ use std::io::Write;
 
 use angzarr_diagnostic::Diagnostic;
 use angzarr_presentation::{write_json, Format};
-use clap::ArgMatches;
 use isolation_application::ContainerUse;
 
 pub use commands::nouns;
@@ -29,25 +28,10 @@ pub use commands::nouns;
 pub use fault::diagnostic_samples;
 pub use fault::{CliFault, EN_US};
 
-/// One command, as this crate is asked to run it.
-pub struct Call<'a> {
-    pub matches: &'a ArgMatches,
-    pub explicit_format: Option<Format>,
-    pub default_format: Format,
-}
-
-/// Why a command did not complete, and its exit code.
-#[derive(Debug)]
-pub struct Failure {
-    pub cause: Box<dyn Diagnostic>,
-    pub exit: u8,
-}
+pub use cli_support::{Call, Failure};
 
 fn failure(cause: impl Diagnostic + 'static, exit: u8) -> Failure {
-    Failure {
-        cause: Box::new(cause),
-        exit,
-    }
+    Failure::new(cause, exit)
 }
 
 fn app(error: isolation_application::IsolationError) -> Failure {
@@ -65,7 +49,11 @@ fn output(error: std::io::Error) -> Failure {
 }
 
 /// Run `container` (given the matches of the whole line).
-pub fn run(uses: &dyn ContainerUse, call: &Call<'_>, out: &mut dyn Write) -> Result<u8, Failure> {
+pub fn run<G>(
+    uses: &dyn ContainerUse,
+    call: &Call<'_, G>,
+    out: &mut dyn Write,
+) -> Result<u8, Failure> {
     let format = call.explicit_format.unwrap_or(call.default_format);
     let sub = call
         .matches
@@ -138,7 +126,7 @@ pub fn run(uses: &dyn ContainerUse, call: &Call<'_>, out: &mut dyn Write) -> Res
 /// The bare noun prints its help, which is prose: no encoding carries it, so
 /// a machine-readable format aimed at it is refused rather than answered with
 /// text and a 0.
-fn bare(call: &Call<'_>, out: &mut dyn Write) -> Result<u8, Failure> {
+fn bare<G>(call: &Call<'_, G>, out: &mut dyn Write) -> Result<u8, Failure> {
     if call.explicit_format == Some(Format::Json) {
         return Err(failure(
             CliFault::HelpNotPayload {

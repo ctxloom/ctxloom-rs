@@ -53,11 +53,11 @@ struct Context<'a> {
 
 /// Run `noun` (given the matches of the whole line); `refresh` is the project
 /// refresh a pull ends with.
-pub fn run(
+pub fn run<G>(
     deps: &Deps,
     refresh: &dyn ProjectRefresh,
     noun: &str,
-    call: &Call<'_>,
+    call: &Call<'_, G>,
     catalog: &Catalog,
     out: &mut dyn Write,
     err: &mut dyn Write,
@@ -102,7 +102,7 @@ fn emit<T: Serialize>(
     value: &T,
     text: impl FnOnce(&mut dyn Write) -> io::Result<()>,
 ) -> Result<(), Failure> {
-    cli_support::emit(format, out, value, text).map_err(|e| {
+    cli_support::emit_or(format, out, value, text, |e| {
         AppError::File {
             what: "the answer".to_string(),
             detail: e.to_string(),

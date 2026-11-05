@@ -91,11 +91,7 @@ pub(crate) fn container(
     };
     let wiring = Wiring::from_process().map_err(wired)?;
     let library = Rc::new(crate::library::build(None).map_err(wired)?);
-    let flags = Flags {
-        degraded: call.degraded,
-        config_set: call.config_set.clone(),
-        no_companions: call.no_companions,
-    };
+    let flags = call.globals.clone();
     let containers = Containers::new(
         HostRuntimes::from_process(),
         Engines {
@@ -109,13 +105,5 @@ pub(crate) fn container(
         },
         UserFilesFs::new(wiring.fs()),
     );
-    let inner = container_cli::Call {
-        matches: call.matches,
-        explicit_format: call.explicit_format,
-        default_format: call.default_format,
-    };
-    container_cli::run(&containers, &inner, out).map_err(|f| Failure {
-        cause: f.cause,
-        exit: f.exit,
-    })
+    container_cli::run(&containers, call, out)
 }

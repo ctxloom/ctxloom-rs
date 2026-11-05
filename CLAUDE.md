@@ -159,10 +159,25 @@ angzarr-platform's, and `angzarr-presentation` and `angzarr-diagnostic` are
 angzarr core's, all `Apache-2.0 OR BSD-3-Clause`; this workspace is
 `AGPL-3.0-only`.
 
-To change a sibling and this workspace together, `cp .cargo/local-deps.toml
-.cargo/config.toml` and add a `[patch]` for it: a gitignored override that CI,
-a fresh clone and the pre-commit gates never read. Restore Cargo.lock before
-committing, and land the change by pushing the sibling and bumping its rev.
+The driving edge's shared shims (`cli-support`: `Call<G>`, `Failure`, the
+notices printers, `report_failure`, the argument readers) are
+ctxloom-lib's (`github.com/ctxloom/ctxloom-lib`), a git dependency pinned by
+full commit over https. Its angzarr pins are this workspace's, and the lock
+holds one `cli-support` (the same test). The application's own global flags
+(`library_application::Flags`) ride in the call as `Call<Flags>`'s `globals`;
+ctxloom-lib itself knows no ctxloom word (its vocabulary check).
+
+## Co-developing a sibling or ctxloom-lib
+
+To change a sibling (angzarr, angzarr-platform, ...) or ctxloom-lib and this
+workspace together, `cp .cargo/local-deps.toml .cargo/config.toml`: a
+gitignored `[patch]` that CI, a fresh clone and the pre-commit gates never
+read. For ctxloom-lib it is
+`[patch."https://github.com/ctxloom/ctxloom-lib"]` with
+`cli-support = { path = "../ctxloom-lib/crates/adapters/driving/cli-support" }`
+(one line per ctxloom-lib crate used; the sample is in local-deps.toml).
+Restore Cargo.lock before committing, and land the change by pushing the
+sibling (ctxloom-lib's gates and mutation first) and bumping its rev.
 
 ## Storage is angzarr-store-sqlite
 

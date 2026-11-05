@@ -224,9 +224,11 @@ mod commands_run {
             explicit_format: Some(format),
             default_format: Format::Json,
             stdout_is_terminal: false,
-            degraded: false,
-            no_companions: false,
-            config_set: Vec::new(),
+            globals: library_application::Flags {
+                degraded: false,
+                no_companions: false,
+                config_set: Vec::new(),
+            },
         };
         let mut err = Vec::new();
         let exit = run(&world.setup, &noun, &call, &catalog(), out, &mut err);
@@ -255,9 +257,11 @@ mod commands_run {
             explicit_format: None,
             default_format: Format::Text,
             stdout_is_terminal: false,
-            degraded: false,
-            no_companions: false,
-            config_set: Vec::new(),
+            globals: library_application::Flags {
+                degraded: false,
+                no_companions: false,
+                config_set: Vec::new(),
+            },
         };
         let failure = run(
             &world.setup,
@@ -289,9 +293,11 @@ mod commands_run {
             explicit_format: None,
             default_format: Format::Json,
             stdout_is_terminal: true,
-            degraded: false,
-            no_companions: false,
-            config_set: Vec::new(),
+            globals: library_application::Flags {
+                degraded: false,
+                no_companions: false,
+                config_set: Vec::new(),
+            },
         };
         let mut out = Vec::new();
         run(
@@ -473,9 +479,11 @@ mod commands_run {
             explicit_format: Some(Format::Text),
             default_format: Format::Text,
             stdout_is_terminal: false,
-            degraded: false,
-            no_companions: false,
-            config_set: Vec::new(),
+            globals: library_application::Flags {
+                degraded: false,
+                no_companions: false,
+                config_set: Vec::new(),
+            },
         };
         let mut out = Vec::new();
         let failure = run(

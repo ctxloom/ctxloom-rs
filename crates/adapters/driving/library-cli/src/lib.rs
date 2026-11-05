@@ -32,7 +32,10 @@ pub use commands::nouns;
 /// The program's name, for the warnings.
 const PROG: &str = "ctxloom";
 
-pub use cli_support::{Call, Failure};
+pub use cli_support::Failure;
+
+/// One command, with the global flags the library's use cases take.
+pub type Call<'a> = cli_support::Call<'a, Flags>;
 
 /// An application error as the failure it ends the command in.
 trait IntoFailure {
@@ -68,11 +71,7 @@ pub fn run(
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> Result<u8, Failure> {
-    let flags = Flags {
-        degraded: call.degraded,
-        config_set: call.config_set.clone(),
-        no_companions: call.no_companions,
-    };
+    let flags = call.globals.clone();
     let format = call.explicit_format.unwrap_or_else(|| {
         if call.stdout_is_terminal {
             Format::Text

@@ -318,11 +318,7 @@ impl Extension for Commands {
         }
         let refresh = SetupRefresh {
             setup: &wired.surface,
-            flags: library_application::Flags {
-                degraded: call.degraded,
-                config_set: call.config_set.clone(),
-                no_companions: call.no_companions,
-            },
+            flags: call.globals.clone(),
         };
         deps_cli::run(&wired.deps, &refresh, noun, call, catalog, out, err)
     }

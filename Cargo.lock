@@ -465,11 +465,11 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 [[package]]
 name = "cli-support"
 version = "0.1.0"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=1cb0a5d71a9863aeffb0598b2c83dcc2d60ab2e5#1cb0a5d71a9863aeffb0598b2c83dcc2d60ab2e5"
 dependencies = [
  "angzarr-diagnostic",
  "angzarr-presentation",
  "clap",
- "mutants",
  "serde",
 ]
 
@@ -523,6 +523,7 @@ dependencies = [
  "angzarr-diagnostic",
  "angzarr-presentation",
  "clap",
+ "cli-support",
  "isolation-application",
  "mutants",
  "serde_json",
@@ -700,6 +701,7 @@ dependencies = [
  "cli-support",
  "hook-cli",
  "isolation-application",
+ "library-application",
  "serde",
  "serde_json",
  "session-cli",
@@ -3202,6 +3204,7 @@ dependencies = [
  "angzarr-diagnostic",
  "angzarr-presentation",
  "clap",
+ "cli-support",
  "isolation-application",
  "mutants",
  "reclaim-application",

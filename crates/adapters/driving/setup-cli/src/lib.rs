@@ -62,10 +62,10 @@ pub use fault::diagnostic_samples;
 pub use fault::{CliFault, EN_US};
 
 /// Run `noun` (given the matches of the whole line).
-pub fn run(
+pub fn run<G>(
     uses: &UseCases<'_>,
     noun: &str,
-    call: &Call<'_>,
+    call: &Call<'_, G>,
     catalog: &Catalog,
     out: &mut dyn Write,
     err: &mut dyn Write,

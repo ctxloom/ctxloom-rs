@@ -10,3 +10,8 @@
 # paths relative to the checkout's root. Restore Cargo.lock
 # (`git checkout Cargo.lock`) before committing, and once the sibling's change
 # is pushed, bump the rev in Cargo.toml instead.
+
+# ctxloom-lib (cli-support), the shared substrate: uncomment to build against
+# the sibling checkout (../ctxloom-lib from this checkout's parent).
+# [patch."https://github.com/ctxloom/ctxloom-lib"]
+# cli-support = { path = "../ctxloom-lib/crates/adapters/driving/cli-support" }

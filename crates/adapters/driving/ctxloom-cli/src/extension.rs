@@ -8,8 +8,12 @@ use std::io::Write;
 
 use angzarr_presentation::Catalog;
 use clap::Command;
+use library_application::Flags;
 
-pub use cli_support::{Call, Failure};
+pub use cli_support::Failure;
+
+/// One command, with the global flags the library's use cases take.
+pub type Call<'a> = cli_support::Call<'a, Flags>;
 
 /// A group of nouns another crate owns.
 pub trait Extension {

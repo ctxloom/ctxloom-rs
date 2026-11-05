@@ -83,11 +83,7 @@ fn go(uses: &Fake, args: &[&str], explicit: Option<Format>) -> (Result<u8, Failu
     let matches = clap::Command::new("ctxloom")
         .subcommands(commands::nouns())
         .get_matches_from(std::iter::once("ctxloom").chain(args.iter().copied()));
-    let call = Call {
-        matches: &matches,
-        explicit_format: explicit,
-        default_format: Format::Json,
-    };
+    let call = Call::new(&matches, explicit, Format::Json);
     let mut out = Vec::new();
     let result = run(uses, &call, &mut out);
     (result, String::from_utf8(out).unwrap())

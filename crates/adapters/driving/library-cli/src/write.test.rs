@@ -49,9 +49,11 @@ fn run_on(library: &Library, line: &[&str], how: How) -> Ran {
         explicit_format: how.explicit,
         default_format: Format::Json,
         stdout_is_terminal: how.terminal,
-        degraded: how.degraded,
-        no_companions: false,
-        config_set: Vec::new(),
+        globals: library_application::Flags {
+            degraded: how.degraded,
+            no_companions: false,
+            config_set: Vec::new(),
+        },
     };
     let catalog = Catalog::en_us(&[library_application::EN_US]).unwrap();
     let (mut out, mut err) = (Vec::new(), Vec::new());

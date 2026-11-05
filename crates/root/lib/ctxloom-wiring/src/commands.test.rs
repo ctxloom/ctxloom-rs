@@ -97,7 +97,12 @@ fn run_line(commands: &mut Commands, line: &[&str]) -> (u8, String, String) {
     let matches = program.try_get_matches_from(argv).unwrap();
     let noun = matches.subcommand_name().unwrap().to_string();
     let json = angzarr_presentation::Format::Json;
-    let call = Call::new(&matches, Some(json), json);
+    let call = Call::with_globals(
+        &matches,
+        Some(json),
+        json,
+        library_application::Flags::default(),
+    );
     let catalog = Catalog::en_us(&[crate::EN_US]).unwrap();
     let (mut out, mut err) = (Vec::new(), Vec::new());
     let code = commands

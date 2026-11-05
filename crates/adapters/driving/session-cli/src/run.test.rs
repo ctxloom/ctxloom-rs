@@ -173,7 +173,7 @@ fn json_of(ran: &Ran) -> Value {
         ran.result
             .as_ref()
             .err()
-            .map(|f| f.error.code().to_string())
+            .map(|f| f.failure.cause.code().to_string())
     );
     serde_json::from_str(&ran.out).unwrap_or_else(|e| panic!("{e}: {:?}", ran.out))
 }
@@ -357,10 +357,11 @@ fn a_state_that_is_not_one_is_refused_naming_the_states() {
     ] {
         let ran = go(&mut fake, Format::Json, words);
         let failure = ran.result.unwrap_err();
-        assert_eq!(failure.exit, 2);
-        assert_eq!(failure.error.code(), "session-cli-bad-state");
+        assert_eq!(failure.failure.exit, 2);
+        assert_eq!(failure.failure.cause.code(), "session-cli-bad-state");
         let states = failure
-            .error
+            .failure
+            .cause
             .args()
             .into_iter()
             .find(|(n, _)| *n == "states")
@@ -501,8 +502,11 @@ fn a_failure_of_the_use_case_is_the_commands_failure_with_its_exit_code() {
     let failure = go(&mut fake, Format::Json, &["show", "no-such-harp"])
         .result
         .unwrap_err();
-    assert_eq!(failure.error.code(), "sessions-application-no-session");
-    assert_eq!(failure.exit, 1);
+    assert_eq!(
+        failure.failure.cause.code(),
+        "sessions-application-no-session"
+    );
+    assert_eq!(failure.failure.exit, 1);
 }
 
 // ------------------------------------------------------------------------ keep
@@ -558,8 +562,8 @@ fn a_bare_edit_refuses_and_names_the_field_it_takes() {
     let failure = go(&mut fake, Format::Json, &["edit", "amber-swift-owl"])
         .result
         .unwrap_err();
-    assert_eq!(failure.error.code(), "session-cli-edit-nothing");
-    assert_eq!(failure.exit, 2);
+    assert_eq!(failure.failure.cause.code(), "session-cli-edit-nothing");
+    assert_eq!(failure.failure.exit, 2);
     assert!(fake.renamed.is_empty());
 }
 
@@ -761,9 +765,9 @@ fn a_refusal_prints_the_plan_then_fails_refused() {
     let doc: Value = serde_json::from_str(&ran.out).unwrap();
     assert_eq!(doc["applied"], false, "the plan is still printed");
     let failure = ran.result.unwrap_err();
-    assert_eq!(failure.exit, 2);
+    assert_eq!(failure.failure.exit, 2);
     assert_eq!(
-        failure.error.code(),
+        failure.failure.cause.code(),
         "sessions-application-refused-retained"
     );
 }
@@ -989,8 +993,8 @@ fn an_answer_that_cannot_be_written_fails_the_command() {
     let mut fake = Fake::default();
     let session = parsed(&["list"]);
     let failure = run(&session, &mut fake, Format::Json, &mut Broken).unwrap_err();
-    assert_eq!(failure.error.code(), "session-cli-output");
-    assert_eq!(failure.exit, 1);
+    assert_eq!(failure.failure.cause.code(), "session-cli-output");
+    assert_eq!(failure.failure.exit, 1);
 }
 
 // A transcript without a last newline still ends its last line, once.
@@ -1236,10 +1240,10 @@ fn purge_with_yes_that_removed_nothing_refuses_after_reporting() {
     assert!(ran.out.contains("skipped"), "{}", ran.out);
     let failure = ran.result.unwrap_err();
     assert_eq!(
-        failure.error.code(),
+        failure.failure.cause.code(),
         "isolation-application-nothing-removed"
     );
-    assert_eq!(failure.exit, 2);
+    assert_eq!(failure.failure.exit, 2);
 }
 
 // "The retired reap switch is gone, not hidden".
@@ -1257,8 +1261,11 @@ fn a_session_with_no_directory_fails_the_listing() {
     let failure = go(&mut fake, Format::Text, &["worktrees", "list", "nobody"])
         .result
         .unwrap_err();
-    assert_eq!(failure.error.code(), "isolation-application-no-session");
-    assert_eq!(failure.exit, 1);
+    assert_eq!(
+        failure.failure.cause.code(),
+        "isolation-application-no-session"
+    );
+    assert_eq!(failure.failure.exit, 1);
 }
 
 // ----------------------------------------------------------------------- sweep
@@ -1419,8 +1426,8 @@ fn a_sweep_that_failed_while_acting_exits_nonzero_but_a_report_of_a_failure_does
         &["sweep", "--purge-older-than", "1d", "--yes"],
     );
     let failure = ran.result.unwrap_err();
-    assert_eq!(failure.error.code(), "session-cli-sweep-failed");
-    assert_eq!(failure.exit, 1);
+    assert_eq!(failure.failure.cause.code(), "session-cli-sweep-failed");
+    assert_eq!(failure.failure.exit, 1);
 }
 
 // ------------------------------------------- purge reaps the session's worktrees

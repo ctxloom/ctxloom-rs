@@ -5,11 +5,14 @@ use std::path::Path;
 
 /// angzarr crates a lock must hold exactly once, whatever pulls them in:
 /// taskloom's `tasks-lib` brings its own graph, so the pins must agree.
-const ONE_OF_EACH: [&str; 4] = [
+const ONE_OF_EACH: [&str; 5] = [
     "angzarr-proto",
     "angzarr-ports",
     "angzarr-diagnostic",
     "angzarr-embedded",
+    // ctxloom-lib's: its own angzarr pins are ours, so it must not be held
+    // at two commits (one from a transitive consumer).
+    "cli-support",
 ];
 
 #[test]
@@ -101,7 +104,8 @@ fn test_the_git_pins_of_the_one_of_each_crates_are_the_pins_of_one_repository_ea
             .collect();
         assert_eq!(sources.len(), 1, "{name}: {sources:?}");
         assert!(
-            sources[0].contains("github.com/angzarr-io/"),
+            sources[0].contains("github.com/angzarr-io/")
+                || sources[0].contains("github.com/ctxloom/ctxloom-lib"),
             "{name}: {}",
             sources[0]
         );

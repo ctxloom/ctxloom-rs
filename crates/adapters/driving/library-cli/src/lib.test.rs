@@ -115,9 +115,11 @@ fn go(line: &[&str], how: How, layers: &[&str]) -> Ran {
         explicit_format: how.explicit,
         default_format: Format::Json,
         stdout_is_terminal: how.terminal,
-        degraded: how.degraded,
-        no_companions: false,
-        config_set: Vec::new(),
+        globals: library_application::Flags {
+            degraded: how.degraded,
+            no_companions: false,
+            config_set: Vec::new(),
+        },
     };
     let catalog = Catalog::en_us(&[library_application::EN_US]).unwrap();
     let (mut out, mut err) = (Vec::new(), Vec::new());
@@ -545,9 +547,11 @@ fn test_running_a_noun_the_line_does_not_name_is_refused() {
         explicit_format: None,
         default_format: Format::Json,
         stdout_is_terminal: false,
-        degraded: false,
-        no_companions: false,
-        config_set: Vec::new(),
+        globals: library_application::Flags {
+            degraded: false,
+            no_companions: false,
+            config_set: Vec::new(),
+        },
     };
     let library = Setup::default().library();
     let catalog = Catalog::en_us(&[library_application::EN_US]).unwrap();
@@ -580,9 +584,11 @@ fn test_an_answer_that_cannot_be_written_fails_with_its_cause() {
         explicit_format: Some(Format::Json),
         default_format: Format::Json,
         stdout_is_terminal: false,
-        degraded: false,
-        no_companions: false,
-        config_set: Vec::new(),
+        globals: library_application::Flags {
+            degraded: false,
+            no_companions: false,
+            config_set: Vec::new(),
+        },
     };
     let library = Setup::default().library();
     let catalog = Catalog::en_us(&[library_application::EN_US]).unwrap();

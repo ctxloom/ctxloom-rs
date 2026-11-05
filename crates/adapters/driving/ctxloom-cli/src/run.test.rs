@@ -45,9 +45,9 @@ impl Extension for Fake {
             call.explicit_format,
             call.default_format,
             call.stdout_is_terminal,
-            call.degraded,
-            call.no_companions,
-            call.config_set
+            call.globals.degraded,
+            call.globals.no_companions,
+            call.globals.config_set
         );
         self.answer.map_err(|exit| Failure {
             cause: Box::new(CliError::Format {
@@ -380,7 +380,12 @@ fn test_no_extension_adds_no_nouns_and_answers_success() {
     let mut none = NoExtension;
     assert!(none.nouns().is_empty());
     let matches = Command::new("x").get_matches_from(["x"]);
-    let call = Call::new(&matches, None, Format::Json);
+    let call = Call::with_globals(
+        &matches,
+        None,
+        Format::Json,
+        library_application::Flags::default(),
+    );
     let catalog = Catalog::en_us(&[crate::EN_US]).unwrap();
     let ran = none.run("x", &call, &catalog, &mut Vec::new(), &mut Vec::new());
     assert!(matches!(ran, Ok(0)));

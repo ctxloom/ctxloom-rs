@@ -9,6 +9,7 @@ use clap::error::{ContextKind, ContextValue, ErrorKind};
 use clap::{Command, FromArgMatches};
 use cli_support::say_warning;
 use isolation_application::WorktreeUse;
+use library_application::Flags;
 use serde::Serialize;
 use sessions_application::{BindRequest, ImportService, SessionService};
 
@@ -158,12 +159,14 @@ fn extended(
         explicit_format,
         default_format: Format::choose(false, None, context.stdout_is_terminal),
         stdout_is_terminal: context.stdout_is_terminal,
-        degraded: matches.get_flag("degraded"),
-        no_companions: matches.get_flag("no_companions"),
-        config_set: matches
-            .get_many::<String>("config_set")
-            .map(|values| values.cloned().collect())
-            .unwrap_or_default(),
+        globals: Flags {
+            degraded: matches.get_flag("degraded"),
+            no_companions: matches.get_flag("no_companions"),
+            config_set: matches
+                .get_many::<String>("config_set")
+                .map(|values| values.cloned().collect())
+                .unwrap_or_default(),
+        },
     };
     match services.extension().run(noun, &call, catalog, out, err) {
         Ok(code) => code,
@@ -199,8 +202,8 @@ fn sessions<S: Services>(
                 let _ = writeln!(err, "{PROG}: {line}");
             }
             Err(CliError::Command {
-                error: failure.error,
-                exit: failure.exit,
+                error: failure.failure.cause,
+                exit: failure.failure.exit,
             })
         }
     }

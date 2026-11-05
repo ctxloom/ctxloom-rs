@@ -6,6 +6,7 @@ use angzarr_diagnostic::Diagnostic;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use angzarr_presentation::{write_json, Format};
+use cli_support::EXIT_REFUSED;
 use isolation_application::{IsolationError, WorktreeUse};
 use reclaim_application::{parse_age, ReclaimError, SweepRequest};
 use session_index::View;
@@ -36,13 +37,22 @@ pub struct Done {
     pub lines: Vec<String>,
 }
 
-/// A command that did not complete: why, its exit code, and the dead-letter
-/// lines to say beside it.
+/// A command that did not complete: why and its exit code (the shared
+/// [`cli_support::Failure`]), and the dead-letter lines to say beside it.
 #[derive(Debug)]
 pub struct Failure {
-    pub error: Box<dyn Diagnostic>,
-    pub exit: u8,
+    pub failure: cli_support::Failure,
     pub lines: Vec<String>,
+}
+
+impl Failure {
+    /// `cause`, ending the command with `exit`, with `lines` to say beside it.
+    fn new(cause: impl Diagnostic + 'static, exit: u8, lines: Vec<String>) -> Failure {
+        Failure {
+            failure: cli_support::Failure::new(cause, exit),
+            lines,
+        }
+    }
 }
 
 /// Run `session`'s command on `service`, writing its answer to `out`.
@@ -65,25 +75,20 @@ pub fn run<S: SessionService + ImportService + WorktreeUse>(
 
 /// A fault of the command line itself.
 fn fault(fault: CliFault) -> Failure {
-    Failure {
-        exit: fault.exit_code(),
-        error: Box::new(fault),
-        lines: Vec::new(),
-    }
+    let exit = fault.exit_code();
+    Failure::new(fault, exit, Vec::new())
 }
 
 /// A use case's failure: its diagnostic, its exit code, and the dead letters
 /// its kernel calls answered.
 fn failure(error: AppError) -> Failure {
-    Failure {
-        exit: error.exit_code(),
-        lines: error
-            .dead_letters()
-            .iter()
-            .map(|l| dead_letter_line(&l.letter))
-            .collect(),
-        error: Box::new(error),
-    }
+    let exit = error.exit_code();
+    let lines = error
+        .dead_letters()
+        .iter()
+        .map(|l| dead_letter_line(&l.letter))
+        .collect();
+    Failure::new(error, exit, lines)
 }
 
 /// The answer written, or why it could not be.
@@ -216,11 +221,8 @@ async fn execute<S: SessionService + ImportService + WorktreeUse>(
 
 /// An isolation use case's failure: its diagnostic and exit code.
 fn isolation_failure(error: IsolationError) -> Failure {
-    Failure {
-        exit: error.exit_code(),
-        error: Box::new(error),
-        lines: Vec::new(),
-    }
+    let exit = error.exit_code();
+    Failure::new(error, exit, Vec::new())
 }
 
 /// `session worktrees ...`: the scratch checkouts, listed or purged. A purge
@@ -343,11 +345,7 @@ async fn remove<S: SessionService + WorktreeUse>(
     })?;
     let mut done = dead_letters(&removal.dead_letters);
     if let Some(refusal) = removal.refusal {
-        return Err(Failure {
-            error: Box::new(refusal),
-            exit: 2,
-            lines: done.lines,
-        });
+        return Err(Failure::new(refusal, EXIT_REFUSED, done.lines));
     }
     if !args.yes {
         let flag = if args.even_if_live {
@@ -422,11 +420,8 @@ async fn sweep<S: SessionService + WorktreeUse>(
 
 /// A reclaim use case's failure: its diagnostic and exit code.
 fn reclaim_failure(error: ReclaimError) -> Failure {
-    Failure {
-        exit: error.exit_code(),
-        error: Box::new(error),
-        lines: Vec::new(),
-    }
+    let exit = error.exit_code();
+    Failure::new(error, exit, Vec::new())
 }
 
 async fn transcripts<S: SessionService + WorktreeUse>(
