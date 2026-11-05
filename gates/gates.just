@@ -51,6 +51,8 @@ gates_root := justfile_directory()
 
 # Format the Rust: this workspace's crates only (`_members`), never a path
 # dependency outside it, which `cargo fmt --all` would also format.
+[group('format')]
+[doc("Format the workspace's Rust (this workspace only)")]
 fmt:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -61,6 +63,8 @@ fmt:
 # `fmt`. Lists the files rustfmt would change (`-l`); VERBOSE=1 shows the
 # diffs.
 [no-exit-message]
+[group('format')]
+[doc("Check formatting, changing nothing (VERBOSE=1 shows diffs)")]
 fmt-check:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -87,6 +91,9 @@ _members:
 # (.git/info/lefthook-unstaged.patch) as well as by an unstaged diff.
 [positional-arguments]
 [no-exit-message]
+[private]
+[group('hook')]
+[doc("pre-commit: format the staged Rust in the index")]
 fmt-staged +files:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -155,6 +162,8 @@ _fmt-files +files:
 # network. The inclusion graphs are hidden (VERBOSE=1 shows them). bans'
 # duplicate-version warnings do not fail the gate; they stay in the log.
 [no-exit-message]
+[group('check')]
+[doc("cargo-deny: licenses, sources, bans, advisories")]
 lint-deps:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -168,6 +177,9 @@ lint-deps:
 # binary fails rather than skipping: a scan that passes by not running looked
 # at nothing.
 [no-exit-message]
+[private]
+[group('hook')]
+[doc("pre-commit: gitleaks over the staged changes")]
 secrets-scan-staged:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -182,6 +194,8 @@ secrets-scan-staged:
 # Every test in the workspace, by cargo-nextest (`_tests`), every feature of
 # `feature_rules` on.
 [no-exit-message]
+[group('check')]
+[doc("Every test in the workspace (nextest)")]
 test: (_require-nextest "test")
     @just --justfile '{{gates_root}}/justfile' _run test workspace tests just --justfile '{{gates_root}}/justfile' _tests --workspace
 
@@ -192,6 +206,9 @@ test: (_require-nextest "test")
 # workspace. It judges the STAGED tree, built by `_staged-tree`, so unstaged
 # edits cannot pass or fail it.
 [no-exit-message]
+[private]
+[group('hook')]
+[doc("Tests of the crates the staged change touches, and their dependents")]
 test-staged: (_require-nextest "test-staged")
     #!/usr/bin/env bash
     set -euo pipefail
@@ -220,6 +237,9 @@ test-staged: (_require-nextest "test-staged")
 # other failure (the tests do not build, a tool is missing) is refused on
 # every branch, as every other gate's is. There is no way to skip it.
 [no-exit-message]
+[private]
+[group('hook')]
+[doc("pre-commit: test-staged; red tests allowed off the default branch")]
 test-commit:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -361,8 +381,9 @@ _require-nextest gate:
         exit 1
     fi
 
-# Mutation-test what the commit changes, by hand while tests are written and
-# judged; no git hook runs it. `cargo mutants --in-diff` over the staged diff,
+# Mutation-test what the commit changes, while tests are written and
+# judged; no git hook runs it, and nothing runs it by hand: `mutants-batch`
+# drives it at close-out. `cargo mutants --in-diff` over the staged diff,
 # in the STAGED tree (`_staged-tree`), judged by `mutation_thresholds`; it
 # fails with the per-tier verdict and the surviving mutants listed. cargo-mutants' own output is the log, and its mutants.out is kept
 # in target/logs/mutants-staged/; its config (excludes, test_workspace) is
@@ -375,6 +396,9 @@ _require-nextest gate:
 # run that judged nothing has shown nothing; judge the commit that turns the
 # tests green.
 [no-exit-message]
+[private]
+[group('hook')]
+[doc("Mutation-test the staged diff against the tier thresholds (closeout drives it)")]
 mutants-staged:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -660,6 +684,9 @@ _red-allowed:
 # is what lefthook.yml passes to stop lefthook skipping it, and is ignored.
 [positional-arguments]
 [no-exit-message]
+[private]
+[group('hook')]
+[doc("pre-push: refuse red tests on a push to the default branch")]
 push-check remote *lefthook:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -703,6 +730,9 @@ _test-workspace gate scope:
 # (pre-merge-commit), and a squash merge commits through pre-commit.
 [positional-arguments]
 [no-exit-message]
+[private]
+[group('hook')]
+[doc("post-merge: test a fast-forward of the default branch")]
 merge-check squash="0":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -765,7 +795,13 @@ _run gate scope extractor +command:
     extract=$(just --justfile '{{gates_root}}/justfile' _extract-"$extractor" "$log" "$rc" 2>&1) || true
     printf 'FAIL %s: %s (full log: target/logs/%s.log)\n' "$gate" "${extract%%$'\n'*}" "$gate" >&2
     if [ "${VERBOSE:-}" != 1 ] && [[ $extract == *$'\n'* ]]; then
-        printf '%s\n' "${extract#*$'\n'}" >&2
+        # At most GATE_EXTRACT_MAX lines (default 40) of extract: the rest is
+        # in the log, named by the FAIL line.
+        body=${extract#*$'\n'}
+        cap=${GATE_EXTRACT_MAX:-40}
+        total=$(grep -c '' <<< "$body")
+        printf '%s\n' "$body" | head -n "$cap" >&2
+        [ "$total" -le "$cap" ] || printf '+%d more lines, see the log\n' $((total - cap)) >&2
     fi
     exit "$rc"
 
@@ -773,7 +809,8 @@ _run gate scope extractor +command:
 # then the part of the log worth reading. Each gate runs its tool in a terse
 # or structured mode, so an extract is that output, not a search of prose.
 
-# cargo build/clippy with --message-format=short: a line per diagnostic.
+# cargo build/clippy with --message-format=short: a line per diagnostic. Only
+# the diagnostics (file:line:col: error|warning: message), the first 20.
 [positional-arguments]
 _extract-cargo log rc:
     #!/usr/bin/env bash
@@ -784,7 +821,11 @@ _extract-cargo log rc:
         1) echo "1 error" ;;
         *) echo "$errors errors" ;;
     esac
-    cat "$1"
+    diag=$(grep -E '^[^ ]+:[0-9]+:[0-9]+: (error|warning)|^error(\[[A-Z0-9]+\])?: ' "$1" || true)
+    if [ -z "$diag" ]; then tail -n 20 "$1"; exit 0; fi
+    head -n 20 <<< "$diag"
+    total=$(grep -c '' <<< "$diag")
+    [ "$total" -le 20 ] || echo "+$((total - 20)) more, see the log"
 
 # rustfmt -l: a line per file it would change.
 [positional-arguments]
@@ -813,7 +854,13 @@ _extract-tests log rc:
         102) echo "doc tests failed: $(grep -m1 -E '^test result: FAILED' "$1" || echo 'see the log')" ;;
         *) echo "the test run failed (exit $2)" ;;
     esac
-    cat "$1"
+    # The failing tests' names first (never a passing one), then their output;
+    # `_run` caps the whole.
+    grep -E '^ +(FAIL|SIGABRT|TIMEOUT|SIGSEGV) ' "$1" | sed 's/^ *//; s/ *\[[^]]*\] */ /' | sort -u | head -n 15 || true
+    # The panic and assertion output only: the harness chatter, separators,
+    # run header, per-test banners (the thread line names the test), blank
+    # lines and the backtrace hint are dropped.
+    grep -vE '^ +(PASS|SLOW|LEAK|START|Starting|Compiling|Finished|FAIL|SIGABRT|TIMEOUT|SIGSEGV|Summary|Nextest run)|^─+$|^ +(stdout|stderr) ─|^ *running [0-9]+ tests?$|^ *test .* \.\.\. (FAILED|ok)$|^ *failures:$|^ *tests::|^ *test result:|RUST_BACKTRACE|^ *$' "$1" || true
 
 # cargo-deny: its own rendering at error level, without the inclusion graphs,
 # offline, from the database the run just fetched; its last line is deny's
@@ -846,8 +893,10 @@ _extract-mutants log rc:
     if [ -s "$dir/verdict.txt" ]; then cat "$dir/verdict.txt"; else echo "cargo mutants failed (exit $2)"; fi
     missed=$dir/mutants.out/missed.txt timeout=$dir/mutants.out/timeout.txt
     if [ -s "$missed" ]; then
-        echo "surviving mutants (no test failed with the change applied):"
-        sed 's/^/  /' "$missed"
+        n=$(grep -c . "$missed")
+        echo "surviving mutants ($n; no test failed with the change applied):"
+        head -n 15 "$missed" | sed 's/^/  /'
+        [ "$n" -le 15 ] || echo "  +$((n - 15)) more: target/logs/mutants-staged/mutants.out/missed.txt"
     fi
     if [ -s "$timeout" ]; then
         echo "timed out (counted killed):"

@@ -241,13 +241,23 @@ library's `bundle` noun and owns `remote` and `deps`.
 
 ## Use `just`
 
-`just build`, `just test` (cargo-nextest, required: a missing nextest fails
-the gate), `just lint` (clippy, warnings denied) and `just lint-deps`
-(cargo-deny) are the checks. Every gate is terse: a pass prints one `ok
-<gate> (<scope>) <duration>` line; a failure prints `FAIL <gate>: <summary>
-(full log: target/logs/<gate>.log)` and only the relevant extract. Read the
-log for the rest; `VERBOSE=1 just <gate>` shows the full output. `just fmt`
-and `just fmt-check` cover this workspace's crates only.
+`just --list` shows the public recipes by group. The checks are `just build`,
+`just test` (cargo-nextest, required: a missing nextest fails the gate),
+`just lint` (clippy, warnings denied), `just lint-deps` (cargo-deny) and
+`just lint-os`; `just test-pkg <crate>...` is the quick loop, `just fmt` and
+`just fmt-check` cover this workspace's crates only, `just run` runs the
+binary, `just clean-target` is the only way to drop `target/`, and `just
+selftest` checks the scripts. Raw `cargo build|test|clippy|fmt|deny|clean|
+run|mutants`, `nextest`, `rustc`, `lefthook run`, `gitleaks`, and any
+`--no-verify` or `LEFTHOOK=`/`SKIP=` skip of the hooks are blocked by ltk
+(`.ltk/config.yaml`, checked by `scripts/ltk-rules-check.sh`); the recipe is
+named in the block message. Every gate is terse, because its output lands in
+an agent's context: a pass prints one `ok <gate> (<scope>) <duration>` line
+and nothing else; a failure prints `FAIL <gate>: <summary> (full log:
+target/logs/<gate>.log)` and at most 40 lines of extract (only failing tests,
+the first 20 diagnostics, survivors capped, each with a `+K more` tail).
+`scripts/output-budget.selftest.sh` holds that budget. Read the log for the
+rest; `VERBOSE=1 just <gate>` shows the full output.
 
 ## The pre-commit gates are in gates/; the justfile gives their parameters
 
@@ -255,7 +265,8 @@ The gates and their recipes are `gates/gates.just` and
 `gates/lefthook.yml`: the justfile imports the one and lefthook.yml extends
 the other. The justfile keeps ctxloom-rs's parameters for them
 (`mutation_thresholds`, `workspace_wide`, `staged_tree`, `feature_rules`,
-`features_prepare`) and its own `build`, `lint` and `test-pkg`; their tool
+`features_prepare`) and its own recipes (`build`, `lint`, `test-pkg`, `run`,
+`clean-target`, `mutants-batch`, `closeout`, `selftest`); their tool
 configs are `deny.toml`, `.gitleaks.toml` and `.cargo/mutants.toml`. `just
 hooks-install` installs the hooks, once per clone (every worktree shares
 them), and again after a change to the gates names a new hook
@@ -264,14 +275,18 @@ taskloom and annals also copied; a change here does not reach them.
 
 lefthook runs the gates one at a time, stopping at the first failure, and
 shows each gate's pass line and any failure's extract. Gates 1 to 5 run in
-pre-commit; mutation (6) runs in no git hook: it runs by hand while tests
-are written and judged, and is a REQUIRED close-out step: before a batch
-of work reaches the default branch, `just mutants-staged` runs over the whole
-batch's diff (staged against the batch's base) and passes. No hook enforces it
-(a fast-forward of `main` runs none), so merging without it is how 280
-survivors reached `main` once (2026-11-04). A failing gate is a
-finding: fix the cause and commit again; never `--no-verify`, and never
-weaken a gate to get through.
+pre-commit (the private recipes `fmt-staged`, `secrets-scan-staged`,
+`test-commit`, ...; `just --list` hides them, they run by name). Mutation (6)
+runs in no git hook and is not run by hand: the `closeout` skill runs `just
+closeout`, whose `mutants-batch` mutation-tests the whole batch (base to HEAD,
+the base defaulting to the merge-base with `main`) in a throwaway worktree, in
+the background of the recipe's own session, and prints the terse per-tier
+verdict. It is REQUIRED before a batch of work reaches the default branch; no
+hook enforces it (a fast-forward of `main` runs none), so merging without it
+is how 280 survivors reached `main` once (2026-11-04). Nothing runs
+cargo-mutants but the `mutants-staged` gate recipe, which `mutants-batch`
+drives. A failing gate is a finding: fix the cause and commit again; never
+`--no-verify`, and never weaken a gate to get through.
 
 1. **fmt** formats the staged `*.rs` files in the index (`just
    fmt-staged`) rather than refusing an unformatted commit. A fully staged
@@ -288,7 +303,7 @@ weaken a gate to get through.
    dependents in the staged tree (HEAD plus the staged diff, a sibling
    worktree of the checkout); a staged `workspace_wide` file tests the whole
    workspace.
-6. **mutants** (no hook; by hand): `just mutants-staged` mutation-tests the staged diff
+6. **mutants** (no hook; at close-out, `just mutants-batch`): `mutants-staged` mutation-tests the staged diff
    (`cargo mutants --in-diff`), holding new logic to its tier: every
    hand-written tier (domain, read models, ports, application and adapters)
    90% or more; the composition root is listed but not held (the justfile's

@@ -1,8 +1,11 @@
-# The pre-commit gates and their recipes (fmt, fmt-check, fmt-staged, test,
-# test-staged, mutants-staged, lint-deps, secrets-scan-staged and the `_run`
+# The pre-commit gates and their recipes (fmt, fmt-check, test, lint-deps; the
+# private hook entry points fmt-staged, test-staged, test-commit,
+# mutants-staged, secrets-scan-staged, push-check, merge-check; and the `_run`
 # machinery and extractors) are gates/gates.just, imported below; this file
 # gives them ctxloom-rs's parameters and keeps its own recipes (`build`,
-# `lint`, `test-pkg`).
+# `lint`, `test-pkg`, `clean-target`, `mutants-batch`, `closeout`,
+# `selftest`). `just --list` shows the public ones by group; the private ones
+# still run by name (`just test-staged`).
 # cargo-deny's duplicate-version warnings stay in target/logs/lint-deps.log,
 # not silenced in deny.toml.
 
@@ -47,6 +50,8 @@ windows_packages := "-p content-fs -p config-files -p cache-files -p surface-fil
 clippy_template := env("CTXLOOM_LIB_TEMPLATE", TOP + "/../ctxloom-lib/templates/clippy-disallowed.toml")
 
 # Build every crate. Needs protoc on PATH and access to github.com (angzarr-proto).
+[group('check')]
+[doc("Build every crate (needs protoc and github.com)")]
 [no-exit-message]
 build:
     #!/usr/bin/env bash
@@ -61,6 +66,8 @@ build:
 # reads only the nearest clippy.toml, so the core's repeats the root's nesting
 # threshold and every method the root's disallows (the file I/O the
 # file-system seam holds); refuse to lint if they differ.
+[group('check')]
+[doc("Clippy, warnings denied, with the core's purity rules and the OS-cfg check")]
 [no-exit-message]
 lint:
     #!/usr/bin/env bash
@@ -89,11 +96,54 @@ lint:
 # and gitleaks (v8), both by `go install`; cargo-nextest, cargo-deny and
 # cargo-mutants by `cargo install <name> --locked`; jq, flock, setsid, ps
 # and pkill.
+[group('setup')]
+[doc("Install the git hooks (once per clone)")]
 hooks-install:
     lefthook install
 
 # The tests of the named crates only, by cargo-nextest (the gates' `_tests`):
 # the quick loop on one crate. `just test` runs every crate's.
+[group('check')]
+[doc("Tests of the named crates only (nextest)")]
 [no-exit-message]
 test-pkg +packages: (_require-nextest "test-pkg")
     @just --justfile '{{TOP}}/justfile' _run test-pkg "{{packages}}" tests just --justfile '{{TOP}}/justfile' _tests {{packages}}
+
+# Mutation-test a batch (base..head; base defaults to the merge-base with main,
+# head to HEAD) in a throwaway worktree: scripts/mutants-batch.sh. Nothing else
+# runs cargo-mutants but the `mutants-staged` gate recipe it drives.
+[group('closeout')]
+[doc("Mutation-test a batch: mutants-batch [base] [head]")]
+[no-exit-message]
+mutants-batch base="" head="HEAD":
+    @{{TOP}}/scripts/mutants-batch.sh {{base}} {{head}}
+
+# The whole mechanical close-out: build, lint, lint-deps, test, lint-os and
+# mutants-batch, one summary line each (scripts/closeout.sh).
+[group('closeout')]
+[doc("Close-out gates in one run: closeout [base]")]
+[no-exit-message]
+closeout base="":
+    @{{TOP}}/scripts/closeout.sh {{base}}
+
+# Delete target/ (the only sanctioned `cargo clean`; ltk blocks the raw one).
+[group('setup')]
+[doc("Delete target/ (what `cargo clean` would)")]
+clean-target:
+    rm -rf {{TOP}}/target
+
+# The self-tests of this repository's scripts against fixture trees.
+[group('check')]
+[doc("Self-tests of the scripts: mutants-batch, closeout, ltk rules, output budget")]
+[no-exit-message]
+selftest:
+    @{{TOP}}/scripts/mutants-batch.selftest.sh
+    @{{TOP}}/scripts/closeout.selftest.sh
+    @{{TOP}}/scripts/ltk-rules-check.sh
+    @{{TOP}}/scripts/output-budget.selftest.sh
+
+# Run the ctxloom binary (cargo run, quiet) with the given arguments.
+[group('dev')]
+[doc("Run the ctxloom binary: run [args...]")]
+run *args:
+    @cargo run -q --manifest-path {{TOP}}/Cargo.toml --bin ctxloom -- {{args}}

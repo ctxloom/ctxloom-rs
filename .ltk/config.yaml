@@ -1,5 +1,5 @@
-# llm-tool-killer rules for ctxloom-rs: building, testing and linting go
-# through `just`, whose recipes are terse (one `ok`/`FAIL` line, the full log
+# llm-tool-killer rules for ctxloom-rs: building, testing, linting and mutation
+# testing go through `just`, whose recipes are terse (one `ok`/`FAIL` line, the full log
 # in target/logs/, VERBOSE=1 for everything) and carry the gates' flags. A raw
 # cargo run puts a full build log in an agent's context and can disagree with
 # the gate. Rule model: https://ctxloom.dev/ltk/rules/
@@ -10,6 +10,21 @@ defaults:
   on_parse_error: allow
 
 rules:
+  # Order matters: `match.command` tokens are an ordered subsequence of the
+  # non-option arguments, so `cargo deny check` also matches [cargo, check];
+  # the specific subcommands come first.
+  - id: deny-via-just
+    match: { command: [cargo, deny] }
+    message: "Check dependencies through the task runner, which keeps the inclusion graphs in its log."
+    suggest: "just lint-deps"
+  - id: mutants-via-just
+    match: { command: [cargo, mutants] }
+    message: "Mutation testing runs ONLY through the just recipes (the gate drives cargo-mutants, a raw run skips the tier thresholds and the scratch tree)."
+    suggest: "just mutants-staged   # the staged diff; `just mutants-batch [base]` for a whole batch; `just closeout` for the full close-out"
+  - id: mutants-binary-via-just
+    match: { command: [cargo-mutants] }
+    message: "Mutation testing runs ONLY through the just recipes (the gate drives cargo-mutants, a raw run skips the tier thresholds and the scratch tree)."
+    suggest: "just mutants-staged   # the staged diff; `just mutants-batch [base]` for a whole batch; `just closeout` for the full close-out"
   - id: build-via-just
     match: { command: [cargo, 'build|check'] }
     message: "Build through the task runner: its output is terse and its full log is kept."
@@ -26,11 +41,63 @@ rules:
     match: { command: [cargo, fmt] }
     message: "Format through the task runner: it formats this workspace's crates only, never a path dependency."
     suggest: "just fmt   # or `just fmt-check`"
-  - id: deny-via-just
-    match: { command: [cargo, deny] }
+  - id: build-alias-via-just
+    match: { command: [cargo, 'b|c|rustc'] }
+    message: "Build through the task runner (cargo's b/c aliases and `cargo rustc` are the same raw build)."
+    suggest: "just build"
+  - id: test-alias-via-just
+    match: { command: [cargo, t] }
+    message: "Test through the task runner (`cargo t` is `cargo test`)."
+    suggest: "just test-pkg <crate>...   # or `just test`"
+  - id: nextest-binary-via-just
+    match: { command: ['cargo-nextest|nextest'] }
+    message: "Test through the task runner: it carries the gates' terse nextest flags and runs the doc tests nextest cannot."
+    suggest: "just test-pkg <crate>...   # or `just test`"
+  - id: deny-binary-via-just
+    match: { command: [cargo-deny] }
     message: "Check dependencies through the task runner, which keeps the inclusion graphs in its log."
     suggest: "just lint-deps"
-  - id: mutants-via-just
-    match: { command: [cargo, mutants] }
-    message: "Mutation-test through the task runner: it judges the staged diff against each tier's threshold."
-    suggest: "just mutants-staged"
+  - id: rustc-via-just
+    match: { command: [rustc], unless: ['--version|-V|--help|-h|-vV|--print.*'] }
+    message: "Compile through the task runner; a raw rustc skips the workspace's lints and flags."
+    suggest: "just build"
+  - id: rustfmt-via-just
+    match: { command: [rustfmt] }
+    message: "Format through the task runner: it formats this workspace's crates only."
+    suggest: "just fmt   # or `just fmt-check`"
+  - id: clean-via-just
+    match: { command: [cargo, clean] }
+    message: "Clean through the task runner (the sanctioned way to drop target/)."
+    suggest: "just clean-target"
+  - id: run-via-just
+    match: { command: [cargo, 'run|r'] }
+    message: "Run the binary through the task runner: build chatter is silenced and the profile matches the gates."
+    suggest: "just run <args>..."
+  - id: bench-doc-cov-no-recipe
+    match: { command: [cargo, 'bench|doc|llvm-cov'] }
+    message: "No recipe runs cargo bench, doc or llvm-cov: their output is large and none is a gate. Mutation testing is the measure of the tests (`just mutants-batch`); the docs are the source."
+    suggest: "just test-pkg <crate>...   # ask the owner if you need benchmarks, rustdoc or coverage"
+  - id: lefthook-via-just
+    match: { command: [lefthook, 'run|install|uninstall'] }
+    message: "The hooks run on git commit/push, not by hand; the gates are just recipes. Install them with the recipe."
+    suggest: "just hooks-install   # or run a gate: just lint, just test, just lint-deps"
+  - id: gitleaks-via-just
+    match: { command: [gitleaks] }
+    message: "Scan for secrets through the task runner: it uses the repository's .gitleaks.toml and prints redacted findings only."
+    suggest: "just secrets-scan-staged"
+  - id: no-verify
+    match: { command: [git], args_any: ['--no-verify'] }
+    message: "A failing hook is a finding: fix the cause and commit again. Never skip the hooks."
+    suggest: "Read the FAIL line, fix it, and run the same git command without --no-verify."
+  - id: commit-short-no-verify
+    match: { command: [git, commit], args_any: ['-[a-zA-Z]*n[a-zA-Z]*'] }
+    message: "`git commit -n` is --no-verify. A failing hook is a finding: fix the cause and commit again."
+    suggest: "Read the FAIL line, fix it, and commit again without -n."
+  - id: hooks-path-override
+    match: { command: [git], args_any: ['core\.hooksPath.*|.*hooksPath=.*'] }
+    message: "Pointing git at another hooks directory skips the gates."
+    suggest: "Leave core.hooksPath alone; `just hooks-install` installs the hooks."
+  - id: hook-skip-env
+    match: { command: [env], args_any: ['(SKIP|LEFTHOOK|LEFTHOOK_EXCLUDE)=.*'] }
+    message: "SKIP= / LEFTHOOK= skips the lefthook gates. A failing hook is a finding: fix the cause."
+    suggest: "Run the failing gate with its recipe (just lint, just test, ...), fix it, commit again."

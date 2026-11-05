@@ -44,8 +44,8 @@ pre-commit:
       # warning, and refused on the default branch (`just test-commit`).
       priority: 5
       run: just test-commit
-    # No mutation testing in any hook: it runs by hand while tests are
-    # written and judged (`just mutants-staged`).
+    # No mutation testing in any hook: the closeout skill runs it, once per batch
+    # (`just mutants-batch`, from `just closeout`).
 
 # Red tests never reach the default branch. A merge commit into it is tested
 # as a commit is (pre-merge-commit); a push to it is refused unless the whole
