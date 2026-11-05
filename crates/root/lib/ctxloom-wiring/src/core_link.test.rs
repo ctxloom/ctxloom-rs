@@ -249,3 +249,100 @@ async fn the_models_token_cannot_record_an_exit_over_app_serve_in() {
         before
     );
 }
+
+// The edge's own behaviours over the real App and a ctxloom domain (trees,
+// exposed to loopback only). `embedded-edge` tests the same wrappers with a
+// toy aggregate, since a driven adapter links no domain; here, the real ones.
+mod the_edge_over_trees {
+    use super::*;
+
+    fn tree() -> Cover {
+        Cover {
+            domain: trees::TREE_DOMAIN.to_string(),
+            root: Some(Uuid::from_bytes([9; 16])),
+            edition: None,
+        }
+    }
+
+    fn found() -> CommandBook {
+        CommandBook::command_of(
+            tree(),
+            &trees::TreeCommand::from(trees::FoundTree {
+                owner_session: "s".to_string(),
+                ephemeral: false,
+                concurrency: 1,
+                depth: 1,
+            }),
+        )
+    }
+
+    fn occupy(session: &str) -> CommandBook {
+        CommandBook::command_of(
+            tree(),
+            &trees::TreeCommand::from(trees::OccupyTree {
+                session: session.to_string(),
+            }),
+        )
+    }
+
+    async fn edge() -> Arc<TheEdge> {
+        InProcessCore::start(FaultyStore::<MemoryStore>::default())
+            .await
+            .edge()
+    }
+
+    // handle answers the addressed stream's events and the delivery outcome;
+    // a command that records nothing is answered for its stream with no events.
+    #[tokio::test]
+    async fn handle_answers_the_addressed_stream() {
+        let edge = edge().await;
+        let answered = edge.handle(found()).await.unwrap();
+        let book = answered.events.expect("events");
+        assert_eq!(book.cover, Some(tree()));
+        assert_eq!(book.pages.len(), 1);
+        assert_eq!(
+            answered.outcome.map(|o| o.delivery),
+            Some(angzarr_embedded::v1::DeliveryOutcome::Applied as i32)
+        );
+        let book = edge
+            .handle(occupy("s"))
+            .await
+            .unwrap()
+            .events
+            .expect("events");
+        assert_eq!(book.cover, Some(tree()));
+        assert!(book.pages.is_empty());
+    }
+
+    // serve admits the arrival a domain is exposed to (loopback) and hides
+    // another, naming the domain.
+    #[tokio::test]
+    async fn serve_admits_the_exposed_arrival_only() {
+        let edge = edge().await;
+        assert_eq!(
+            edge.serve(found(), Arrival::Ip).await.unwrap_err(),
+            Unserved::Hidden {
+                domain: trees::TREE_DOMAIN.to_string()
+            }
+        );
+        assert!(edge.events(&tree(), 0).await.unwrap().is_empty());
+        let answered = edge.serve(found(), Arrival::Loopback).await.unwrap();
+        assert_eq!(answered.events.expect("events").pages.len(), 1);
+        assert_eq!(edge.events(&tree(), 0).await.unwrap().len(), 1);
+    }
+
+    // events reads from a sequence, oldest first, none for an absent stream.
+    #[tokio::test]
+    async fn events_read_from_a_sequence() {
+        let edge = edge().await;
+        assert!(edge.events(&tree(), 0).await.unwrap().is_empty());
+        edge.handle(found()).await.unwrap();
+        edge.handle(occupy("next")).await.unwrap();
+        let sequences = |pages: Vec<angzarr_embedded::v1::EventPage>| {
+            pages.into_iter().map(|p| p.sequence).collect::<Vec<_>>()
+        };
+        assert_eq!(sequences(edge.events(&tree(), 0).await.unwrap()), [0, 1]);
+        assert_eq!(sequences(edge.events(&tree(), 1).await.unwrap()), [1]);
+        assert!(edge.events(&tree(), 2).await.unwrap().is_empty());
+    }
+}

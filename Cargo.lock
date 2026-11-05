@@ -1078,10 +1078,11 @@ version = "0.1.0"
 dependencies = [
  "angzarr-embedded",
  "angzarr-embedded-host",
+ "angzarr-embedded-macros",
  "mutants",
+ "prost",
  "run-ports",
  "tokio",
- "trees",
 ]
 
 [[package]]

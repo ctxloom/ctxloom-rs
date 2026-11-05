@@ -109,9 +109,3 @@ from = "surface-cli"
 to = "surface-ports"
 kind = "dev"
 reason = "debt: the tests implement surface-ports' ForeignFiles and read its SurfaceError and EN_US; fix: as ctxloom-cli"
-
-[[exception]]
-from = "embedded-edge"
-to = "trees"
-kind = "dev"
-reason = "the known case: the adapter's tests construct the trees domain's commands (TreeCommand, FoundTree, OccupyTree) to drive the embedded runtime; fix: build them through a port, or move the test to the application layer"

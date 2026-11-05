@@ -16,9 +16,9 @@ run-ports.workspace = true
 angzarr-embedded = { workspace = true, features = ["test-support"] }
 mutants.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
-# Any registered domain will do to drive the edge through a real App; the
-# smallest is a tree.
-trees.workspace = true
+# The tests define a tiny aggregate of their own, so no domain is linked.
+angzarr-embedded-macros.workspace = true
+prost.workspace = true
 
 [lints]
 workspace = true

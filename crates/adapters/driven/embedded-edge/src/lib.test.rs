@@ -55,57 +55,133 @@ fn a_kernel_failure_is_passed_as_it_is() {
     assert_eq!(converted, run_ports::Unserved::Failed(failure));
 }
 
+// The wrappers over a real `App`, with a tiny aggregate defined here so the
+// crate stays ctxloom-free: the same path over the ctxloom domains is
+// `ctxloom-wiring`'s `core_link` test. Mutation runs only this crate's own
+// tests, so these kill the wrappers' mutants.
 mod through_an_app {
+    use std::convert::Infallible;
     use std::sync::atomic::{AtomicU8, Ordering};
     use std::sync::Arc;
 
+    use angzarr_embedded::markup::{Context, DomainMessage};
     use angzarr_embedded::testing::MemoryStore;
-    use angzarr_embedded::v1::{Cover, Uuid};
-    use angzarr_embedded::{CommandBookExt, Registry, Sampled, Timestamp};
+    use angzarr_embedded::v1::{CommandBook, Cover, EventPage, Uuid};
+    use angzarr_embedded::{pack, CommandBookExt, Registry, Sampled, Timestamp, WireError};
     use angzarr_embedded_host::config::Expose;
     use angzarr_embedded_host::stores::OneStore;
     use angzarr_embedded_host::App;
+    use angzarr_embedded_macros::{aggregate, applies, handles_cmd};
     use run_ports::{Arrival, Edge, Unserved};
 
     use crate::EmbeddedEdge;
 
+    mod wire {
+        macro_rules! message {
+            ($name:ident) => {
+                #[derive(Clone, PartialEq, ::prost::Message)]
+                pub struct $name {}
+
+                impl ::prost::Name for $name {
+                    const NAME: &'static str = stringify!($name);
+                    const PACKAGE: &'static str = "toy.lamp.v1";
+                }
+            };
+        }
+        message!(SwitchOn);
+        message!(SwitchOff);
+        message!(SwitchedOn);
+        message!(SwitchedOff);
+    }
+
+    macro_rules! domain_type {
+        ($name:ident) => {
+            #[derive(Clone, PartialEq, Debug)]
+            pub struct $name;
+
+            impl DomainMessage for $name {
+                type Wire = wire::$name;
+
+                fn to_wire(&self) -> wire::$name {
+                    wire::$name {}
+                }
+
+                fn from_wire(_: wire::$name) -> Result<Self, WireError> {
+                    Ok($name)
+                }
+            }
+        };
+    }
+    domain_type!(SwitchOn);
+    domain_type!(SwitchOff);
+    domain_type!(SwitchedOn);
+    domain_type!(SwitchedOff);
+
+    const DOMAIN: &str = "lamp";
+
+    /// A lamp: switching on a lit lamp records nothing.
+    #[derive(Clone, Default, PartialEq, Debug)]
+    pub struct Lamp {
+        on: bool,
+    }
+
+    #[aggregate(domain = "lamp")]
+    impl Lamp {
+        #[handles_cmd(SwitchOn)]
+        fn switch_on(
+            &self,
+            _cmd: SwitchOn,
+            _ctx: &Context,
+        ) -> Result<Option<SwitchedOn>, Infallible> {
+            Ok((!self.on).then_some(SwitchedOn))
+        }
+
+        #[handles_cmd(SwitchOff)]
+        fn switch_off(
+            &self,
+            _cmd: SwitchOff,
+            _ctx: &Context,
+        ) -> Result<Option<SwitchedOff>, Infallible> {
+            Ok(self.on.then_some(SwitchedOff))
+        }
+
+        #[applies(SwitchedOn)]
+        fn switched_on(&mut self, _event: SwitchedOn) {
+            self.on = true;
+        }
+
+        #[applies(SwitchedOff)]
+        fn switched_off(&mut self, _event: SwitchedOff) {
+            self.on = false;
+        }
+    }
+
     fn cover() -> Cover {
         Cover {
-            domain: trees::TREE_DOMAIN.to_string(),
+            domain: DOMAIN.to_string(),
             root: Some(Uuid::from_bytes([9; 16])),
             edition: None,
         }
     }
 
-    fn found() -> angzarr_embedded::v1::CommandBook {
-        angzarr_embedded::v1::CommandBook::command_of(
-            cover(),
-            &trees::TreeCommand::from(trees::FoundTree {
-                owner_session: "s".to_string(),
-                ephemeral: false,
-                concurrency: 1,
-                depth: 1,
-            }),
-        )
+    fn book(command: &impl DomainMessage) -> CommandBook {
+        CommandBook::command(cover(), pack(&command.to_wire()))
     }
 
-    fn occupy(session: &str) -> angzarr_embedded::v1::CommandBook {
-        angzarr_embedded::v1::CommandBook::command_of(
-            cover(),
-            &trees::TreeCommand::from(trees::OccupyTree {
-                session: session.to_string(),
-            }),
-        )
+    fn on() -> CommandBook {
+        book(&SwitchOn)
     }
 
-    /// An edge over an application with trees exposed to loopback only.
+    fn off() -> CommandBook {
+        book(&SwitchOff)
+    }
+
+    /// An edge over an application with the lamp exposed to loopback only.
     async fn edge() -> EmbeddedEdge<OneStore<MemoryStore>> {
         let mut registry = Registry::new();
-        registry
-            .aggregate::<trees::TreeAggregate>(trees::TreeAggregate::default)
-            .unwrap();
+        registry.aggregate::<Lamp>(Lamp::default).unwrap();
         let app = App::builder(OneStore::new(MemoryStore::default()), registry)
-            .exposed([(trees::TREE_DOMAIN.to_string(), Expose::Loopback)].into())
+            .exposed([(DOMAIN.to_string(), Expose::Loopback)].into())
             .start()
             .await;
         let n = AtomicU8::new(0);
@@ -121,12 +197,11 @@ mod through_an_app {
         })
     }
 
-    // NEW-DESIGN: the core's own path answers the addressed stream's events
-    // and the outcome.
+    // The core's own path answers the addressed stream's events and the outcome.
     #[tokio::test]
     async fn handle_answers_the_addressed_streams_events() {
         let edge = edge().await;
-        let answered = edge.handle(found()).await.unwrap();
+        let answered = edge.handle(on()).await.unwrap();
         let book = answered.events.expect("events");
         assert_eq!(book.cover, Some(cover()));
         assert_eq!(book.pages.len(), 1);
@@ -136,46 +211,46 @@ mod through_an_app {
         );
     }
 
-    // NEW-DESIGN: a command that records nothing is still answered for the
-    // stream it addressed, with no events.
+    // A command that records nothing is still answered for the stream it
+    // addressed, with no events.
     #[tokio::test]
     async fn a_command_that_records_nothing_is_answered_with_its_stream_and_no_events() {
         let edge = edge().await;
-        edge.handle(found()).await.unwrap();
-        let answered = edge.handle(occupy("s")).await.unwrap();
+        edge.handle(on()).await.unwrap();
+        let answered = edge.handle(on()).await.unwrap();
         let book = answered.events.expect("events");
         assert_eq!(book.cover, Some(cover()));
         assert!(book.pages.is_empty());
     }
 
-    // NEW-DESIGN: serve is the exposure seam: an arrival the domain is exposed
-    // to is served as handle serves it; another is hidden.
+    // serve is the exposure seam: an arrival the domain is exposed to is served
+    // as handle serves it; another is hidden.
     #[tokio::test]
     async fn serve_admits_by_arrival() {
         let edge = edge().await;
-        let hidden = edge.serve(found(), Arrival::Ip).await.unwrap_err();
+        let hidden = edge.serve(on(), Arrival::Ip).await.unwrap_err();
         assert_eq!(
             hidden,
             Unserved::Hidden {
-                domain: trees::TREE_DOMAIN.to_string()
+                domain: DOMAIN.to_string()
             }
         );
-        let answered = edge.serve(found(), Arrival::Loopback).await.unwrap();
+        assert!(edge.events(&cover(), 0).await.unwrap().is_empty());
+        let answered = edge.serve(on(), Arrival::Loopback).await.unwrap();
         assert_eq!(answered.events.expect("events").pages.len(), 1);
-        assert!(edge.events(&cover(), 0).await.unwrap().len() == 1);
+        assert_eq!(edge.events(&cover(), 0).await.unwrap().len(), 1);
     }
 
-    // NEW-DESIGN: events reads a stream from a sequence: oldest first, none
-    // for an absent stream.
+    // events reads a stream from a sequence: oldest first, none for an absent
+    // stream.
     #[tokio::test]
     async fn events_reads_from_a_sequence() {
         let edge = edge().await;
         assert!(edge.events(&cover(), 0).await.unwrap().is_empty());
-        edge.handle(found()).await.unwrap();
-        edge.handle(occupy("next")).await.unwrap();
-        let sequences = |pages: Vec<angzarr_embedded::v1::EventPage>| {
-            pages.into_iter().map(|p| p.sequence).collect::<Vec<_>>()
-        };
+        edge.handle(on()).await.unwrap();
+        edge.handle(off()).await.unwrap();
+        let sequences =
+            |pages: Vec<EventPage>| pages.into_iter().map(|p| p.sequence).collect::<Vec<_>>();
         assert_eq!(sequences(edge.events(&cover(), 0).await.unwrap()), [0, 1]);
         assert_eq!(sequences(edge.events(&cover(), 1).await.unwrap()), [1]);
         assert!(edge.events(&cover(), 2).await.unwrap().is_empty());
