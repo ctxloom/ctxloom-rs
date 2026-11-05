@@ -36,6 +36,11 @@ use deps::lock::{self, Lock};
 use deps::registry::Registry;
 use deps_ports::{DepsFiles, Endpoint, Forge, Opened, PullRequest, Remotes, Why};
 
+#[cfg(any(test, feature = "test-support"))]
+pub use deps::diagnostic_samples as deps_diagnostic_samples;
+pub use deps::registry::Edit;
+/// The deps read model's catalog and samples, for a driving adapter's tests.
+pub use deps::EN_US as DEPS_EN_US;
 pub use discover::DiscoverRequest;
 #[cfg(any(test, feature = "test-support"))]
 pub use error::diagnostic_samples;

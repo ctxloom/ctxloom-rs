@@ -76,8 +76,12 @@ fn go_refreshing(fx: &Fixture, refresh: &FakeRefresh, line: &[&str], how: How) -
         stdout_is_terminal: how.terminal,
         ..Call::new(&matches, how.explicit, Format::Json)
     };
-    let catalog = Catalog::en_us(&[deps_application::EN_US, deps::EN_US, angzarr_yaml::EN_US])
-        .expect("a catalog");
+    let catalog = Catalog::en_us(&[
+        deps_application::EN_US,
+        deps_application::DEPS_EN_US,
+        angzarr_yaml::EN_US,
+    ])
+    .expect("a catalog");
     let (mut out, mut err) = (Vec::new(), Vec::new());
     let exit = run(
         &fx.deps, refresh, &noun, &call, &catalog, &mut out, &mut err,
@@ -968,11 +972,15 @@ fn test_the_bundle_verbs_are_these_and_only_these() {
 
 #[test]
 fn test_every_diagnostic_the_commands_raise_has_words() {
-    let catalog = Catalog::en_us(&[deps_application::EN_US, deps::EN_US, angzarr_yaml::EN_US])
-        .expect("a catalog");
+    let catalog = Catalog::en_us(&[
+        deps_application::EN_US,
+        deps_application::DEPS_EN_US,
+        angzarr_yaml::EN_US,
+    ])
+    .expect("a catalog");
     for sample in deps_application::diagnostic_samples()
         .iter()
-        .chain(deps::diagnostic_samples().iter())
+        .chain(deps_application::deps_diagnostic_samples().iter())
     {
         let message = catalog.message(sample.as_ref());
         assert!(

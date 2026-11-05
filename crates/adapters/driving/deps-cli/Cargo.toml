@@ -12,7 +12,6 @@ angzarr-diagnostic.workspace = true
 angzarr-presentation.workspace = true
 cli-support.workspace = true
 clap.workspace = true
-deps.workspace = true
 deps-application.workspace = true
 pin-changes.workspace = true
 serde.workspace = true

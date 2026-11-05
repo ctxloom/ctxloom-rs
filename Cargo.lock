@@ -951,7 +951,6 @@ dependencies = [
  "angzarr-yaml",
  "clap",
  "cli-support",
- "deps",
  "deps-application",
  "deps-ports",
  "pin-changes",

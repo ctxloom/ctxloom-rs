@@ -85,11 +85,6 @@ reason = "debt: as hook-cli: the top-level CLI mounts the session command crate 
 
 [[exception]]
 from = "deps-cli"
-to = "deps"
-reason = "debt: the command names the read model's registry Edit type (deps::registry::Edit) in its translation; fix: the application layer owns or re-exports the type"
-
-[[exception]]
-from = "deps-cli"
 to = "pin-changes"
 reason = "debt: the text rendering calls the pin-changes read model's own renderers (new_pins_text, pin_changes_text) directly; fix: a presentation crate for the text, or the application layer returning it"
 

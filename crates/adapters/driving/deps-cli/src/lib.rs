@@ -18,10 +18,9 @@ use std::io::{self, Write};
 use angzarr_presentation::{Catalog, Format};
 use clap::ArgMatches;
 use cli_support::{flag, one, say_notices};
-use deps::registry::Edit;
 use deps_application::{
-    AppError, CreateRequest, Deps, DiscoverRequest, MoveRequest, Notice, Outcome, ProjectRefresh,
-    PushRequest,
+    AppError, CreateRequest, Deps, DiscoverRequest, Edit, MoveRequest, Notice, Outcome,
+    ProjectRefresh, PushRequest,
 };
 use serde::Serialize;
 
