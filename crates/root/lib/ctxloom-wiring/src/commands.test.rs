@@ -49,7 +49,7 @@ struct World {
     _held: std::sync::MutexGuard<'static, ()>,
 }
 
-static WORLD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+use crate::tests::ENV_LOCK as WORLD;
 
 impl World {
     fn new(name: &str) -> World {

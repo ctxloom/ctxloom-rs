@@ -519,3 +519,111 @@ fn test_the_scaffold_names_the_systems_words_when_it_cannot_write() {
     assert_eq!(err.code(), "config-files-write");
     assert_eq!(err.args()[1].0, "ext_err_txt");
 }
+
+// ---------------------------------------------------------------- characterization
+//
+// Pinned before the root rule may move (A0): every branch of finding the app
+// dir, and what it carries along.
+
+#[test]
+fn test_a_valid_root_beats_a_nearer_app_dir() {
+    let fs = rooted();
+    dir(&fs, "/named");
+    dir(&fs, "/work/proj/.ctxloom");
+    let found = find_app_dir(&*fs, &around(Some("/named"), "/work/proj"));
+    assert_eq!(found.path, Path::new("/named/.ctxloom"));
+    assert_eq!(found.source, Source::Project);
+    assert_eq!(found.ignored_root, None);
+}
+
+#[test]
+fn test_a_root_that_is_a_file_is_ignored_as_one_that_is_missing() {
+    let fs = rooted();
+    file(&fs, "/a-file", "x");
+    let found = find_app_dir(&*fs, &around(Some("/a-file"), "/elsewhere"));
+    assert_eq!(found.ignored_root.as_deref(), Some("/a-file"));
+    assert_eq!(found.source, Source::Home);
+    // a relative name that is no directory is ignored the same way
+    let found = find_app_dir(&*fs, &around(Some("rel/none"), "/elsewhere"));
+    assert_eq!(found.ignored_root.as_deref(), Some("rel/none"));
+}
+
+#[test]
+fn test_an_ignored_root_is_carried_to_a_project_found_by_walking_and_to_the_home() {
+    let fs = rooted();
+    dir(&fs, "/work/proj/.ctxloom");
+    let walked = find_app_dir(&*fs, &around(Some("/missing"), "/work/proj/sub"));
+    assert_eq!(
+        walked,
+        AppDir {
+            path: PathBuf::from("/work/proj/.ctxloom"),
+            source: Source::Project,
+            ignored_root: Some("/missing".to_string()),
+        }
+    );
+    let home = find_app_dir(&*fs, &around(Some("/missing"), "/bare"));
+    assert_eq!(
+        home,
+        AppDir {
+            path: PathBuf::from("/home/u/.ctxloom"),
+            source: Source::Home,
+            ignored_root: Some("/missing".to_string()),
+        }
+    );
+}
+
+#[test]
+fn test_the_nearest_app_dir_wins_and_the_working_directory_counts() {
+    let fs = rooted();
+    dir(&fs, "/work/.ctxloom");
+    dir(&fs, "/work/proj/.ctxloom");
+    dir(&fs, "/work/proj/sub/.ctxloom");
+    let found = find_app_dir(&*fs, &around(None, "/work/proj/sub"));
+    assert_eq!(found.path, Path::new("/work/proj/sub/.ctxloom"));
+    let found = find_app_dir(&*fs, &around(None, "/work/proj/sub/deeper"));
+    assert_eq!(found.path, Path::new("/work/proj/sub/.ctxloom"));
+}
+
+#[test]
+fn test_the_walk_stops_at_the_temporary_directory_itself_and_below_it_only() {
+    let fs = rooted();
+    dir(&fs, "/tmp/.ctxloom");
+    // standing in the temp dir: its own app dir is not a project's
+    let found = find_app_dir(&*fs, &around(None, "/tmp"));
+    assert_eq!(found.source, Source::Home);
+    // a project below it is found, though the temp dir has one too
+    dir(&fs, "/tmp/p/.ctxloom");
+    let found = find_app_dir(&*fs, &around(None, "/tmp/p/deep"));
+    assert_eq!(found.path, Path::new("/tmp/p/.ctxloom"));
+    // the temp dir's spelling does not matter
+    let mut spelled = around(None, "/tmp/work");
+    spelled.temp_root = PathBuf::from("/tmp/");
+    assert_eq!(find_app_dir(&*fs, &spelled).source, Source::Home);
+}
+
+#[test]
+fn test_the_walk_is_not_stopped_by_the_home_so_the_homes_app_dir_is_a_project() {
+    // Surprising, pinned as it is: a working directory under the home finds
+    // the home's own `.ctxloom` on the way up, as a Project, not a Home.
+    let fs = rooted();
+    dir(&fs, "/home/u/.ctxloom");
+    dir(&fs, "/home/u/code/x");
+    let found = find_app_dir(&*fs, &around(None, "/home/u/code/x"));
+    assert_eq!(found.path, Path::new("/home/u/.ctxloom"));
+    assert_eq!(found.source, Source::Project);
+}
+
+#[test]
+fn test_an_empty_root_is_unset_and_a_root_only_counts_as_a_directory() {
+    let fs = rooted();
+    dir(&fs, "/work/proj/.ctxloom");
+    let found = find_app_dir(&*fs, &around(Some(""), "/work/proj"));
+    assert_eq!(found.path, Path::new("/work/proj/.ctxloom"));
+    assert_eq!(found.ignored_root, None);
+}
+
+#[test]
+fn test_the_names_of_the_app_dir_and_its_config_file() {
+    assert_eq!(APP_DIR_NAME, ".ctxloom");
+    assert_eq!(CONFIG_FILE_NAME, "config.yaml");
+}
