@@ -159,6 +159,24 @@ fn test_a_setup_command_is_run_over_the_home() {
     );
 }
 
+// The sweep's purge age is read from the configuration of the project the
+// process is in (`session_purge_age`), through the wired sessions.
+#[test]
+fn test_the_wired_sessions_read_the_purge_age_from_the_project_config() {
+    use reclaim_application::SweepConfig;
+    let world = World::new("purge-age");
+    let mut sessions = crate::Wiring::from_process().unwrap().sessions();
+    assert_eq!(sessions.purge_age().unwrap(), None);
+    std::fs::create_dir_all(world.dir.join("work/.ctxloom")).unwrap();
+    std::fs::write(
+        world.dir.join("work/.ctxloom/config.yaml"),
+        "schema_version: 8\nsession_purge_age: 45d\n",
+    )
+    .unwrap();
+    let mut sessions = crate::Wiring::from_process().unwrap().sessions();
+    assert_eq!(sessions.purge_age().unwrap(), Some("45d".to_string()));
+}
+
 // auth.feature, over the process's own environment.
 #[test]
 fn test_auth_status_reads_the_launch_environment_and_never_its_values() {
