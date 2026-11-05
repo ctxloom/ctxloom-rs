@@ -594,6 +594,15 @@ fn report_names(w: &mut World, engine: String) {
     assert!(carried.contains("reason"), "{carried}");
 }
 
+#[then(regex = r"^the materialize report names the hook it could not deliver to (\S+)$")]
+fn report_names_hook(w: &mut World, engine: String) {
+    let said = w.ran().output();
+    assert!(
+        said.to_lowercase().contains("hook"),
+        "the {engine} materialize report never mentions hooks at all: {said}"
+    );
+}
+
 #[then(regex = r"^(\S+) still carries Alice's hand-authored conventions, byte-for-byte$")]
 fn hand_authored_kept(w: &mut World, file: String) {
     let (engine, _) = w.hand_authored.clone().expect("a hand-authored file");

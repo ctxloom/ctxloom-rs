@@ -1,13 +1,24 @@
 # world: base
 # Ported from journeys/j001300_closeout.feature
 # NOT ported: the journey's worktree-leaf scenarios (they are in
-#   cli/session_worktrees.feature) and its doctor scenarios (S12's). Ported:
-#   the sweep scenarios, worktree rows included (S11).
+#   cli/session_worktrees.feature) and its doctor scenarios but one (the
+#   foreign-worktree and harp-durability checks are S12's; the gitignore
+#   check is ported below). Ported: the sweep scenarios, worktree rows
+#   included (S11).
 Feature: closeout — the sweep
 
   Background:
     # substitution: Go's Background step ("the feature shipped on Friday and Alice is closing the workstream out") is spelled `Given an initialized ctxloom project`, which is all the Rust step does.
     Given an initialized ctxloom project
+
+  # ---- Step 1: preconditions ------------------------------------------
+  # doctor check 1 (gitignore posture). Red stops the routine with the fix
+  # NAMED: DOCTOR-CHECK-GITIGNORE-f6 reports a superseded blanket `.ctxloom`
+  # ignore rule and names `ctxloom manage gitignore install` as the fix.
+  Scenario: The routine will not start against a repo that cannot commit its own content
+    Given the project still carries the superseded blanket ctxloom ignore rule
+    When I run "ctxloom doctor"
+    Then the checks name the ignore rule and the command that retires it
 
   # ---- The sweep ----------------------------------------------------------
   # One command ties the legs together, and nothing in it is decided by a
