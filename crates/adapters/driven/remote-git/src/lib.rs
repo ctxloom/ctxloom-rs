@@ -35,6 +35,7 @@ pub use command::{Git, DEFAULT_TIMEOUT};
 use deps::address::cache_segments;
 use deps_ports::{Remotes, RepoTree, Why};
 use file_system::Fs;
+use process_env::EnvSnapshot;
 
 /// Where bundles are in a repository.
 pub const BUNDLES: &str = ".ctxloom/content/bundles/v2";
@@ -48,13 +49,14 @@ pub struct GitRemotes {
 }
 
 impl GitRemotes {
-    /// Remotes cloned below `cache` (`<app dir>/cache/repos`), on `fs`.
-    pub fn new(fs: Arc<dyn Fs>, cache: PathBuf) -> GitRemotes {
+    /// Remotes cloned below `cache` (`<app dir>/cache/repos`), on `fs`, over
+    /// the git on `env`'s `PATH`, run in `env`'s environment.
+    pub fn new(fs: Arc<dyn Fs>, cache: PathBuf, env: Arc<EnvSnapshot>) -> GitRemotes {
         GitRemotes {
             fs,
             cache,
             auth: Auth::none(),
-            git: Git::default(),
+            git: Git::new("git", DEFAULT_TIMEOUT, env),
         }
     }
 

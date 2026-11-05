@@ -28,6 +28,14 @@
 //! instead of the crates' types.
 
 use std::path::{Path, PathBuf};
+
+/// A variable of the process the tests run in, for passing on to the binary
+/// they spawn (the process's environment is read once, by the snapshot).
+pub(crate) fn host_var(name: &str) -> Option<std::ffi::OsString> {
+    process_env::EnvSnapshot::from_process()
+        .var(name)
+        .map(std::ffi::OsStr::to_os_string)
+}
 use std::process::{Command, Output};
 use std::sync::OnceLock;
 
@@ -147,7 +155,7 @@ impl Env {
             .env("USERPROFILE", self.home())
             .current_dir(self.home());
         for name in ["PATH", "SystemRoot"] {
-            if let Some(value) = std::env::var_os(name) {
+            if let Some(value) = crate::tests::host_var(name) {
                 command.env(name, value);
             }
         }

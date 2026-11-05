@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use file_system::{Fs, Kind, Perms, Rooted};
 use os::{Flavor, Mode};
+use process_env::EnvSnapshot;
 
 /// The host's own filesystem (no root), for real paths.
 pub(crate) fn fs() -> Arc<dyn Fs> {
@@ -64,4 +65,9 @@ pub(crate) fn link(target: &Path, link: &Path) {
 
 pub(crate) fn canonical(path: &Path) -> std::path::PathBuf {
     fs().canonicalize(path).unwrap()
+}
+
+/// The process's environment, as the program reads it once.
+pub(crate) fn env() -> Arc<EnvSnapshot> {
+    Arc::new(EnvSnapshot::from_process())
 }

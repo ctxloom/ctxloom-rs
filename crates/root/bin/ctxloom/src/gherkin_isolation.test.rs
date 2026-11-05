@@ -66,7 +66,7 @@ impl World {
             let dir = files::root();
             let mut paths = vec![dir.root().to_path_buf()];
             paths.extend(files::search_path(
-                &std::env::var_os("PATH").unwrap_or_default(),
+                &crate::tests::host_var("PATH").unwrap_or_default(),
             ));
             let path = std::env::join_paths(paths).expect("a PATH");
             self.bin = Some(dir);

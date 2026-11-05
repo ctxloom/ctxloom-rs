@@ -44,7 +44,13 @@ fn a_value_that_is_not_unicode_still_counts_as_exported() {
 }
 
 #[test]
-fn the_process_environment_is_read() {
-    // PATH is set under any test runner, and is not a credential.
-    assert!(ProcessEnv::from_process().is_exported("PATH"));
+fn a_snapshot_is_read_for_the_names_that_have_a_value() {
+    let snapshot = EnvSnapshot::of([
+        (OsString::from("SET"), OsString::from("x")),
+        (OsString::from("EMPTY"), OsString::new()),
+        (OsString::from("BYTES"), os::not_unicode("t")),
+    ]);
+    let env = ProcessEnv::from_snapshot(&snapshot);
+    assert!(env.is_exported("SET") && env.is_exported("BYTES"));
+    assert!(!env.is_exported("EMPTY") && !env.is_exported("UNSET"));
 }

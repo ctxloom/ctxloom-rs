@@ -4,7 +4,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use super::{environment, is_local, local_variables, Git, GitError, DEFAULT_TIMEOUT};
-use crate::fixtures::{exists, fs, put, put_exec, root, runs_scripts};
+use crate::fixtures::{env, exists, fs, put, put_exec, root, runs_scripts};
 
 /// A "git" that is a script, in a directory of its own.
 fn stub(body: &str) -> (file_system::Rooted, Git, Duration) {
@@ -12,7 +12,7 @@ fn stub(body: &str) -> (file_system::Rooted, Git, Duration) {
     let path = dir.root().join("git");
     put_exec(&path, body);
     let tiny = Duration::from_millis(20);
-    (dir, Git::new(fs(), path, tiny), tiny)
+    (dir, Git::new(fs(), path, tiny, env()), tiny)
 }
 
 /// `git.run`, asked again while the system says the script is busy: another
@@ -28,7 +28,9 @@ fn settled(git: &Git, dir: &Path, args: &[&str]) -> Result<String, GitError> {
 }
 
 fn run(dir: &Path, args: &[&str]) -> Result<String, String> {
-    Git::on(fs()).run(dir, args).map_err(|e| e.to_string())
+    Git::on(fs(), env())
+        .run(dir, args)
+        .map_err(|e| e.to_string())
 }
 
 fn names(list: &[&str]) -> Option<Vec<String>> {
@@ -67,9 +69,13 @@ fn indexed_config_variables_are_scrubbed_only_with_their_count() {
 
 #[test]
 fn the_environment_keeps_the_callers_and_never_prompts() {
-    let env = environment();
+    let given =
+        process_env::EnvSnapshot::of([("PATH", "/bin"), ("FOO", "bar"), ("GIT_DIR", "/elsewhere")]);
+    let env = environment(&given);
     let has = |k: &str, v: &str| env.iter().any(|(key, val)| key == k && val == v);
-    assert!(env.iter().any(|(k, _)| k == "PATH"));
+    assert!(has("PATH", "/bin"));
+    assert!(has("FOO", "bar"));
+    assert!(!env.iter().any(|(k, _)| k == "GIT_DIR"));
     assert!(has("GIT_TERMINAL_PROMPT", "0"));
     assert!(has("GIT_ASKPASS", ""));
 }
@@ -102,7 +108,7 @@ fn a_directory_that_cannot_be_entered_is_told_apart_from_a_missing_git() {
 #[test]
 fn a_missing_git_is_named_as_one_whatever_the_directory() {
     let dir = root();
-    let git = Git::new(fs(), dir.root().join("no-such-git"), DEFAULT_TIMEOUT);
+    let git = Git::new(fs(), dir.root().join("no-such-git"), DEFAULT_TIMEOUT, env());
     let said = git.run(dir.root(), &["status"]).unwrap_err().to_string();
     assert_eq!(said, "the git binary was not found on PATH");
 }
@@ -160,7 +166,7 @@ fn a_git_that_finishes_within_its_limit_is_not_disturbed() {
     }
     // Output larger than a pipe's buffer, then a failure's own words.
     let (dir, _, _) = stub("#!/bin/sh\nif [ \"$1\" = fail ]; then echo oops >&2; exit 3; fi\nhead -c 200000 /dev/zero | tr '\\0' x\n");
-    let git = Git::new(fs(), dir.root().join("git"), Duration::from_secs(60));
+    let git = Git::new(fs(), dir.root().join("git"), Duration::from_secs(60), env());
     let out = settled(&git, dir.root(), &["big"]).unwrap();
     assert_eq!(out.len(), 200_000);
     let said = settled(&git, dir.root(), &["fail"]).unwrap_err();

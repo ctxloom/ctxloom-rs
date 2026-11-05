@@ -17,6 +17,7 @@ use deps_ports::RemoteLibrary;
 use editor_process::ProcessEditor;
 use file_system::{Fs, Kind};
 use library_application::{Library, WritePorts};
+use process_env::EnvSnapshot;
 
 use crate::{LibError, Wiring};
 
@@ -39,16 +40,21 @@ impl Executables for PathSearch {
 /// The library's commands as an extension of the command line. The library is
 /// wired when a command first needs it, so a command that needs nothing of the
 /// home (`version`) does not.
-#[derive(Default)]
 pub struct LibraryCommands {
+    /// The environment the process was launched in.
+    env: Arc<EnvSnapshot>,
     library: Option<Library>,
     /// What the library reads of the remotes, where the program has them.
     remotes: Option<Rc<dyn RemoteLibrary>>,
 }
 
 impl LibraryCommands {
-    pub fn new() -> LibraryCommands {
-        LibraryCommands::default()
+    pub fn new(env: Arc<EnvSnapshot>) -> LibraryCommands {
+        LibraryCommands {
+            env,
+            library: None,
+            remotes: None,
+        }
     }
 
     /// The library reading the remotes too.
@@ -59,7 +65,8 @@ impl LibraryCommands {
 
     fn wired(&mut self) -> Result<&Library, LibError> {
         if self.library.is_none() {
-            self.library = Some(build(self.remotes.clone())?);
+            let wiring = Wiring::new(Arc::clone(&self.env))?;
+            self.library = Some(build(&wiring, self.remotes.clone())?);
         }
         Ok(self
             .library
@@ -68,15 +75,19 @@ impl LibraryCommands {
     }
 }
 
-pub(crate) fn build(remotes: Option<Rc<dyn RemoteLibrary>>) -> Result<Library, LibError> {
-    let wiring = Wiring::from_process()?;
+pub(crate) fn build(
+    wiring: &Wiring,
+    remotes: Option<Rc<dyn RemoteLibrary>>,
+) -> Result<Library, LibError> {
     let fs = wiring.fs();
     let home = wiring.home().to_path_buf();
     let (around, app) = wiring.locate();
     let content = ContentFs::new(Arc::clone(&fs), &app.path);
     let files = ConfigFilesFs::new(Arc::clone(&fs), app, &home);
     let binaries = wiring.path_search();
-    let environ = std::env::vars().collect();
+    // Overrides are text: a variable that is not UTF-8 is none (it is never
+    // an error, as `std::env::vars` made it).
+    let environ = wiring.env().vars_utf8().into_iter().collect();
     let ports = WritePorts {
         user: Arc::new(UserFilesFs::new(Arc::clone(&fs))),
         scaffold: Arc::new(ScaffoldFs::new(Arc::clone(&fs), &around.cwd)),

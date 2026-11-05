@@ -64,4 +64,18 @@ disallowed-methods = [
   { path = "tempfile::NamedTempFile::new_in", reason = "file I/O goes through the file-system seam: Fs::write_atomic" },
   { path = "tempfile::Builder::tempdir", reason = "file I/O goes through the file-system seam: Rooted::temp" },
   { path = "tempfile::Builder::tempfile", reason = "file I/O goes through the file-system seam" },
+  # The process environment is read once, at a program's composition root, into
+  # process-env's EnvSnapshot (EnvSnapshot::from_process, the one allowed site);
+  # everything else is handed the snapshot, so a test builds one of its own
+  # instead of setting the process's variables and working directory.
+  { path = "std::env::var", reason = "the environment is read once into process-env's EnvSnapshot: EnvSnapshot::utf8" },
+  { path = "std::env::var_os", reason = "the environment is read once into process-env's EnvSnapshot: EnvSnapshot::var" },
+  { path = "std::env::vars", reason = "the environment is read once into process-env's EnvSnapshot: EnvSnapshot::vars_utf8" },
+  { path = "std::env::vars_os", reason = "the environment is read once into process-env's EnvSnapshot: EnvSnapshot::vars" },
+  { path = "std::env::current_dir", reason = "the working directory is read once into process-env's EnvSnapshot: EnvSnapshot::cwd" },
+  { path = "std::env::temp_dir", reason = "the temporary directory is read once into process-env's EnvSnapshot: EnvSnapshot::temp_dir" },
+  { path = "std::env::home_dir", reason = "the home is read once into process-env's EnvSnapshot: EnvSnapshot::home" },
+  { path = "std::env::set_var", reason = "the process's environment is read, never written: a test builds an EnvSnapshot of its own" },
+  { path = "std::env::remove_var", reason = "the process's environment is read, never written: a test builds an EnvSnapshot of its own" },
+  { path = "std::env::set_current_dir", reason = "the process's working directory is read, never changed: a test builds an EnvSnapshot of its own" },
 ]

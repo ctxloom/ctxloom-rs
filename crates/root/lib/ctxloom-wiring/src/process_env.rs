@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 use std::ffi::OsString;
 
 use ctxloom_ports::ExportedVars;
+use process_env::EnvSnapshot;
 
 /// The names exported with a value. The values are not kept: a credential
 /// read from here cannot be printed or stored, only found present.
@@ -23,9 +24,12 @@ impl ProcessEnv {
         }
     }
 
-    /// This process's environment.
-    pub fn from_process() -> ProcessEnv {
-        ProcessEnv::of(std::env::vars_os())
+    /// The names among `env`'s variables that have a value.
+    pub fn from_snapshot(env: &EnvSnapshot) -> ProcessEnv {
+        ProcessEnv::of(
+            env.vars()
+                .map(|(name, value)| (name.to_os_string(), value.to_os_string())),
+        )
     }
 }
 

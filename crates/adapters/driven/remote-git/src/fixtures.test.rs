@@ -2,11 +2,13 @@
 //! file-system seam (the adapter runs a real git, which names real paths),
 //! under a root the test owns and removes.
 
+use std::ffi::OsString;
 use std::path::Path;
 use std::sync::Arc;
 
 use file_system::{Fs, Kind, Perms, Rooted};
 use os::{Flavor, Mode};
+use process_env::EnvSnapshot;
 
 /// The host's own filesystem (no root), for real paths.
 pub(crate) fn fs() -> Arc<dyn Fs> {
@@ -81,4 +83,36 @@ pub(crate) fn names(path: impl AsRef<Path>) -> Vec<String> {
 
 pub(crate) fn canonical(path: impl AsRef<Path>) -> std::path::PathBuf {
     fs().canonicalize(path.as_ref()).unwrap()
+}
+
+/// The process's environment, as the program reads it once.
+pub(crate) fn env() -> Arc<EnvSnapshot> {
+    Arc::new(EnvSnapshot::from_process())
+}
+
+/// The process's environment with `extra` set over it.
+pub(crate) fn env_with(extra: &[(&str, OsString)]) -> Arc<EnvSnapshot> {
+    let base = EnvSnapshot::from_process();
+    let kept = base
+        .vars()
+        .filter(|(name, _)| {
+            !extra
+                .iter()
+                .any(|(set, _)| name == &std::ffi::OsStr::new(set))
+        })
+        .map(|(name, value)| (name.to_os_string(), value.to_os_string()));
+    let set = extra
+        .iter()
+        .map(|(name, value)| (OsString::from(name), value.clone()));
+    Arc::new(EnvSnapshot::from_parts(
+        base.flavor(),
+        base.cwd(),
+        base.temp_dir().to_path_buf(),
+        kept.chain(set),
+    ))
+}
+
+/// The PATH the tests' own git runs under.
+pub(crate) fn path() -> OsString {
+    env().var("PATH").unwrap_or_default().to_os_string()
 }

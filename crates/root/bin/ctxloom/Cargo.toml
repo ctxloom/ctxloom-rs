@@ -36,6 +36,7 @@ session-cli.workspace = true
 session-files.workspace = true
 sessions-application.workspace = true
 sessions.workspace = true
+process-env.workspace = true
 
 [features]
 # The test-only commands (`ctxloom test ...`): the exit ladder, the --format

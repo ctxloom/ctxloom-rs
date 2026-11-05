@@ -4,6 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use file_system::Fs;
+use process_env::EnvSnapshot;
 
 /// What the markers are read through, so a test never touches the real
 /// `/proc`, the sentinel files or the process environment (CI itself runs
@@ -51,12 +52,13 @@ pub fn markers_from(machine: &dyn Machine) -> Vec<String> {
 /// process environment.
 pub struct Real {
     fs: Arc<dyn Fs>,
+    env: Arc<EnvSnapshot>,
 }
 
 impl Real {
-    /// The machine whose files are `fs`'s.
-    pub fn new(fs: Arc<dyn Fs>) -> Real {
-        Real { fs }
+    /// The machine whose files are `fs`'s and whose variables are `env`'s.
+    pub fn new(fs: Arc<dyn Fs>, env: Arc<EnvSnapshot>) -> Real {
+        Real { fs, env }
     }
 }
 
@@ -70,6 +72,6 @@ impl Machine for Real {
     }
 
     fn var(&self, name: &str) -> String {
-        std::env::var(name).unwrap_or_default()
+        self.env.utf8(name).unwrap_or_default().to_string()
     }
 }

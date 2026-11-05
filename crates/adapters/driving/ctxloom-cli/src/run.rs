@@ -25,6 +25,9 @@ pub struct Context {
     /// The lock protocol this binary speaks (`version` reports it).
     pub lock_protocol: u32,
     pub stdout_is_terminal: bool,
+    /// The harp of the session the hooks run in (`CTXLOOM_SESSION_HARP`);
+    /// empty when there is none.
+    pub session_harp: String,
 }
 
 /// What the commands call on the wiring.
@@ -114,7 +117,7 @@ pub fn run(
             // Some engines report a failed hook if stdin is closed before the
             // payload is read, so it is read to the end first.
             let input = std::io::read_to_string(std::io::stdin()).unwrap_or_default();
-            hook_verb(&hook, &input, format, services, catalog, out, err)
+            hook_verb(&hook, &input, format, context, services, catalog, out, err)
         }
         #[cfg(feature = "test-support")]
         Some(Verb::Test(verb)) => crate::test_commands::run(verb, format, catalog, services, out),
@@ -246,16 +249,21 @@ impl<S: Services> hook_cli::Binding for Bind<'_, S> {
 /// `hook ...`: an engine's callback. Stdout is the engine's input and only
 /// that; what a hook can foresee going wrong it warns of on the diagnostic
 /// channel and still succeeds.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the hook, its input, and the run's own parts"
+)]
 fn hook_verb<S: Services>(
     hook: &hook_cli::Hook,
     input: &str,
     format: Format,
+    context: &Context,
     services: &mut S,
     catalog: &Catalog,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> Result<(), CliError> {
-    let harp = std::env::var("CTXLOOM_SESSION_HARP").unwrap_or_default();
+    let harp = context.session_harp.clone();
     let written = match hook.verb {
         hook_cli::HookVerb::Hud => out.write_all(hook_cli::hud(input, &harp, 0).as_bytes()),
         hook_cli::HookVerb::SessionBind => {

@@ -113,7 +113,7 @@ fn test_the_store_never_opens_under_the_real_home() {
         files::exists(made.join("ctxloom.db")),
         "made under the temp home"
     );
-    if let Some(real) = std::env::var_os("HOME") {
+    if let Some(real) = crate::tests::host_var("HOME") {
         let there = std::path::Path::new(&real)
             .join(".ctxloom/projects")
             .join(&project);

@@ -33,7 +33,7 @@ impl Project {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         for name in ["PATH", "SystemRoot"] {
-            if let Some(value) = std::env::var_os(name) {
+            if let Some(value) = crate::tests::host_var(name) {
                 command.env(name, value);
             }
         }

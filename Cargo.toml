@@ -121,7 +121,9 @@ container-cli = { path = "crates/adapters/driving/container-cli" }
 # ctxloom-lib, the shared substrate (S2): the driving edge's call, failure, notices
 # and argument shims. Pinned by full commit over https, as taskloom pins it;
 # its angzarr pins are the ones above.
-cli-support = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "1cb0a5d71a9863aeffb0598b2c83dcc2d60ab2e5" }
+cli-support = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "4a7a5e7e9f9b82869b04cd8d45061da923e5739d" }
+# process-env (S3): the environment read once into a snapshot the composition root hands down.
+process-env = { git = "https://github.com/ctxloom/ctxloom-lib", rev = "4a7a5e7e9f9b82869b04cd8d45061da923e5739d" }
 
 # HTTP for forge-github (owner, 2026-11-04): the blocking client, so the
 # synchronous CLI holds no runtime of its own, and the TLS stack chosen below.

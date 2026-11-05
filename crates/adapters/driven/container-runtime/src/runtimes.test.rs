@@ -9,6 +9,7 @@ use std::time::Duration;
 use file_system::{Fs, Perms, Rooted};
 use isolation_ports::{ContainerRuntimes, RuntimeFacts};
 use os::Mode;
+use process_env::EnvSnapshot;
 
 use super::HostRuntimes;
 
@@ -43,9 +44,15 @@ fn script(fs: &Rooted, dir: &Path, name: &str, body: &str) {
     }
 }
 
+/// The snapshot the runtimes' markers are read from: none of its own.
+fn env() -> Arc<EnvSnapshot> {
+    Arc::new(EnvSnapshot::of(Vec::<(&str, &str)>::new()))
+}
+
 fn runtimes(fs: &Arc<Rooted>, dirs: &[&Path]) -> HostRuntimes {
     HostRuntimes::new(
         fs.clone(),
+        env(),
         dirs.iter().map(PathBuf::from).collect(),
         Duration::from_secs(5),
     )
@@ -91,7 +98,12 @@ fn an_installed_runtime_whose_daemon_is_down_is_listed_unreachable() {
 fn a_runtime_that_never_answers_is_unreachable_within_the_bound() {
     let (fs, bin) = machine();
     script(&fs, &bin, "docker", "exec sleep 30");
-    let slow = HostRuntimes::new(fs.clone(), vec![bin.clone()], Duration::from_millis(200));
+    let slow = HostRuntimes::new(
+        fs.clone(),
+        env(),
+        vec![bin.clone()],
+        Duration::from_millis(200),
+    );
     let started = std::time::Instant::now();
     let found = slow.installed();
     assert!(started.elapsed() < Duration::from_secs(10));
@@ -151,11 +163,14 @@ fn a_directory_is_not_a_runtime() {
 
 // An empty PATH entry is not the working directory.
 #[test]
-fn the_process_path_is_split_without_empty_entries() {
+fn the_path_of_the_environment_is_split_without_empty_entries() {
     let (fs, _) = machine();
-    let found = HostRuntimes::from_process(fs.clone());
-    let path = std::env::var_os("PATH").unwrap_or_default();
-    let expected = fs.os().flavor().split_search_path_os(&path);
+    let env = Arc::new(EnvSnapshot::of([(
+        "PATH",
+        std::env::join_paths(["/a", "", "/b"]).unwrap(),
+    )]));
+    let found = HostRuntimes::from_env(fs.clone(), env.clone());
+    let expected = vec![PathBuf::from("/a"), PathBuf::from("/b")];
     assert_eq!(found.dirs, expected);
     assert!(found.dirs.iter().all(|d| !d.as_os_str().is_empty()));
     assert_eq!(found.answer_within, Duration::from_secs(10));

@@ -1,3 +1,7 @@
+// The characterization pins set the process's own environment and working
+// directory, to pin what the program takes of them when it reads them once.
+#![allow(clippy::disallowed_methods)]
+
 use harp_core::{ADJECTIVES, NOUNS};
 
 use super::{run_id, session_name};
@@ -39,6 +43,10 @@ use std::path::{Path, PathBuf};
 
 use ctxloom_ports::{Executables, Source};
 use ports::ProjectIdentity;
+
+use std::sync::Arc;
+
+use ::process_env::EnvSnapshot;
 
 use super::{LibError, Wiring};
 use crate::fixtures::{canonical, exists, mkdirs, put_mode, remove_dir, root, unix};
@@ -124,8 +132,17 @@ impl Drop for Env {
     }
 }
 
+/// The wiring over the process's environment as it is now: read once, as the
+/// composition root reads it.
 fn from_process() -> Result<Wiring, LibError> {
-    Wiring::from_process()
+    Wiring::new(Arc::new(EnvSnapshot::from_process()))
+}
+
+/// The library over the process's environment as it is now.
+fn wired_library(
+    remotes: Option<std::rc::Rc<dyn deps_ports::RemoteLibrary>>,
+) -> Result<library_application::Library, LibError> {
+    crate::library::build(&from_process()?, remotes)
 }
 
 #[test]
@@ -180,15 +197,28 @@ fn test_the_surroundings_are_the_root_variable_the_cwd_the_home_and_the_temp_dir
     assert_eq!(around.cwd, std::env::current_dir().unwrap());
     assert_eq!(around.home, env.home());
     assert_eq!(around.temp_root, env.dir.join("tmp"));
+    // The environment is read once: a wiring made before the change does not
+    // see it, one made after does.
     env.set("CTXLOOM_ROOT", "");
+    assert_eq!(wiring.surroundings().root_env, None, "a snapshot");
     assert_eq!(
-        wiring.surroundings().root_env.as_deref(),
+        from_process()
+            .ok()
+            .unwrap()
+            .surroundings()
+            .root_env
+            .as_deref(),
         Some(""),
         "empty is passed on as given: finding the app dir treats it as unset"
     );
     env.set("CTXLOOM_ROOT", "/some/where");
     assert_eq!(
-        wiring.surroundings().root_env.as_deref(),
+        from_process()
+            .ok()
+            .unwrap()
+            .surroundings()
+            .root_env
+            .as_deref(),
         Some("/some/where")
     );
 }
@@ -239,13 +269,14 @@ fn test_locating_stops_at_the_temp_dir_the_variable_names() {
 #[test]
 fn test_locating_honours_a_root_that_is_a_directory_and_says_one_that_is_not() {
     let mut env = Env::new("locate-root");
-    let wiring = from_process().ok().unwrap();
     env.set("CTXLOOM_ROOT", env.dir.join("home"));
+    let wiring = from_process().ok().unwrap();
     let (_, app) = wiring.locate();
     assert_eq!(app.path, env.home().join(".ctxloom"));
     assert_eq!(app.source, Source::Project, "a named root is a project");
     let missing = env.dir.join("missing");
     env.set("CTXLOOM_ROOT", &missing);
+    let wiring = from_process().ok().unwrap();
     let (_, app) = wiring.locate();
     assert_eq!(app.source, Source::Home);
     assert_eq!(app.ignored_root, Some(missing.display().to_string()));
@@ -368,22 +399,16 @@ fn test_the_root_variable_makes_the_work_root_and_the_project_is_marked_there() 
 #[test]
 fn test_the_libraries_environment_is_the_whole_process_environment_at_the_time_of_wiring() {
     let mut env = Env::new("library-env");
-    let library = crate::library::build(None).ok().unwrap();
+    let library = wired_library(None).ok().unwrap();
     assert!(!library.degraded_by_environment());
     env.set("CTXLOOM_DEGRADED", "1");
-    assert!(crate::library::build(None)
-        .ok()
-        .unwrap()
-        .degraded_by_environment());
+    assert!(wired_library(None).ok().unwrap().degraded_by_environment());
     // a snapshot: the one built before does not see it
     assert!(!library.degraded_by_environment());
     for other in ["0", "true", "", "yes"] {
         env.set("CTXLOOM_DEGRADED", other);
         assert!(
-            !crate::library::build(None)
-                .ok()
-                .unwrap()
-                .degraded_by_environment(),
+            !wired_library(None).ok().unwrap().degraded_by_environment(),
             "{other:?}"
         );
     }
@@ -393,7 +418,7 @@ fn test_the_libraries_environment_is_the_whole_process_environment_at_the_time_o
 fn test_a_config_override_in_the_environment_reaches_the_library() {
     let mut env = Env::new("library-override");
     env.set("CTXLOOM_CONFIG_NON_TTY_FORMAT", "text");
-    let library = crate::library::build(None).ok().unwrap();
+    let library = wired_library(None).ok().unwrap();
     assert_eq!(
         library
             .preferred_format(&library_application::Flags::default())
@@ -401,21 +426,31 @@ fn test_a_config_override_in_the_environment_reaches_the_library() {
         Some("text")
     );
     env.unset("CTXLOOM_CONFIG_NON_TTY_FORMAT");
-    let library = crate::library::build(None).ok().unwrap();
+    let library = wired_library(None).ok().unwrap();
     assert_eq!(
         library.preferred_format(&library_application::Flags::default()),
         None
     );
 }
 
-/// Candidate bug, pinned as it is: the library's environment is read with
+/// The bug the pin documented (the library's environment was read with
 /// `std::env::vars`, which panics on any variable that is not UTF-8, so one
-/// such variable anywhere in the process's environment takes the whole
-/// program down when the library is wired.
+/// such variable anywhere in the process's environment took the whole program
+/// down when the library was wired), fixed: the library is wired, the variable
+/// is none to it (overrides are text), and every other variable still reaches
+/// it.
 #[test]
-#[should_panic(expected = "Result::unwrap()")]
-fn test_a_variable_that_is_not_utf_8_stops_the_library_being_wired() {
+fn test_a_variable_that_is_not_utf_8_does_not_stop_the_library_being_wired() {
     let mut env = Env::new("library-bytes");
     env.set("A0_NOT_UTF8", os::not_unicode(""));
-    let _ = crate::library::build(None);
+    env.set("CTXLOOM_DEGRADED", "1");
+    env.set("CTXLOOM_CONFIG_NON_TTY_FORMAT", "text");
+    let library = wired_library(None).expect("wired, though one variable is bytes");
+    assert!(library.degraded_by_environment(), "the others are read");
+    assert_eq!(
+        library
+            .preferred_format(&library_application::Flags::default())
+            .as_deref(),
+        Some("text")
+    );
 }

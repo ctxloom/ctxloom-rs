@@ -12,6 +12,7 @@ angzarr-diagnostic.workspace = true
 file-system.workspace = true
 isolation-ports.workspace = true
 os.workspace = true
+process-env.workspace = true
 
 [dev-dependencies]
 file-system = { workspace = true, features = ["test-support"] }

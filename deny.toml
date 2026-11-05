@@ -48,7 +48,8 @@ allow-git = [
   "https://github.com/angzarr-io/angzarr-router",
   # taskloom, by commit: harp-names and its ports.
   "https://github.com/ctxloom/taskloom",
-  # ctxloom-lib, by commit: the shared driving-edge shims (cli-support).
+  # ctxloom-lib, by commit: the shared driving-edge shims (cli-support) and the
+  # environment snapshot (process-env).
   "https://github.com/ctxloom/ctxloom-lib",
   # harp-core: the word lists ids are minted from.
   "https://github.com/benjaminabbitt/harp",

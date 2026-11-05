@@ -6,10 +6,11 @@ use std::ffi::OsString;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use deps_ports::Why;
+use process_env::EnvSnapshot;
 
 use crate::auth::Credential;
 
@@ -27,12 +28,8 @@ const POLL: Duration = Duration::from_millis(5);
 pub struct Git {
     program: PathBuf,
     timeout: Duration,
-}
-
-impl Default for Git {
-    fn default() -> Git {
-        Git::new("git", DEFAULT_TIMEOUT)
-    }
+    /// The environment git inherits, less the repository-location variables.
+    env: Arc<EnvSnapshot>,
 }
 
 /// Why a run produced no output.
@@ -164,12 +161,14 @@ pub(crate) fn is_local(key: &str, local: &Option<Vec<String>>) -> bool {
         && (key.starts_with("GIT_CONFIG_KEY_") || key.starts_with("GIT_CONFIG_VALUE_"))
 }
 
-/// The environment git is run in: the process's, less the repository-location
+/// The environment git is run in: `inherited`, less the repository-location
 /// variables, and non-interactive.
-fn environment() -> Vec<(OsString, OsString)> {
+fn environment(inherited: &EnvSnapshot) -> Vec<(OsString, OsString)> {
     let local = local_variables();
-    let mut env: Vec<(OsString, OsString)> = std::env::vars_os()
+    let mut env: Vec<(OsString, OsString)> = inherited
+        .vars()
         .filter(|(key, _)| !is_local(&key.to_string_lossy(), local))
+        .map(|(key, value)| (key.to_os_string(), value.to_os_string()))
         .collect();
     env.extend([
         ("GIT_TERMINAL_PROMPT".into(), "0".into()),
@@ -181,11 +180,12 @@ fn environment() -> Vec<(OsString, OsString)> {
 
 impl Git {
     /// `program` (a path, or a name looked up on PATH), each invocation
-    /// bounded by `timeout`.
-    pub fn new(program: impl Into<PathBuf>, timeout: Duration) -> Git {
+    /// bounded by `timeout`, run in `env`'s environment.
+    pub fn new(program: impl Into<PathBuf>, timeout: Duration, env: Arc<EnvSnapshot>) -> Git {
         Git {
             program: program.into(),
             timeout,
+            env,
         }
     }
 
@@ -227,7 +227,7 @@ impl Git {
         command
             .args(args)
             .env_clear()
-            .envs(environment())
+            .envs(environment(&self.env))
             .envs(credential.pairs().iter().map(|(k, v)| (k, v)))
             .stdin(if stdin.is_some() {
                 Stdio::piped()

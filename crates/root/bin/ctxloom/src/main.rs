@@ -1,12 +1,15 @@
 //! ctxloom: the composition root. It builds the catalog from every crate's
-//! `EN_US`, reads what it needs from the process (stdout's terminal, the
-//! version, the lock protocol), and hands the command line the wiring. It
+//! `EN_US`, reads what it needs from the process (its environment, once;
+//! stdout's terminal, the version, the lock protocol), and hands the command
+//! line the wiring. It
 //! holds no logic of its own.
 
 use std::io::{self, IsTerminal};
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use ctxloom_cli::{Catalog, Context, Extension, Services};
+use process_env::EnvSnapshot;
 
 /// The binary's en-US catalog: every crate's own.
 fn catalog() -> Result<Catalog, angzarr_presentation::CatalogError> {
@@ -34,12 +37,23 @@ fn catalog() -> Result<Catalog, angzarr_presentation::CatalogError> {
 }
 
 /// What the commands call, over the default wiring.
-#[derive(Default)]
 struct Wired {
+    /// The environment the process was launched in, read once.
+    env: Arc<EnvSnapshot>,
     /// Every command of the program, wired when one first needs the home.
     library: ctxloom_wiring::Commands,
     /// The sessions use cases, built when a command first needs them.
     sessions: Option<ctxloom_wiring::Sessions>,
+}
+
+impl Wired {
+    fn new(env: Arc<EnvSnapshot>) -> Wired {
+        Wired {
+            library: ctxloom_wiring::Commands::new(Arc::clone(&env)),
+            sessions: None,
+            env,
+        }
+    }
 }
 
 impl Services for Wired {
@@ -53,7 +67,8 @@ impl Services for Wired {
         &mut self,
     ) -> Result<&mut ctxloom_wiring::Sessions, Box<dyn angzarr_diagnostic::Diagnostic>> {
         if self.sessions.is_none() {
-            let wiring = ctxloom_wiring::Wiring::from_process().map_err(|e| Box::new(e) as _)?;
+            let wiring =
+                ctxloom_wiring::Wiring::new(Arc::clone(&self.env)).map_err(|e| Box::new(e) as _)?;
             self.sessions = Some(wiring.sessions());
         }
         match self.sessions.as_mut() {
@@ -92,7 +107,8 @@ impl Services for Wired {
         &mut self,
         project: &str,
     ) -> Result<String, Box<dyn angzarr_diagnostic::Diagnostic>> {
-        let opened = ctxloom_wiring::Wiring::from_process().and_then(|w| w.open_store(project));
+        let opened =
+            ctxloom_wiring::Wiring::new(Arc::clone(&self.env)).and_then(|w| w.open_store(project));
         match opened {
             Ok(path) => Ok(path.display().to_string()),
             Err(e) => Err(Box::new(e)),
@@ -111,7 +127,7 @@ impl Services for Wired {
                 transcript.clone().unwrap_or_default(),
             )),
         };
-        let planted = ctxloom_wiring::Wiring::from_process().and_then(|w| {
+        let planted = ctxloom_wiring::Wiring::new(Arc::clone(&self.env)).and_then(|w| {
             w.seed_session(&ctxloom_wiring::Seed {
                 harp: seed.harp.clone(),
                 project: seed.project.clone(),
@@ -165,17 +181,23 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    // The process's environment, read once: everything below is handed it.
+    let env = Arc::new(EnvSnapshot::from_process());
     let context = Context {
         version: env!("CARGO_PKG_VERSION").to_string(),
         lock_protocol: file_lock::LOCK_PROTOCOL,
         stdout_is_terminal: io::stdout().is_terminal(),
+        session_harp: env
+            .utf8("CTXLOOM_SESSION_HARP")
+            .unwrap_or_default()
+            .to_string(),
     };
     let (stdout, stderr) = (io::stdout(), io::stderr());
     ExitCode::from(ctxloom_cli::run(
         std::env::args_os(),
         &context,
         &catalog,
-        &mut Wired::default(),
+        &mut Wired::new(env),
         &mut stdout.lock(),
         &mut stderr.lock(),
     ))

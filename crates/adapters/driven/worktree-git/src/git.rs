@@ -13,6 +13,7 @@ use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use file_system::{Fs, Kind};
+use process_env::EnvSnapshot;
 
 use crate::error::WorktreeError;
 
@@ -32,6 +33,8 @@ pub struct Git {
     fs: Arc<dyn Fs>,
     program: PathBuf,
     timeout: Duration,
+    /// The environment git inherits, less the repository-location variables.
+    env: Arc<EnvSnapshot>,
 }
 
 /// Why a git invocation did not succeed.
@@ -178,10 +181,12 @@ fn is_local(key: &str, local: &Option<Vec<String>>) -> bool {
         && (key.starts_with("GIT_CONFIG_KEY_") || key.starts_with("GIT_CONFIG_VALUE_"))
 }
 
-fn environment() -> Vec<(OsString, OsString)> {
+fn environment(inherited: &EnvSnapshot) -> Vec<(OsString, OsString)> {
     let local = local_variables();
-    let mut env: Vec<(OsString, OsString)> = std::env::vars_os()
+    let mut env: Vec<(OsString, OsString)> = inherited
+        .vars()
         .filter(|(key, _)| !is_local(&key.to_string_lossy(), local))
+        .map(|(key, value)| (key.to_os_string(), value.to_os_string()))
         .collect();
     env.extend([
         ("GIT_TERMINAL_PROMPT".into(), "0".into()),
@@ -192,18 +197,25 @@ fn environment() -> Vec<(OsString, OsString)> {
 
 impl Git {
     /// The git on PATH, each invocation bounded by [`DEFAULT_TIMEOUT`]; `fs`
-    /// is the filesystem its working directories are on.
-    pub fn on(fs: Arc<dyn Fs>) -> Git {
-        Git::new(fs, "git", DEFAULT_TIMEOUT)
+    /// is the filesystem its working directories are on, `env` the
+    /// environment it is run in.
+    pub fn on(fs: Arc<dyn Fs>, env: Arc<EnvSnapshot>) -> Git {
+        Git::new(fs, "git", DEFAULT_TIMEOUT, env)
     }
 
     /// `program` (a path, or a name looked up on PATH), each invocation
-    /// bounded by `timeout`.
-    pub fn new(fs: Arc<dyn Fs>, program: impl Into<PathBuf>, timeout: Duration) -> Git {
+    /// bounded by `timeout`, run in `env`'s environment.
+    pub fn new(
+        fs: Arc<dyn Fs>,
+        program: impl Into<PathBuf>,
+        timeout: Duration,
+        env: Arc<EnvSnapshot>,
+    ) -> Git {
         Git {
             fs,
             program: program.into(),
             timeout,
+            env,
         }
     }
 
@@ -225,7 +237,7 @@ impl Git {
             .args(args)
             .current_dir(dir)
             .env_clear()
-            .envs(environment())
+            .envs(environment(&self.env))
             .stdin(Stdio::null());
         let output = output_within(&mut command, label, self.timeout).map_err(|e| match e {
             // A spawn that finds nothing is the program missing or the

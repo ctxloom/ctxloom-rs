@@ -19,6 +19,7 @@ use deps_application::{Deps, ProjectRefresh, Refresh, RefreshEngine, RefusedKind
 use deps_files::ProjectFiles;
 use deps_ports::DepsFiles;
 use forge_github::GitHub;
+use process_env::EnvSnapshot;
 use remote_git::GitRemotes;
 use setup_application::{MaterializeRequest, Puller, Setup};
 use surface_files::SurfaceFiles;
@@ -32,22 +33,32 @@ const OWN_NOUNS: [&str; 2] = ["remote", "deps"];
 
 /// The dependency use cases over the process's home, working directory and
 /// project.
-fn build_deps() -> Result<Deps, LibError> {
-    let wiring = Wiring::from_process()?;
+fn build_deps(wiring: &Wiring) -> Result<Deps, LibError> {
     let fs = wiring.fs();
+    let env = Arc::clone(wiring.env());
     let (_, app) = wiring.locate();
     let files = Arc::new(ProjectFiles::new(Arc::clone(&fs), app.path.clone()));
     Ok(Deps::new(
         Arc::new(
-            GitRemotes::new(Arc::clone(&fs), app.path.join("cache/repos")).with_credentials(
-                Arc::new(|name| std::env::var(name).ok()),
+            GitRemotes::new(
+                Arc::clone(&fs),
+                app.path.join("cache/repos"),
+                Arc::clone(&env),
+            )
+            .with_credentials(
+                Arc::new({
+                    let env = Arc::clone(&env);
+                    move |name| env.utf8(name).map(String::from)
+                }),
                 token_vars(Arc::clone(&files)),
             ),
         ),
         files,
         Arc::new(ContentFs::new(fs, &app.path)),
     )
-    .with_forge(Arc::new(GitHub::from_process())))
+    .with_forge(Arc::new(GitHub::with_env(move |name| {
+        env.utf8(name).map(String::from)
+    }))))
 }
 
 /// The nouns the surface commands own outright.
@@ -133,11 +144,10 @@ pub fn engines() -> Engines {
 
 /// The setup use cases over the process's home, working directory and
 /// project.
-fn build_setup(deps: Rc<Deps>) -> Result<Setup, LibError> {
-    let wiring = Wiring::from_process()?;
+fn build_setup(wiring: &Wiring, deps: Rc<Deps>) -> Result<Setup, LibError> {
     let fs = wiring.fs();
     let home = wiring.home().to_path_buf();
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let cwd = wiring.env().cwd().unwrap_or_else(|_| PathBuf::from("."));
     let (_, app) = wiring.locate();
     let project_dir = match app.source {
         ctxloom_ports::Source::Project => {
@@ -149,7 +159,7 @@ fn build_setup(deps: Rc<Deps>) -> Result<Setup, LibError> {
         Arc::clone(&fs),
         home.join(".ctxloom/records"),
     ));
-    let library = crate::library::build(Some(deps.clone()))?;
+    let library = crate::library::build(wiring, Some(deps.clone()))?;
     Ok(Setup::new(
         library,
         engines(),
@@ -205,8 +215,9 @@ fn token_vars(files: Arc<ProjectFiles>) -> remote_git::TokenVars {
 }
 
 /// Every command of the program, wired when one first needs the home.
-#[derive(Default)]
 pub struct Commands {
+    /// The environment the process was launched in, read once.
+    env: Arc<EnvSnapshot>,
     wired: Option<Wired>,
 }
 
@@ -218,8 +229,8 @@ struct Wired {
 }
 
 impl Commands {
-    pub fn new() -> Commands {
-        Commands::default()
+    pub fn new(env: Arc<EnvSnapshot>) -> Commands {
+        Commands { env, wired: None }
     }
 
     /// The engines' callbacks, over the setup use cases.
@@ -229,10 +240,11 @@ impl Commands {
 
     fn wired(&mut self) -> Result<&mut Wired, LibError> {
         if self.wired.is_none() {
-            let deps = Rc::new(build_deps()?);
-            let library = LibraryCommands::new().with_remotes(deps.clone());
-            let surface = build_setup(deps.clone())?;
-            let setup = SetupUseCases::build(deps.clone())?;
+            let wiring = Wiring::new(Arc::clone(&self.env))?;
+            let deps = Rc::new(build_deps(&wiring)?);
+            let library = LibraryCommands::new(Arc::clone(&self.env)).with_remotes(deps.clone());
+            let surface = build_setup(&wiring, deps.clone())?;
+            let setup = SetupUseCases::build(&wiring, deps.clone())?;
             self.wired = Some(Wired {
                 deps,
                 library,
@@ -297,7 +309,7 @@ impl Extension for Commands {
         err: &mut dyn Write,
     ) -> Result<u8, Failure> {
         if noun == "container" {
-            return crate::isolation::container(call, catalog, out);
+            return crate::isolation::container(&self.env, call, catalog, out);
         }
         if SETUP_NOUNS.contains(&noun) {
             return self.setup(noun, call, catalog, out, err);

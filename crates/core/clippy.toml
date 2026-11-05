@@ -66,6 +66,16 @@ disallowed-methods = [
   { path = "tempfile::NamedTempFile::new_in", reason = "the core does no I/O: use a port" },
   { path = "tempfile::Builder::tempdir", reason = "the core does no I/O: use a port" },
   { path = "tempfile::Builder::tempfile", reason = "the core does no I/O: use a port" },
+  # The process environment is read once, at a program's composition root, into
+  # process-env's EnvSnapshot (EnvSnapshot::from_process, the one allowed site);
+  # everything else is handed the snapshot, so a test builds one of its own
+  # instead of setting the process's variables and working directory.
+  { path = "std::env::vars_os", reason = "the environment is read once into process-env's EnvSnapshot: EnvSnapshot::vars" },
+  { path = "std::env::temp_dir", reason = "the temporary directory is read once into process-env's EnvSnapshot: EnvSnapshot::temp_dir" },
+  { path = "std::env::home_dir", reason = "the home is read once into process-env's EnvSnapshot: EnvSnapshot::home" },
+  { path = "std::env::set_var", reason = "the process's environment is read, never written: a test builds an EnvSnapshot of its own" },
+  { path = "std::env::remove_var", reason = "the process's environment is read, never written: a test builds an EnvSnapshot of its own" },
+  { path = "std::env::set_current_dir", reason = "the process's working directory is read, never changed: a test builds an EnvSnapshot of its own" },
 ]
 
 disallowed-types = [

@@ -37,7 +37,10 @@ fn git(dir: &Path, args: &[&str]) -> String {
         .args(args)
         .current_dir(dir)
         .env_clear()
-        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+        .env(
+            "PATH",
+            crate::fixtures::env().var("PATH").unwrap_or_default(),
+        )
         .env("HOME", dir)
         .output()
         .expect("git runs");
@@ -75,7 +78,7 @@ impl Fixture {
     }
 
     fn adapter(&self) -> GitWorkspaces {
-        GitWorkspaces::new(fs(), &self.home)
+        GitWorkspaces::new(fs(), &self.home, crate::fixtures::env())
     }
 
     fn work_dir(&self, harp: &str) -> PathBuf {
@@ -602,7 +605,12 @@ mod hung_git {
         let dir = root();
         let path = dir.root().join("git");
         put_exec(&path, "#!/bin/sh\nexec sleep 30\n");
-        let git = Git::new(fs(), path, Duration::from_millis(20));
+        let git = Git::new(
+            fs(),
+            path,
+            Duration::from_millis(20),
+            crate::fixtures::env(),
+        );
         // Run once, so the script is past the moment another thread's fork
         // may hold it open for writing (ETXTBSY); every use after is plain.
         while matches!(git.run(dir.root(), &["warm"]), Err(GitError::Said(why)) if why.contains("busy"))

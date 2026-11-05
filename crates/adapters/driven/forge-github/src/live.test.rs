@@ -7,7 +7,16 @@ use deps_ports::{Endpoint, Forge};
 use super::GitHub;
 
 fn live() -> bool {
-    std::env::var("CTXLOOM_LIVE_GITHUB").is_ok_and(|v| v == "1")
+    process().utf8("CTXLOOM_LIVE_GITHUB") == Some("1")
+}
+
+fn process() -> process_env::EnvSnapshot {
+    process_env::EnvSnapshot::from_process()
+}
+
+fn github() -> GitHub {
+    let env = process();
+    GitHub::with_env(move |name| env.utf8(name).map(String::from))
 }
 
 fn public() -> Endpoint {
@@ -23,7 +32,7 @@ fn test_live_a_search_of_the_public_github_answers_ctxloom_repositories() {
     if !live() {
         return;
     }
-    let repos = GitHub::from_process()
+    let repos = github()
         .search_repositories(&public(), "", 5)
         .expect("a search of the public GitHub");
     for repo in &repos {

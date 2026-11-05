@@ -57,6 +57,7 @@ system.workspace = true
 # taskloom's harp ids and the Names port they implement, by commit.
 harp-names.workspace = true
 os.workspace = true
+process-env.workspace = true
 ports.workspace = true
 tokio.workspace = true
 uuid.workspace = true

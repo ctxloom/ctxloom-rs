@@ -475,7 +475,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 [[package]]
 name = "cli-support"
 version = "0.1.0"
-source = "git+https://github.com/ctxloom/ctxloom-lib?rev=1cb0a5d71a9863aeffb0598b2c83dcc2d60ab2e5#1cb0a5d71a9863aeffb0598b2c83dcc2d60ab2e5"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=4a7a5e7e9f9b82869b04cd8d45061da923e5739d#4a7a5e7e9f9b82869b04cd8d45061da923e5739d"
 dependencies = [
  "angzarr-diagnostic",
  "angzarr-presentation",
@@ -548,6 +548,7 @@ dependencies = [
  "isolation-ports",
  "mutants",
  "os",
+ "process-env",
 ]
 
 [[package]]
@@ -691,6 +692,7 @@ dependencies = [
  "library",
  "library-application",
  "os",
+ "process-env",
  "reclaim-application",
  "serde_json",
  "session-cli",
@@ -789,6 +791,7 @@ dependencies = [
  "mutants",
  "os",
  "ports",
+ "process-env",
  "project-registry",
  "reclaim-application",
  "remote-git",
@@ -1262,6 +1265,7 @@ dependencies = [
  "base64 0.22.1",
  "deps-ports",
  "percent-encoding",
+ "process-env",
  "reqwest",
  "serde_json",
 ]
@@ -2644,6 +2648,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "process-env"
+version = "0.1.0"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=4a7a5e7e9f9b82869b04cd8d45061da923e5739d#4a7a5e7e9f9b82869b04cd8d45061da923e5739d"
+dependencies = [
+ "os",
+]
+
+[[package]]
 name = "project-registry"
 version = "0.1.0"
 source = "git+https://github.com/ctxloom/taskloom?rev=14dfe7c743ed1e7dea1183c581e361ed4ac0fbde#14dfe7c743ed1e7dea1183c581e361ed4ac0fbde"
@@ -2877,6 +2889,7 @@ dependencies = [
  "deps-ports",
  "file-system",
  "os",
+ "process-env",
 ]
 
 [[package]]
@@ -4663,6 +4676,7 @@ dependencies = [
  "isolation-ports",
  "mutants",
  "os",
+ "process-env",
 ]
 
 [[package]]

@@ -3,6 +3,7 @@
 //! engines, the registered companions and the project's files.
 
 use std::rc::Rc;
+use std::sync::Arc;
 
 use angzarr_presentation::Catalog;
 use companion_probe::ProcessProbe;
@@ -12,6 +13,7 @@ use ctxloom_cli::{Call, Failure};
 use isolation_application::Containers;
 use isolation_ports::{Backends, Companions, Failure as PortFailure, Tooling};
 use library_application::{Flags, Library};
+use process_env::EnvSnapshot;
 
 use crate::{LibError, Wiring};
 
@@ -81,6 +83,7 @@ fn declared(text: &str) -> Option<String> {
 
 /// Run `ctxloom container ...`.
 pub(crate) fn container(
+    env: &Arc<EnvSnapshot>,
     call: &Call<'_>,
     _catalog: &Catalog,
     out: &mut dyn std::io::Write,
@@ -89,11 +92,11 @@ pub(crate) fn container(
         cause: Box::new(e),
         exit: 1,
     };
-    let wiring = Wiring::from_process().map_err(wired)?;
-    let library = Rc::new(crate::library::build(None).map_err(wired)?);
+    let wiring = Wiring::new(Arc::clone(env)).map_err(wired)?;
+    let library = Rc::new(crate::library::build(&wiring, None).map_err(wired)?);
     let flags = call.globals.clone();
     let containers = Containers::new(
-        HostRuntimes::from_process(wiring.fs()),
+        HostRuntimes::from_env(wiring.fs(), Arc::clone(env)),
         Engines {
             names: crate::commands::engines().names(),
             library: Rc::clone(&library),

@@ -722,7 +722,10 @@ fn search_through_environment_proxy(proxy: bool) -> bool {
 
 #[test]
 fn test_the_proxy_of_the_environment_is_used_unless_the_client_is_made_without_one() {
-    if let Ok(case) = std::env::var(PROXY_CASE) {
+    if let Some(case) = process_env::EnvSnapshot::from_process()
+        .utf8(PROXY_CASE)
+        .map(String::from)
+    {
         // The child: report by exit status.
         let reached = search_through_environment_proxy(case == "on");
         assert_eq!(reached, case == "on", "case {case}");

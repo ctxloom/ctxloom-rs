@@ -4,6 +4,8 @@
 use super::*;
 use std::path::PathBuf;
 
+use ::process_env::EnvSnapshot;
+
 fn verbs(noun: &Command) -> Vec<String> {
     noun.get_subcommands()
         .map(|c| c.get_name().to_string())
@@ -12,7 +14,7 @@ fn verbs(noun: &Command) -> Vec<String> {
 
 #[test]
 fn test_the_nouns_are_the_librarys_and_the_dependency_ones() {
-    let nouns = Commands::new().nouns();
+    let nouns = Commands::new(Arc::new(EnvSnapshot::from_process())).nouns();
     let names: Vec<&str> = nouns.iter().map(Command::get_name).collect();
     for noun in ["bundle", "fragment", "profile", "search", "remote", "deps"] {
         assert!(names.contains(&noun), "{noun} in {names:?}");
@@ -22,7 +24,7 @@ fn test_the_nouns_are_the_librarys_and_the_dependency_ones() {
 
 #[test]
 fn test_only_the_bundle_noun_gains_the_publishing_verbs() {
-    let nouns = Commands::new().nouns();
+    let nouns = Commands::new(Arc::new(EnvSnapshot::from_process())).nouns();
     let find = |name: &str| nouns.iter().find(|n| n.get_name() == name).expect(name);
     let bundle = verbs(find("bundle"));
     assert!(bundle.contains(&"push".to_string()) && bundle.contains(&"move".to_string()));
@@ -39,58 +41,71 @@ fn test_only_the_bundle_noun_gains_the_publishing_verbs() {
     }
 }
 
-/// A process-bound world: HOME and the working directory in a directory of
-/// the test's own, the root and project variables unset. The environment is
-/// the process's, so one test holds it at a time and puts it back.
+/// A world of the test's own: HOME and the working directory in a directory
+/// of the test's own, the root and project variables unset, the rest of the
+/// process's environment as it is. The program reads it as a snapshot, so
+/// the process's own environment is never touched.
 struct World {
     _root: file_system::Rooted,
     dir: PathBuf,
-    saved: Vec<(&'static str, Option<std::ffi::OsString>)>,
-    cwd: PathBuf,
-    _held: std::sync::MutexGuard<'static, ()>,
+    base: EnvSnapshot,
+    vars: Vec<(std::ffi::OsString, std::ffi::OsString)>,
 }
-
-use crate::tests::ENV_LOCK as WORLD;
 
 impl World {
     fn new(_name: &str) -> World {
-        let held = WORLD.lock().unwrap_or_else(|e| e.into_inner());
         let temp = crate::fixtures::root();
         let dir = temp.root().to_path_buf();
         crate::fixtures::mkdirs(dir.join("home"));
         crate::fixtures::mkdirs(dir.join("work"));
-        let cwd = std::env::current_dir().unwrap();
-        let vars = [
-            "HOME",
-            "CTXLOOM_ROOT",
-            "CTXLOOM_PROJECT_ID",
-            "CLAUDE_CODE_OAUTH_TOKEN",
-        ];
-        let saved = vars.iter().map(|v| (*v, std::env::var_os(v))).collect();
-        std::env::set_var("HOME", dir.join("home"));
-        std::env::remove_var("CTXLOOM_ROOT");
-        std::env::remove_var("CTXLOOM_PROJECT_ID");
-        std::env::remove_var("CLAUDE_CODE_OAUTH_TOKEN");
-        std::env::set_current_dir(dir.join("work")).unwrap();
-        World {
+        let base = EnvSnapshot::from_process();
+        let mut world = World {
             _root: temp,
             dir,
-            saved,
-            cwd,
-            _held: held,
-        }
+            base,
+            vars: Vec::new(),
+        };
+        world.vars = world
+            .base
+            .vars()
+            .filter(|(name, _)| {
+                [
+                    "HOME",
+                    "CTXLOOM_ROOT",
+                    "CTXLOOM_PROJECT_ID",
+                    "CLAUDE_CODE_OAUTH_TOKEN",
+                ]
+                .iter()
+                .all(|unset| name != &std::ffi::OsStr::new(unset))
+            })
+            .map(|(name, value)| (name.to_os_string(), value.to_os_string()))
+            .collect();
+        world.set("HOME", world.dir.join("home"));
+        world
     }
-}
 
-impl Drop for World {
-    fn drop(&mut self) {
-        let _ = std::env::set_current_dir(&self.cwd);
-        for (var, value) in &self.saved {
-            match value {
-                Some(v) => std::env::set_var(var, v),
-                None => std::env::remove_var(var),
-            }
-        }
+    fn set(&mut self, name: &str, value: impl Into<std::ffi::OsString>) {
+        self.vars.retain(|(set, _)| set != name);
+        self.vars.push((name.into(), value.into()));
+    }
+
+    /// The world's environment as the program takes it.
+    fn env(&self) -> Arc<EnvSnapshot> {
+        Arc::new(EnvSnapshot::from_parts(
+            self.base.flavor(),
+            Ok(self.dir.join("work")),
+            self.base.temp_dir().to_path_buf(),
+            self.vars.clone(),
+        ))
+    }
+
+    /// The program's commands, over this world's environment as of now.
+    fn commands(&self) -> Commands {
+        Commands::new(self.env())
+    }
+
+    fn wiring(&self) -> crate::Wiring {
+        crate::Wiring::new(self.env()).unwrap()
     }
 }
 
@@ -146,15 +161,15 @@ fn test_the_engines_composed_in_are_claude_first_then_the_mocks() {
 
 #[test]
 fn test_a_library_command_is_run_over_the_home() {
-    let _world = World::new("library");
-    let (code, out, err) = run_line(&mut Commands::new(), &["bundle", "list"]);
+    let world = World::new("library");
+    let (code, out, err) = run_line(&mut world.commands(), &["bundle", "list"]);
     assert_eq!((code, out.as_str(), err.as_str()), (0, "[]\n", ""));
 }
 
 #[test]
 fn test_a_setup_command_is_run_over_the_home() {
     let world = World::new("setup");
-    let (code, out, _) = run_line(&mut Commands::new(), &["clean"]);
+    let (code, out, _) = run_line(&mut world.commands(), &["clean"]);
     assert_eq!(code, 0);
     assert!(out.contains("\"applied\": false"), "{out}");
     let home = world.dir.join("home").display().to_string();
@@ -170,7 +185,7 @@ fn test_a_setup_command_is_run_over_the_home() {
 fn test_the_wired_sessions_read_the_purge_age_from_the_project_config() {
     use reclaim_application::SweepConfig;
     let world = World::new("purge-age");
-    let mut sessions = crate::Wiring::from_process().unwrap().sessions();
+    let mut sessions = world.wiring().sessions();
     assert_eq!(sessions.purge_age().unwrap(), None);
     crate::fixtures::mkdirs(world.dir.join("work/.ctxloom"));
     crate::fixtures::put_mode(
@@ -178,19 +193,19 @@ fn test_the_wired_sessions_read_the_purge_age_from_the_project_config() {
         "schema_version: 8\nsession_purge_age: 45d\n",
         0o644,
     );
-    let mut sessions = crate::Wiring::from_process().unwrap().sessions();
+    let mut sessions = world.wiring().sessions();
     assert_eq!(sessions.purge_age().unwrap(), Some("45d".to_string()));
 }
 
 // auth.feature, over the process's own environment.
 #[test]
 fn test_auth_status_reads_the_launch_environment_and_never_its_values() {
-    let _world = World::new("auth");
-    let (code, out, _) = run_line(&mut Commands::new(), &["auth", "status"]);
+    let mut world = World::new("auth");
+    let (code, out, _) = run_line(&mut world.commands(), &["auth", "status"]);
     assert_eq!(code, 0);
     assert!(out.contains("\"present\": false"), "{out}");
-    std::env::set_var("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-fixture-not-real"); // gitleaks:allow
-    let (code, out, err) = run_line(&mut Commands::new(), &["auth", "status"]);
+    world.set("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-fixture-not-real"); // gitleaks:allow
+    let (code, out, err) = run_line(&mut world.commands(), &["auth", "status"]);
     assert_eq!(code, 0);
     assert!(out.contains("\"present\": true"), "{out}");
     assert!(!out.contains("fixture-not-real") && !err.contains("fixture-not-real"));
@@ -199,19 +214,19 @@ fn test_auth_status_reads_the_launch_environment_and_never_its_values() {
 // doctor.feature: the credentials row is read from the same environment.
 #[test]
 fn test_doctor_fails_without_the_token_and_passes_with_it() {
-    let _world = World::new("doctor-credentials");
-    let (code, out, _) = run_line(&mut Commands::new(), &["doctor"]);
+    let mut world = World::new("doctor-credentials");
+    let (code, out, _) = run_line(&mut world.commands(), &["doctor"]);
     assert_eq!(code, 3);
     assert!(out.contains("DOCTOR-CHECK-CREDENTIALS-m5"), "{out}");
-    std::env::set_var("CLAUDE_CODE_OAUTH_TOKEN", "x");
-    let (code, _, _) = run_line(&mut Commands::new(), &["doctor"]);
+    world.set("CLAUDE_CODE_OAUTH_TOKEN", "x");
+    let (code, _, _) = run_line(&mut world.commands(), &["doctor"]);
     assert_eq!(code, 0);
 }
 
 #[test]
 fn test_a_dependency_command_is_run_over_the_home() {
-    let _world = World::new("deps");
-    let (code, out, _) = run_line(&mut Commands::new(), &["remote", "list"]);
+    let world = World::new("deps");
+    let (code, out, _) = run_line(&mut world.commands(), &["remote", "list"]);
     assert_eq!(code, 0);
     assert!(!out.is_empty());
 }
@@ -219,8 +234,8 @@ fn test_a_dependency_command_is_run_over_the_home() {
 #[test]
 fn test_the_hooks_answer_through_the_engines_codec() {
     use hook_cli::HookService;
-    let _world = World::new("hooks");
-    let mut commands = Commands::new();
+    let world = World::new("hooks");
+    let mut commands = world.commands();
     let hooks = commands.hooks().ok().unwrap();
     assert_eq!(
         hooks.session_start("claude-code", "{}").ok().unwrap(),
@@ -252,9 +267,9 @@ fn strings(of: &[&str]) -> Vec<String> {
 
 #[test]
 fn test_a_refresh_without_consent_previews_the_project_and_writes_nothing() {
-    let _world = World::new("preview");
-    let here = std::env::current_dir().unwrap().display().to_string();
-    let mut commands = Commands::new();
+    let world = World::new("preview");
+    let here = world.env().cwd().unwrap().display().to_string();
+    let mut commands = world.commands();
     let wired = commands.wired().ok().unwrap();
     let refresh = SetupRefresh {
         setup: &wired.surface,
@@ -276,8 +291,8 @@ fn test_a_refresh_without_consent_previews_the_project_and_writes_nothing() {
 
 #[test]
 fn test_a_refresh_is_asked_for_the_flags_of_the_command() {
-    let _world = World::new("flags");
-    let mut commands = Commands::new();
+    let world = World::new("flags");
+    let mut commands = world.commands();
     let wired = commands.wired().ok().unwrap();
     let refresh = SetupRefresh {
         setup: &wired.surface,
@@ -293,9 +308,9 @@ fn test_a_refresh_is_asked_for_the_flags_of_the_command() {
 
 #[test]
 fn test_a_consented_refresh_writes_the_project_and_answers_its_target() {
-    let _world = World::new("write");
-    let here = std::env::current_dir().unwrap();
-    let mut commands = Commands::new();
+    let world = World::new("write");
+    let here = world.env().cwd().unwrap();
+    let mut commands = world.commands();
     let wired = commands.wired().ok().unwrap();
     let refresh = SetupRefresh {
         setup: &wired.surface,

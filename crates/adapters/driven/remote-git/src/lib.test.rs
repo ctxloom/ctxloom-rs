@@ -2,6 +2,7 @@
 //! directories (ADR 0015's local-git-remote approach).
 
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
@@ -21,7 +22,7 @@ fn git(dir: &Path, args: &[&str]) -> String {
         .args(args)
         .current_dir(dir)
         .env_clear()
-        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+        .env("PATH", crate::fixtures::path())
         .env("HOME", dir)
         .env("GIT_AUTHOR_NAME", "Fixture")
         .env("GIT_AUTHOR_EMAIL", "fixture@example.test")
@@ -39,15 +40,15 @@ fn git(dir: &Path, args: &[&str]) -> String {
 
 /// The identity a publish commits as: the user's own configuration, here the
 /// environment.
-fn identify() {
-    for (key, value) in [
+fn identity() -> Vec<(&'static str, OsString)> {
+    [
         ("GIT_AUTHOR_NAME", "Alice"),
         ("GIT_AUTHOR_EMAIL", "alice@example.test"),
         ("GIT_COMMITTER_NAME", "Alice"),
         ("GIT_COMMITTER_EMAIL", "alice@example.test"),
-    ] {
-        std::env::set_var(key, value);
-    }
+    ]
+    .map(|(key, value)| (key, OsString::from(value)))
+    .to_vec()
 }
 
 /// A bare repository and the working clone that pushes to it.
@@ -122,11 +123,16 @@ struct Cache {
 }
 
 fn cache() -> Cache {
+    cache_with(crate::fixtures::env())
+}
+
+/// A cache whose git runs in `env`.
+fn cache_with(env: Arc<EnvSnapshot>) -> Cache {
     let dir = root();
-    let cwd = std::env::current_dir().expect("a working directory");
+    let cwd = env.cwd().expect("a working directory");
     let fs = Arc::new(Os::new(os::host(), &cwd).expect("the filesystem"));
     Cache {
-        remotes: GitRemotes::new(fs, dir.root().to_path_buf()),
+        remotes: GitRemotes::new(fs, dir.root().to_path_buf(), env),
         dir,
     }
 }
@@ -496,10 +502,9 @@ fn test_a_path_is_the_file_url_of_the_repository_there() {
 // bundle.feature: Pushing a bundle to a plain git remote lands its tree there
 #[test]
 fn test_a_publish_lands_files_as_one_commit_beside_the_history() {
-    identify();
     let origin = Origin::new();
     let before = demo(&origin);
-    let c = cache();
+    let c = cache_with(crate::fixtures::env_with(&identity()));
     let files: BTreeMap<String, Vec<u8>> = BTreeMap::from([
         (
             format!("{BUNDLE}/authored/bundle.yaml"),
@@ -561,10 +566,9 @@ fn test_a_publish_lands_files_as_one_commit_beside_the_history() {
 
 #[test]
 fn test_a_publish_to_a_repository_that_cannot_be_reached_fails_and_leaves_no_clone() {
-    identify();
     let origin = Origin::new();
     demo(&origin);
-    let c = cache();
+    let c = cache_with(crate::fixtures::env_with(&identity()));
     let url = origin.url();
     origin.vanish();
     let files = BTreeMap::from([("a.txt".to_string(), b"a".to_vec())]);
@@ -579,9 +583,16 @@ fn test_a_publish_to_a_repository_that_cannot_be_reached_fails_and_leaves_no_clo
 fn test_an_inherited_git_dir_does_not_steer_the_repository() {
     let origin = Origin::new();
     let first = demo(&origin);
-    std::env::set_var("GIT_DIR", origin.root.root().join("elsewhere"));
-    std::env::set_var("GIT_WORK_TREE", origin.root.root());
-    let c = cache();
+    let c = cache_with(crate::fixtures::env_with(&[
+        (
+            "GIT_DIR",
+            origin.root.root().join("elsewhere").into_os_string(),
+        ),
+        (
+            "GIT_WORK_TREE",
+            origin.root.root().as_os_str().to_os_string(),
+        ),
+    ]));
     c.remotes
         .ensure(&origin.url())
         .expect("clones all the same");
@@ -652,7 +663,11 @@ fn test_a_clone_is_made_only_in_a_place_of_the_cache() {
         )
         .expect("a file");
     }
-    let remotes = GitRemotes::new(fs.clone(), PathBuf::from("/c/inner"));
+    let remotes = GitRemotes::new(
+        fs.clone(),
+        PathBuf::from("/c/inner"),
+        crate::fixtures::env(),
+    );
     for place in [
         "",
         ".",
@@ -696,7 +711,7 @@ mod credentials {
     fn test_the_header_reaches_git_as_configuration_from_the_environment() {
         let c = with_token(cache());
         let credential = c.remotes.credential("https://example.test/o/r");
-        let out = command::Git::default()
+        let out = command::Git::new("git", command::DEFAULT_TIMEOUT, crate::fixtures::env())
             .run_with(
                 None,
                 &["config", "--get", "http.https://example.test/.extraheader"],
@@ -764,11 +779,12 @@ mod hung_git {
     /// The cache's directory, over a git that never finishes.
     fn hung(c: &Cache) -> (file_system::Rooted, GitRemotes) {
         let (dir, git) = stub(HANGS);
-        let cwd = std::env::current_dir().expect("a working directory");
+        let env = crate::fixtures::env();
+        let cwd = env.cwd().expect("a working directory");
         let fs = Arc::new(Os::new(os::host(), &cwd).expect("the filesystem"));
         (
             dir,
-            GitRemotes::new(fs, c.dir.root().to_path_buf()).with_git(git),
+            GitRemotes::new(fs, c.dir.root().to_path_buf(), env).with_git(git),
         )
     }
 

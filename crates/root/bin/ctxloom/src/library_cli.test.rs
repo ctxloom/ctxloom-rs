@@ -756,7 +756,9 @@ fn test_list_answers_which_binary_each_registered_name_resolves_to() {
     let path = format!(
         "{}:{}",
         bin.display(),
-        std::env::var("PATH").unwrap_or_default()
+        crate::tests::host_var("PATH")
+            .and_then(|v| v.into_string().ok())
+            .unwrap_or_default()
     );
     let ran = project.run_with(
         &[("PATH", &path)],

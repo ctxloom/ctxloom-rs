@@ -3,8 +3,9 @@
 //! new branch with a pull request into the default branch (Go's
 //! `GitHubFetcher.SearchRepos` and `GitHubPublisher`, through the Git Data API).
 //!
-//! The token is read from the environment, by the variables the endpoint names,
-//! at the moment of a request: it is never an argument, a field, a log line, an
+//! The token is read from the environment (the snapshot the program took once,
+//! through [`GitHub::with_env`]), by the variables the endpoint names, at the
+//! moment of a request: it is never an argument, a field, a log line, an
 //! error message or Debug output.
 
 mod encode;
@@ -32,11 +33,6 @@ pub struct GitHub {
 }
 
 impl GitHub {
-    /// GitHub as this process reaches it: the token from its environment.
-    pub fn from_process() -> GitHub {
-        GitHub::with_env(|name| std::env::var(name).ok())
-    }
-
     /// GitHub with the environment as `env` answers it.
     pub fn with_env(env: impl Fn(&str) -> Option<String> + Send + Sync + 'static) -> GitHub {
         GitHub {

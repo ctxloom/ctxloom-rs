@@ -44,7 +44,7 @@ pub(crate) fn git_in(dir: &Path, args: &[&str]) -> String {
         .args(args)
         .current_dir(dir)
         .env_clear()
-        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+        .env("PATH", crate::tests::host_var("PATH").unwrap_or_default())
         .env("HOME", dir)
         .env("GIT_AUTHOR_NAME", "Fixture")
         .env("GIT_AUTHOR_EMAIL", "fixture@example.test")

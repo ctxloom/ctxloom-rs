@@ -7,31 +7,37 @@ use std::time::{Duration, Instant};
 
 use file_system::{Fs, Kind};
 use isolation_ports::{ContainerRuntimes, RuntimeFacts, RUNTIMES};
+use process_env::EnvSnapshot;
 
 /// Runtimes found on a `PATH`.
 pub struct HostRuntimes {
     fs: Arc<dyn Fs>,
+    env: Arc<EnvSnapshot>,
     pub(crate) dirs: Vec<PathBuf>,
     pub(crate) answer_within: Duration,
 }
 
 impl HostRuntimes {
-    /// The runtimes on `dirs`, each given `answer_within` to answer `info`.
-    pub fn new(fs: Arc<dyn Fs>, dirs: Vec<PathBuf>, answer_within: Duration) -> HostRuntimes {
+    /// The runtimes on `dirs`, each given `answer_within` to answer `info`;
+    /// `env` is where the in-container markers are read.
+    pub fn new(
+        fs: Arc<dyn Fs>,
+        env: Arc<EnvSnapshot>,
+        dirs: Vec<PathBuf>,
+        answer_within: Duration,
+    ) -> HostRuntimes {
         HostRuntimes {
             fs,
+            env,
             dirs,
             answer_within,
         }
     }
 
-    /// The process's `PATH`, with ten seconds to answer.
-    pub fn from_process(fs: Arc<dyn Fs>) -> HostRuntimes {
-        let flavor = fs.os().flavor();
-        let dirs = std::env::var_os("PATH")
-            .map(|path| flavor.split_search_path_os(&path))
-            .unwrap_or_default();
-        HostRuntimes::new(fs, dirs, Duration::from_secs(10))
+    /// `env`'s `PATH`, with ten seconds to answer.
+    pub fn from_env(fs: Arc<dyn Fs>, env: Arc<EnvSnapshot>) -> HostRuntimes {
+        let dirs = env.search_path();
+        HostRuntimes::new(fs, env, dirs, Duration::from_secs(10))
     }
 }
 
@@ -80,7 +86,10 @@ impl ContainerRuntimes for HostRuntimes {
     // (a clean host has none), so no hermetic test can pin the result.
     #[cfg_attr(test, mutants::skip)]
     fn in_container(&self) -> Vec<String> {
-        crate::markers_from(&crate::Real::new(Arc::clone(&self.fs)))
+        crate::markers_from(&crate::Real::new(
+            Arc::clone(&self.fs),
+            Arc::clone(&self.env),
+        ))
     }
 
     fn installed(&self) -> Vec<RuntimeFacts> {

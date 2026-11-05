@@ -159,6 +159,7 @@ fn go_in(terminal: bool, answer: Result<u8, u8>, line: &[&str]) -> Ran {
         version: "1.2.3".to_string(),
         lock_protocol: 4,
         stdout_is_terminal: terminal,
+        session_harp: String::new(),
     };
     let catalog = Catalog::en_us(&[crate::EN_US]).unwrap();
     let (mut out, mut err) = (Vec::new(), Vec::new());
@@ -363,6 +364,7 @@ fn test_an_unwritable_answer_is_a_failure() {
         version: "1".to_string(),
         lock_protocol: 1,
         stdout_is_terminal: false,
+        session_harp: String::new(),
     };
     let catalog = Catalog::en_us(&[crate::EN_US]).unwrap();
     let mut err = Vec::new();

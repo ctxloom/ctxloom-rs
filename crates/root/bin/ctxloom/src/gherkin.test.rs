@@ -174,7 +174,7 @@ impl World {
             .args(args)
             .current_dir(dir)
             .env_clear()
-            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .env("PATH", crate::tests::host_var("PATH").unwrap_or_default())
             .env("HOME", self.project.home())
             .output()
             .expect("git runs");

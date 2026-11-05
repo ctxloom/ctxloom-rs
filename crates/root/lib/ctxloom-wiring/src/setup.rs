@@ -27,8 +27,7 @@ pub(crate) struct SetupUseCases {
 }
 
 impl SetupUseCases {
-    pub(crate) fn build(deps: Rc<Deps>) -> Result<SetupUseCases, LibError> {
-        let wiring = Wiring::from_process()?;
+    pub(crate) fn build(wiring: &Wiring, deps: Rc<Deps>) -> Result<SetupUseCases, LibError> {
         let fs = wiring.fs();
         let home = wiring.home().to_path_buf();
         let (around, app) = wiring.locate();
@@ -40,7 +39,7 @@ impl SetupUseCases {
             Arc::new(config),
             user.clone(),
             Arc::new(binaries),
-            Auth::new(Arc::new(ProcessEnv::from_process())),
+            Auth::new(Arc::new(ProcessEnv::from_snapshot(wiring.env()))),
             &home.display().to_string(),
             env!("CARGO_PKG_VERSION"),
         );
@@ -50,7 +49,7 @@ impl SetupUseCases {
             deps,
         );
         Ok(SetupUseCases {
-            auth: Auth::new(Arc::new(ProcessEnv::from_process())),
+            auth: Auth::new(Arc::new(ProcessEnv::from_snapshot(wiring.env()))),
             cleaner,
             doctor,
             init,

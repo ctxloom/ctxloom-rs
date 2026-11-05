@@ -115,11 +115,13 @@ fn the_real_machine_reads_files_and_the_environment() {
         .unwrap();
     let file = file.display().to_string();
     let missing = os::fixture("/missing").display().to_string();
-    let real = Real::new(fs);
+    let env = process_env::EnvSnapshot::of([("PATH", "/bin"), ("EMPTY", "")]);
+    let real = Real::new(fs, Arc::new(env));
     assert!(real.exists(&file));
     assert!(!real.exists(&missing));
     assert_eq!(real.read(&file).as_deref(), Some("contents"));
     assert_eq!(real.read(&missing), None);
-    assert!(!real.var("PATH").is_empty());
+    assert_eq!(real.var("PATH"), "/bin");
+    assert_eq!(real.var("EMPTY"), "");
     assert_eq!(real.var("CTXLOOM_SURELY_UNSET_VARIABLE"), "");
 }

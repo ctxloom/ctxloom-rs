@@ -56,7 +56,7 @@ impl Bin {
     fn path(&self) -> String {
         let mut paths = vec![self.dir.root().to_path_buf()];
         paths.extend(files::search_path(
-            &std::env::var_os("PATH").unwrap_or_default(),
+            &crate::tests::host_var("PATH").unwrap_or_default(),
         ));
         std::env::join_paths(paths)
             .expect("a PATH")

@@ -23,6 +23,7 @@ use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use ::process_env::EnvSnapshot;
 use config_files::{find_app_dir, AppDir, ConfigFilesFs, Surroundings};
 use ctxloom_store_sqlite::{SqliteStores, Stores};
 use file_system::{Fs, Os};
@@ -173,32 +174,34 @@ pub fn catalog_sources() -> Vec<angzarr_presentation::Source> {
     sources
 }
 
-/// The process's home and filesystem.
+/// The process's home and filesystem, and the environment it was read from.
 pub struct Wiring {
     fs: Arc<dyn Fs>,
     home: PathBuf,
+    env: Arc<EnvSnapshot>,
 }
 
 impl Wiring {
-    /// The wiring as the process gives it: its home (HOME, or USERPROFILE on
+    /// The wiring over the environment the process was launched in, read
+    /// once by the composition root: its home (HOME, or USERPROFILE on
     /// Windows), and the real filesystem over its working directory (with
     /// none when it cannot be read: only what needs it fails).
-    pub fn from_process() -> Result<Wiring, LibError> {
+    pub fn new(env: Arc<EnvSnapshot>) -> Result<Wiring, LibError> {
         let host = os::host();
-        let variable = host.flavor().home_var();
-        let home = std::env::var_os(variable)
-            .filter(|home| !home.is_empty())
+        let home = env
+            .home()
             .map(PathBuf::from)
             .ok_or_else(|| LibError::NoHome {
-                variable: variable.to_string(),
+                variable: env.flavor().home_var().to_string(),
             })?;
-        let fs = match std::env::current_dir().and_then(|cwd| Os::new(host.clone(), &cwd)) {
+        let fs = match env.cwd().and_then(|cwd| Os::new(host.clone(), &cwd)) {
             Ok(fs) => fs,
             Err(why) => Os::without_cwd(host, why),
         };
         Ok(Wiring {
             fs: Arc::new(fs),
             home,
+            env,
         })
     }
 
@@ -210,14 +213,19 @@ impl Wiring {
         &self.home
     }
 
+    /// The environment the process was launched in.
+    pub(crate) fn env(&self) -> &Arc<EnvSnapshot> {
+        &self.env
+    }
+
     /// Where the process is: the root variable, the working directory, the
     /// home and the temporary root.
     pub(crate) fn surroundings(&self) -> Surroundings {
         Surroundings {
-            root_env: std::env::var("CTXLOOM_ROOT").ok(),
-            cwd: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            root_env: self.env.utf8("CTXLOOM_ROOT").map(String::from),
+            cwd: self.env.cwd().unwrap_or_else(|_| PathBuf::from(".")),
             home: self.home.clone(),
-            temp_root: std::env::temp_dir(),
+            temp_root: self.env.temp_dir().to_path_buf(),
         }
     }
 
@@ -232,9 +240,7 @@ impl Wiring {
     pub(crate) fn path_search(&self) -> PathSearch {
         PathSearch {
             fs: Arc::clone(&self.fs),
-            dirs: std::env::var_os("PATH")
-                .map(|path| self.fs.os().flavor().split_search_path_os(&path))
-                .unwrap_or_default(),
+            dirs: self.env.search_path(),
         }
     }
 
@@ -242,11 +248,13 @@ impl Wiring {
     /// home and working directory, reading CTXLOOM_ROOT and CTXLOOM_PROJECT_ID
     /// as the project registry does.
     pub fn sessions(&self) -> Sessions {
-        let var = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty());
         let environment = Environment {
             home: Some(self.home.clone()),
-            root: var("CTXLOOM_ROOT").map(PathBuf::from),
-            project_id: var("CTXLOOM_PROJECT_ID").and_then(|v| v.into_string().ok()),
+            root: self.env.non_empty("CTXLOOM_ROOT").map(PathBuf::from),
+            project_id: self
+                .env
+                .non_empty("CTXLOOM_PROJECT_ID")
+                .and_then(|v| v.to_str().map(String::from)),
         };
         let registry =
             || ProjectRegistry::new(Arc::clone(&self.fs), environment.clone(), HarpNames);
@@ -268,7 +276,11 @@ impl Wiring {
                 System,
             ),
             worktrees: Worktrees::new(
-                GitWorkspaces::new(Arc::clone(&self.fs), self.home.clone()),
+                GitWorkspaces::new(
+                    Arc::clone(&self.fs),
+                    self.home.clone(),
+                    Arc::clone(&self.env),
+                ),
                 LockFiles::new(Arc::clone(&self.fs), self.home.clone()),
             ),
             settings: SweepSettings::new(
@@ -278,9 +290,7 @@ impl Wiring {
                     &self.home,
                 )),
                 // Overrides are text: a variable that is not UTF-8 is none.
-                std::env::vars_os()
-                    .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
-                    .collect(),
+                self.env.vars_utf8().into_iter().collect(),
             ),
         }
     }

@@ -8,6 +8,7 @@ use isolation_ports::{
     Checkout, Failure, Prepared, Removal, Request, Safety, Scratch, Standing, Workspaces,
 };
 use os::Mode;
+use process_env::EnvSnapshot;
 
 use crate::error::WorktreeError;
 use crate::git::{Git, GitError};
@@ -70,11 +71,12 @@ pub struct GitWorkspaces {
 }
 
 impl GitWorkspaces {
-    /// The sessions under `home` (`<home>/.ctxloom/sessions`).
-    pub fn new(fs: Arc<dyn Fs>, home: impl Into<PathBuf>) -> GitWorkspaces {
+    /// The sessions under `home` (`<home>/.ctxloom/sessions`), over the git
+    /// run in `env`'s environment.
+    pub fn new(fs: Arc<dyn Fs>, home: impl Into<PathBuf>, env: Arc<EnvSnapshot>) -> GitWorkspaces {
         GitWorkspaces {
             sessions: home.into().join(".ctxloom").join("sessions"),
-            git: Git::on(Arc::clone(&fs)),
+            git: Git::on(Arc::clone(&fs), env),
             fs,
         }
     }
