@@ -693,6 +693,17 @@ fn bulk_gone(w: &mut World, harp: String) {
     );
 }
 
+#[then(expr = "the machine-written bulk of {string} is still there")]
+fn bulk_still_there(w: &mut World, harp: String) {
+    assert!(
+        w.session_dir(&harp)
+            .join("transcripts/transcript.jsonl")
+            .exists(),
+        "{harp}'s transcript is gone: {}",
+        w.ran().said()
+    );
+}
+
 #[then(expr = "the sweep kept the transcript of {string} and named {string}")]
 fn sweep_kept(w: &mut World, harp: String, named: String) {
     assert!(
@@ -850,6 +861,11 @@ fn test_session_reclaim_feature() {
 #[test]
 fn test_sweep_feature() {
     feature("journeys/j001300_sweep.feature");
+}
+
+#[test]
+fn test_sweep_config_feature() {
+    feature("journeys/j001300_sweep_config.feature");
 }
 
 #[test]
