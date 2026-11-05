@@ -356,4 +356,4 @@ impl Extension for Commands {
 
 #[cfg(test)]
 #[path = "commands.test.rs"]
-mod tests;
+pub(crate) mod tests;

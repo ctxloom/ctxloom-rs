@@ -45,7 +45,7 @@ fn test_only_the_bundle_noun_gains_the_publishing_verbs() {
 /// of the test's own, the root and project variables unset, the rest of the
 /// process's environment as it is. The program reads it as a snapshot, so
 /// the process's own environment is never touched.
-struct World {
+pub(crate) struct World {
     _root: file_system::Rooted,
     dir: PathBuf,
     base: EnvSnapshot,
@@ -53,7 +53,7 @@ struct World {
 }
 
 impl World {
-    fn new(_name: &str) -> World {
+    pub(crate) fn new(_name: &str) -> World {
         let temp = crate::fixtures::root();
         let dir = temp.root().to_path_buf();
         crate::fixtures::mkdirs(dir.join("home"));
@@ -84,7 +84,7 @@ impl World {
         world
     }
 
-    fn set(&mut self, name: &str, value: impl Into<std::ffi::OsString>) {
+    pub(crate) fn set(&mut self, name: &str, value: impl Into<std::ffi::OsString>) {
         self.vars.retain(|(set, _)| set != name);
         self.vars.push((name.into(), value.into()));
     }
@@ -100,7 +100,7 @@ impl World {
     }
 
     /// The program's commands, over this world's environment as of now.
-    fn commands(&self) -> Commands {
+    pub(crate) fn commands(&self) -> Commands {
         Commands::new(self.env())
     }
 

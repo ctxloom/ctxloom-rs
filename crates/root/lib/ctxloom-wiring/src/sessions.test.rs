@@ -7,6 +7,7 @@ use angzarr_presentation::{Catalog, Format};
 use clap::Command;
 use ctxloom_cli::{Call, Extension};
 
+use crate::commands::tests::World;
 use crate::Commands;
 
 fn commands() -> Commands {
@@ -127,4 +128,51 @@ fn test_a_hook_for_an_engine_nobody_knows_fails_with_exit_1() {
     .err()
     .unwrap();
     assert_eq!(failure.exit, 1);
+}
+
+// `session list` runs on the sessions use cases over the world's home: no
+// session is recorded there, so it answers an empty list and exits 0.
+#[test]
+fn test_a_session_command_is_run_on_the_sessions_use_cases() {
+    let world = World::new("session-list");
+    let (code, out, err) = run(&mut world.commands(), &["session", "list"])
+        .ok()
+        .unwrap();
+    assert_eq!(code, 0, "{err}");
+    assert!(err.is_empty(), "{err}");
+    assert_eq!(out, "(no sessions)\n");
+}
+
+// The hook that binds a session answers the engine with the harp the process
+// names (`CTXLOOM_SESSION_HARP`) on stdout, and nothing on stderr.
+#[test]
+fn test_the_bind_hook_answers_with_the_harp_the_environment_names() {
+    let mut world = World::new("session-bind");
+    world.set("CTXLOOM_SESSION_HARP", "jolly-mute-magma");
+    let payload = r#"{"session_id":"s1","transcript_path":"/tmp/t.jsonl"}"#;
+    let (code, out, err) = run_with(
+        &mut world.commands(),
+        payload,
+        &["hook", "session-bind", "--engine", "claude-code"],
+    )
+    .ok()
+    .unwrap();
+    assert_eq!(code, 0);
+    assert!(out.contains("jolly-mute-magma"), "{out}");
+    assert!(err.is_empty(), "{err}");
+}
+
+// The statusline hook shows the harp the environment names.
+#[test]
+fn test_the_hud_hook_shows_the_harp_the_environment_names() {
+    let mut world = World::new("hud-harp");
+    world.set("CTXLOOM_SESSION_HARP", "jolly-mute-magma");
+    let (_, out, _) = run_with(
+        &mut world.commands(),
+        r#"{"model":{"display_name":"M"}}"#,
+        &["hook", "hud"],
+    )
+    .ok()
+    .unwrap();
+    assert!(out.contains("jolly-mute-magma"), "{out}");
 }
