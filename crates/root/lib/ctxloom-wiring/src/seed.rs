@@ -259,3 +259,7 @@ impl Wiring {
 fn seed_error_of(report: angzarr_diagnostic::Report) -> LibError {
     seed_error(angzarr_diagnostic::Diagnostic::code(&report))
 }
+
+#[cfg(test)]
+#[path = "seed.test.rs"]
+mod tests;

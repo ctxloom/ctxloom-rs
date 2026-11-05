@@ -92,3 +92,7 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         }),
     ]
 }
+
+#[cfg(test)]
+#[path = "error.test.rs"]
+mod tests;

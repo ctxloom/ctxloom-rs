@@ -89,6 +89,16 @@ impl World {
         self.vars.push((name.into(), value.into()));
     }
 
+    #[cfg(feature = "test-support")]
+    pub(crate) fn home(&self) -> PathBuf {
+        self.dir.join("home")
+    }
+
+    #[cfg(feature = "test-support")]
+    pub(crate) fn work(&self) -> PathBuf {
+        self.dir.join("work")
+    }
+
     /// The world's environment as the program takes it.
     fn env(&self) -> Arc<EnvSnapshot> {
         Arc::new(EnvSnapshot::from_parts(
@@ -104,7 +114,7 @@ impl World {
         Commands::new(self.env())
     }
 
-    fn wiring(&self) -> crate::Wiring {
+    pub(crate) fn wiring(&self) -> crate::Wiring {
         crate::Wiring::new(self.env()).unwrap()
     }
 }
@@ -368,4 +378,35 @@ fn test_a_container_command_is_run_and_reports_what_it_found() {
     let (code, out, _) = run_line(&mut world.commands(), &["container", "check"]);
     assert_eq!(code, 0);
     assert!(!out.trim().is_empty(), "container check wrote nothing");
+}
+
+// `bundle push` is the dependency commands', not the library's: pushing a
+// bundle with no remote to push to is refused by them, with their code.
+#[test]
+fn test_a_bundle_publishing_verb_is_run_by_the_dependency_commands() {
+    let world = World::new("push");
+    let mut commands = world.commands();
+    let program = Command::new("ctxloom").subcommands(commands.nouns());
+    let matches = program
+        .try_get_matches_from(["ctxloom", "bundle", "push", "nosuch"])
+        .unwrap();
+    let call = Call::with_globals(
+        &matches,
+        Some(angzarr_presentation::Format::Json),
+        angzarr_presentation::Format::Json,
+        library_application::Flags::default(),
+    );
+    let catalog = Catalog::en_us(&[crate::EN_US]).unwrap();
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let result = commands.run("bundle", &call, &catalog, &mut out, &mut err);
+    let failure = result.expect_err("no remote is set to push to");
+    assert_eq!(failure.exit, 2);
+    assert!(
+        failure
+            .cause
+            .to_string()
+            .contains("deps-application-required"),
+        "{}",
+        failure.cause
+    );
 }

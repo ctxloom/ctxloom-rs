@@ -124,3 +124,7 @@ impl Extension for LibraryCommands {
         library_cli::run(library, noun, call, catalog, out, err)
     }
 }
+
+#[cfg(test)]
+#[path = "library.test.rs"]
+mod tests;
