@@ -603,8 +603,14 @@ fn test_the_walk_stops_at_the_temporary_directory_itself_and_below_it_only() {
 
 #[test]
 fn test_the_walk_is_not_stopped_by_the_home_so_the_homes_app_dir_is_a_project() {
-    // Surprising, pinned as it is: a working directory under the home finds
-    // the home's own `.ctxloom` on the way up, as a Project, not a Home.
+    // Go parity, not a defect: Go's walkUpForAppDir (ctxloom
+    // internal/adapters/configload/appdir.go:81) stops only at the temp
+    // directory, never at the home, so a working directory under the home
+    // finds the home's own `.ctxloom` on the way up, as a Project, not a
+    // Home. Do not stop the walk at the home without changing Go first.
+    // (The tests use an in-memory fs, and the wiring's real-fs tests give
+    // themselves a HOME and walk no further than the temp directory, so a
+    // TMPDIR under the real $HOME never reaches the real `~/.ctxloom`.)
     let fs = rooted();
     dir(&fs, "/home/u/.ctxloom");
     dir(&fs, "/home/u/code/x");
