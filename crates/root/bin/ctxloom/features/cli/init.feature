@@ -1,7 +1,8 @@
-# Ported from Go ctxloom's tests/acceptance/features/cli/init.feature
-# (revision f36e8dfb21, release/0.7). NOT ported: the token rule (S5's
-# credentials), and the first-init rule (it clones the seeded remote over the
-# network and launches the engine: S9's launch).
+# world: base
+# Ported from cli/init.feature
+# NOT ported: the token rule (S5's credentials), and the first-init rule (it
+#   clones the seeded remote over the network and launches the engine: S9's
+#   launch).
 @doc
 Feature: init — the setup interview, and what it does to a project that already has one
 

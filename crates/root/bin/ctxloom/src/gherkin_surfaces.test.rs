@@ -18,12 +18,12 @@ use std::fmt;
 use std::path::Path;
 
 use cucumber::gherkin::Step;
-use cucumber::{given, then, when, World as _};
+use cucumber::{given, then, when};
 use serde_json::Value;
 
+use super::gherkin_common::{common_steps, doc, Common, CommonWorld};
 use super::library::{at, reports_as, Project};
 use super::surfaces::{additional_context, hook_lines};
-use super::Ran;
 
 const CONTEXT_MARKER: &str = "J000400-CONTEXT-MARKER-3f8a91";
 const COMMAND_MARKER: &str = "J000400-COMMAND-BODY-MARKER-7c2d64";
@@ -47,9 +47,7 @@ fn transcript(closing: &str) -> String {
 #[derive(cucumber::World)]
 #[world(init = Self::new)]
 struct World {
-    project: Project,
-    env: Vec<(String, String)>,
-    ran: Option<Ran>,
+    common: Common,
     /// The `-<engine>` target of a j000400 materialize.
     hand_authored: Option<(String, String)>,
     /// The engine and target of the last team materialize.
@@ -62,138 +60,61 @@ impl fmt::Debug for World {
     }
 }
 
+impl CommonWorld for World {
+    fn common(&self) -> &Common {
+        &self.common
+    }
+
+    fn common_mut(&mut self) -> &mut Common {
+        &mut self.common
+    }
+}
+
 impl World {
     fn new() -> World {
         World {
-            project: Project::bare(),
-            env: Vec::new(),
-            ran: None,
+            common: Common::new(),
             hand_authored: None,
             team: None,
         }
     }
 
-    /// The commands of a docstring (one per line) or one line, run in turn;
-    /// the first to fail is the one the next step sees.
-    fn run_lines(&mut self, lines: &str, input: &str) {
-        let dir = self.project.dir().display().to_string();
-        for line in lines.lines().map(str::trim).filter(|l| !l.is_empty()) {
-            let line = line.replace("$PROJECT_DIR", &dir);
-            let words = split(&line);
-            assert_eq!(words.first().map(String::as_str), Some("ctxloom"), "{line}");
-            let args: Vec<&str> = words[1..].iter().map(String::as_str).collect();
-            let env: Vec<(&str, &str)> = self
-                .env
-                .iter()
-                .map(|(k, v)| (k.as_str(), v.as_str()))
-                .collect();
-            let ran = if input.is_empty() {
-                self.project.run_with(&env, &args)
-            } else {
-                self.project
-                    .run_input(&args, &input.replace("$PROJECT_DIR", &dir), &env)
-            };
-            let failed = ran.code != 0;
-            self.ran = Some(ran);
-            if failed {
-                return;
-            }
-        }
-    }
-
-    fn ran(&self) -> &Ran {
-        self.ran.as_ref().expect("a command ran")
-    }
-
-    fn json(&self) -> Value {
-        super::parse_one(&self.ran().stdout)
-    }
-
     fn tree_has(&self, dir: &str, needle: &str) -> bool {
-        self.project
+        self.common
+            .project
             .tree(dir)
             .values()
             .any(|bytes| String::from_utf8_lossy(bytes).contains(needle))
     }
 }
 
-/// A command line's words: whitespace separates, double quotes group.
-fn split(line: &str) -> Vec<String> {
-    let mut words = Vec::new();
-    let mut word = String::new();
-    let (mut quoted, mut any) = (false, false);
-    for c in line.chars() {
-        match c {
-            '"' => {
-                quoted = !quoted;
-                any = true;
-            }
-            c if c.is_whitespace() && !quoted => {
-                if any {
-                    words.push(std::mem::take(&mut word));
-                    any = false;
-                }
-            }
-            c => {
-                word.push(c);
-                any = true;
-            }
-        }
-    }
-    if any {
-        words.push(word);
-    }
-    words
-}
-
-fn doc(step: &Step) -> String {
-    step.docstring
-        .clone()
-        .expect("a docstring")
-        .trim()
-        .to_string()
-}
-
 // ------------------------------------------------------------------ given
-
-#[given("an initialized ctxloom project")]
-fn initialized(w: &mut World) {
-    w.project = Project::initialized();
-}
-
-#[given("an empty project directory")]
-fn empty(w: &mut World) {
-    w.project = Project::bare();
-}
 
 #[given(expr = "a bundle {string} exists")]
 fn bundle(w: &mut World, name: String) {
-    w.project.bundle(&name);
+    w.common.project.bundle(&name);
 }
 
 #[given(expr = "a fragment {string} in bundle {string} exists")]
 fn fragment(w: &mut World, name: String, bundle: String) {
-    w.project.fragment(&bundle, &name);
+    w.common.project.fragment(&bundle, &name);
 }
 
 #[given(expr = "a profile {string} with bundle {string}")]
 fn profile(w: &mut World, name: String, bundle: String) {
-    w.project.profile(&name, &bundle);
+    w.common.project.profile(&name, &bundle);
 }
 
 #[given(expr = "the session harp is {string}")]
 fn session_harp(w: &mut World, name: String) {
-    w.env.push(("CTXLOOM_SESSION_HARP".to_string(), name));
+    w.common
+        .env
+        .push(("CTXLOOM_SESSION_HARP".to_string(), name));
 }
 
 #[given(expr = "the session index records harp {string} on engine {string}")]
 fn index_records(_w: &mut World, _harp: String, _engine: String) {
     // plan 8.4: `--engine` names the codec; nothing is looked up.
-}
-
-#[given(expr = "the project already has the file {string}:")]
-fn project_file(w: &mut World, step: &Step, rel: String) {
-    w.project.write(&rel, &format!("{}\n", doc(step)));
 }
 
 /// Go's inline bundle document, as the tree this port reads: the envelope, a
@@ -218,7 +139,9 @@ fn project_bundle(w: &mut World, step: &Step, name: String) {
     if !text("description").is_empty() {
         envelope.push_str(&format!("description: {}\n", text("description")));
     }
-    w.project.write(&format!("{root}/bundle.yaml"), &envelope);
+    w.common
+        .project
+        .write(&format!("{root}/bundle.yaml"), &envelope);
     for (event, hooks) in parsed
         .get("hooks")
         .and_then(angzarr_yaml::Value::as_map)
@@ -231,12 +154,12 @@ fn project_bundle(w: &mut World, step: &Step, name: String) {
                     .unwrap_or_default()
                     .to_string()
             };
-            w.project.write(
+            w.common.project.write(
                 &format!("{root}/hooks/{event}/h{i}.yaml"),
                 &format!("type: {}\ncommand: {}\n", field("type"), field("command")),
             );
             if !field("order").is_empty() {
-                w.project.write(
+                w.common.project.write(
                     &format!("{root}/hooks/{event}/.h{i}.meta.yaml"),
                     &format!("order: {}\n", field("order")),
                 );
@@ -255,7 +178,7 @@ fn project_bundle(w: &mut World, step: &Step, name: String) {
             .iter()
             .filter_map(|t| t.as_str().map(str::to_string))
             .collect();
-        w.project.write(
+        w.common.project.write(
             &format!("{root}/skills/.{skill}.meta.yaml"),
             &format!("tags:\n  - {}\n", tags.join("\n  - ")),
         );
@@ -264,24 +187,12 @@ fn project_bundle(w: &mut World, step: &Step, name: String) {
 
 #[given(expr = "a {string} transcript at {string} whose turn ends with:")]
 fn transcript_at(w: &mut World, step: &Step, _engine: String, rel: String) {
-    w.project.write(&rel, &transcript(&doc(step)));
-}
-
-#[given(expr = "I run {string}")]
-#[when(expr = "I run {string}")]
-fn run(w: &mut World, line: String) {
-    w.run_lines(&line, "");
-}
-
-#[given(expr = "I run {string} with input:")]
-#[when(expr = "I run {string} with input:")]
-fn run_with_input(w: &mut World, step: &Step, line: String) {
-    w.run_lines(&line, &doc(step));
+    w.common.project.write(&rel, &transcript(&doc(step)));
 }
 
 #[given("ctxloom is already wired into her project")]
 fn wired(w: &mut World) {
-    w.run_lines(
+    w.common.run_lines(
         "ctxloom manage install --engine claude-code --no-pull\nctxloom materialize --yes --degraded",
         "",
     );
@@ -313,20 +224,21 @@ fn team(w: &mut World) {
         &format!("type: command\ncommand: {HOOK_COMMAND:?}\n"),
     );
     project.profile("team", "team");
-    w.project = project;
+    w.common.project = project;
 }
 
 #[given(expr = "Alice's team already hand-authored {word} for {word} with their own conventions")]
 fn hand_authored(w: &mut World, file: String, engine: String) {
-    w.project
+    w.common
+        .project
         .write(&format!("out-{engine}/{file}"), HAND_AUTHORED);
     w.hand_authored = Some((engine, file));
 }
 
 #[given(expr = "Alice's project has a directory-form bundle {string}")]
 fn directory_bundle(w: &mut World, name: String) {
-    w.project = Project::initialized();
-    w.project.write(
+    w.common.project = Project::initialized();
+    w.common.project.write(
         &format!(".ctxloom/content/bundles/v2/{name}/bundle.yaml"),
         "schema_version: 4\nversion: 1.0.0\n",
     );
@@ -334,7 +246,7 @@ fn directory_bundle(w: &mut World, name: String) {
 
 #[given(expr = "Alice starts a ctxloom-doctor skill in {string} described as {string}")]
 fn start_skill(w: &mut World, bundle: String, described: String) {
-    w.run_lines(
+    w.common.run_lines(
         &format!("ctxloom skill create {bundle} ctxloom-doctor -d {described}"),
         "",
     );
@@ -349,7 +261,8 @@ fn skill_dir(reference: &str) -> String {
 
 #[given(expr = "Alice authors the ctxloom-doctor skill's full body in {string}")]
 fn author_skill(w: &mut World, reference: String) {
-    w.project
+    w.common
+        .project
         .write(&format!("{}/SKILL.md", skill_dir(&reference)), DOCTOR_SKILL);
 }
 
@@ -358,13 +271,13 @@ fn author_skill(w: &mut World, reference: String) {
 )]
 fn add_script(w: &mut World, marker: String, reference: String) {
     let dir = skill_dir(&reference);
-    w.project.write(
+    w.common.project.write(
         &format!("{dir}/scripts/run.sh"),
         &format!("#!/bin/sh\necho {marker}\n"),
     );
     let sidecar = dir.replace("/skills/", "/skills/.") + ".meta.yaml";
-    let held = w.project.read(&sidecar).unwrap_or_default();
-    w.project.write(
+    let held = w.common.project.read(&sidecar).unwrap_or_default();
+    w.common.project.write(
         &sidecar,
         &format!("{held}executable:\n  - scripts/run.sh\n"),
     );
@@ -373,23 +286,18 @@ fn add_script(w: &mut World, marker: String, reference: String) {
 #[given(expr = "profile {string} curates skill {string}")]
 fn curate(w: &mut World, name: String, reference: String) {
     let rel = format!(".ctxloom/content/bundles/v2/project/profiles/{name}.yaml");
-    let held = w.project.read(&rel).expect("the profile");
-    w.project
+    let held = w.common.project.read(&rel).expect("the profile");
+    w.common
+        .project
         .write(&rel, &format!("{held}skills:\n  - {reference}\n"));
 }
 
 // ------------------------------------------------------------------- when
 
-/// Every `Alice ...:` step carries its commands in a docstring.
-#[when(regex = r"^Alice .*:$")]
-fn alice_runs(w: &mut World, step: &Step) {
-    w.run_lines(&doc(step), "");
-}
-
 #[when(regex = r"^Alice materializes the team profile for (\S+)$")]
 fn materialize_team(w: &mut World, engine: String) {
     let target = format!("out-{engine}");
-    w.run_lines(
+    w.common.run_lines(
         &format!("ctxloom materialize team --target {target} --backend {engine}"),
         "",
     );
@@ -400,7 +308,7 @@ fn materialize_team(w: &mut World, engine: String) {
 #[when(regex = r#"^Carol materializes the "([^"]*)" profile for (\S+)$"#)]
 fn materialize_profile(w: &mut World, profile: String, engine: String) {
     let target = format!("out-{engine}");
-    w.run_lines(
+    w.common.run_lines(
         &format!("ctxloom materialize {profile} --target {target} --backend {engine}"),
         "",
     );
@@ -409,31 +317,6 @@ fn materialize_profile(w: &mut World, profile: String, engine: String) {
 }
 
 // ------------------------------------------------------------------- then
-
-#[then("the command succeeds")]
-fn succeeds(w: &mut World) {
-    w.ran().succeeds();
-}
-
-#[then("the command fails")]
-fn fails(w: &mut World) {
-    w.ran().fails();
-}
-
-#[then(expr = "the output contains {string}")]
-fn output_contains(w: &mut World, text: String) {
-    w.ran().contains(&text);
-}
-
-#[then(expr = "the output does not contain {string}")]
-fn output_lacks(w: &mut World, text: String) {
-    w.ran().lacks(&text);
-}
-
-#[then("the output is valid JSON")]
-fn valid_json(w: &mut World) {
-    let _ = w.json();
-}
 
 /// A pattern of `\A`, `\z`, `\n`, `\n?`, `[\s\S]*` and literal text, which is
 /// all Go's scenarios use.
@@ -483,58 +366,20 @@ fn output_matches(w: &mut World, pattern: String) {
 
 #[then(expr = "the file {string} matches {string}")]
 fn file_matches(w: &mut World, rel: String, pattern: String) {
-    let held = w.project.read(&rel).expect("a file");
+    let held = w.common.project.read(&rel).expect("a file");
     assert!(matches(&pattern, &held), "{rel}: {held:?}");
-}
-
-/// Go reads a json path in json output; the text rows are a substring of the
-/// text.
-#[then(expr = "the output reports {string} as {string}")]
-fn output_reports(w: &mut World, path: String, value: String) {
-    let ran = w.ran();
-    match serde_json::from_str::<Value>(&ran.stdout) {
-        Ok(doc) => assert_eq!(reports_as(&doc, &path), value, "{}", ran.said()),
-        Err(_) => {
-            ran.contains(&value);
-        }
-    }
-}
-
-#[then(expr = "the file {string} contains {string}")]
-fn file_contains(w: &mut World, rel: String, text: String) {
-    w.project.file_contains(&rel, &text);
-}
-
-#[then(expr = "the file {string} contains {string} exactly {int} times")]
-fn file_contains_times(w: &mut World, rel: String, text: String, times: usize) {
-    w.project.file_counts(&rel, &text, times);
-}
-
-#[then(expr = "the file {string} does not contain {string}")]
-fn file_lacks(w: &mut World, rel: String, text: String) {
-    w.project.file_lacks(&rel, &text);
-}
-
-#[then(expr = "the file {string} exists")]
-fn file_exists(w: &mut World, rel: String) {
-    assert!(w.project.exists(&rel), "{rel} should exist");
-}
-
-#[then(expr = "the file {string} does not exist")]
-fn file_absent(w: &mut World, rel: String) {
-    w.project.file_is_absent(&rel);
 }
 
 #[then(expr = "the file {string} is valid YAML")]
 fn valid_yaml(w: &mut World, rel: String) {
-    let held = w.project.read(&rel).expect("a file");
+    let held = w.common.project.read(&rel).expect("a file");
     angzarr_yaml::parse(&held).unwrap_or_else(|e| panic!("{rel}: {e}"));
 }
 
 #[then(expr = "the file {string} registers a SessionStart hook whose command contains {string}")]
 fn registers_hook(w: &mut World, rel: String, text: String) {
     assert!(
-        w.project.registers_hook(&rel, "SessionStart", &text),
+        w.common.project.registers_hook(&rel, "SessionStart", &text),
         "{rel}"
     );
 }
@@ -542,14 +387,17 @@ fn registers_hook(w: &mut World, rel: String, text: String) {
 #[then(expr = "the file {string} registers no SessionStart hook whose command contains {string}")]
 fn registers_no_hook(w: &mut World, rel: String, text: String) {
     assert!(
-        !w.project.registers_hook(&rel, "SessionStart", &text),
+        !w.common.project.registers_hook(&rel, "SessionStart", &text),
         "{rel}"
     );
 }
 
 #[then(expr = "the file {string} registers no MCP server named {string}")]
 fn registers_no_mcp(w: &mut World, rel: String, name: String) {
-    assert!(!w.project.registers_mcp(&rel, "mcpServers", &name), "{rel}");
+    assert!(
+        !w.common.project.registers_mcp(&rel, "mcpServers", &name),
+        "{rel}"
+    );
 }
 
 #[then(expr = "the JSON output array {string} contains an object whose {string} is {string}")]
@@ -588,7 +436,7 @@ fn context_empty(w: &mut World) {
 #[given("ctxloom's session-start hook is wired into her assistant")]
 #[then("ctxloom's session-start hook is wired into her assistant")]
 fn session_start_wired(w: &mut World) {
-    assert!(w.project.registers_hook(
+    assert!(w.common.project.registers_hook(
         ".claude/settings.json",
         "SessionStart",
         "hook session-start"
@@ -597,7 +445,9 @@ fn session_start_wired(w: &mut World) {
 
 #[then("ctxloom's own working state is kept out of source control")]
 fn state_ignored(w: &mut World) {
-    w.project.file_contains(".ctxloom/.gitignore", "/cache");
+    w.common
+        .project
+        .file_contains(".ctxloom/.gitignore", "/cache");
 }
 
 #[then("ctxloom reports the engine it wired her project for")]
@@ -611,14 +461,15 @@ fn reports_engine(w: &mut World) {
 
 #[then("nothing ctxloom wired into her assistant is left behind")]
 fn nothing_left(w: &mut World) {
-    w.project.file_is_absent(".claude/settings.json");
-    w.project.file_is_absent("CLAUDE.md");
+    w.common.project.file_is_absent(".claude/settings.json");
+    w.common.project.file_is_absent("CLAUDE.md");
 }
 
 #[then("the context she authored is still hers")]
 fn still_hers(w: &mut World) {
-    assert!(w.project.exists(".ctxloom/config.yaml"));
+    assert!(w.common.project.exists(".ctxloom/config.yaml"));
     assert!(w
+        .common
         .project
         .exists(".ctxloom/content/bundles/v2/project/profiles/default.yaml"));
 }
@@ -642,7 +493,8 @@ fn team_context(w: &mut World, engine: String) {
         "MOCK_CONTEXT.md"
     };
     let target = team_target(w, &engine);
-    w.project
+    w.common
+        .project
         .file_contains(&format!("{target}/{file}"), CONTEXT_MARKER);
 }
 
@@ -651,7 +503,7 @@ fn team_context(w: &mut World, engine: String) {
 )]
 fn team_mcp(w: &mut World, engine: String) {
     let target = team_target(w, &engine);
-    let mcp = w.project.json_file(&format!("{target}/.mcp.json"));
+    let mcp = w.common.project.json_file(&format!("{target}/.mcp.json"));
     assert_eq!(mcp["mcpServers"]["toolserver"]["command"], MCP_COMMAND);
 }
 
@@ -661,6 +513,7 @@ fn team_mcp(w: &mut World, engine: String) {
 fn team_hook(w: &mut World, engine: String) {
     let target = team_target(w, &engine);
     let doc = w
+        .common
         .project
         .json_file(&format!("{target}/.claude/settings.json"));
     assert!(
@@ -676,7 +529,7 @@ fn team_hook(w: &mut World, engine: String) {
 )]
 fn team_command(w: &mut World, engine: String) {
     let target = team_target(w, &engine);
-    w.project.file_contains(
+    w.common.project.file_contains(
         &format!("{target}/.claude/commands/team-onboarding.md"),
         COMMAND_MARKER,
     );
@@ -711,6 +564,7 @@ fn report_names(w: &mut World, _engine: String) {
 fn hand_authored_kept(w: &mut World, file: String) {
     let (engine, _) = w.hand_authored.clone().expect("a hand-authored file");
     let held = w
+        .common
         .project
         .read(&format!("out-{engine}/{file}"))
         .expect("the file");
@@ -726,7 +580,7 @@ fn hand_authored_kept(w: &mut World, file: String) {
 
 #[then(expr = "the claude-code skill surface carries the doctor skill's marker {string}")]
 fn skill_marker(w: &mut World, marker: String) {
-    w.project.file_contains(
+    w.common.project.file_contains(
         "out-claude-code/.claude/skills/ctxloom-doctor/SKILL.md",
         &marker,
     );
@@ -734,12 +588,12 @@ fn skill_marker(w: &mut World, marker: String) {
 
 #[then(expr = "{string} is executable")]
 fn is_executable(w: &mut World, rel: String) {
-    assert!(w.project.is_executable(&rel), "{rel}");
+    assert!(w.common.project.is_executable(&rel), "{rel}");
 }
 
 #[then(expr = "{string} carries the marker {string}")]
 fn carries_marker(w: &mut World, rel: String, marker: String) {
-    w.project.file_contains(&rel, &marker);
+    w.common.project.file_contains(&rel, &marker);
 }
 
 // ------------------------------------------------- j002000: engine switch day
@@ -752,26 +606,26 @@ const J002000_MARKER: &str = "J002000-TEAM-GUIDANCE-MARKER";
 /// to the old one, and the team's guidance composed into the profile it names.
 #[given("Alice's team has standardised on one engine and is moving to another")]
 fn j002000_setup(w: &mut World) {
-    w.project = Project::initialized();
-    w.project.write(
+    w.common.project = Project::initialized();
+    w.common.project.write(
         ".ctxloom/config.yaml",
         "schema_version: 8\nllm:\n  configs:\n    claude-code:\n      type: claude-code\n    mock:\n      type: mock\n  defaults:\n    primary: claude-code\n    fast: claude-code\nagents:\n  dev:\n    llm: claude-code\n    profiles:\n      - default\ndefault_agent: dev\n",
     );
     let root = ".ctxloom/content/bundles/v2/house";
-    w.project.write(
+    w.common.project.write(
         &format!("{root}/bundle.yaml"),
         "schema_version: 4\nversion: 1.0.0\n",
     );
-    w.project.write(
+    w.common.project.write(
         &format!("{root}/fragments/house-guidance.md"),
         J002000_MARKER,
     );
-    w.project.write(
+    w.common.project.write(
         &format!("{root}/hooks/session_end/h0.yaml"),
         "type: command\ncommand: echo j002000-session-end\n",
     );
     // Go's scaffold: a seed bundle and a "default" profile including it.
-    w.run_lines(
+    w.common.run_lines(
         "ctxloom bundle create seed -d \"J000200 seed bundle\"\nctxloom profile create default --include seed -d \"J000200 default profile\"\nctxloom profile modify default --add-bundle house",
         "",
     );
@@ -792,65 +646,9 @@ fn refuses_naming_engines(w: &mut World) {
 
 // ------------------------------------------------------------ the features
 
-fn feature(path: &str) {
-    let file: &Path = &Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("features")
-        .join(path);
-    let writer = futures::executor::block_on(
-        World::cucumber()
-            // The test harness's own arguments (`--exact`) are not ours.
-            .with_cli(cucumber::cli::Opts::<_, _, _, cucumber::cli::Empty>::default())
-            .max_concurrent_scenarios(4)
-            .fail_on_skipped()
-            .run(file),
-    );
-    assert!(
-        !cucumber::writer::Stats::execution_has_failed(&writer),
-        "{path} failed"
-    );
-}
+common_steps!();
 
-#[test]
-fn test_manage_feature() {
-    feature("cli/manage.feature");
-}
-
-#[test]
-fn test_engine_switch_feature() {
-    feature("journeys/j002000_engine_switch.feature");
-}
-
-#[test]
-fn test_materialize_feature() {
-    feature("cli/materialize.feature");
-}
-
-#[test]
-fn test_util_feature() {
-    feature("cli/util.feature");
-}
-
-#[test]
-fn test_post_tool_hooks_feature() {
-    feature("cli/post_tool_hooks.feature");
-}
-
-#[test]
-fn test_session_hooks_feature() {
-    feature("cli/session_hooks.feature");
-}
-
-#[test]
-fn test_adopt_and_back_out_journey() {
-    feature("journeys/j000100_adopt_and_back_out.feature");
-}
-
-#[test]
-fn test_multi_engine_journey() {
-    feature("journeys/j000400_multi_engine.feature");
-}
-
-#[test]
-fn test_agent_skill_journey() {
-    feature("journeys/j000600_agent_skill.feature");
+/// Run one feature file with this World; whether it passed.
+pub(super) fn run(file: &Path) -> bool {
+    super::gherkin_common::run_feature::<World>(file)
 }

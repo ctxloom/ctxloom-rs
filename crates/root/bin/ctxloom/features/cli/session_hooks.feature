@@ -1,7 +1,8 @@
-# Go ctxloom's tests/acceptance/features/cli/session_hooks.feature at f36e8dfb21 (release/0.7), kept
-# as written except for the scenarios left out below.
-# Left out:
-#   - session-bind, hud and the retired turn-changed: S4's, tested in hook.test.rs.
+# world: surfaces
+# Ported from cli/session_hooks.feature
+# NOT ported: these Go scenarios, and why:
+#   - session-bind, hud and the retired turn-changed: S4's, tested in
+#     hook.test.rs.
 #   - stamp-plan: taskloom's (D17).
 
 

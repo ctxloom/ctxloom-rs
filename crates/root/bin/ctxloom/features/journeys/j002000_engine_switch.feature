@@ -1,11 +1,10 @@
-# Ported from Go ctxloom's tests/acceptance/features/journeys/j002000_engine_switch.feature
-# (revision f36e8dfb21, release/0.7), ONE scenario, the second of the parity POC.
+# world: surfaces
+# Ported from journeys/j002000_engine_switch.feature
 # NOT ported: the other three scenarios. "The engine changes under the binding
-# and the context does not" and "Nothing tells her what the team just gave up"
-# need the mock-lossy engine, which this port does not register (the new
-# engine here is `mock`); "History recorded under the old engine survives the
-# move" needs the session-index seeding of J001200. The Background is the
-# Go text unchanged; its step is Rust's.
+#   and the context does not" and "Nothing tells her what the team just gave
+#   up" need the mock-lossy engine, which this port does not register (the new
+#   engine here is `mock`); "History recorded under the old engine survives
+#   the move" needs the session-index seeding of J001200.
 @doc
 Feature: Engine switch day
 

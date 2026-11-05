@@ -1,12 +1,12 @@
-# Ported from Go ctxloom's tests/acceptance/features/cli/container.feature
-# (revision f36e8dfb21, release/0.7). NOT ported here:
-#  - the Rule "Check reports; it never builds, changes or blocks anything"
-#    (both its Scenario Outlines): it is @image-mock-agent, so it needs a live
-#    container runtime and a built mock agent image (plan 5.6: the live lane,
-#    CTXLOOM_REQUIRE_RUNTIMES, scheduled and never in hooks). The hermetic
-#    half of `container check` is the next Rule's.
-#  - the bare noun's heading "Available Commands:" is clap's "Commands:" here
-#    (plan 8.2: the command line is clap's, not cobra's); the step maps it.
+# world: isolation
+# Ported from cli/container.feature
+# NOT ported: the Rule "Check reports; it never builds, changes or blocks anything"
+#   (both its Scenario Outlines): it is @image-mock-agent, so it needs a live
+#   container runtime and a built mock agent image (plan 5.6: the live lane,
+#   CTXLOOM_REQUIRE_RUNTIMES, scheduled and never in hooks). The hermetic
+#   half of `container check` is the next Rule's.
+#   The bare noun's heading "Available Commands:" is clap's "Commands:" here
+#   (plan 8.2: the command line is clap's, not cobra's); the step maps it.
 @doc
 Feature: container — the images isolated agents run in, and the questions you can ask without one
 

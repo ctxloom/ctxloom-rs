@@ -1,7 +1,7 @@
-# Go ctxloom's tests/acceptance/features/cli/post_tool_hooks.feature at f36e8dfb21 (release/0.7), kept
-# as written except for the scenarios left out below.
-# Left out:
-#   - nothing; the "session index records harp" step is a no-op here (plan 8.4: `--engine` names the codec).
+# world: surfaces
+# Ported from cli/post_tool_hooks.feature
+# NOT ported: nothing; the "session index records harp" step is a no-op here
+#   (plan 8.4: `--engine` names the codec).
 
 
 Feature: The PostToolUse callback — a nudge after the tool call that earns one, and silence after every other

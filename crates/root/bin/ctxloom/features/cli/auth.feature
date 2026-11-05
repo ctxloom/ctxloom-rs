@@ -1,7 +1,8 @@
-# Ported from Go ctxloom's tests/acceptance/features/cli/auth.feature
-# (revision f36e8dfb21, release/0.7), all three scenarios. Rust has two engines
-# with an environment credential (claude-code's token, opencode's optional
-# endpoint key); a claude login shared in place has no row, as in Go.
+# world: base
+# Ported from cli/auth.feature
+# NOT ported: nothing. All three scenarios. Rust has two engines with an environment
+#   credential (claude-code's token, opencode's optional endpoint key); a
+#   claude login shared in place has no row, as in Go.
 @doc
 Feature: auth — how ctxloom-launched engines authenticate
 

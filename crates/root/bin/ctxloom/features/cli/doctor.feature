@@ -1,9 +1,10 @@
-# Ported from Go ctxloom's tests/acceptance/features/cli/doctor.feature
-# (revision f36e8dfb21, release/0.7). Every rule is ported, the credentials
-# rule (DOCTOR-CHECK-CREDENTIALS-m5) included. Plan overrides: the
-# trust-store half of HOOKS-TRUST-d4 is dead since ADR 0037 and the marker is
-# kept for the hooks half; run-end and runner/MCP-state checks are S6's; the
-# lockstep check against the installed taskloom is unruled (D15/D3b).
+# world: base
+# Ported from cli/doctor.feature
+# NOT ported: nothing; every rule is ported, the credentials rule
+#   (DOCTOR-CHECK-CREDENTIALS-m5) included. Plan overrides: the trust-store
+#   half of HOOKS-TRUST-d4 is dead since ADR 0037 and the marker is kept for
+#   the hooks half; run-end and runner/MCP-state checks are S6's; the lockstep
+#   check against the installed taskloom is unruled (D15/D3b).
 @doc
 Feature: doctor — the deterministic diagnosis, and the one finding that fails it
 

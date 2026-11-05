@@ -194,6 +194,12 @@ mod format;
 #[path = "gherkin.test.rs"]
 mod gherkin;
 
+#[path = "gherkin_common.test.rs"]
+mod gherkin_common;
+
+#[path = "gherkin_features.test.rs"]
+mod gherkin_features;
+
 #[path = "hook.test.rs"]
 mod hook;
 
@@ -277,3 +283,6 @@ mod workspace;
 
 #[path = "gherkin_isolation.test.rs"]
 mod gherkin_isolation;
+
+#[path = "gherkin_lint.test.rs"]
+mod gherkin_lint;

@@ -1,7 +1,6 @@
-# Go ctxloom's tests/acceptance/features/journeys/j000600_agent_skill.feature at f36e8dfb21 (release/0.7), kept
-# as written except for the scenarios left out below.
-# Left out:
-#   - nothing.
+# world: surfaces
+# Ported from journeys/j000600_agent_skill.feature
+# NOT ported: nothing.
 
 
 Feature: A skill you author once, and your assistant simply has

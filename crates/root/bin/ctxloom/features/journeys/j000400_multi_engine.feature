@@ -1,6 +1,6 @@
-# Go ctxloom's tests/acceptance/features/journeys/j000400_multi_engine.feature at f36e8dfb21 (release/0.7), kept
-# as written except for the scenarios left out below.
-# Left out:
+# world: surfaces
+# Ported from journeys/j000400_multi_engine.feature
+# NOT ported: these Go scenarios, and why:
 #   - the @live outline (needs a real engine).
 #   - the codex and opencode rows (not engines of this port).
 

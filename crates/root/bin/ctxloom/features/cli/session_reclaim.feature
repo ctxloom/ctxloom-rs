@@ -1,10 +1,12 @@
-# Ported from Go ctxloom's tests/acceptance/features/cli/session.feature
-# (revision f36e8dfb21, release/0.7): the destroyers (purge, transcript purge)
-# and the retention rule. NOT ported here: the worktree rows (S11) and
-# `session adopt` (needs the engines' transcript readers, S9).
+# world: base
+# Ported from cli/session.feature
+# NOT ported: the worktree rows (S11) and `session adopt` (needs the engines'
+#   transcript readers, S9). Ported: the destroyers (purge, transcript purge)
+#   and the retention rule.
 Feature: session purge — each population owns its destroyer, and every one reports first
 
   Background:
+    # new: Rust's own Background, stating the Given that Go repeats in each scenario (see their substitutions).
     Given an initialized ctxloom project
 
 
@@ -22,6 +24,7 @@ Feature: session purge — each population owns its destroyer, and every one rep
     and the difference is the whole point.
 
     Scenario: Purging a transcript reports before it removes
+      # substitution: Go repeats `Given an initialized ctxloom project` in each scenario; this file states it once, in its Background.
       Given a finished session "amber-swift-owl" with a transcript
       When I run "ctxloom session transcript purge amber-swift-owl"
       Then the command succeeds
@@ -30,6 +33,7 @@ Feature: session purge — each population owns its destroyer, and every one rep
       And the home file ".ctxloom/sessions/amber-swift-owl/transcripts/transcript.jsonl" exists
 
     Scenario: --yes destroys the transcript and leaves the output dir
+      # substitution: Go repeats `Given an initialized ctxloom project` in each scenario; this file states it once, in its Background.
       Given a finished session "amber-swift-owl" with a transcript and a summary an older ctxloom left
       When I run "ctxloom session transcript purge amber-swift-owl --yes"
       Then the command succeeds
@@ -37,6 +41,7 @@ Feature: session purge — each population owns its destroyer, and every one rep
       And the output file "essence.md" of session "amber-swift-owl" exists
 
     Scenario: The sweep reports before it removes
+      # substitution: Go repeats `Given an initialized ctxloom project` in each scenario; this file states it once, in its Background.
       Given a finished session "amber-swift-owl" with a transcript
       When I run "ctxloom session purge amber-swift-owl"
       Then the command succeeds
@@ -45,6 +50,7 @@ Feature: session purge — each population owns its destroyer, and every one rep
       And the home file ".ctxloom/sessions/amber-swift-owl/transcripts/transcript.jsonl" exists
 
     Scenario: The sweep empties a session but does not unlist it
+      # substitution: Go repeats `Given an initialized ctxloom project` in each scenario; this file states it once, in its Background.
       Given a finished session "amber-swift-owl" with a transcript and a summary an older ctxloom left
       When I run "ctxloom session purge amber-swift-owl --yes"
       Then the command succeeds
@@ -58,6 +64,7 @@ Feature: session purge — each population owns its destroyer, and every one rep
     # permission. Every session from before the lock existed has no lock, so
     # the refusal names the exact command that destroys it deliberately.
     Scenario: A session the lock cannot prove finished is refused, and the escape is named
+      # substitution: Go repeats `Given an initialized ctxloom project` in each scenario; this file states it once, in its Background.
       Given a finished session "amber-swift-owl" with a transcript but no session lock
       When I run "ctxloom session purge amber-swift-owl --yes"
       Then the command fails
@@ -66,6 +73,7 @@ Feature: session purge — each population owns its destroyer, and every one rep
       And the home file ".ctxloom/sessions/amber-swift-owl/transcripts/transcript.jsonl" exists
 
     Scenario: --even-if-live sweeps it anyway
+      # substitution: Go repeats `Given an initialized ctxloom project` in each scenario; this file states it once, in its Background.
       Given a finished session "amber-swift-owl" with a transcript but no session lock
       When I run "ctxloom session purge amber-swift-owl --yes --even-if-live"
       Then the command succeeds
@@ -74,6 +82,7 @@ Feature: session purge — each population owns its destroyer, and every one rep
     # The index says ended; the lock says running. The lock wins, on the leaf
     # as much as on the sweep.
     Scenario: A session running again is refused by the transcript's own destroyer
+      # substitution: Go repeats `Given an initialized ctxloom project` in each scenario; this file states it once, in its Background.
       Given a session "amber-swift-owl" with a transcript that is running again
       When I run "ctxloom session transcript purge amber-swift-owl --yes"
       Then the command fails
@@ -90,6 +99,7 @@ Feature: session purge — each population owns its destroyer, and every one rep
     <harp> --undo` releases a kept one, and time releases the rest.
 
     Scenario Outline: A transcript within its retention is refused by every destroyer
+      # substitution: Go repeats `Given an initialized ctxloom project` in each scenario; this file states it once, in its Background.
       Given a session "brisk-copper-moth" with a transcript that finished an hour ago
       When I run "ctxloom <destroyer> brisk-copper-moth --yes"
       Then the command fails
@@ -103,6 +113,7 @@ Feature: session purge — each population owns its destroyer, and every one rep
         | session remove             |
 
     Scenario: A kept transcript is refused at any age, and the listing says it is kept
+      # substitution: Go repeats `Given an initialized ctxloom project` in each scenario; this file states it once, in its Background.
       Given a finished session "amber-swift-owl" with a transcript
       When I run "ctxloom session keep amber-swift-owl"
       Then the command succeeds

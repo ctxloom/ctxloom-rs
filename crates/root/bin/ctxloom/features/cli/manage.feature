@@ -1,14 +1,15 @@
-# Go ctxloom's tests/acceptance/features/cli/manage.feature at f36e8dfb21 (release/0.7), kept
-# as written except for the scenarios left out below.
-# Edited: the placeholders of the Examples columns "hooks are wired", "mcp is wired",
-# "names the origin kind" and "names the origin" are spelled with underscores (cucumber-rs
-# does not substitute a placeholder that has spaces).
-# Left out:
-#   - "Every engine gets ctxloom's shipped commands in its own idiom": it reads the body of the
-#   -     `discover` command, which names `search_library`, an MCP tool the D8 cut list has not ruled on (D24).
-#   - "The hook list names the specific place each hook was declared": needs a companion's loadout read (S6).
-#   - "After an uninstall, a run delivers into its session ...": needs a running mock engine (S6).
-#   - The mock rows of "Check", "A team's hook" etc. are as Go wrote them; only the engines this port registers run.
+# world: surfaces
+# Ported from cli/manage.feature
+# NOT ported: these Go scenarios, and why:
+#   - "Every engine gets ctxloom's shipped commands in its own idiom": it reads
+#     the body of the `discover` command, which names `search_library`, an MCP
+#     tool the D8 cut list has not ruled on (D24).
+#   - "The hook list names the specific place each hook was declared": needs a
+#     companion's loadout read (S6).
+#   - "After an uninstall, a run delivers into its session ...": needs a
+#     running mock engine (S6).
+#   The mock rows of "Check", "A team's hook" etc. are as Go wrote them; only
+#   the engines this port registers run.
 
 
 Feature: manage — wiring ctxloom into a project, and taking it back out
@@ -212,6 +213,7 @@ Feature: manage — wiring ctxloom into a project, and taking it back out
     # the engine could not launch (ruled 2026-09-21: ctxloom injects its MCP
     # only while it is running, via its own companion).
     Scenario Outline: Check reports which surfaces are actually wired
+      # substitution: the Examples column headers "hooks are wired" etc. are spelled with underscores (cucumber-rs does not substitute a placeholder that has spaces).
       Given an initialized ctxloom project
       When Alice wires the hooks in and asks what is configured:
         """
@@ -296,6 +298,7 @@ Feature: manage — wiring ctxloom into a project, and taking it back out
     # first in the YAML and ordered last — so a build that ignored the field
     # prints them the other way round and the regex catches it.
     Scenario Outline: Listing hooks shows the resolved order and where each came from
+      # substitution: the Examples column headers "names the origin kind" etc. are spelled with underscores (cucumber-rs does not substitute a placeholder that has spaces).
       Given an initialized ctxloom project
       And the project already has the bundle "hooked":
         """

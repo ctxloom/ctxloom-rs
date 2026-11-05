@@ -11,11 +11,11 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use cucumber::gherkin::Step;
-use cucumber::{given, then, when, World as _};
+use cucumber::{given, then};
 use serde_json::Value;
 
-use super::library::{at, reports_as, Project};
-use super::Ran;
+use super::gherkin_common::{common_steps, doc, Common, CommonWorld};
+use super::library::{at, Project};
 use crate::tests::files;
 
 const DAY: u64 = 86_400;
@@ -40,12 +40,10 @@ struct Planted {
 #[derive(cucumber::World)]
 #[world(init = Self::new)]
 struct World {
-    project: Project,
-    env: Vec<(String, String)>,
+    common: Common,
     planted: Vec<Planted>,
     seeded: bool,
     idle_days: Option<u64>,
-    ran: Option<Ran>,
     /// The locks of the sessions that are running, held until the scenario
     /// ends.
     held: Vec<File>,
@@ -68,15 +66,28 @@ impl fmt::Debug for World {
     }
 }
 
+impl CommonWorld for World {
+    fn common(&self) -> &Common {
+        &self.common
+    }
+
+    fn common_mut(&mut self) -> &mut Common {
+        &mut self.common
+    }
+
+    fn before_run(&mut self) {
+        self.seed();
+        self.seed_scratch();
+    }
+}
+
 impl World {
     fn new() -> World {
         World {
-            project: Project::bare(),
-            env: Vec::new(),
+            common: Common::new(),
             planted: Vec::new(),
             seeded: false,
             idle_days: None,
-            ran: None,
             held: Vec::new(),
             scratch: Vec::new(),
             foreign: Vec::new(),
@@ -87,12 +98,17 @@ impl World {
     }
 
     fn session_dir(&self, harp: &str) -> PathBuf {
-        self.project.home().join(".ctxloom/sessions").join(harp)
+        self.common
+            .project
+            .home()
+            .join(".ctxloom/sessions")
+            .join(harp)
     }
 
     fn output_dir(&self, harp: &str) -> PathBuf {
-        let project = self.project.dir().file_name().expect("a name");
-        self.project
+        let project = self.common.project.dir().file_name().expect("a name");
+        self.common
+            .project
             .home()
             .join("Documents/ctxloom")
             .join(project)
@@ -132,7 +148,7 @@ impl World {
             if session.keep {
                 flags.push("--keep");
             }
-            let ran = self.project.run(&flags);
+            let ran = self.common.project.run(&flags);
             assert_eq!(ran.code, 0, "seeding {}: {}", session.harp, ran.said());
             if session.kind != "running" && !session.no_lock {
                 self.lock_free_dead.push(session.harp.clone());
@@ -143,7 +159,8 @@ impl World {
             }
             if session.kind == "running" {
                 let lock = files::open_read(
-                    self.project
+                    self.common
+                        .project
                         .home()
                         .join(".ctxloom/sessions")
                         .join(format!("{}.lock", session.harp)),
@@ -175,7 +192,7 @@ impl World {
             .current_dir(dir)
             .env_clear()
             .env("PATH", crate::tests::host_var("PATH").unwrap_or_default())
-            .env("HOME", self.project.home())
+            .env("HOME", self.common.project.home())
             .output()
             .expect("git runs");
         assert!(
@@ -188,7 +205,7 @@ impl World {
 
     /// Make the project a git repository, once, with one commit.
     fn git_backed(&self) {
-        let project = self.project.dir();
+        let project = self.common.project.dir();
         if files::exists(project.join(".git")) {
             return;
         }
@@ -222,7 +239,7 @@ impl World {
             let dir = self.scratch_dir(&harp, &name);
             let branch = format!("wt-{harp}-{name}");
             self.git(
-                self.project.dir(),
+                self.common.project.dir(),
                 &[
                     "worktree",
                     "add",
@@ -240,7 +257,7 @@ impl World {
         for (branch, dir) in std::mem::take(&mut self.foreign) {
             files::mkdirs(dir.parent().expect("a parent"));
             self.git(
-                self.project.dir(),
+                self.common.project.dir(),
                 &[
                     "worktree",
                     "add",
@@ -258,35 +275,6 @@ impl World {
         }
     }
 
-    fn run(&mut self, line: &str) {
-        self.run_with(line, None);
-    }
-
-    fn run_with(&mut self, line: &str, input: Option<&str>) {
-        self.seed();
-        self.seed_scratch();
-        let words = split(line);
-        assert_eq!(words.first().map(String::as_str), Some("ctxloom"), "{line}");
-        let args: Vec<&str> = words[1..].iter().map(String::as_str).collect();
-        let env: Vec<(&str, &str)> = self
-            .env
-            .iter()
-            .map(|(k, v)| (k.as_str(), v.as_str()))
-            .collect();
-        self.ran = Some(match input {
-            Some(input) => self.project.run_input(&args, input, &env),
-            None => self.project.run_with(&env, &args),
-        });
-    }
-
-    fn ran(&self) -> &Ran {
-        self.ran.as_ref().expect("a command ran")
-    }
-
-    fn json(&self) -> Value {
-        super::parse_one(&self.ran().stdout)
-    }
-
     fn plant(&mut self, harp: &str, kind: &'static str) -> &mut Planted {
         self.planted.push(Planted {
             harp: harp.to_string(),
@@ -300,83 +288,27 @@ impl World {
     }
 }
 
-/// A command line's words: whitespace separates, double quotes group.
-fn split(line: &str) -> Vec<String> {
-    let mut words = Vec::new();
-    let mut word = String::new();
-    let (mut quoted, mut any) = (false, false);
-    for c in line.chars() {
-        match c {
-            '"' => {
-                quoted = !quoted;
-                any = true;
-            }
-            c if c.is_whitespace() && !quoted => {
-                if any {
-                    words.push(std::mem::take(&mut word));
-                    any = false;
-                }
-            }
-            c => {
-                word.push(c);
-                any = true;
-            }
-        }
-    }
-    if any {
-        words.push(word);
-    }
-    words
-}
-
-fn doc(step: &Step) -> String {
-    step.docstring
-        .clone()
-        .expect("a docstring")
-        .trim()
-        .to_string()
-}
-
 // ------------------------------------------------------------------ given
-
-#[given("an initialized ctxloom project")]
-fn initialized(w: &mut World) {
-    w.project = Project::initialized();
-}
-
-#[given("an empty project directory")]
-fn empty(w: &mut World) {
-    w.project = Project::bare();
-}
 
 #[given(expr = "the environment variable {string} is set to {string}")]
 fn env_set(w: &mut World, name: String, value: String) {
-    w.env.retain(|(n, _)| *n != name);
-    w.env.push((name, value));
-}
-
-#[given(expr = "the project already has the file {string}:")]
-fn project_file(w: &mut World, step: &Step, rel: String) {
-    w.project.write(&rel, &format!("{}\n", doc(step)));
+    w.common.env.retain(|(n, _)| *n != name);
+    w.common.env.push((name, value));
 }
 
 #[given(expr = "the home already has the file {string}:")]
 fn home_file(w: &mut World, step: &Step, rel: String) {
-    w.project.write_home(&rel, &format!("{}\n", doc(step)));
+    w.common
+        .project
+        .write_home(&rel, &format!("{}\n", doc(step)));
 }
 
 #[given("a malformed ctxloom config")]
 fn malformed(w: &mut World) {
-    w.project.write(
+    w.common.project.write(
         ".ctxloom/config.yaml",
         "schema_version: [unclosed\n  - : :\n",
     );
-}
-
-#[given(expr = "the file {string} contains {string}")]
-#[then(expr = "the file {string} contains {string}")]
-fn file_contains(w: &mut World, rel: String, text: String) {
-    w.project.file_contains(&rel, &text);
 }
 
 #[given(expr = "a finished session {string} with a transcript")]
@@ -432,7 +364,7 @@ fn oneshot(w: &mut World, harp: String) {
 
 #[given("the feature shipped on Friday and Alice is closing the workstream out")]
 fn closing_out(w: &mut World) {
-    w.project = Project::initialized();
+    w.common.project = Project::initialized();
 }
 
 #[given(expr = "session {string} left a clean scratch worktree")]
@@ -455,6 +387,7 @@ fn left_own(w: &mut World, harp: String) {
 )]
 fn long_lived(w: &mut World, branch: String) {
     let dir = w
+        .common
         .project
         .home()
         .join("workspace/worktrees")
@@ -469,65 +402,7 @@ fn idle(w: &mut World, days: u64) {
 
 // ------------------------------------------------------------------- when
 
-#[when(expr = "I run {string}")]
-fn run(w: &mut World, line: String) {
-    w.run(&line);
-}
-
-#[when(expr = "I run {string} with input:")]
-fn run_with_input(w: &mut World, step: &Step, line: String) {
-    w.run_with(&line, Some(&doc(step)));
-}
-
-#[when(regex = r"^Alice .*:$")]
-fn alice_runs(w: &mut World, step: &Step) {
-    w.run(&doc(step));
-}
-
 // ------------------------------------------------------------------- then
-
-#[then("the command succeeds")]
-fn succeeds(w: &mut World) {
-    w.ran().succeeds();
-}
-
-#[then("the command fails")]
-fn fails(w: &mut World) {
-    w.ran().fails();
-}
-
-#[then(expr = "the command exits with code {int}")]
-fn exits(w: &mut World, code: i32) {
-    assert_eq!(w.ran().code, code, "{}", w.ran().said());
-}
-
-#[then(expr = "the output contains {string}")]
-fn output_contains(w: &mut World, text: String) {
-    // plan supersedes Go: clap's usage error says "unexpected argument",
-    // where cobra said "unknown flag" (plan 8.2: the command line is clap's).
-    let text = if text == "unknown flag" {
-        "unexpected argument"
-    } else {
-        &text
-    };
-    w.ran().contains(text);
-}
-
-#[then(expr = "the output does not contain {string}")]
-fn output_lacks(w: &mut World, text: String) {
-    w.ran().lacks(&text);
-}
-
-#[then(expr = "the output reports {string} as {string}")]
-fn output_reports(w: &mut World, path: String, value: String) {
-    let ran = w.ran();
-    match serde_json::from_str::<Value>(&ran.stdout) {
-        Ok(doc) => assert_eq!(reports_as(&doc, &path), value, "{}", ran.said()),
-        Err(_) => {
-            ran.contains(&value);
-        }
-    }
-}
 
 /// Go: "exactly N home files match" a glob below the home, one `*` per
 /// path segment.
@@ -552,35 +427,14 @@ fn home_files_match(w: &mut World, count: usize, pattern: String) {
     }
     let parts: Vec<&str> = pattern.split('/').collect();
     let mut found = 0;
-    walk(w.project.home(), "", &parts, &mut found);
+    walk(w.common.project.home(), "", &parts, &mut found);
     assert_eq!(found, count, "{pattern}");
-}
-
-#[then(expr = "the file {string} exists")]
-fn file_exists(w: &mut World, rel: String) {
-    assert!(w.project.exists(&rel), "{rel} should exist");
-}
-
-#[then(expr = "the file {string} does not exist")]
-fn file_absent(w: &mut World, rel: String) {
-    w.project.file_is_absent(&rel);
-}
-
-#[then(expr = "the file {string} does not contain {string}")]
-fn file_lacks(w: &mut World, rel: String, text: String) {
-    w.project.file_lacks(&rel, &text);
-}
-
-#[then(expr = "the file {string} contains {string} exactly {int} times")]
-fn file_contains_times(w: &mut World, rel: String, text: String, times: usize) {
-    let held = w.project.read(&rel).unwrap_or_default();
-    assert_eq!(held.matches(&text).count(), times, "{rel}: {held}");
 }
 
 #[then(expr = "the home file {string} exists")]
 fn home_exists(w: &mut World, rel: String) {
     assert!(
-        files::exists(w.project.home().join(&rel)),
+        files::exists(w.common.project.home().join(&rel)),
         "{rel} should exist"
     );
 }
@@ -588,14 +442,14 @@ fn home_exists(w: &mut World, rel: String) {
 #[then(expr = "the home file {string} does not exist")]
 fn home_absent(w: &mut World, rel: String) {
     assert!(
-        !files::exists(w.project.home().join(&rel)),
+        !files::exists(w.common.project.home().join(&rel)),
         "{rel} should not exist"
     );
 }
 
 #[then(expr = "the home file {string} does not contain {string}")]
 fn home_lacks(w: &mut World, rel: String, text: String) {
-    let held = w.project.read_home(&rel).expect("a home file");
+    let held = w.common.project.read_home(&rel).expect("a home file");
     assert!(!held.contains(&text), "{rel}: {held}");
 }
 
@@ -603,11 +457,6 @@ fn home_lacks(w: &mut World, rel: String, text: String) {
 fn output_file_exists(w: &mut World, file: String, harp: String) {
     let path = w.output_dir(&harp).join(&file);
     assert!(files::exists(&path), "{} should exist", path.display());
-}
-
-#[then("the output is valid JSON")]
-fn valid_json(w: &mut World) {
-    let _ = w.json();
 }
 
 fn array<'a>(doc: &'a Value, path: &str) -> &'a Vec<Value> {
@@ -669,7 +518,7 @@ fn every_non_empty(w: &mut World, path: String, key: String) {
 }
 
 fn hook_commands(w: &World, rel: &str, event: &str) -> Vec<String> {
-    let text = w.project.read(rel).unwrap_or_default();
+    let text = w.common.project.read(rel).unwrap_or_default();
     let doc: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
     let mut commands = Vec::new();
     for group in doc["hooks"][event].as_array().into_iter().flatten() {
@@ -703,7 +552,7 @@ fn sweep_names(w: &mut World, a: String, b: String) {
 
 #[then("every byte of every session is still on disk")]
 fn bytes_on_disk(w: &mut World) {
-    let sessions = w.project.home().join(".ctxloom/sessions");
+    let sessions = w.common.project.home().join(".ctxloom/sessions");
     for path in files::children(&sessions) {
         if files::is_dir(&path) {
             assert!(
@@ -847,7 +696,7 @@ fn foreign_untouched(w: &mut World) {
 
 #[then("the scratch worktree is still registered with git")]
 fn still_registered(w: &mut World) {
-    let listed = w.git(w.project.dir(), &["worktree", "list", "--porcelain"]);
+    let listed = w.git(w.common.project.dir(), &["worktree", "list", "--porcelain"]);
     for (harp, name, dirty) in &w.planted_scratch {
         if *dirty {
             assert!(
@@ -860,70 +709,9 @@ fn still_registered(w: &mut World) {
 
 // ------------------------------------------------------------ the features
 
-fn feature(path: &str) {
-    let file: &Path = &Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("features")
-        .join(path);
-    let writer = futures::executor::block_on(
-        World::cucumber()
-            // The test harness's own arguments (`--exact`) are not ours.
-            .with_cli(cucumber::cli::Opts::<_, _, _, cucumber::cli::Empty>::default())
-            .max_concurrent_scenarios(4)
-            .fail_on_skipped()
-            .run(file),
-    );
-    assert!(
-        !cucumber::writer::Stats::execution_has_failed(&writer),
-        "{path} failed"
-    );
-}
+common_steps!();
 
-#[test]
-fn test_auth_feature() {
-    feature("cli/auth.feature");
-}
-
-#[test]
-fn test_clean_feature() {
-    feature("cli/clean.feature");
-}
-
-#[test]
-fn test_completion_feature() {
-    feature("cli/completion.feature");
-}
-
-#[test]
-fn test_doctor_feature() {
-    feature("cli/doctor.feature");
-}
-
-#[test]
-fn test_init_feature() {
-    feature("cli/init.feature");
-}
-
-#[test]
-fn test_run_feature() {
-    feature("cli/run.feature");
-}
-
-#[test]
-fn test_session_reclaim_feature() {
-    feature("cli/session_reclaim.feature");
-}
-
-#[test]
-fn test_sweep_feature() {
-    feature("journeys/j001300_sweep.feature");
-}
-
-#[test]
-fn test_sweep_config_feature() {
-    feature("journeys/j001300_sweep_config.feature");
-}
-
-#[test]
-fn test_session_worktrees_feature() {
-    feature("cli/session_worktrees.feature");
+/// Run one feature file with this World; whether it passed.
+pub(super) fn run(file: &std::path::Path) -> bool {
+    super::gherkin_common::run_feature::<World>(file)
 }

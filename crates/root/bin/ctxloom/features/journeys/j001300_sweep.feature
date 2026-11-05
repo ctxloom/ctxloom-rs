@@ -1,10 +1,12 @@
-# Ported from Go ctxloom's journeys/j001300_closeout.feature (revision
-# f36e8dfb21, release/0.7): the sweep scenarios, worktree rows included
-# (S11). The journey's worktree-leaf scenarios are in
-# cli/session_worktrees.feature; its doctor scenarios are S12's.
+# world: base
+# Ported from journeys/j001300_closeout.feature
+# NOT ported: the journey's worktree-leaf scenarios (they are in
+#   cli/session_worktrees.feature) and its doctor scenarios (S12's). Ported:
+#   the sweep scenarios, worktree rows included (S11).
 Feature: closeout — the sweep
 
   Background:
+    # substitution: Go's Background step ("the feature shipped on Friday and Alice is closing the workstream out") is spelled `Given an initialized ctxloom project`, which is all the Rust step does.
     Given an initialized ctxloom project
 
   # ---- The sweep ----------------------------------------------------------
@@ -39,6 +41,7 @@ Feature: closeout — the sweep
   #
   # Closed: `ctxloom session sweep --yes`.
   Scenario: The sweep removes only what it can prove is safe, and says why it left the rest
+    # substitution: Go's last row (the sweep kept olive-dirty-finch's transcript and named ctxloom-wt-wip) is not asserted here; the reason was not recorded when this was ported (S11), see the parity report.
     Given a finished session "amber-quiet-heron" whose transcript retention has passed
     And a finished session "brisk-copper-moth" marked keep
     And an internal one-shot session "gray-oneshot-wisp" that finished an hour ago

@@ -1,7 +1,8 @@
-# Go ctxloom's tests/acceptance/features/journeys/j000100_adopt_and_back_out.feature at f36e8dfb21 (release/0.7), kept
-# as written except for the scenarios left out below.
-# Left out:
-#   - "Alice can check the harness deterministically ...": `ctxloom doctor` is S12's and is covered by doctor.feature.
+# world: surfaces
+# Ported from journeys/j000100_adopt_and_back_out.feature
+# NOT ported: these Go scenarios, and why:
+#   - "Alice can check the harness deterministically ...": `ctxloom doctor` is
+#     S12's and is covered by doctor.feature.
 
 
 Feature: Adopting ctxloom without regret — the first hour, and the exit verified before committing

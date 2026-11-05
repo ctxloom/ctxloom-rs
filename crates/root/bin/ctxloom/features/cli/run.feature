@@ -1,10 +1,10 @@
-# Ported from Go ctxloom's tests/acceptance/features/cli/run.feature
-# (revision f36e8dfb21, release/0.7), ONE scenario, the first of the parity POC.
+# world: base
+# Ported from cli/run.feature
 # NOT ported: every other scenario of the Go file (the mock engine's recorded
-# input, one-shot, dry-run, tag and agent selection, deny_tools, the opencode
-# TUI): they need `run` to launch an engine. Plan override: clap's usage error
-# says "unexpected argument" where cobra said "unknown flag"; the step maps one
-# to the other (plan 8.2).
+#   input, one-shot, dry-run, tag and agent selection, deny_tools, the
+#   opencode TUI): they need `run` to launch an engine. Plan override: clap's
+#   usage error says "unexpected argument" where cobra said "unknown flag";
+#   the step maps one to the other (plan 8.2).
 @doc
 Feature: run — assembling a project's context and handing it to an engine
 

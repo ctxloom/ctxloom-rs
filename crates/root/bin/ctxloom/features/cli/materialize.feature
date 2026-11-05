@@ -1,7 +1,8 @@
-# Go ctxloom's tests/acceptance/features/cli/materialize.feature at f36e8dfb21 (release/0.7), kept
-# as written except for the scenarios left out below.
-# Left out:
-#   - "A run in a project with materialized context warns and names the remedy": needs a running mock engine (S6).
+# world: surfaces
+# Ported from cli/materialize.feature
+# NOT ported: these Go scenarios, and why:
+#   - "A run in a project with materialized context warns and names the
+#     remedy": needs a running mock engine (S6).
 
 
 Feature: materialize — the profiles' surfaces written at rest, any subset of them

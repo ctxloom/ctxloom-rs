@@ -1,3 +1,6 @@
+# world: base
+# Ported from cli/clean.feature
+# NOT ported: nothing.
 Feature: clean — reclaiming this project's regenerable cache
 
   `ctxloom clean` removes what a named command rebuilds and nothing else.

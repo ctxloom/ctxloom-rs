@@ -1,12 +1,13 @@
-# Ported from Go ctxloom's tests/acceptance/features/cli/session.feature
-# (the worktree rows of "Each population owns its destroyer") and
-# journeys/j001300_closeout.feature (Step 2, the worktree rows, and the
-# purge row that spares uncommitted work), revision f36e8dfb21, release/0.7.
-# NOT ported here: j001300's doctor rows (DOCTOR-CHECK-FOREIGN-WORKTREES,
-# gitignore, harp durability): doctor's checks are S12's.
-# plan supersedes Go: the listing names each owner by the state its lock
-# proves (alive, dead, indeterminate), not by a pid; the session lock carries
-# none (plan 5.5 / session-ports Liveness).
+# world: base
+# Ported from cli/session.feature
+# Ported from journeys/j001300_closeout.feature
+# NOT ported: j001300's doctor rows (DOCTOR-CHECK-FOREIGN-WORKTREES,
+#   gitignore, harp durability): doctor's checks are S12's. Ported: the
+#   worktree rows of "Each population owns its destroyer" and j001300's
+#   Step 2, the worktree rows, and the purge row that spares uncommitted work.
+#   plan supersedes Go: the listing names each owner by the state its lock
+#   proves (alive, dead, indeterminate), not by a pid; the session lock
+#   carries none (plan 5.5 / session-ports Liveness).
 Feature: session worktrees - the scratch checkouts a session left behind
 
   Background:
@@ -150,6 +151,7 @@ Feature: session worktrees - the scratch checkouts a session left behind
   # reaped through isolation.ReapWorktrees; the Rust purge once left every
   # worktree behind.)
   Scenario: Emptying a session reaps the clean scratch worktree and spares the dirty one
+    # new: the worktree half of `session purge` (Go's purge reaped through isolation.ReapWorktrees; the Rust purge once left every worktree behind), which no Go scenario states on its own.
     Given a finished session "amber-quiet-heron" whose transcript retention has passed
     And session "amber-quiet-heron" left a clean scratch worktree
     And session "amber-quiet-heron" left a scratch worktree holding uncommitted work

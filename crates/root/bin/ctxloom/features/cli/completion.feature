@@ -1,3 +1,6 @@
+# world: base
+# Ported from cli/completion.feature
+# NOT ported: nothing.
 Feature: completion — the always-scriptable utility command with no noun of its own
   Smoke coverage: the completion script must generate for a supported shell
   and actually contain a completion directive, not just exit zero.
