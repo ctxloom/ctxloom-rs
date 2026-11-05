@@ -239,7 +239,7 @@ fn timestamp(at: SystemTime) -> Option<Timestamp> {
 /// Go's session directories under one home, read-only: every directory of
 /// `~/.ctxloom/sessions` that Go calls a session (`IsSessionDir`): a real
 /// directory (a symlink is none, "a sweep that followed one would act on
-/// whatever it points at"), whose name is a usable harp, carrying a regular
+/// whatever it points at"), carrying a regular
 /// `session.yaml`. A directory without one is not a session: what `session
 /// remove` leaves behind on purpose, or an engine-created directory nobody
 /// recorded.
@@ -275,7 +275,7 @@ impl GoSessions for GoDirs {
             let Some(harp) = entry.name.to_str().map(str::to_string) else {
                 continue;
             };
-            if entry.kind != Kind::Dir || sessions::validate(&harp).is_err() {
+            if entry.kind != Kind::Dir {
                 continue;
             }
             let dir = root.join(&harp);

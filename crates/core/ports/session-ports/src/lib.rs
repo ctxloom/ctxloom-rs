@@ -128,6 +128,9 @@ pub struct GoSession {
 /// Go's session directories under a home, read-only. NEVER the real
 /// `~/.ctxloom` in a test.
 pub trait GoSessions {
-    /// Every session directory that carries a sidecar, by harp.
+    /// Every real directory of the sessions root that carries a regular
+    /// sidecar, by directory name, whatever the name: the reader judges the
+    /// file system's shape, never the name. Whether a name is a usable harp
+    /// is the domain's rule, which the import applies to what this returns.
     fn go_sessions(&mut self) -> Result<Vec<GoSession>, Report>;
 }

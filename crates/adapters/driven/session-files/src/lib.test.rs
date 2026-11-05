@@ -280,10 +280,11 @@ fn a_directory_without_a_sidecar_is_not_a_session() {
     assert_eq!(go.go_sessions().unwrap(), Vec::new());
 }
 
-// Go: the sessions root also holds the lock files beside the directories, and
-// a name that is no usable harp is none.
+// Go: the sessions root also holds the lock files beside the directories. A
+// directory's name is not judged here: the port returns every one that
+// carries a sidecar, and the import applies the harp rule.
 #[test]
-fn a_lock_file_and_an_unusable_name_are_not_sessions() {
+fn a_lock_file_is_not_a_session_and_a_name_is_not_judged() {
     let (fs, mut go) = go();
     fs.write_atomic(
         Path::new("/home/u/.ctxloom/sessions/amber-swift-owl.lock"),
@@ -298,7 +299,9 @@ fn a_lock_file_and_an_unusable_name_are_not_sessions() {
         .unwrap();
     });
     sidecar(&fs, "has:colon", "schema_version: 3\n");
-    assert_eq!(go.go_sessions().unwrap(), Vec::new());
+    let got = go.go_sessions().unwrap();
+    let harps: Vec<&str> = got.iter().map(|s| s.harp.as_str()).collect();
+    assert_eq!(harps, ["has:colon"]);
 }
 
 // Go: "never a symlink, in either direction — a sweep that followed one would

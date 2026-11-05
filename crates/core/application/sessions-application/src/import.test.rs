@@ -346,6 +346,22 @@ fn a_go_session_of_a_directory_no_project_holds_is_left_named() {
     );
 }
 
+// The reader returns every directory it finds; which of them are sessions is
+// the import's rule (the harp the domain accepts), so a directory whose name
+// is no usable harp is neither imported nor left, and the rest still import.
+#[test]
+fn a_directory_whose_name_is_no_harp_is_skipped_not_imported_or_left() {
+    let mut imp = importer(vec![
+        go("has:colon", SCHEMA1, false),
+        go(MOTH, SCHEMA2, false),
+    ]);
+    let report = ready(imp.import(ImportRequest::default())).unwrap();
+    assert_eq!(report.imported.len(), 1);
+    assert_eq!(report.imported[0].harp, MOTH);
+    assert_eq!(report.left, []);
+    assert!(report.already.is_empty());
+}
+
 #[test]
 fn a_sidecar_this_build_cannot_read_is_left_and_the_others_still_import() {
     let newer = SCHEMA2.replace("schema_version: 2", "schema_version: 9");

@@ -148,7 +148,9 @@ where
 {
     async fn import(&mut self, request: ImportRequest) -> Result<ImportReport, AppError> {
         let ImportRequest {} = request;
-        let sessions = self.go.go_sessions().map_err(AppError::Files)?;
+        let mut sessions = self.go.go_sessions().map_err(AppError::Files)?;
+        // A directory whose name is no usable harp is not a session.
+        sessions.retain(|go| sessions::validate(&go.harp).is_ok());
         let projects = self.identity.every_project().map_err(AppError::Identity)?;
         let mut report = ImportReport::default();
         for go in sessions {

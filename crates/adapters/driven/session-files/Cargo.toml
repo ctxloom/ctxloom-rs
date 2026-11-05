@@ -13,7 +13,6 @@ file-system.workspace = true
 os.workspace = true
 session-ports.workspace = true
 # Go's harp rule decides which directory is a session.
-sessions.workspace = true
 
 [dev-dependencies]
 file-system = { workspace = true, features = ["test-support"] }
