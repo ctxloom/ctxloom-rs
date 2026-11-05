@@ -65,6 +65,9 @@ pub(crate) fn install(
         .fs
         .create_dir_all(&base, Mode::from_bits(0o755))
         .map_err(|e| e.to_string())?;
+    // The old trees are found before the staging directory exists, so it is
+    // never among them.
+    let old_trees = installed_trees(files, &base);
     let staging = files
         .fs
         .make_temp_dir(&base, ".install-")
@@ -74,7 +77,7 @@ pub(crate) fn install(
         let _ = files.fs.remove_dir_all(&staging);
         return Err(why);
     }
-    for old in commits(files, &base) {
+    for old in old_trees {
         files
             .fs
             .remove_dir_all(&base.join(old))
@@ -116,15 +119,21 @@ fn write_tree(
         .map_err(|e| e.to_string())
 }
 
-/// The commits installed in `base`: its subdirectories named as a commit.
-fn commits(files: &ProjectFiles, base: &Path) -> Vec<String> {
+/// The trees installed in `base`: its subdirectories holding the identity
+/// marker (a nested bundle's directory holds none, only its own trees do).
+fn installed_trees(files: &ProjectFiles, base: &Path) -> Vec<String> {
     let Ok(entries) = files.fs.read_dir(base) else {
         return Vec::new();
     };
     entries
         .into_iter()
         .map(|entry| entry.name.to_string_lossy().into_owned())
-        .filter(|name| deps::constraint::looks_like_commit(name))
+        .filter(|name| {
+            files
+                .fs
+                .exists(&base.join(name).join(IDENTITY_MARKER))
+                .unwrap_or(false)
+        })
         .collect()
 }
 

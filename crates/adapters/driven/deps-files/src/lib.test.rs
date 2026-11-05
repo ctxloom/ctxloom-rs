@@ -447,14 +447,24 @@ fn test_installing_a_commit_replaces_the_trees_of_other_commits_by_any_abbreviat
     let (files, fs) = files();
     let base = "/proj/.ctxloom/cache/bundles/example.test/o/r/demo";
     put(&fs, &format!("{base}/abc1234/bundle.yaml"), "v: 0\n");
+    put(&fs, &format!("{base}/abc1234/{IDENTITY_MARKER}"), IDENTITY);
     put(&fs, &format!("{base}/notes/keep.txt"), "mine\n");
+    put(
+        &fs,
+        &format!("{base}/.install-left/{IDENTITY_MARKER}"),
+        IDENTITY,
+    );
     files
         .install(IDENTITY, SHA, &demo_tree("A\n"))
         .expect("installs");
     assert!(!files.exists(&format!("{base}/abc1234")));
     assert!(
         files.exists(&format!("{base}/notes/keep.txt")),
-        "not a commit"
+        "holds no marker: not an installed tree"
+    );
+    assert!(
+        !files.exists(&format!("{base}/.install-left")),
+        "a crashed install's staging goes too"
     );
     assert!(files.is_installed(IDENTITY, SHA));
 }
