@@ -4,7 +4,10 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use ctxloom_ports::{ConfigFiles, Executables, Failure, LayerText, Put, Scope, Source, UserFiles};
+use auth_application::Auth;
+use ctxloom_ports::{
+    ConfigFiles, Executables, ExportedVars, Failure, LayerText, Put, Scope, Source, UserFiles,
+};
 
 use crate::{Doctor, Status};
 
@@ -26,7 +29,18 @@ impl ConfigFiles for Mem {
         "/work/.ctxloom".to_string()
     }
     fn layers(&self) -> Result<Vec<LayerText>, Failure> {
-        Ok(Vec::new())
+        let files = self.files.lock().unwrap();
+        Ok(
+            ["/home/u/.ctxloom/config.yaml", "/work/.ctxloom/config.yaml"]
+                .iter()
+                .filter_map(|path| {
+                    Some(LayerText {
+                        path: path.to_string(),
+                        text: files.get(*path)?.clone(),
+                    })
+                })
+                .collect(),
+        )
     }
     fn layer(&self, _: Scope) -> Result<Option<LayerText>, Failure> {
         Ok(self
@@ -80,11 +94,25 @@ impl Executables for Git {
     }
 }
 
+/// A launch that exports the claude token, or does not.
+struct Token(bool);
+
+impl ExportedVars for Token {
+    fn is_exported(&self, name: &str) -> bool {
+        self.0 && name == "CLAUDE_CODE_OAUTH_TOKEN"
+    }
+}
+
 fn doctor(mem: &Arc<Mem>, git: bool) -> Doctor {
+    doctor_with_token(mem, git, true)
+}
+
+fn doctor_with_token(mem: &Arc<Mem>, git: bool, token: bool) -> Doctor {
     Doctor::new(
         mem.clone(),
         mem.clone(),
         Arc::new(Git(git)),
+        Auth::new(Arc::new(Token(token))),
         "/home/u",
         "0.1.0",
     )
@@ -118,6 +146,7 @@ fn the_report_carries_every_marker_and_none_fails_on_a_plain_project() {
     for marker in [
         "DOCTOR-CHECK-DEPS-a1",
         "DOCTOR-CHECK-AGENTS-b2",
+        "DOCTOR-CHECK-CREDENTIALS-m5",
         "DOCTOR-CHECK-VERSION-c3",
         "DOCTOR-CHECK-HOOKS-TRUST-d4",
         "DOCTOR-CHECK-SETUP-MARKER-e5",
@@ -243,4 +272,29 @@ fn a_report_fails_only_when_a_row_fails() {
     };
     assert!(report(&[Status::Ok, Status::Fail]).failed());
     assert!(!report(&[Status::Ok, Status::Warn, Status::Info]).failed());
+}
+
+// doctor.feature: "A missing agent credential is a fail row with run's fix,
+// and exit 3": the project's config is what is checked, and the report fails.
+#[test]
+fn a_missing_credential_fails_the_report_and_an_exported_one_does_not() {
+    let report = doctor_with_token(&project(), true, false).report(false);
+    assert_eq!(status(&report, "DOCTOR-CHECK-CREDENTIALS-m5"), Status::Fail);
+    assert!(report.failed());
+    let report = doctor_with_token(&project(), true, true).report(false);
+    assert_eq!(status(&report, "DOCTOR-CHECK-CREDENTIALS-m5"), Status::Ok);
+    assert!(!report.failed());
+}
+
+// The home's config is a layer too: its `auth: login` stands where the
+// project says nothing.
+#[test]
+fn the_homes_auth_mode_is_read_with_the_projects_config() {
+    let mem = project();
+    mem.files.lock().unwrap().insert(
+        "/home/u/.ctxloom/config.yaml".to_string(),
+        "schema_version: 8\nauth: login\n".to_string(),
+    );
+    let report = doctor_with_token(&mem, true, false).report(false);
+    assert_eq!(status(&report, "DOCTOR-CHECK-CREDENTIALS-m5"), Status::Info);
 }

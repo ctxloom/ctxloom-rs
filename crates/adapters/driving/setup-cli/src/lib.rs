@@ -1,10 +1,13 @@
 //! The setup commands as a driving adapter (S12): arguments in, answers out,
-//! no logic. `clean`, `doctor` and `init` (with `init prompt`).
+//! no logic. `auth status`, `clean`, `doctor` and `init` (with `init prompt`).
 //!
 //! The whole command line is parsed by the program's own (one behaviour for
 //! help, usage errors and the exit ladder); this crate gives it these nouns
 //! and, given the matches of one, runs it on the use cases.
 //!
+//! - `auth [status]`: per engine, whether its credential is exported, by
+//!   variable name and never its value; the only verb, so no command here
+//!   takes a credential.
 //! - `clean [--yes]`: reports the cache it would remove and says outright
 //!   that it removed nothing, until `--yes`.
 //! - `doctor [--all] [--deps] [--fix]`: one row per check, each with its
@@ -21,6 +24,7 @@ use std::io::Write;
 
 use angzarr_diagnostic::Diagnostic;
 use angzarr_presentation::{write_json, Catalog, Format};
+use auth_application::Auth;
 use clap::ArgMatches;
 use cli_support::say_warning;
 use deps_application::Notice;
@@ -38,6 +42,7 @@ pub use cli_support::{Call, Failure};
 
 /// The use cases the commands run on.
 pub struct UseCases<'a> {
+    pub auth: &'a Auth,
     pub cleaner: &'a Cleaner,
     pub doctor: &'a Doctor,
     pub init: &'a Init,
@@ -80,10 +85,22 @@ pub fn run(
         )
     })?;
     match noun {
+        "auth" => auth(uses, format, out),
         "clean" => clean(uses, sub, format, catalog, out, err),
         "doctor" => doctor(uses, sub, format, out, err),
         _ => init(uses, sub, catalog, out, err),
     }
+}
+
+/// `auth` and `auth status`: the credential report.
+fn auth(uses: &UseCases<'_>, format: Format, out: &mut dyn Write) -> Result<u8, Failure> {
+    let rows = uses.auth.status();
+    match format {
+        Format::Json => write_json(out, &rows),
+        Format::Text => text::auth(&rows, out),
+    }
+    .map_err(output)?;
+    Ok(0)
 }
 
 fn clean(
@@ -115,9 +132,6 @@ fn clean(
     Ok(0)
 }
 
-// No check can fail today, so the 0 this ends with is also what `Ok(0)` says;
-// `exit_of` carries the status itself and has its own test.
-#[cfg_attr(test, mutants::skip)]
 fn doctor(
     uses: &UseCases<'_>,
     sub: &ArgMatches,

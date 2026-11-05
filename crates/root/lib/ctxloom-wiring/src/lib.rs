@@ -13,6 +13,7 @@ mod core_link;
 mod error;
 mod isolation;
 mod library;
+mod process_env;
 #[cfg(feature = "test-support")]
 mod seed;
 mod setup;
@@ -49,6 +50,7 @@ pub use core_link::InProcessCore;
 pub use error::diagnostic_samples;
 pub use error::{LibError, EN_US};
 pub use library::LibraryCommands;
+pub use process_env::ProcessEnv;
 #[cfg(feature = "test-support")]
 pub use seed::Seed;
 pub use sweep_config::SweepSettings;

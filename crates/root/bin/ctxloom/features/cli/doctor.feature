@@ -1,6 +1,6 @@
 # Ported from Go ctxloom's tests/acceptance/features/cli/doctor.feature
-# (revision f36e8dfb21, release/0.7). NOT ported: the credentials rule
-# (DOCTOR-CHECK-CREDENTIALS-m5 needs S5's credentials). Plan overrides: the
+# (revision f36e8dfb21, release/0.7). Every rule is ported, the credentials
+# rule (DOCTOR-CHECK-CREDENTIALS-m5) included. Plan overrides: the
 # trust-store half of HOOKS-TRUST-d4 is dead since ADR 0037 and the marker is
 # kept for the hooks half; run-end and runner/MCP-state checks are S6's; the
 # lockstep check against the installed taskloom is unruled (D15/D3b).
@@ -38,6 +38,20 @@ Feature: doctor — the deterministic diagnosis, and the one finding that fails 
 
   Background:
     Given the environment variable "CLAUDE_CODE_OAUTH_TOKEN" is set to "sk-ant-oat01-acceptance-fixture-not-real"
+
+  Rule: A credential no run can authenticate with is a fail row, and fails doctor
+
+    Scenario: A missing agent credential is a fail row with run's fix, and exit 3
+      Given an initialized ctxloom project
+      And the environment variable "CLAUDE_CODE_OAUTH_TOKEN" is set to ""
+      When Alice asks for the diagnosis in a form a script can parse:
+        """
+        ctxloom --format json doctor
+        """
+      Then the command exits with code 3
+      And the output is valid JSON
+      And the JSON output array "checks" contains an object whose "marker" is "DOCTOR-CHECK-CREDENTIALS-m5" and whose "status" is "fail"
+      And the output contains "claude setup-token"
 
   Rule: The report names every check, in one shared marker vocabulary
 

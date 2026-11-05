@@ -14,7 +14,7 @@ use cucumber::gherkin::Step;
 use cucumber::{given, then, when, World as _};
 use serde_json::Value;
 
-use super::library::{at, Project};
+use super::library::{at, reports_as, Project};
 use super::Ran;
 
 const DAY: u64 = 86_400;
@@ -261,6 +261,10 @@ impl World {
     }
 
     fn run(&mut self, line: &str) {
+        self.run_with(line, None);
+    }
+
+    fn run_with(&mut self, line: &str, input: Option<&str>) {
         self.seed();
         self.seed_scratch();
         let words = split(line);
@@ -271,7 +275,10 @@ impl World {
             .iter()
             .map(|(k, v)| (k.as_str(), v.as_str()))
             .collect();
-        self.ran = Some(self.project.run_with(&env, &args));
+        self.ran = Some(match input {
+            Some(input) => self.project.run_input(&args, input, &env),
+            None => self.project.run_with(&env, &args),
+        });
     }
 
     fn ran(&self) -> &Ran {
@@ -469,6 +476,11 @@ fn run(w: &mut World, line: String) {
     w.run(&line);
 }
 
+#[when(expr = "I run {string} with input:")]
+fn run_with_input(w: &mut World, step: &Step, line: String) {
+    w.run_with(&line, Some(&doc(step)));
+}
+
 #[when(regex = r"^Alice .*:$")]
 fn alice_runs(w: &mut World, step: &Step) {
     w.run(&doc(step));
@@ -506,6 +518,43 @@ fn output_contains(w: &mut World, text: String) {
 #[then(expr = "the output does not contain {string}")]
 fn output_lacks(w: &mut World, text: String) {
     w.ran().lacks(&text);
+}
+
+#[then(expr = "the output reports {string} as {string}")]
+fn output_reports(w: &mut World, path: String, value: String) {
+    let ran = w.ran();
+    match serde_json::from_str::<Value>(&ran.stdout) {
+        Ok(doc) => assert_eq!(reports_as(&doc, &path), value, "{}", ran.said()),
+        Err(_) => {
+            ran.contains(&value);
+        }
+    }
+}
+
+/// Go: "exactly N home files match" a glob below the home, one `*` per
+/// path segment.
+#[then(expr = "exactly {int} home files match {string}")]
+fn home_files_match(w: &mut World, count: usize, pattern: String) {
+    fn walk(dir: &Path, rel: &str, parts: &[&str], found: &mut usize) {
+        let Some((first, rest)) = parts.split_first() else {
+            *found += 1;
+            return;
+        };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let ok = *first == "*" || *first == name;
+            if ok {
+                walk(&entry.path(), &format!("{rel}/{name}"), rest, found);
+            }
+        }
+    }
+    let parts: Vec<&str> = pattern.split('/').collect();
+    let mut found = 0;
+    walk(w.project.home(), "", &parts, &mut found);
+    assert_eq!(found, count, "{pattern}");
 }
 
 #[then(expr = "the file {string} exists")]
@@ -831,6 +880,11 @@ fn feature(path: &str) {
         !cucumber::writer::Stats::execution_has_failed(&writer),
         "{path} failed"
     );
+}
+
+#[test]
+fn test_auth_feature() {
+    feature("cli/auth.feature");
 }
 
 #[test]

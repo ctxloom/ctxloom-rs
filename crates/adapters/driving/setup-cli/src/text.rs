@@ -2,6 +2,7 @@
 
 use std::io::{self, Write};
 
+use auth_application::Row;
 use doctor_checks::{Report, Status};
 use reclaim_application::CleanReport;
 
@@ -26,6 +27,28 @@ pub(crate) fn human(bytes: u64) -> String {
         unit += 1;
     }
     format!("{value:.1} {}", UNITS[unit])
+}
+
+/// One line per credential row: Go's `auth status`.
+pub(crate) fn auth(rows: &[Row], out: &mut dyn Write) -> io::Result<()> {
+    for row in rows {
+        if row.present {
+            writeln!(
+                out,
+                "{} {}: present ({})",
+                row.engine,
+                row.mode,
+                row.vars.join(", ")
+            )?;
+        } else {
+            writeln!(
+                out,
+                "{} {}: missing \u{2014} {}",
+                row.engine, row.mode, row.remedy
+            )?;
+        }
+    }
+    Ok(())
 }
 
 /// Go's cache plan: what would go (or went), and what rebuilds each.

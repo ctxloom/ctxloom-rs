@@ -23,6 +23,7 @@ cache-files.workspace = true
 doctor-checks.workspace = true
 init-application.workspace = true
 reclaim-application.workspace = true
+auth-application.workspace = true
 setup-cli.workspace = true
 ctxloom-ports.workspace = true
 library-application.workspace = true
