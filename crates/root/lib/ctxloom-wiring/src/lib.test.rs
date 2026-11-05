@@ -481,3 +481,25 @@ fn test_opening_a_store_for_an_unsafe_project_id_is_refused_and_makes_nothing() 
     );
     assert!(!exists(env.home().join(".ctxloom")));
 }
+
+#[test]
+fn test_the_catalog_has_the_shared_project_dir_messages_and_the_samples_carry_its_error() {
+    let sources = crate::catalog_sources();
+    assert!(
+        sources.contains(&project_dir::EN_US),
+        "project-dir's catalog"
+    );
+    assert!(sources.contains(&crate::EN_US), "this crate's own");
+    let codes: Vec<String> = crate::diagnostic_samples()
+        .iter()
+        .map(|d| d.code().to_string())
+        .collect();
+    assert!(
+        codes.contains(&"ctxloom-wiring-store".to_string()),
+        "{codes:?}"
+    );
+    assert!(
+        codes.len() >= 5 && !crate::catalog_sources().is_empty(),
+        "{codes:?}"
+    );
+}
