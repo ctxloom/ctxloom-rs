@@ -904,6 +904,11 @@ fn test_init_feature() {
 }
 
 #[test]
+fn test_run_feature() {
+    feature("cli/run.feature");
+}
+
+#[test]
 fn test_session_reclaim_feature() {
     feature("cli/session_reclaim.feature");
 }

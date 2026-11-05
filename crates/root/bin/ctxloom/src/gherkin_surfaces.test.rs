@@ -742,6 +742,54 @@ fn carries_marker(w: &mut World, rel: String, marker: String) {
     w.project.file_contains(&rel, &marker);
 }
 
+// ------------------------------------------------- j002000: engine switch day
+
+/// Go's `j002000Marker`: the team's guidance.
+const J002000_MARKER: &str = "J002000-TEAM-GUIDANCE-MARKER";
+
+/// Go's `j002000Setup`: a project declaring both engines (the new one is
+/// `mock`, this port's stand-in for Go's `mock-lossy`), an agent `dev` bound
+/// to the old one, and the team's guidance composed into the profile it names.
+#[given("Alice's team has standardised on one engine and is moving to another")]
+fn j002000_setup(w: &mut World) {
+    w.project = Project::initialized();
+    w.project.write(
+        ".ctxloom/config.yaml",
+        "schema_version: 8\nllm:\n  configs:\n    claude-code:\n      type: claude-code\n    mock:\n      type: mock\n  defaults:\n    primary: claude-code\n    fast: claude-code\nagents:\n  dev:\n    llm: claude-code\n    profiles:\n      - default\ndefault_agent: dev\n",
+    );
+    let root = ".ctxloom/content/bundles/v2/house";
+    w.project.write(
+        &format!("{root}/bundle.yaml"),
+        "schema_version: 4\nversion: 1.0.0\n",
+    );
+    w.project.write(
+        &format!("{root}/fragments/house-guidance.md"),
+        J002000_MARKER,
+    );
+    w.project.write(
+        &format!("{root}/hooks/session_end/h0.yaml"),
+        "type: command\ncommand: echo j002000-session-end\n",
+    );
+    // Go's scaffold: a seed bundle and a "default" profile including it.
+    w.run_lines(
+        "ctxloom bundle create seed -d \"J000200 seed bundle\"\nctxloom profile create default --include seed -d \"J000200 default profile\"\nctxloom profile modify default --add-bundle house",
+        "",
+    );
+    w.ran().succeeds();
+}
+
+/// Go's `ctxloom refuses and names the engines it knows`.
+#[then("ctxloom refuses and names the engines it knows")]
+fn refuses_naming_engines(w: &mut World) {
+    let ran = w.ran();
+    ran.fails();
+    let said = ran.said();
+    assert!(
+        said.contains("mock") || said.contains("claude-code"),
+        "ctxloom refused without naming any engine it knows: {said}"
+    );
+}
+
 // ------------------------------------------------------------ the features
 
 fn feature(path: &str) {
@@ -765,6 +813,11 @@ fn feature(path: &str) {
 #[test]
 fn test_manage_feature() {
     feature("cli/manage.feature");
+}
+
+#[test]
+fn test_engine_switch_feature() {
+    feature("journeys/j002000_engine_switch.feature");
 }
 
 #[test]
