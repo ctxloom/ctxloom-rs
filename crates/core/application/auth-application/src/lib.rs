@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use ctxloom_ports::ExportedVars;
+pub use ctxloom_ports::ExportedVars;
 use serde::Serialize;
 
 /// The mode every agent ctxloom spawns authenticates in.

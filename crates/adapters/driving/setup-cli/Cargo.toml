@@ -22,7 +22,6 @@ sessions-application.workspace = true
 
 [dev-dependencies]
 angzarr-presentation = { workspace = true, features = ["test-support"] }
-ctxloom-ports.workspace = true
 deps-application = { workspace = true, features = ["test-support"] }
 mutants.workspace = true
 serde_json.workspace = true

@@ -5,12 +5,14 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
+use auth_application::ExportedVars;
 use clap::Command;
-use ctxloom_ports::{
-    ConfigFiles, Executables, ExportedVars, Failure as PortFailure, LayerText, ProjectCache, Put,
-    Scaffold, Scope, Source, UserFiles,
-};
 use deps_application::fakes::Fixture;
+use doctor_checks::{
+    ConfigFiles, Executables, Failure as PortFailure, LayerText, Put, Scope, Source, UserFiles,
+};
+use init_application::Scaffold;
+use reclaim_application::ProjectCache;
 
 use super::*;
 

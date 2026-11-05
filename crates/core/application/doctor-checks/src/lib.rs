@@ -28,6 +28,11 @@ mod doctor;
 mod hooks;
 
 pub use checks::{Check, Status};
+/// The ports' types the doctor's services speak, so a driving adapter's tests
+/// fake them without linking the ports.
+pub use ctxloom_ports::{
+    ConfigFiles, Executables, Failure, LayerText, Put, Scope, Source, UserFiles,
+};
 pub use doctor::{Doctor, Removed, Report};
 pub use hooks::LIVE_HOOKS;
 

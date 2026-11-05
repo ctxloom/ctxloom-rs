@@ -53,7 +53,7 @@ struct Fake {
 }
 
 impl reclaim_application::SweepConfig for Fake {
-    fn purge_age(&mut self) -> Result<Option<String>, ctxloom_ports::Failure> {
+    fn purge_age(&mut self) -> Result<Option<String>, reclaim_application::Failure> {
         self.config_asked += 1;
         Ok(self.configured_age.clone())
     }

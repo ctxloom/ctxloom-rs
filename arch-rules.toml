@@ -83,29 +83,17 @@ from = "remote-git"
 to = "deps"
 reason = "debt: the git remote adapter uses the deps read model's pure cache_segments for the cache path; fix: as deps-files, move it to deps-ports"
 
-# Dev-dependency findings (warnings): the tests of a driving adapter build the
-# ports' types because the application services they fake speak them.
+# Dev-dependency findings (warnings), kept by the owner's ruling as test-only
+# exceptions: the tests of a driving adapter build a type only the port defines.
 
 [[exception]]
 from = "deps-cli"
 to = "deps-ports"
 kind = "dev"
-reason = "debt: the tests build deps-ports' ForgeRepo to feed the application's search; fix: as ctxloom-cli"
-
-[[exception]]
-from = "session-cli"
-to = "ctxloom-ports"
-kind = "dev"
-reason = "debt: the tests' fake services return ctxloom-ports' Failure; fix: as ctxloom-cli"
-
-[[exception]]
-from = "setup-cli"
-to = "ctxloom-ports"
-kind = "dev"
-reason = "debt: the tests construct ctxloom-ports' types for the setup application's services; fix: as ctxloom-cli"
+reason = "test-only: builds a type only the port defines; re-exporting it just for tests would add public API for nobody"
 
 [[exception]]
 from = "surface-cli"
 to = "surface-ports"
 kind = "dev"
-reason = "debt: the tests implement surface-ports' ForeignFiles and read its SurfaceError and EN_US; fix: as ctxloom-cli"
+reason = "test-only: builds a type only the port defines; re-exporting it just for tests would add public API for nobody"

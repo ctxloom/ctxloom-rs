@@ -18,6 +18,9 @@ mod sweep;
 
 pub use age::parse_age;
 pub use clean::{CleanReport, CleanTarget, Cleaner, TARGETS};
+/// The ports' types the sweep's and cleaner's services speak, so a driving
+/// adapter's tests fake them without linking the ports.
+pub use ctxloom_ports::{Failure, ProjectCache};
 #[cfg(any(test, feature = "test-support"))]
 pub use error::diagnostic_samples;
 pub use error::{ReclaimError, EN_US};

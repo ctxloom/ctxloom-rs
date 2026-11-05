@@ -20,7 +20,7 @@ mod error;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use ctxloom_ports::{Scaffold, UserFiles};
+pub use ctxloom_ports::{Scaffold, UserFiles};
 use deps_application::{CreateRequest, Deps, Notice};
 use serde::Serialize;
 
