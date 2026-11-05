@@ -43,17 +43,11 @@ pub enum Verb {
     /// Print the ctxloom version
     #[command(after_help = "Examples:\n  ctxloom version --format json")]
     Version,
-    /// Browse and manage your recorded sessions
-    #[command(after_help = "Examples:\n  ctxloom session list\n  ctxloom session search lockfile")]
-    Session(session_cli::Session),
     /// Generate the shell completion script
     #[command(
         after_help = "Examples:\n  ctxloom completion bash > /etc/bash_completion.d/ctxloom"
     )]
     Completion(CompletionArgs),
-    /// Callbacks ctxloom installs into engines (not for people)
-    #[command(hide = true)]
-    Hook(hook_cli::Hook),
     /// Commands for the tests only
     #[cfg(feature = "test-support")]
     #[command(subcommand, hide = true)]
@@ -176,6 +170,12 @@ pub const BARE_RUNS_DEFAULT: [&str; 6] = [
     "tooling",
     "container",
 ];
+
+/// A noun shaped as the command line shapes its own: no `help` command, and a
+/// bare group printing its usage unless it is in [`BARE_RUNS_DEFAULT`].
+pub fn shaped(command: Command) -> Command {
+    without_help_command(command)
+}
 
 fn without_help_command(command: Command) -> Command {
     let names: Vec<String> = command

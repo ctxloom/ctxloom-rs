@@ -714,16 +714,9 @@ dependencies = [
  "clap",
  "clap_complete",
  "cli-support",
- "ctxloom-ports",
- "hook-cli",
- "isolation-application",
  "library-application",
- "reclaim-application",
  "serde",
  "serde_json",
- "session-cli",
- "sessions-application",
- "tokio",
 ]
 
 [[package]]
@@ -759,6 +752,7 @@ dependencies = [
  "auth-application",
  "cache-files",
  "clap",
+ "cli-support",
  "companion-probe",
  "config-files",
  "container-cli",
@@ -803,6 +797,7 @@ dependencies = [
  "runs-application",
  "scheduler",
  "scheduler-loop",
+ "session-cli",
  "session-files",
  "session-ports",
  "sessions",

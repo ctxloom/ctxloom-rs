@@ -3,16 +3,13 @@
 use std::ffi::OsString;
 use std::io::Write;
 
+#[cfg(feature = "test-support")]
 use angzarr_diagnostic::Diagnostic;
 use angzarr_presentation::{write_json, Catalog, Format};
 use clap::error::{ContextKind, ContextValue, ErrorKind};
 use clap::{Command, FromArgMatches};
-use cli_support::say_warning;
-use isolation_application::WorktreeUse;
 use library_application::Flags;
-use reclaim_application::SweepConfig;
 use serde::Serialize;
-use sessions_application::{BindRequest, ImportService, SessionService};
 
 use crate::commands::{command, Cli, Verb, PROG};
 use crate::error::CliError;
@@ -25,29 +22,12 @@ pub struct Context {
     /// The lock protocol this binary speaks (`version` reports it).
     pub lock_protocol: u32,
     pub stdout_is_terminal: bool,
-    /// The harp of the session the hooks run in (`CTXLOOM_SESSION_HARP`);
-    /// empty when there is none.
-    pub session_harp: String,
 }
 
 /// What the commands call on the wiring.
 pub trait Services {
     /// The commands another crate owns, joined to this command line.
     fn extension(&mut self) -> &mut dyn Extension;
-    /// The sessions use cases (`session` and the hooks that bind a session).
-    type Sessions: SessionService + ImportService + WorktreeUse + SweepConfig;
-
-    /// The sessions use cases, built when first asked for: a command that
-    /// needs none (the statusline hook) works where there is no home.
-    fn sessions(&mut self) -> Result<&mut Self::Sessions, Box<dyn Diagnostic>>;
-
-    /// The callbacks that answer through the engines' codecs, built when first
-    /// asked for. A build without the setup use cases answers none.
-    fn hooks(
-        &mut self,
-    ) -> Result<Option<Box<dyn hook_cli::HookService + '_>>, Box<dyn Diagnostic>> {
-        Ok(None)
-    }
 
     /// A newly minted session id.
     #[cfg(feature = "test-support")]
@@ -107,17 +87,10 @@ pub fn run(
     let _ = cli.globals.verbose;
     let answered = match cli.command {
         Some(Verb::Version) => version(context, format, out),
-        Some(Verb::Session(session)) => sessions(&session, format, services, catalog, out, err),
         Some(Verb::Completion(args)) => {
             let mut command = command.clone();
             clap_complete::generate(args.shell, &mut command, PROG, out);
             Ok(())
-        }
-        Some(Verb::Hook(hook)) => {
-            // Some engines report a failed hook if stdin is closed before the
-            // payload is read, so it is read to the end first.
-            let input = std::io::read_to_string(std::io::stdin()).unwrap_or_default();
-            hook_verb(&hook, &input, format, context, services, catalog, out, err)
         }
         #[cfg(feature = "test-support")]
         Some(Verb::Test(verb)) => crate::test_commands::run(verb, format, catalog, services, out),
@@ -176,128 +149,6 @@ fn extended(
         Ok(code) => code,
         Err(failure) => report(&CliError::Extension(failure), call.format(), catalog, err),
     }
-}
-
-/// `session ...`: the command run on the sessions use cases, its notices and
-/// dead letters said beside its answer.
-fn sessions<S: Services>(
-    session: &session_cli::Session,
-    format: Format,
-    services: &mut S,
-    catalog: &Catalog,
-    out: &mut dyn Write,
-    err: &mut dyn Write,
-) -> Result<(), CliError> {
-    let service = services
-        .sessions()
-        .map_err(|error| CliError::Command { error, exit: 1 })?;
-    match session_cli::run(session, service, format, out) {
-        Ok(done) => {
-            for line in &done.lines {
-                let _ = writeln!(err, "{PROG}: {line}");
-            }
-            for notice in &done.notices {
-                say_warning(&**notice, PROG, format, catalog, err);
-            }
-            Ok(())
-        }
-        Err(failure) => {
-            for line in &failure.lines {
-                let _ = writeln!(err, "{PROG}: {line}");
-            }
-            Err(CliError::Command {
-                error: failure.failure.cause,
-                exit: failure.failure.exit,
-            })
-        }
-    }
-}
-
-/// What binds a session for the hook: the sessions use case, blocked on.
-struct Bind<'a, S> {
-    services: &'a mut S,
-}
-
-impl<S: Services> hook_cli::Binding for Bind<'_, S> {
-    fn bind(
-        &mut self,
-        harp: &str,
-        native_id: &str,
-        transcript_path: &str,
-    ) -> Result<(), Box<dyn Diagnostic>> {
-        let service = self.services.sessions()?;
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_time()
-            .build()
-            .map_err(|e| -> Box<dyn Diagnostic> {
-                Box::new(CliError::Output {
-                    detail: e.to_string(),
-                })
-            })?;
-        runtime
-            .block_on(service.bind(BindRequest {
-                project: None,
-                harp: harp.to_string(),
-                native_id: native_id.to_string(),
-                transcript_path: transcript_path.to_string(),
-            }))
-            .map(drop)
-            .map_err(|e| -> Box<dyn Diagnostic> { Box::new(e) })
-    }
-}
-
-/// `hook ...`: an engine's callback. Stdout is the engine's input and only
-/// that; what a hook can foresee going wrong it warns of on the diagnostic
-/// channel and still succeeds.
-#[allow(
-    clippy::too_many_arguments,
-    reason = "the hook, its input, and the run's own parts"
-)]
-fn hook_verb<S: Services>(
-    hook: &hook_cli::Hook,
-    input: &str,
-    format: Format,
-    context: &Context,
-    services: &mut S,
-    catalog: &Catalog,
-    out: &mut dyn Write,
-    err: &mut dyn Write,
-) -> Result<(), CliError> {
-    let harp = context.session_harp.clone();
-    let written = match hook.verb {
-        hook_cli::HookVerb::Hud => out.write_all(hook_cli::hud(input, &harp, 0).as_bytes()),
-        hook_cli::HookVerb::SessionBind => {
-            let outcome = hook_cli::session_bind(
-                hook.engine.as_deref(),
-                input,
-                &harp,
-                &mut Bind { services },
-            )
-            .map_err(|error| CliError::Command { error, exit: 1 })?;
-            for warning in &outcome.warnings {
-                say_warning(warning, PROG, format, catalog, err);
-            }
-            out.write_all(outcome.stdout.as_bytes())
-        }
-        hook_cli::HookVerb::SessionStart | hook_cli::HookVerb::SkillMates => {
-            let engine = hook.engine.as_deref().unwrap_or(hook_cli::CLAUDE_CODE);
-            let hooks = services
-                .hooks()
-                .map_err(|error| CliError::Command { error, exit: 1 })?;
-            let answer = match (&hook.verb, hooks) {
-                (_, None) => Ok(String::new()),
-                (hook_cli::HookVerb::SessionStart, Some(hooks)) => {
-                    hooks.session_start(engine, input)
-                }
-                (_, Some(hooks)) => hooks.skill_mates(engine, input),
-            }
-            .map_err(|error| CliError::Command { error, exit: 1 })?;
-            out.write_all(answer.as_bytes())
-        }
-    };
-    written.map_err(|e| CliError::Output {
-        detail: e.to_string(),
-    })
 }
 
 /// The format `--format` asks for, else the terminal's.
@@ -456,7 +307,3 @@ fn text_error(error: &CliError, catalog: &Catalog, err: &mut dyn Write) -> std::
     }
     Ok(())
 }
-
-#[cfg(test)]
-#[path = "hook.test.rs"]
-mod hook_tests;

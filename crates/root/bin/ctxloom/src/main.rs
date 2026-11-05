@@ -38,51 +38,27 @@ fn catalog() -> Result<Catalog, angzarr_presentation::CatalogError> {
 
 /// What the commands call, over the default wiring.
 struct Wired {
-    /// The environment the process was launched in, read once.
+    /// The environment the process was launched in, read once: the test
+    /// commands open stores and plant sessions under it.
+    #[cfg(feature = "test-support")]
     env: Arc<EnvSnapshot>,
     /// Every command of the program, wired when one first needs the home.
     library: ctxloom_wiring::Commands,
-    /// The sessions use cases, built when a command first needs them.
-    sessions: Option<ctxloom_wiring::Sessions>,
 }
 
 impl Wired {
     fn new(env: Arc<EnvSnapshot>) -> Wired {
         Wired {
             library: ctxloom_wiring::Commands::new(Arc::clone(&env)),
-            sessions: None,
+            #[cfg(feature = "test-support")]
             env,
         }
     }
 }
 
 impl Services for Wired {
-    type Sessions = ctxloom_wiring::Sessions;
-
     fn extension(&mut self) -> &mut dyn Extension {
         &mut self.library
-    }
-
-    fn sessions(
-        &mut self,
-    ) -> Result<&mut ctxloom_wiring::Sessions, Box<dyn angzarr_diagnostic::Diagnostic>> {
-        if self.sessions.is_none() {
-            let wiring =
-                ctxloom_wiring::Wiring::new(Arc::clone(&self.env)).map_err(|e| Box::new(e) as _)?;
-            self.sessions = Some(wiring.sessions());
-        }
-        match self.sessions.as_mut() {
-            Some(sessions) => Ok(sessions),
-            None => unreachable!("built just above"),
-        }
-    }
-
-    fn hooks(
-        &mut self,
-    ) -> Result<Option<Box<dyn hook_cli::HookService + '_>>, Box<dyn angzarr_diagnostic::Diagnostic>>
-    {
-        let hooks = self.library.hooks().map_err(|e| Box::new(e) as _)?;
-        Ok(Some(Box::new(hooks)))
     }
 
     #[cfg(feature = "test-support")]
@@ -192,10 +168,6 @@ fn main() -> ExitCode {
         version: env!("CARGO_PKG_VERSION").to_string(),
         lock_protocol: file_lock::LOCK_PROTOCOL,
         stdout_is_terminal: io::stdout().is_terminal(),
-        session_harp: env
-            .utf8("CTXLOOM_SESSION_HARP")
-            .unwrap_or_default()
-            .to_string(),
     };
     let (stdout, stderr) = (io::stdout(), io::stderr());
     ExitCode::from(ctxloom_cli::run(

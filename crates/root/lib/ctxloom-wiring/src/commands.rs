@@ -25,8 +25,9 @@ use setup_application::{MaterializeRequest, Puller, Setup};
 use surface_files::SurfaceFiles;
 use surface_ports::Registry as Engines;
 
+use crate::sessions::{self, NOUNS as SESSION_NOUNS};
 use crate::setup::{SetupUseCases, NOUNS as SETUP_NOUNS};
-use crate::{LibError, LibraryCommands, Wiring};
+use crate::{LibError, LibraryCommands, Sessions, Wiring};
 
 /// The nouns the dependency commands own outright.
 const OWN_NOUNS: [&str; 2] = ["remote", "deps"];
@@ -217,8 +218,10 @@ fn token_vars(files: Arc<ProjectFiles>) -> remote_git::TokenVars {
 /// Every command of the program, wired when one first needs the home.
 pub struct Commands {
     /// The environment the process was launched in, read once.
-    env: Arc<EnvSnapshot>,
+    pub(crate) env: Arc<EnvSnapshot>,
     wired: Option<Wired>,
+    /// The sessions use cases, built when a command first needs them.
+    pub(crate) sessions: Option<Sessions>,
 }
 
 struct Wired {
@@ -230,7 +233,11 @@ struct Wired {
 
 impl Commands {
     pub fn new(env: Arc<EnvSnapshot>) -> Commands {
-        Commands { env, wired: None }
+        Commands {
+            env,
+            wired: None,
+            sessions: None,
+        }
     }
 
     /// The engines' callbacks, over the setup use cases.
@@ -297,6 +304,7 @@ impl Extension for Commands {
         nouns.extend(surface_cli::nouns());
         nouns.extend(setup_cli::nouns());
         nouns.extend(container_cli::nouns());
+        nouns.extend(sessions::nouns());
         nouns
     }
 
@@ -310,6 +318,15 @@ impl Extension for Commands {
     ) -> Result<u8, Failure> {
         if noun == "container" {
             return crate::isolation::container(&self.env, call, catalog, out);
+        }
+        if SESSION_NOUNS.contains(&noun) {
+            if noun == "session" {
+                return self.session(call, catalog, out, err);
+            }
+            // Some engines report a failed hook if stdin is closed before the
+            // payload is read, so it is read to the end first.
+            let input = std::io::read_to_string(std::io::stdin()).unwrap_or_default();
+            return self.hook(&input, call, catalog, out, err);
         }
         if SETUP_NOUNS.contains(&noun) {
             return self.setup(noun, call, catalog, out, err);

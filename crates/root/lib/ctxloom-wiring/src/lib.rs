@@ -16,6 +16,7 @@ mod library;
 mod process_env;
 #[cfg(feature = "test-support")]
 mod seed;
+mod sessions;
 mod setup;
 mod sweep_config;
 

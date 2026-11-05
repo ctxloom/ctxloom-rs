@@ -74,16 +74,6 @@ allow = ["*"]
 # the entry goes with it (a stale one fails).
 
 [[exception]]
-from = "ctxloom-cli"
-to = "hook-cli"
-reason = "debt: the top-level CLI mounts the hook command crate as a clap subcommand and dispatches to it, a driving adapter on a driving adapter; fix: mount the per-domain command crates from the composition root (ctxloom-wiring), or share the command types through a presentation crate"
-
-[[exception]]
-from = "ctxloom-cli"
-to = "session-cli"
-reason = "debt: as hook-cli: the top-level CLI mounts the session command crate as a subcommand and dispatches to it"
-
-[[exception]]
 from = "deps-files"
 to = "deps"
 reason = "debt: the installed-cache reader uses the deps read model's pure address and constraint functions (cache_segments, looks_like_commit); fix: move those functions to deps-ports (or the wire crate), where a driven adapter may see them"
@@ -95,12 +85,6 @@ reason = "debt: the git remote adapter uses the deps read model's pure cache_seg
 
 # Dev-dependency findings (warnings): the tests of a driving adapter build the
 # ports' types because the application services they fake speak them.
-
-[[exception]]
-from = "ctxloom-cli"
-to = "ctxloom-ports"
-kind = "dev"
-reason = "debt: the tests' fake services return ctxloom-ports' Failure, the type the application's services speak; fix: the application layer re-exports its services' error types"
 
 [[exception]]
 from = "deps-cli"

@@ -25,7 +25,7 @@ mod error;
 mod hud;
 
 use angzarr_diagnostic::Diagnostic;
-use clap::{Args, Subcommand};
+use clap::{Args, Command, Subcommand};
 
 pub use bind::{marker, session_bind, session_start_reply, Binding, Outcome, CLAUDE_CODE};
 #[cfg(any(test, feature = "test-support"))]
@@ -34,6 +34,13 @@ pub use error::{HookError, HookWarning, EN_US};
 pub use hud::{
     bar_color, context_bar, hud, render, StatusPayload, CYAN, DIM, GREEN, RED, RESET, YELLOW,
 };
+
+/// The `hook` noun, shaped for mounting on the command line: hidden.
+pub fn noun() -> Command {
+    Hook::augment_args(Command::new("hook"))
+        .about("Callbacks ctxloom installs into engines (not for people)")
+        .hide(true)
+}
 
 /// The `hook` group: hidden, for engines.
 #[derive(Args, Debug)]
@@ -67,3 +74,7 @@ pub trait HookService {
     /// The answer to a PostToolUse payload read by `engine`'s codec.
     fn skill_mates(&self, engine: &str, payload: &str) -> Result<String, Box<dyn Diagnostic>>;
 }
+
+#[cfg(test)]
+#[path = "lib.test.rs"]
+mod tests;

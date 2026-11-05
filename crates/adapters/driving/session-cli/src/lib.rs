@@ -31,12 +31,19 @@ mod error;
 mod render;
 mod run;
 
-use clap::{Args, Subcommand};
+use clap::{Args, Command, Subcommand};
 
 #[cfg(any(test, feature = "test-support"))]
 pub use error::diagnostic_samples;
 pub use error::{CliFault, EN_US};
 pub use run::{run, Done, Failure};
+
+/// The `session` noun, shaped for mounting on the command line.
+pub fn noun() -> Command {
+    Session::augment_args(Command::new("session"))
+        .about("Browse and manage your recorded sessions")
+        .after_help("Examples:\n  ctxloom session list\n  ctxloom session search lockfile")
+}
 
 /// The `session` group.
 #[derive(Args, Debug)]
@@ -229,3 +236,7 @@ pub struct WorktreesPurgeArgs {
     #[arg(short = 'y', long)]
     pub yes: bool,
 }
+
+#[cfg(test)]
+#[path = "lib.test.rs"]
+mod tests;

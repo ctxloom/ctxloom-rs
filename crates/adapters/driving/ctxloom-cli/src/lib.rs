@@ -22,7 +22,7 @@ mod test_commands;
 pub use angzarr_presentation::Catalog;
 #[cfg(feature = "test-support")]
 pub use commands::SeedArgs;
-pub use commands::PROG;
+pub use commands::{shaped, BARE_RUNS_DEFAULT, PROG};
 #[cfg(any(test, feature = "test-support"))]
 pub use error::diagnostic_samples;
 pub use error::{CliError, Fix, EN_US};

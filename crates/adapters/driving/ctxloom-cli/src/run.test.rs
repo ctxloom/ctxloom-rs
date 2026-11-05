@@ -9,15 +9,9 @@ use std::io::Write;
 #[cfg(feature = "test-support")]
 use angzarr_diagnostic::Diagnostic;
 
+use super::*;
 use angzarr_presentation::Format;
 use clap::{Arg, Command};
-use sessions_application::{
-    AppError, BindRequest, Bound, ImportReport, ImportRequest, ImportService, KeepRequest, Kept,
-    ListQuery, Removal, RemoveRequest, RenameRequest, Renamed, SearchQuery, SessionService,
-    ShowQuery, TranscriptQuery, TranscriptRow, View,
-};
-
-use super::*;
 
 /// What the fake extension is told to answer.
 pub(crate) struct Fake {
@@ -58,71 +52,9 @@ impl Extension for Fake {
     }
 }
 
-/// No sessions: a command line test of an extension reaches none but `list`,
-/// which answers an empty set.
-pub(crate) struct NoSessions;
-
-impl SessionService for NoSessions {
-    async fn list(&mut self, _: ListQuery) -> Result<Vec<View>, AppError> {
-        Ok(Vec::new())
-    }
-
-    async fn search(&mut self, _: SearchQuery) -> Result<Vec<View>, AppError> {
-        unreachable!("no session command is run here")
-    }
-
-    async fn show(&mut self, _: ShowQuery) -> Result<View, AppError> {
-        unreachable!("no session command is run here")
-    }
-
-    async fn keep(&mut self, _: KeepRequest) -> Result<Kept, AppError> {
-        unreachable!("no session command is run here")
-    }
-
-    async fn remove(&mut self, _: RemoveRequest) -> Result<Removal, AppError> {
-        unreachable!("no session command is run here")
-    }
-
-    async fn rename(&mut self, _: RenameRequest) -> Result<Renamed, AppError> {
-        unreachable!("no session command is run here")
-    }
-
-    async fn transcripts(&mut self, _: TranscriptQuery) -> Result<Vec<TranscriptRow>, AppError> {
-        unreachable!("no session command is run here")
-    }
-
-    async fn transcript(&mut self, _: &str) -> Result<String, AppError> {
-        unreachable!("no session command is run here")
-    }
-
-    async fn bind(&mut self, _: BindRequest) -> Result<Bound, AppError> {
-        unreachable!("no session command is run here")
-    }
-}
-
-impl isolation_application::WorktreeUse for NoSessions {}
-
-impl reclaim_application::SweepConfig for NoSessions {
-    fn purge_age(&mut self) -> Result<Option<String>, ctxloom_ports::Failure> {
-        unreachable!("no session command is run here")
-    }
-}
-
-impl ImportService for NoSessions {
-    async fn import(&mut self, _: ImportRequest) -> Result<ImportReport, AppError> {
-        unreachable!("no session command is run here")
-    }
-}
-
-pub(crate) struct Wire(pub(crate) Fake, pub(crate) NoSessions);
+pub(crate) struct Wire(pub(crate) Fake);
 
 impl Services for Wire {
-    type Sessions = NoSessions;
-
-    fn sessions(&mut self) -> Result<&mut NoSessions, Box<dyn angzarr_diagnostic::Diagnostic>> {
-        Ok(&mut self.1)
-    }
-
     fn extension(&mut self) -> &mut dyn Extension {
         &mut self.0
     }
@@ -159,7 +91,6 @@ fn go_in(terminal: bool, answer: Result<u8, u8>, line: &[&str]) -> Ran {
         version: "1.2.3".to_string(),
         lock_protocol: 4,
         stdout_is_terminal: terminal,
-        session_harp: String::new(),
     };
     let catalog = Catalog::en_us(&[crate::EN_US]).unwrap();
     let (mut out, mut err) = (Vec::new(), Vec::new());
@@ -170,7 +101,7 @@ fn go_in(terminal: bool, answer: Result<u8, u8>, line: &[&str]) -> Ran {
         args,
         &context,
         &catalog,
-        &mut Wire(Fake { answer }, NoSessions),
+        &mut Wire(Fake { answer }),
         &mut out,
         &mut err,
     );
@@ -201,14 +132,6 @@ fn test_every_spelling_of_version_agrees() {
         (flag.code, flag.out.as_str()),
         (0, "ctxloom version 1.2.3\n")
     );
-}
-
-// `session list` is run on the sessions use case and its answer written out.
-#[test]
-fn test_a_session_command_is_run_on_the_sessions_use_case() {
-    let ran = go(&["session", "list", "--format", "json"]);
-    assert_eq!(ran.code, 0, "{}", ran.err);
-    assert_eq!(ran.out.trim(), "[]");
 }
 
 // help is an answer, not an error; a bare command prints its help.
@@ -249,9 +172,8 @@ fn test_an_unknown_verb_says_did_you_mean_and_lists_the_verbs() {
     assert!(ran
         .err
         .starts_with("ctxloom: unknown command versoin for ctxloom: Did you mean one of "));
-    // the verbs: an extension's noun, `version`, and the commands other
-    // slices own (`session`; `hook` is hidden)
-    for verb in ["demo", "version", "session"] {
+    // the verbs: an extension's noun and `version`
+    for verb in ["demo", "version"] {
         assert!(ran.err.contains(verb), "{verb} is listed: {}", ran.err);
     }
     assert!(ran
@@ -364,7 +286,6 @@ fn test_an_unwritable_answer_is_a_failure() {
         version: "1".to_string(),
         lock_protocol: 1,
         stdout_is_terminal: false,
-        session_harp: String::new(),
     };
     let catalog = Catalog::en_us(&[crate::EN_US]).unwrap();
     let mut err = Vec::new();
@@ -372,7 +293,7 @@ fn test_an_unwritable_answer_is_a_failure() {
         ["ctxloom", "version"].map(OsString::from),
         &context,
         &catalog,
-        &mut Wire(Fake { answer: Ok(0) }, NoSessions),
+        &mut Wire(Fake { answer: Ok(0) }),
         &mut Broken,
         &mut err,
     );
@@ -438,4 +359,17 @@ fn test_each_error_has_its_exit_code() {
         .exit_code(),
         1
     );
+}
+
+// A mounted noun is shaped as the command line's own: no `help` command, and
+// a group that is not on the bare-runs list prints its usage when bare.
+#[test]
+fn test_a_mounted_noun_is_shaped_like_the_command_lines_own() {
+    let group = |name: &'static str| shaped(Command::new(name).subcommand(Command::new("list")));
+    let listed = group("session");
+    assert!(!listed.is_arg_required_else_help_set());
+    assert!(listed.is_disable_help_subcommand_set());
+    let other = group("elsewhere");
+    assert!(other.is_arg_required_else_help_set());
+    assert!(other.is_disable_help_subcommand_set());
 }
