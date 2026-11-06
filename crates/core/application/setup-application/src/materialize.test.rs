@@ -333,6 +333,7 @@ mod pinned {
             kinds: vec![Kind::Context],
             wire: Wire,
             rides_launch: false,
+            hook_losses: Vec::new(),
         })]
     }
 
@@ -410,6 +411,7 @@ mod pinned {
                 kinds: Kind::ALL.to_vec(),
                 wire: Wire,
                 rides_launch: true,
+                hook_losses: Vec::new(),
             }),
             Box::new(Engine::all("stays")),
         ]
@@ -519,5 +521,106 @@ mod pinned {
             .value;
         assert_eq!(done.failures.len(), 1);
         assert_eq!(done.status, "partial");
+    }
+}
+
+// materialize_loss_report_test.go: an engine that carries hooks but has no
+// native form for an event the profile configures names that event and why;
+// an event the profile does not configure costs nothing and is not named.
+mod hook_losses {
+    use surface_ports::EngineSurfaces;
+
+    use super::*;
+    use crate::fakes::{bundles, world_of, Engine, Wire};
+
+    fn lossy(events: &[&str]) -> Box<dyn EngineSurfaces> {
+        Box::new(Engine {
+            name: "lossy",
+            kinds: Kind::ALL.to_vec(),
+            wire: Wire,
+            rides_launch: false,
+            hook_losses: events
+                .iter()
+                .map(|e| (e.to_string(), format!("lossy has no native {e} event")))
+                .collect(),
+        })
+    }
+
+    fn with_team_hook() -> Vec<(&'static str, Vec<(&'static str, &'static str)>)> {
+        let mut all = bundles();
+        let demo = &mut all[0].1;
+        demo.push((
+            "hooks/session_start/guard.yaml",
+            "type: command\ncommand: echo guard\n",
+        ));
+        all
+    }
+
+    fn lost(done: &MaterializeResult) -> Vec<(String, String)> {
+        outcome(done, "lossy")
+            .not_carried
+            .into_iter()
+            .map(|n| (n.surface, n.reason))
+            .collect()
+    }
+
+    #[test]
+    fn a_configured_event_the_engine_cannot_fire_is_named_with_its_reason() {
+        let w = world_of(
+            CONFIG,
+            with_team_hook(),
+            vec![lossy(&["session_start", "session_end"])],
+        );
+        let done = w.setup.materialize(&request(&["lossy"])).unwrap().value;
+        assert_eq!(
+            lost(&done),
+            [(
+                "hooks".to_string(),
+                "lossy has no native session_start event".to_string()
+            )],
+            "session_end is not configured, so it is not a loss"
+        );
+        assert!(outcome(&done, "lossy").wrote.contains(&"hooks".to_string()));
+    }
+
+    #[test]
+    fn ctxloom_own_callbacks_are_not_the_teams_loss() {
+        let w = world_of(CONFIG, bundles(), vec![lossy(&["session_start"])]);
+        let done = w.setup.materialize(&request(&["lossy"])).unwrap().value;
+        assert_eq!(lost(&done), []);
+    }
+
+    #[test]
+    fn nothing_is_named_when_hooks_are_not_asked_for_or_are_released() {
+        let w = world_of(CONFIG, with_team_hook(), vec![lossy(&["session_start"])]);
+        let mut only_context = request(&["lossy"]);
+        only_context.surfaces = vec![SurfaceSpec::parse("context").unwrap()];
+        assert_eq!(lost(&w.setup.materialize(&only_context).unwrap().value), []);
+        let mut release = request(&["lossy"]);
+        release.release = true;
+        assert_eq!(lost(&w.setup.materialize(&release).unwrap().value), []);
+    }
+
+    #[test]
+    fn an_engine_with_no_hooks_at_all_is_reported_the_ordinary_way_only() {
+        let w = world_of(
+            CONFIG,
+            with_team_hook(),
+            vec![Box::new(Engine {
+                name: "lossy",
+                kinds: vec![Kind::Context],
+                wire: Wire,
+                rides_launch: false,
+                hook_losses: vec![("session_start".into(), "x".into())],
+            })],
+        );
+        let done = w.setup.materialize(&request(&["lossy"])).unwrap().value;
+        let reasons: Vec<String> = outcome(&done, "lossy")
+            .not_carried
+            .into_iter()
+            .filter(|n| n.surface == "hooks")
+            .map(|n| n.reason)
+            .collect();
+        assert_eq!(reasons, ["lossy declares no approach for it"]);
     }
 }

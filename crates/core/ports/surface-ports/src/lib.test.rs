@@ -148,3 +148,8 @@ fn test_a_hook_spells_its_shared_members_in_order() {
     let bare = Hook::default().json_members("eng");
     assert_eq!(bare, vec![("type", Json::text("command"))]);
 }
+
+#[test]
+fn test_an_engine_declares_no_hook_losses_unless_it_says_so() {
+    assert!(Plain.hook_losses().is_empty());
+}

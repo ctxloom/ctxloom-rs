@@ -405,3 +405,122 @@ fn test_a_hook_file_is_ctxloom_wiring_only_for_the_bare_ctxloom_hook_command() {
     assert!(!wired(r#"{"e": [{"command": "other", "args": ["hook"]}]}"#));
     assert!(!wired(r#"{"e": [{"command": "ctxloom"}]}"#));
 }
+
+fn hook(command: &str) -> Hook {
+    Hook {
+        command: command.into(),
+        ..Hook::default()
+    }
+}
+
+fn hook_inputs(events: &[&str]) -> Inputs {
+    let mut hooks = Hooks::new();
+    for event in events {
+        hooks.insert((*event).into(), vec![hook("echo")]);
+    }
+    Inputs {
+        hooks,
+        ..Inputs::default()
+    }
+}
+
+#[test]
+fn test_the_lossy_variant_carries_every_kind_and_drops_two_hook_events() {
+    let mock = Mock::lossy();
+    assert_eq!(mock.name(), "mock-lossy");
+    for kind in Kind::ALL {
+        assert!(mock.carries(kind), "{kind:?}");
+    }
+    assert_eq!(
+        mock.hook_losses(),
+        [
+            (
+                "session_start".to_string(),
+                "mock-lossy has no native session_start event".to_string()
+            ),
+            (
+                "session_end".to_string(),
+                "mock-lossy has no native session_end event".to_string()
+            ),
+        ]
+    );
+    assert!(Mock::standard().hook_losses().is_empty());
+    assert!(Mock::home_keyed().hook_losses().is_empty());
+}
+
+#[test]
+fn test_the_lossy_hook_file_leaves_out_the_events_it_cannot_fire() {
+    let inputs = hook_inputs(&["session_start", "session_end", "pre_tool"]);
+    let planned = Mock::lossy().plan(Kind::Hooks, &inputs).unwrap();
+    let Claim::Whole { path, bytes, .. } = &planned.claims[0] else {
+        panic!()
+    };
+    assert_eq!(path, ".mock/hooks.json");
+    let doc = Json::parse(&String::from_utf8(bytes.clone()).unwrap()).unwrap();
+    assert!(doc.get("session_start").is_none() && doc.get("session_end").is_none());
+    assert!(doc.get("pre_tool").is_some());
+    let whole = Mock::standard().plan(Kind::Hooks, &inputs).unwrap();
+    let Claim::Whole { bytes, .. } = &whole.claims[0] else {
+        panic!()
+    };
+    let doc = Json::parse(&String::from_utf8(bytes.clone()).unwrap()).unwrap();
+    assert!(doc.get("session_start").is_some() && doc.get("session_end").is_some());
+}
+
+#[test]
+fn test_the_lossy_variant_writes_the_other_kinds_as_the_standard_does() {
+    let inputs = Inputs {
+        context: "ctx".into(),
+        commands: vec![Command {
+            name: "c".into(),
+            description: String::new(),
+            body: "body".into(),
+        }],
+        ..Inputs::default()
+    };
+    for kind in [Kind::Context, Kind::Commands, Kind::Mcp, Kind::Settings] {
+        let lossy = Mock::lossy().plan(kind, &inputs).unwrap();
+        let standard = Mock::standard().plan(kind, &inputs).unwrap();
+        assert_eq!(paths(&lossy), paths(&standard), "{kind:?}");
+        assert!(!lossy.claims.is_empty());
+    }
+}
+
+#[test]
+fn test_the_no_skills_variant_declares_the_surface_and_exports_nothing_to_it() {
+    let mock = Mock::no_skills();
+    assert_eq!(mock.name(), "mock-noskills");
+    for kind in Kind::ALL {
+        assert!(mock.carries(kind), "{kind:?}");
+    }
+    let inputs = Inputs {
+        skills: vec![Skill {
+            name: "reviewer".into(),
+            description: "d".into(),
+            files: vec![SkillFile {
+                path: "SKILL.md".into(),
+                bytes: b"s".to_vec(),
+                executable: false,
+            }],
+        }],
+        commands: vec![Command {
+            name: "c".into(),
+            description: String::new(),
+            body: "body".into(),
+        }],
+        ..Inputs::default()
+    };
+    let skills = mock.plan(Kind::Skills, &inputs).unwrap();
+    assert!(skills.claims.is_empty() && skills.skipped.is_empty());
+    assert!(!mock
+        .plan(Kind::Commands, &inputs)
+        .unwrap()
+        .claims
+        .is_empty());
+    assert!(!Mock::standard()
+        .plan(Kind::Skills, &inputs)
+        .unwrap()
+        .claims
+        .is_empty());
+    assert!(mock.hook_losses().is_empty());
+}

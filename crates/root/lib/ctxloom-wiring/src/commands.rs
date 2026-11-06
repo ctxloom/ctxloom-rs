@@ -134,12 +134,14 @@ impl ProjectRefresh for SetupRefresh<'_> {
 }
 
 /// The engines composed in: claude first (the default), then the mock and its
-/// home-keyed variant.
+/// home-keyed, lossy and skill-less variants.
 pub fn engines() -> Engines {
     Engines::new(vec![
         Box::new(engine_claude::Claude::new()),
         Box::new(engine_mock::Mock::standard()),
         Box::new(engine_mock::Mock::home_keyed()),
+        Box::new(engine_mock::Mock::lossy()),
+        Box::new(engine_mock::Mock::no_skills()),
     ])
 }
 

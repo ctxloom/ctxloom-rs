@@ -3,10 +3,14 @@
 //! kind is a file a test can read without an engine binary: the context file
 //! at the root, the rest under `.mock/`.
 //!
-//! Two engines are registered from here. `mock` carries every kind.
+//! Four engines are registered from here. `mock` carries every kind.
 //! `mock-launch` is the home-keyed variant: its declaration carries a context
 //! surface and no other, the plan routes the rest to nothing as accepted
 //! losses, and the materialize report names each with the reason.
+//! `mock-lossy` carries every kind but has no native `session_start` or
+//! `session_end` hook event: its hook file leaves them out and the report
+//! names each the profile configures. `mock-noskills` declares a skills
+//! surface and exports nothing to it, for the callers' missing-skills arm.
 
 mod codec;
 
@@ -32,8 +36,17 @@ pub struct Mock {
     name: &'static str,
     /// Whether it carries every kind (else the context alone).
     full: bool,
+    /// The hook events it has no native form for (the lossy variant's two).
+    lost_hooks: &'static [&'static str],
+    /// Whether it writes the skills it is handed (else it declares the
+    /// surface and exports nothing to it).
+    exports_skills: bool,
     codec: Codec,
 }
+
+/// The events `mock-lossy` drops: two, so a report that groups several is
+/// exercised.
+const LOST_EVENTS: &[&str] = &["session_start", "session_end"];
 
 impl Mock {
     /// `mock`: every kind.
@@ -41,7 +54,28 @@ impl Mock {
         Mock {
             name: "mock",
             full: true,
+            lost_hooks: &[],
+            exports_skills: true,
             codec: Codec,
+        }
+    }
+
+    /// `mock-lossy`: every kind, but no native `session_start` or
+    /// `session_end` hook event.
+    pub fn lossy() -> Mock {
+        Mock {
+            name: "mock-lossy",
+            lost_hooks: LOST_EVENTS,
+            ..Mock::standard()
+        }
+    }
+
+    /// `mock-noskills`: a skills surface that is never written to.
+    pub fn no_skills() -> Mock {
+        Mock {
+            name: "mock-noskills",
+            exports_skills: false,
+            ..Mock::standard()
         }
     }
 
@@ -50,6 +84,8 @@ impl Mock {
         Mock {
             name: "mock-launch",
             full: false,
+            lost_hooks: &[],
+            exports_skills: true,
             codec: Codec,
         }
     }
@@ -87,6 +123,18 @@ impl EngineSurfaces for Mock {
 
     fn carries(&self, kind: Kind) -> bool {
         self.full || kind == Kind::Context
+    }
+
+    fn hook_losses(&self) -> Vec<(String, String)> {
+        self.lost_hooks
+            .iter()
+            .map(|event| {
+                (
+                    (*event).to_string(),
+                    format!("{} has no native {event} event", self.name),
+                )
+            })
+            .collect()
     }
 
     fn plan(&self, kind: Kind, inputs: &Inputs) -> Result<Planned, SurfaceError> {
@@ -129,12 +177,16 @@ impl EngineSurfaces for Mock {
                 ]),
             )),
             Kind::Hooks => {
-                let events = inputs.hooks.iter().map(|(event, list)| {
-                    (
-                        event.clone(),
-                        Json::Array(list.iter().map(|h| hook_json(self.name, h)).collect()),
-                    )
-                });
+                let events = inputs
+                    .hooks
+                    .iter()
+                    .filter(|(event, _)| !self.lost_hooks.contains(&event.as_str()))
+                    .map(|(event, list)| {
+                        (
+                            event.clone(),
+                            Json::Array(list.iter().map(|h| hook_json(self.name, h)).collect()),
+                        )
+                    });
                 planned
                     .claims
                     .push(whole(HOOKS_FILE, &Json::Object(events.collect())));
@@ -155,6 +207,7 @@ impl EngineSurfaces for Mock {
                     });
                 }
             }
+            Kind::Skills if !self.exports_skills => {}
             Kind::Skills => {
                 for skill in &inputs.skills {
                     if !safe(&skill.name) {

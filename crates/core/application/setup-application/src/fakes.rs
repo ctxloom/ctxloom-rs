@@ -165,6 +165,8 @@ pub(crate) struct Engine {
     pub kinds: Vec<Kind>,
     pub wire: Wire,
     pub rides_launch: bool,
+    /// The hook events it has no native form for, with their reasons.
+    pub hook_losses: Vec<(String, String)>,
 }
 
 impl Engine {
@@ -174,6 +176,7 @@ impl Engine {
             kinds: Kind::ALL.to_vec(),
             wire: Wire,
             rides_launch: false,
+            hook_losses: Vec::new(),
         }
     }
 }
@@ -189,6 +192,10 @@ impl EngineSurfaces for Engine {
 
     fn context_rides_launch(&self) -> bool {
         self.rides_launch
+    }
+
+    fn hook_losses(&self) -> Vec<(String, String)> {
+        self.hook_losses.clone()
     }
 
     fn plan(&self, kind: Kind, inputs: &Inputs) -> Result<Planned, SurfaceError> {
@@ -293,6 +300,7 @@ pub(crate) fn world(config: &'static str) -> World {
                 kinds: vec![Kind::Context],
                 wire: Wire,
                 rides_launch: false,
+                hook_losses: Vec::new(),
             }),
         ],
     )

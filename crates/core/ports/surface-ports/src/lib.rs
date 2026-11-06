@@ -387,6 +387,14 @@ pub trait EngineSurfaces {
         false
     }
 
+    /// The unified hook events the engine has no native form for, each with
+    /// the reason, in event order. The engine carries hooks generally and
+    /// leaves these out of its hook file; a report names each one a profile
+    /// configures (Go's `Definition.HookLosses`).
+    fn hook_losses(&self) -> Vec<(String, String)> {
+        Vec::new()
+    }
+
     /// The claims `kind` makes at a directory's root for `inputs`.
     fn plan(&self, kind: Kind, inputs: &Inputs) -> Result<Planned, SurfaceError>;
 

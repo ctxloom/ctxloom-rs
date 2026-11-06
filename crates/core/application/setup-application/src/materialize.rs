@@ -399,8 +399,32 @@ impl Setup {
                 }
             }
         }
+        if !request.release && kinds.contains(&Kind::Hooks) && engine.carries(Kind::Hooks) {
+            outcome.not_carried.extend(hook_losses(engine, package));
+        }
         outcome
     }
+}
+
+/// The hook events the profile configures that the engine declares it has no
+/// native form for, one entry each, in event order. ctxloom's own callbacks
+/// are not the profile's: an engine that cannot fire one is not a loss the
+/// team made.
+fn hook_losses(engine: &dyn EngineSurfaces, package: &EnginePackage) -> Vec<NotCarried> {
+    engine
+        .hook_losses()
+        .into_iter()
+        .filter(|(event, _)| {
+            package
+                .hooks
+                .iter()
+                .any(|h| h.event == *event && h.source_kind != "context")
+        })
+        .map(|(_, reason)| NotCarried {
+            surface: Kind::Hooks.name().to_string(),
+            reason,
+        })
+        .collect()
 }
 
 /// A kind delivered (its claims in files), or left with nothing (released).
