@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use angzarr_yaml::Value;
 use ctxloom_ports::Scope;
-use library::catalog::item_tags;
+use library::catalog::{item_tags, Catalog, Entry};
 use library::document;
 use library::findings::{Class, Finding};
 use library::frontmatter::split_front_matter;
@@ -107,6 +107,25 @@ pub struct EnginePackage {
     pub has_profiles: bool,
 }
 
+/// `entry`'s commands as `<owner>/<name>`, each once.
+fn push_commands(
+    owner: &str,
+    entry: &Entry,
+    seen: &mut BTreeSet<String>,
+    package: &mut EnginePackage,
+) {
+    for (name, command) in &entry.bundle.commands {
+        let full = format!("{owner}/{name}");
+        if seen.insert(full.clone()) {
+            package.commands.push(PackagedCommand {
+                name: full,
+                description: command.description.clone(),
+                body: command.body.content.clone(),
+            });
+        }
+    }
+}
+
 impl Library {
     /// What a profile set carries for an engine's native files.
     pub fn package(&self, flags: &Flags, request: &PackageRequest) -> Outcome<EnginePackage> {
@@ -134,8 +153,11 @@ impl Project {
         };
         let mut findings: Vec<Finding> = Vec::new();
         let set = self.resolve_profiles(&names, &mut findings)?;
-        let served = self.served(&set, &mut findings);
         let assembled = self.assemble_set(&set, &[], &[], &mut findings);
+        // The registered companions' loadouts (asked once for the command)
+        // ride the catalog the items are read from.
+        let catalog = self.catalog_with_companions();
+        let served = self.served_from(&catalog, &set, &mut findings);
         let selection = &assembled.selection;
 
         let mut package = EnginePackage {
@@ -166,8 +188,8 @@ impl Project {
                 served_by: s.served_by,
             });
         }
-        self.items_of(&set, selection, &mut package);
-        package.hooks = self.hooks_of(&set, selection);
+        self.items_of(&catalog, selection, &mut package);
+        package.hooks = self.hooks_of(&catalog, &set, selection);
 
         let degraded = self.flags.degraded;
         for finding in &findings {
@@ -185,27 +207,18 @@ impl Project {
     /// set, it does not add to it).
     fn items_of(
         &self,
-        _set: &[library::profile::ResolvedProfile],
+        catalog: &Catalog,
         selection: &library::compose::Selection,
         package: &mut EnginePackage,
     ) {
         let mut commands: BTreeSet<String> = BTreeSet::new();
         let mut skills: BTreeSet<String> = BTreeSet::new();
         for reference in &selection.bundles {
-            let Ok(entry) = self.catalog.lookup(reference) else {
+            let Ok(entry) = catalog.lookup(reference) else {
                 continue;
             };
             if selection.commands.is_empty() {
-                for (name, command) in &entry.bundle.commands {
-                    let full = format!("{}/{name}", entry.name);
-                    if commands.insert(full.clone()) {
-                        package.commands.push(PackagedCommand {
-                            name: full,
-                            description: command.description.clone(),
-                            body: command.body.content.clone(),
-                        });
-                    }
-                }
+                push_commands(&entry.name, entry, &mut commands, package);
             }
             if selection.skills.is_empty() {
                 for name in entry.bundle.skills.keys() {
@@ -214,7 +227,7 @@ impl Project {
             }
         }
         for ask in &selection.commands {
-            for read in self.catalog.read_command(ask).unwrap_or_default() {
+            for read in catalog.read_command(ask).unwrap_or_default() {
                 if commands.insert(read.name.clone()) {
                     package.commands.push(PackagedCommand {
                         name: read.name,
@@ -224,6 +237,11 @@ impl Project {
                 }
             }
         }
+        // A companion's commands are unconditional: a curation names bundle
+        // commands, never theirs (Go's `fromBundles(CompanionRefs())`).
+        for (companion, entry) in catalog.companion_entries() {
+            push_commands(companion, entry, &mut commands, package);
+        }
         for ask in &selection.skills {
             let Some((base, selector)) = ask.split_once('#') else {
                 continue;
@@ -231,7 +249,7 @@ impl Project {
             let Ok((refs::ItemKind::Skill, item)) = refs::parse_selector(selector) else {
                 continue;
             };
-            if let Ok(entry) = self.catalog.lookup(base) {
+            if let Ok(entry) = catalog.lookup(base) {
                 self.add_skill(&entry.name, &item, &mut skills, package);
             }
         }
@@ -290,10 +308,13 @@ impl Project {
     }
 
     /// Every hook that fires, per event, in the order it fires in: the
-    /// profiles' own, then the bundles' (each bundle's `order:` sequencing
-    /// only its own), then ctxloom's callbacks. Merging is by pure append.
+    /// profiles' own, then the companions' (by name), then the profiles'
+    /// bundles' (each bundle's `order:` sequencing only its own), then
+    /// ctxloom's callbacks (Go's `ResolveBundleHooksFor`). Merging is by pure
+    /// append.
     fn hooks_of(
         &self,
+        catalog: &Catalog,
         set: &[library::profile::ResolvedProfile],
         selection: &library::compose::Selection,
     ) -> Vec<PackagedHook> {
@@ -320,17 +341,15 @@ impl Project {
                 }
             }
         }
-        for reference in &selection.bundles {
-            let Ok(entry) = self.catalog.lookup(reference) else {
-                continue;
-            };
+        let companions = catalog.companion_entries().into_iter().map(|(_, e)| e);
+        let bundles = selection
+            .bundles
+            .iter()
+            .filter_map(|reference| catalog.lookup(reference).ok());
+        for entry in companions.chain(bundles) {
+            let source = catalog.source_of(entry);
             for hook in &entry.bundle.hooks {
-                add(
-                    &hook.event.clone(),
-                    hook.clone(),
-                    "bundle",
-                    &format!("ctxloom+local:{}", entry.name),
-                );
+                add(&hook.event.clone(), hook.clone(), "bundle", &source);
             }
         }
         for (event, verb, tool) in [

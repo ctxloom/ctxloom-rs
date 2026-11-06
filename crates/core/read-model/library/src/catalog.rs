@@ -128,6 +128,25 @@ impl Catalog {
         self.companions.get(name).map(String::as_str)
     }
 
+    /// The companions' entries, each with its registered name, by name (the
+    /// order a companion's items are delivered in).
+    pub fn companion_entries(&self) -> Vec<(&str, &Entry)> {
+        self.entries
+            .iter()
+            .filter_map(|e| Some((self.companions.get(&e.name)?.as_str(), e)))
+            .collect()
+    }
+
+    /// The canonical reference a delivered item of `entry` is credited to: a
+    /// companion's own, else the project bundle's local one.
+    pub fn source_of(&self, entry: &Entry) -> String {
+        if self.companions.contains_key(&entry.name) {
+            entry.name.clone()
+        } else {
+            format!("ctxloom+local:{}", entry.name)
+        }
+    }
+
     /// The fragments the companions' loadouts carry, as the references an
     /// assembly asks for them by: companions by reference, fragments by name.
     pub fn companion_fragments(&self) -> Vec<String> {

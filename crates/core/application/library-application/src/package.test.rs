@@ -393,3 +393,206 @@ fn test_the_statusline_choice_keeps_the_other_config_entries() {
     assert!(config.contains("statusline: false"), "{config}");
     assert!(!config.contains("statusline: true"), "{config}");
 }
+
+// ---- companion loadouts in the package (virtuous-word, companions slice 2) ----
+
+mod companions {
+    use ctxloom_ports::CompanionLoadout::{self, Loaded};
+
+    use crate::fakes::{plain, Setup};
+    use crate::{EnginePackage, Flags, PackageRequest};
+
+    use super::{CONFIG, DEMO, PROJECT};
+
+    const WITH: &str = "schema_version: 9\nagents:\n  default:\n    llm: mock\n    profiles: [dev]\ndefault_agent: default\nllm:\n  configs:\n    mock:\n      type: mock\ncompanions:\n  zeta:\n    command: [zeta]\n  alpha:\n    command: [alpha]\n";
+
+    const ALPHA: &str = "run:\n  version: 1.0.0\n  hooks:\n    pre_tool:\n      - command: alpha guard\n        tool: shell\n        type: command\n      - command: alpha guard\n        tool: file_edit\n        type: command\n  commands:\n    check:\n      description: Alpha check\n      content: ALPHA-CHECK-BODY\n  mcp:\n    alpha-tool:\n      command: alpha-mcp\n      args: [--serve]\n";
+
+    const ZETA: &str = "run:\n  version: 1.0.0\n  hooks:\n    pre_tool:\n      - command: zeta guard\n        type: command\n  commands:\n    check:\n      description: Zeta check\n      content: ZETA-CHECK-BODY\n";
+
+    fn package_with(
+        flags: &Flags,
+        layer: &'static str,
+        companions: &[(&str, CompanionLoadout)],
+    ) -> EnginePackage {
+        Setup {
+            bundles: &[("demo", DEMO), ("project", PROJECT)],
+            layers: &[layer],
+            companions,
+            ..Setup::default()
+        }
+        .library()
+        .package(flags, &PackageRequest::default())
+        .result
+        .expect("a package")
+    }
+
+    fn both() -> [(&'static str, CompanionLoadout); 2] {
+        [
+            ("alpha", Loaded(ALPHA.to_string())),
+            ("zeta", Loaded(ZETA.to_string())),
+        ]
+    }
+
+    fn pre_tool(p: &EnginePackage) -> Vec<(String, String, String, usize)> {
+        p.hooks
+            .iter()
+            .filter(|h| h.event == "pre_tool")
+            .map(|h| {
+                (
+                    h.hook.command.clone(),
+                    h.source_kind.clone(),
+                    h.source.clone(),
+                    h.position,
+                )
+            })
+            .collect()
+    }
+
+    // Go's ResolveBundleHooksFor: companions' hooks, then the profile
+    // bundles', after the profiles' own and before ctxloom's callbacks.
+    #[test]
+    fn companion_hooks_follow_the_profiles_own_and_precede_the_bundles() {
+        let p = package_with(&plain(), WITH, &both());
+        let row = |c: &str, kind: &str, source: &str, n: usize| {
+            (c.to_string(), kind.to_string(), source.to_string(), n)
+        };
+        assert_eq!(
+            pre_tool(&p),
+            vec![
+                row("echo FROM-PROFILE", "profile-directory", "dev", 1),
+                row("alpha guard", "bundle", "ctxloom+companion:alpha", 2),
+                row("alpha guard", "bundle", "ctxloom+companion:alpha", 3),
+                row("zeta guard", "bundle", "ctxloom+companion:zeta", 4),
+                row("echo FIRST", "bundle", "ctxloom+local:demo", 5),
+                row("echo SECOND", "bundle", "ctxloom+local:demo", 6),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_companion_hook_keeps_its_tool_class_for_the_engine_to_map() {
+        let p = package_with(&plain(), WITH, &both());
+        let tools: Vec<&str> = p
+            .hooks
+            .iter()
+            .filter(|h| h.hook.command == "alpha guard")
+            .map(|h| h.hook.tool.as_str())
+            .collect();
+        assert_eq!(tools, ["shell", "file_edit"]);
+    }
+
+    #[test]
+    fn ctxloom_own_callbacks_still_come_last() {
+        let p = package_with(&plain(), WITH, &both());
+        let start: Vec<&str> = p
+            .hooks
+            .iter()
+            .filter(|h| h.event == "session_start")
+            .map(|h| h.source_kind.as_str())
+            .collect();
+        assert_eq!(start, ["context"]);
+        let kinds: Vec<&str> = p
+            .hooks
+            .iter()
+            .filter(|h| h.event == "post_tool")
+            .map(|h| h.source_kind.as_str())
+            .collect();
+        assert_eq!(kinds, ["context"]);
+    }
+
+    // Go's commandCollector.fromBundles(CompanionRefs()): every command of
+    // every companion, by companion name, named for the companion.
+    #[test]
+    fn a_companions_commands_are_named_for_the_companion_in_name_order() {
+        let p = package_with(&plain(), WITH, &both());
+        let names: Vec<(&str, &str, &str)> = p
+            .commands
+            .iter()
+            .map(|c| (c.name.as_str(), c.description.as_str(), c.body.as_str()))
+            .collect();
+        assert_eq!(
+            names,
+            [
+                ("demo/example", "Example prompt", "EXAMPLE-BODY"),
+                ("alpha/check", "Alpha check", "ALPHA-CHECK-BODY"),
+                ("zeta/check", "Zeta check", "ZETA-CHECK-BODY"),
+            ]
+        );
+    }
+
+    // "a curation names bundle commands, never theirs".
+    #[test]
+    fn a_companions_commands_are_unconditional_under_a_curation() {
+        let project: &'static [(&str, &str)] = &[
+            crate::fakes::ENVELOPE,
+            (
+                "profiles/dev.yaml",
+                "bundles: [demo]\ncommands: [demo#commands/example]\n",
+            ),
+        ];
+        let companions = both();
+        let p = Setup {
+            bundles: &[("demo", DEMO), ("project", project)],
+            layers: &[WITH],
+            companions: &companions,
+            ..Setup::default()
+        }
+        .library()
+        .package(&plain(), &PackageRequest::default())
+        .result
+        .expect("a package");
+        let names: Vec<&str> = p.commands.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["demo/example", "alpha/check", "zeta/check"]);
+    }
+
+    #[test]
+    fn a_companions_mcp_server_is_carried_with_its_command() {
+        let p = package_with(&plain(), WITH, &both());
+        let server = p.mcp.iter().find(|m| m.name == "alpha-tool").unwrap();
+        assert_eq!(
+            (server.command.as_str(), server.args.clone()),
+            ("alpha-mcp", vec!["--serve".to_string()])
+        );
+        assert!(p.mcp.iter().any(|m| m.name == "tool"), "the bundle's too");
+        assert!(p.fatal.is_empty(), "{:?}", p.fatal);
+    }
+
+    // Go: companions claim first; a profile bundle declaring the name is the
+    // contest's loser, loudly.
+    #[test]
+    fn a_profile_bundle_cannot_take_a_name_a_companion_claimed() {
+        let rival = "run:\n  version: 1.0.0\n  mcp:\n    tool:\n      command: companion-tool\n";
+        let companions = [("alpha", Loaded(rival.to_string()))];
+        let p = package_with(&plain(), WITH, &companions);
+        let tool: Vec<&str> = p
+            .mcp
+            .iter()
+            .filter(|m| m.name == "tool")
+            .map(|m| m.command.as_str())
+            .collect();
+        assert_eq!(tool, ["companion-tool"]);
+        assert_eq!(p.fatal.len(), 1, "{:?}", p.fatal);
+    }
+
+    #[test]
+    fn no_companions_flag_delivers_nothing_of_them() {
+        let flags = Flags {
+            no_companions: true,
+            ..Flags::default()
+        };
+        let p = package_with(&flags, WITH, &both());
+        assert!(pre_tool(&p)
+            .iter()
+            .all(|h| h.2 != "ctxloom+companion:alpha"));
+        assert_eq!(p.commands.len(), 1);
+        assert!(p.mcp.iter().all(|m| m.name != "alpha-tool"));
+    }
+
+    #[test]
+    fn a_package_without_companions_is_unchanged() {
+        let p = package_with(&plain(), CONFIG, &[]);
+        assert_eq!(pre_tool(&p).len(), 3);
+        assert_eq!(p.commands.len(), 1);
+    }
+}

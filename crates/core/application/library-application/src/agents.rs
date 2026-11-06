@@ -123,6 +123,18 @@ impl Project {
         set: &[ResolvedProfile],
         findings: &mut Vec<library::findings::Finding>,
     ) -> BTreeMap<String, Served> {
+        self.served_from(&self.catalog, set, findings)
+    }
+
+    /// As [`Self::served`], from `catalog`: the companions it holds claim
+    /// their servers first (Go's `ResolveBundleMCPServersFor`), so a profile
+    /// bundle declaring a name a companion holds is the contest's loser.
+    pub(crate) fn served_from(
+        &self,
+        catalog: &library::catalog::Catalog,
+        set: &[ResolvedProfile],
+        findings: &mut Vec<library::findings::Finding>,
+    ) -> BTreeMap<String, Served> {
         let excluded: BTreeSet<&str> = set
             .iter()
             .flat_map(|p| p.exclude_mcp.iter().map(String::as_str))
@@ -133,8 +145,16 @@ impl Project {
                 findings.push(finding);
             }
         };
-        for reference in set.iter().flat_map(|p| &p.bundles) {
-            let Ok(entry) = self.catalog.lookup(reference) else {
+        let companions = catalog.companion_entries();
+        let profile_bundles = set
+            .iter()
+            .flat_map(|p| &p.bundles)
+            .map(|reference| (reference.as_str(), catalog.lookup(reference)));
+        let companions = companions
+            .into_iter()
+            .map(|(_, entry)| (entry.name.as_str(), Ok(entry)));
+        for (reference, entry) in companions.chain(profile_bundles) {
+            let Ok(entry) = entry else {
                 note(library::findings::Finding::fail(
                     "bundle",
                     format!(
@@ -144,7 +164,7 @@ impl Project {
                 ));
                 continue;
             };
-            let source = format!("ctxloom+local:{}", entry.name);
+            let source = catalog.source_of(entry);
             for (name, server) in &entry.bundle.mcp {
                 if excluded.contains(name.as_str()) {
                     continue;

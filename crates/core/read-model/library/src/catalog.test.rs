@@ -315,6 +315,42 @@ fn test_a_project_bundle_is_no_companion() {
 }
 
 #[test]
+fn test_the_companion_entries_are_the_companions_only_by_name() {
+    let cat = corpus().with_companions(vec![
+        (
+            "reprise".to_string(),
+            crate::document::parse_document(LOADOUT_RUN).unwrap(),
+        ),
+        (
+            "ltk".to_string(),
+            crate::document::parse_document(LOADOUT_RUN).unwrap(),
+        ),
+    ]);
+    let names: Vec<(&str, &str)> = cat
+        .companion_entries()
+        .iter()
+        .map(|(name, e)| (*name, e.name.as_str()))
+        .collect();
+    assert_eq!(
+        names,
+        [
+            ("ltk", "ctxloom+companion:ltk"),
+            ("reprise", "ctxloom+companion:reprise")
+        ]
+    );
+    assert!(corpus().companion_entries().is_empty());
+}
+
+#[test]
+fn test_an_item_is_credited_to_its_companion_or_its_local_bundle() {
+    let cat = with_reprise();
+    let companion = cat.lookup("ctxloom+companion:reprise").unwrap();
+    assert_eq!(cat.source_of(companion), "ctxloom+companion:reprise");
+    let alpha = cat.lookup("alpha").unwrap();
+    assert_eq!(cat.source_of(alpha), "ctxloom+local:alpha");
+}
+
+#[test]
 fn test_a_companions_fragment_is_read_under_its_companion_reference() {
     let cat = with_reprise();
     let read = cat
