@@ -34,19 +34,26 @@
 //! lint compares it. A step the Rust port must say differently is a
 //! `# substitution:`, never a silent edit.
 //!
-//! Go's scenarios not yet ported are copied, as Go wrote them, into
-//! `<name>.pending.feature` beside the port (`<name>.feature`), with
-//! `@pending` on its `Feature:` and no `# world:` line: no World has their
-//! steps, so the runner skips the file, and this lint still compares its
-//! text with Go's. The file name and the tag go together, and `@pending` goes
-//! on no Rule or scenario (the runner skips whole files only). Porting one
-//! moves it, unchanged, out of the pending file into the port.
+//! Go's scenarios not yet ported are copied, as Go wrote them, into the file
+//! that ports their Go file, each tagged `@pending` (on the scenario, or on
+//! its Rule when the whole Rule is pending): no World has their steps, so the
+//! runner leaves them out, and this lint still compares their text with
+//! Go's, `# substitution:` and all. A file none of whose scenarios are ported
+//! yet carries `@pending` on its `Feature:` instead, and no `# world:` line:
+//! the runner skips it whole. A tag that a Rule or the Feature already
+//! carries is not repeated beneath it, and a feature every scenario of which
+//! is pending says so on its `Feature:`. Porting a scenario drops its tag
+//! (or moves it, unchanged, out of a pending Rule) and gives its World the
+//! steps.
 
 use std::path::{Path, PathBuf};
 
 use cucumber::gherkin::{Examples, Feature, GherkinEnv, Scenario, Step};
 
-use super::gherkin_common::{feature_files, features_dir, header_values, is_pending, world_of};
+use super::gherkin_common::{
+    feature_files, features_dir, header_values, is_pending, is_pending_feature, tagged_pending,
+    world_of,
+};
 use super::host_var;
 use crate::tests::files;
 
@@ -167,7 +174,7 @@ fn parse(text: &str) -> Result<Feature, String> {
 /// The header's findings: a world, the Go files ported from, what is left out.
 fn header_findings(text: &str) -> Vec<String> {
     let mut found = Vec::new();
-    if is_pending(text) {
+    if is_pending_feature(text) {
         if !header_values(text, "# world:").is_empty() {
             found.push("a @pending feature runs in no World; drop its `# world:` line".to_string());
         }
@@ -284,34 +291,51 @@ fn go_units(dir: &Path, rel: &str) -> Result<Vec<Unit>, String> {
     Ok(units(&parse(&text).map_err(|e| format!("{rel}: {e}"))?))
 }
 
-/// The pending convention's findings: the file name and the feature's tag go
-/// together, and no Rule or scenario carries the tag.
-fn pending_findings(rel: &str, text: &str) -> Vec<String> {
+/// The pending convention's findings: `@pending` is said once, at the
+/// widest level it holds for (never beneath a Rule or Feature that already
+/// carries it), and a feature none of whose scenarios runs is pending on its
+/// `Feature:`.
+fn pending_findings(text: &str) -> Vec<String> {
     let mut found = Vec::new();
-    let named = rel.ends_with(".pending.feature");
-    match (named, is_pending(text)) {
-        (true, false) => {
-            found.push("a .pending.feature without @pending on its Feature".to_string())
-        }
-        (false, true) => found
-            .push("@pending on the Feature of a file not named <name>.pending.feature".to_string()),
-        _ => {}
+    let Ok(feature) = parse(text) else {
+        return found;
+    };
+    let whole = tagged_pending(&feature.tags);
+    for rule in feature
+        .rules
+        .iter()
+        .filter(|r| whole && tagged_pending(&r.tags))
+    {
+        found.push(format!(
+            "Rule {:?}: @pending again under a @pending Feature; drop it",
+            rule.name
+        ));
     }
-    if let Ok(feature) = parse(text) {
-        let tagged = |tags: &[String]| tags.iter().any(|t| t == "pending");
-        for rule in feature.rules.iter().filter(|r| tagged(&r.tags)) {
-            found.push(format!("Rule {:?}: @pending goes on the Feature, not a Rule (the runner skips whole files)", rule.name));
-        }
-        let scenarios = feature
-            .scenarios
+    let scenarios = feature.scenarios.iter().map(|s| (None, s)).chain(
+        feature
+            .rules
             .iter()
-            .chain(feature.rules.iter().flat_map(|r| &r.scenarios));
-        for s in scenarios.filter(|s| tagged(&s.tags)) {
+            .flat_map(|r| r.scenarios.iter().map(move |s| (Some(r), s))),
+    );
+    let mut all = true;
+    let mut any = false;
+    for (rule, s) in scenarios {
+        any = true;
+        all &= is_pending(&feature, rule, s);
+        let above = whole || rule.is_some_and(|r| tagged_pending(&r.tags));
+        if above && tagged_pending(&s.tags) {
             found.push(format!(
-                "scenario {:?}: @pending goes on the Feature of a .pending.feature, not a scenario",
-                s.name
+                "scenario {:?}: @pending again under a @pending {}; drop it",
+                s.name,
+                if whole { "Feature" } else { "Rule" }
             ));
         }
+    }
+    if any && all && !whole {
+        found.push(
+            "every scenario is @pending; tag the Feature @pending instead and drop its `# world:` line"
+                .to_string(),
+        );
     }
     found
 }
@@ -320,7 +344,7 @@ fn pending_findings(rel: &str, text: &str) -> Vec<String> {
 /// there is one.
 fn findings(rel: &str, text: &str, go: Option<&Path>) -> Vec<String> {
     let mut found = header_findings(text);
-    found.extend(pending_findings(rel, text));
+    found.extend(pending_findings(text));
     let sources = ported_from(text);
     let feature = parse(text);
     let all_new = feature.as_ref().is_ok_and(|f| {
@@ -443,17 +467,44 @@ mod lint {
     }
 
     #[test]
-    fn the_pending_name_and_tag_go_together_and_only_on_the_feature() {
-        let pending = "@pending\nFeature: f\n  Scenario: one\n    Then x\n";
-        let plain = "Feature: f\n  Scenario: one\n    Then x\n";
-        assert!(pending_findings("cli/a.pending.feature", pending).is_empty());
-        assert!(pending_findings("cli/a.feature", plain).is_empty());
-        assert_eq!(pending_findings("cli/a.feature", pending).len(), 1);
-        assert_eq!(pending_findings("cli/a.pending.feature", plain).len(), 1);
-        let on_scenario = "Feature: f\n  @pending\n  Scenario: one\n    Then x\n";
-        assert_eq!(pending_findings("cli/a.feature", on_scenario).len(), 1);
-        let on_rule = "Feature: f\n  @pending\n  Rule: r\n    Scenario: one\n      Then x\n";
-        assert_eq!(pending_findings("cli/a.feature", on_rule).len(), 1);
+    fn a_pending_tag_is_said_once_at_its_widest_level() {
+        let one =
+            "Feature: f\n  Scenario: a\n    Then x\n\n  @pending\n  Scenario: b\n    Then y\n";
+        assert!(
+            pending_findings(one).is_empty(),
+            "{:?}",
+            pending_findings(one)
+        );
+        let rule = "Feature: f\n  Scenario: a\n    Then x\n\n  @pending\n  Rule: r\n    Scenario: b\n      Then y\n";
+        assert!(pending_findings(rule).is_empty());
+        let whole = "@pending\nFeature: f\n  Scenario: a\n    Then x\n";
+        assert!(pending_findings(whole).is_empty());
+        let under_rule = rule.replace("    Scenario: b", "    @pending\n    Scenario: b");
+        assert_eq!(pending_findings(&under_rule).len(), 1);
+        let under_feature = "@pending\nFeature: f\n  @pending\n  Rule: r\n    @pending\n    Scenario: a\n      Then x\n";
+        assert_eq!(pending_findings(under_feature).len(), 2);
+    }
+
+    #[test]
+    fn a_feature_none_of_whose_scenarios_runs_is_pending_on_its_feature() {
+        let all = "Feature: f\n  @pending\n  Scenario: a\n    Then x\n\n  @pending\n  Rule: r\n    Scenario: b\n      Then y\n";
+        assert_eq!(pending_findings(all).len(), 1);
+        assert!(pending_findings("Feature: f\n").is_empty());
+    }
+
+    #[test]
+    fn a_pending_scenario_is_compared_with_go_like_any_other() {
+        let rust = GO
+            .replace("ctxloom a", "ctxloom z")
+            .replace("  Scenario: one\n", "  @pending\n  Scenario: one\n");
+        let found = compare(&rust, &go());
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("scenario \"one\""), "{found:?}");
+        let substituted = rust.replace(
+            "Scenario: one\n",
+            "Scenario: one\n    # substitution: z is a here\n",
+        );
+        assert_eq!(compare(&substituted, &go()), Vec::<String>::new());
     }
 
     #[test]
