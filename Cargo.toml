@@ -93,6 +93,7 @@ ctxloom-ports = { path = "crates/core/ports/ctxloom-ports" }
 library = { path = "crates/core/read-model/library" }
 library-application = { path = "crates/core/application/library-application" }
 library-cli = { path = "crates/adapters/driving/library-cli" }
+stub-companion = { path = "crates/root/bin/stub-companion" }
 ctxloom-wiring = { path = "crates/root/lib/ctxloom-wiring" }
 deps = { path = "crates/core/read-model/deps" }
 pin-changes = { path = "crates/core/read-model/pin-changes" }

@@ -356,6 +356,12 @@ pub enum Notice {
     RootIgnored { root: String },
     /// The dependencies installed from remotes could not be read.
     RemotesUnreadable { cause: angzarr_diagnostic::Report },
+    /// A registered companion whose binary is not on the `PATH`.
+    CompanionNotOnPath { name: String },
+    /// A registered companion that could not be asked for its loadout.
+    LoadoutProbeFailed { name: String, detail: String },
+    /// A registered companion whose loadout does not parse.
+    LoadoutUnparseable { name: String, cause: BundleError },
 }
 
 impl Notice {
@@ -390,6 +396,9 @@ impl Diagnostic for Notice {
             Notice::ConfigKeyless { .. } => code!("notice-config-keyless"),
             Notice::RootIgnored { .. } => code!("notice-root-ignored"),
             Notice::RemotesUnreadable { .. } => code!("notice-remotes-unreadable"),
+            Notice::CompanionNotOnPath { .. } => code!("companion-not-on-path"),
+            Notice::LoadoutProbeFailed { .. } => code!("loadout-probe-failed"),
+            Notice::LoadoutUnparseable { .. } => code!("loadout-unparseable"),
         }
     }
 
@@ -415,6 +424,15 @@ impl Diagnostic for Notice {
             Notice::RemotesUnreadable { cause } => {
                 vec![("cause", Arg::Nested(Box::new(cause.clone())))]
             }
+            Notice::CompanionNotOnPath { name } => vec![("name", name.as_str().into())],
+            Notice::LoadoutProbeFailed { name, detail } => vec![
+                ("name", name.as_str().into()),
+                ("detail", detail.as_str().into()),
+            ],
+            Notice::LoadoutUnparseable { name, cause } => vec![
+                ("name", name.as_str().into()),
+                ("cause", Arg::Nested(Box::new(cause.clone()))),
+            ],
         }
     }
 }
@@ -569,6 +587,15 @@ fn notice_samples() -> Vec<Box<dyn Diagnostic>> {
         }),
         Box::new(Notice::RemotesUnreadable {
             cause: angzarr_diagnostic::Report::of(&BundleError::NoManifest { bundle: s("demo") }),
+        }),
+        Box::new(Notice::CompanionNotOnPath { name: s("reprise") }),
+        Box::new(Notice::LoadoutProbeFailed {
+            name: s("reprise"),
+            detail: s("exit status: 3"),
+        }),
+        Box::new(Notice::LoadoutUnparseable {
+            name: s("reprise"),
+            cause: BundleError::LoadoutEmpty { bytes: 0 },
         }),
     ]
 }

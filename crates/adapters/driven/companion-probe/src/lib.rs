@@ -9,7 +9,7 @@ use std::time::Duration;
 use ctxloom_ports::{LoadoutProbe, Unanswered};
 
 mod loadouts;
-pub use loadouts::{binary_name, is_plain_name, ProcessCompanions};
+pub use loadouts::ProcessCompanions;
 use process_env::EnvSnapshot;
 use run_within::{run_within, Spec, Within};
 

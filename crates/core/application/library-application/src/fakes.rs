@@ -10,8 +10,9 @@ use std::sync::{Arc, Mutex};
 
 use angzarr_diagnostic::{code, Arg, Diagnostic};
 use ctxloom_ports::{
-    Change, ConfigFiles, ContentRepo, Editor, EditorCommand, Executables, Failure, LayerText,
-    LoadoutProbe, Put, Scaffold, Scope, Source, TreeFiles, Unanswered, UserFiles,
+    Change, CompanionLoadout, CompanionLoadouts, ConfigFiles, ContentRepo, Editor, EditorCommand,
+    Executables, Failure, LayerText, LoadoutProbe, Put, Scaffold, Scope, Source, TreeFiles,
+    Unanswered, UserFiles,
 };
 
 /// The scope `Mem::config` is asked for.
@@ -69,6 +70,10 @@ struct State {
     log: Vec<String>,
     editor: Option<Editing>,
     probe: Option<Probing>,
+    /// What each companion answers, by registered name; absent unless set.
+    companions: BTreeMap<String, CompanionLoadout>,
+    /// The companions asked for their loadout, in order.
+    asked: Vec<String>,
     edits: Vec<(String, String)>,
     opened: Vec<String>,
     refuse_apply: Option<String>,
@@ -564,6 +569,25 @@ impl LoadoutProbe for Mem {
     }
 }
 
+impl Mem {
+    /// The companions asked for their loadout, in the order they were asked.
+    pub fn asked_companions(&self) -> Vec<String> {
+        self.lock().asked.clone()
+    }
+}
+
+impl CompanionLoadouts for Mem {
+    fn loadout(&self, name: &str) -> CompanionLoadout {
+        let mut state = self.lock();
+        state.asked.push(name.to_string());
+        state
+            .companions
+            .get(name)
+            .cloned()
+            .unwrap_or(CompanionLoadout::Absent)
+    }
+}
+
 struct Path(BTreeMap<String, String>);
 
 impl Executables for Path {
@@ -583,6 +607,9 @@ pub struct Setup<'a> {
     pub executable: &'a [&'a str],
     pub path: &'a [(&'a str, &'a str)],
     pub environ: &'a [(&'a str, &'a str)],
+    /// The loadout each registered companion answers with; one not listed is
+    /// absent.
+    pub companions: &'a [(&'a str, CompanionLoadout)],
 }
 
 impl Setup<'_> {
@@ -602,6 +629,12 @@ impl Setup<'_> {
             log: Vec::new(),
             editor: None,
             probe: None,
+            companions: self
+                .companions
+                .iter()
+                .map(|(n, l)| ((*n).to_string(), l.clone()))
+                .collect(),
+            asked: Vec::new(),
             edits: Vec::new(),
             opened: Vec::new(),
             refuse_apply: None,
@@ -644,7 +677,8 @@ impl Setup<'_> {
             scaffold: mem.clone(),
             editor: mem.clone(),
             probe: mem.clone(),
-        });
+        })
+        .with_companions(mem.clone());
         (library, mem)
     }
 

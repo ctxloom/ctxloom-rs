@@ -177,7 +177,7 @@ impl Project {
     /// The selection of `set` and the caller's asks, assembled. Whether the
     /// premised fragments load or are indexed follows the engine.
     pub(crate) fn assemble_set(
-        &self,
+        &mut self,
         set: &[ResolvedProfile],
         fragments: &[String],
         tags: &[String],
@@ -192,7 +192,11 @@ impl Project {
             prefer_distilled: self.config.use_distilled(),
             static_assembly: false,
         };
-        let package = compose::assemble(&self.catalog, &selection, &options);
+        // The registered companions' fragments follow the selected ones, and
+        // are read from a catalog that holds their loadouts.
+        let catalog = self.catalog_with_companions();
+        let selection = compose::with_companion_asks(selection, &catalog);
+        let package = compose::assemble(&catalog, &selection, &options);
         findings.extend(package.findings.iter().cloned());
         package
     }
@@ -276,7 +280,7 @@ impl Project {
     /// checked, fragments selected and assembled; a selection that asked for
     /// fragments or tags and got none is refused.
     fn compose(
-        &self,
+        &mut self,
         selection: &Selection,
         findings: &mut Vec<Finding>,
     ) -> Result<Package, AppError> {

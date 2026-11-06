@@ -14,6 +14,7 @@
 
 mod agents;
 mod bundles;
+mod companions;
 mod config;
 mod config_show;
 mod error;
@@ -65,3 +66,7 @@ mod behaviour;
 #[cfg(test)]
 #[path = "remotes.test.rs"]
 mod remotes;
+
+#[cfg(test)]
+#[path = "companions.test.rs"]
+mod companion_tests;

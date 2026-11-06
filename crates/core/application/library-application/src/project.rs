@@ -4,9 +4,10 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use ctxloom_ports::{ConfigFiles, ContentRepo, Executables, Source};
+use ctxloom_ports::{CompanionLoadouts, ConfigFiles, ContentRepo, Executables, Source};
 use deps_ports::RemoteLibrary;
 use library::catalog::{Catalog, Entry, RemoteOrigin};
+use library::model::Bundle;
 use library::tree;
 use library::BundleError;
 
@@ -28,6 +29,7 @@ pub struct Library {
     pub(crate) environ: Vec<(String, String)>,
     pub(crate) ports: Option<WritePorts>,
     remotes: Option<Rc<dyn RemoteLibrary>>,
+    pub(crate) companions: Option<Arc<dyn CompanionLoadouts>>,
 }
 
 /// A project opened.
@@ -46,6 +48,13 @@ pub struct Project {
     /// Bundles that are there and cannot be read, by name.
     pub(crate) unreadable: BTreeMap<String, BundleError>,
     pub(crate) notices: Vec<Notice>,
+    /// Where a registered companion's loadout is asked for.
+    pub(crate) companions: Option<Arc<dyn CompanionLoadouts>>,
+    /// `--no-companions` or `CTXLOOM_NO_COMPANIONS`: no companion is asked.
+    pub(crate) no_companions: bool,
+    /// The `run:` bundles of the registered companions, asked for once per
+    /// command and kept: `(registered name, bundle)`.
+    pub(crate) companion_bundles: Option<Vec<(String, Bundle)>>,
 }
 
 impl Library {
@@ -64,7 +73,15 @@ impl Library {
             environ,
             ports: None,
             remotes: None,
+            companions: None,
         }
+    }
+
+    /// The library joining the registered companions' loadouts to every
+    /// assembly, asked for through `companions`.
+    pub fn with_companions(mut self, companions: Arc<dyn CompanionLoadouts>) -> Library {
+        self.companions = Some(companions);
+        self
     }
 
     /// The library with the write side's ports: the user's files, the
@@ -174,6 +191,10 @@ impl Library {
             has_root,
             unreadable,
             notices: Vec::new(),
+            companions: self.companions.clone(),
+            no_companions: flags.no_companions
+                || crate::companions::switch_on(&self.environ, "CTXLOOM_NO_COMPANIONS"),
+            companion_bundles: None,
         })
     }
 }

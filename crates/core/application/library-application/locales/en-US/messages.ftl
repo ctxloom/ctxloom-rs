@@ -67,6 +67,12 @@ library-application-config-older = { $path }: ctxloom config: schema_version { $
 library-application-config-older-fix = back up { $path }, then re-run `ctxloom init` to scaffold a current one and re-apply your settings
 library-application-config-version-unreadable = { $path }: ctxloom config: format version cannot be read: schema_version is not an integer
 library-application-config-version-unreadable-fix = back up { $path }, then re-run `ctxloom init` to scaffold a current one and re-apply your settings
+library-application-companion-not-on-path = companion "{ $name }" is registered but its binary is not on PATH, so it contributes nothing
+library-application-companion-not-on-path-fix = install it (then `ctxloom companion add { $name }` checks it), or unregister it: ctxloom companion remove { $name }
+library-application-loadout-probe-failed = companion "{ $name }": loadout probe failed ({ $detail }), so its hooks, MCP servers and context are unknown and it contributes nothing this time
+library-application-loadout-probe-failed-fix = make the companion's `loadout --format yaml` answer (repair or reinstall it), then re-apply
+library-application-loadout-unparseable = companion "{ $name }": unparseable loadout, withholding: { $cause }
+library-application-loadout-unparseable-fix = fix the loadout the companion prints for `loadout --format yaml`, or unregister it: ctxloom companion remove { $name }
 library-application-notice-config-keyless = config file { $path } defines no keys
 library-application-notice-root-ignored = CTXLOOM_ROOT={ $root } is not a directory; ignoring it
 

@@ -207,8 +207,8 @@ impl Project {
         })
     }
 
-    fn premises(&self) -> Premises {
-        let entries = premise::index(&self.catalog);
+    fn premises(&mut self) -> Premises {
+        let entries = premise::index(&self.catalog_with_companions());
         if entries.is_empty() {
             return Premises {
                 instruction: premise::NONE.to_string(),

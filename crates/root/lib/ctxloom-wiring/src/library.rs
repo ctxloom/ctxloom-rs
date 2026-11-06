@@ -8,7 +8,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use angzarr_presentation::Catalog;
-use companion_probe::ProcessProbe;
+use companion_probe::{ProcessCompanions, ProcessProbe};
 use config_files::{ConfigFilesFs, ScaffoldFs};
 use content_fs::{ContentFs, UserFilesFs};
 use ctxloom_cli::{Call, Extension, Failure};
@@ -100,7 +100,13 @@ pub(crate) fn build(
         Arc::new(binaries),
         environ,
     )
-    .with_write_ports(ports);
+    .with_write_ports(ports)
+    // No registered name stands for a program yet: how a registration names
+    // its program is undecided, so every companion is absent until it is.
+    .with_companions(Arc::new(ProcessCompanions::new(
+        std::collections::BTreeMap::new(),
+        ProcessProbe::standard(Arc::clone(wiring.env())),
+    )));
     Ok(match remotes {
         Some(remotes) => library.with_remotes(remotes),
         None => library,

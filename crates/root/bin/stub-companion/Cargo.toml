@@ -1,0 +1,21 @@
+[package]
+name = "stub-companion"
+version = "0.1.0"
+description = "A stand-in companion binary (ctxloom-companion-stub) for the companion protocol's tests: answers version and loadout from files beside itself"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "ctxloom-companion-stub"
+path = "src/main.rs"
+
+[dependencies]
+# The filesystem seam the workspace reads files through, and the host it is
+# over: the only things the stub needs beyond std.
+file-system.workspace = true
+os.workspace = true
+
+[lints]
+workspace = true
