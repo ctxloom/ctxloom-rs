@@ -87,6 +87,40 @@ fn a_registered_companions_fragment_reaches_materialize_and_run() {
     assert!(run.json()["context"].as_str().unwrap().contains(MARKER));
 }
 
+const ITEMS: &str = "run:\n  version: 1.0.0\n  hooks:\n    pre_tool:\n      - command: acme-guard\n        tool: shell\n        type: command\n  commands:\n    check:\n      description: Acme check\n      content: ACME-CHECK-BODY\n  mcp:\n    acme-tool:\n      command: acme-mcp\n";
+
+fn materialized(project: &Project, flags: &[&str]) {
+    let mut args: Vec<&str> = flags.to_vec();
+    args.extend([
+        "materialize",
+        "dev",
+        "--target",
+        "out",
+        "--backend",
+        "claude-code",
+    ]);
+    project.run(&args).succeeds();
+}
+
+#[test]
+fn a_registered_companions_hooks_commands_and_servers_reach_materialize() {
+    let (project, _stub, _dir) = world(ITEMS);
+    materialized(&project, &[]);
+    project.file_contains("out/.claude/settings.json", "acme-guard");
+    project.file_contains("out/.claude/settings.json", "Bash|PowerShell");
+    project.file_contains("out/.claude/commands/acme-check.md", "ACME-CHECK-BODY");
+    project.file_contains("out/.mcp.json", "acme-mcp");
+}
+
+#[test]
+fn no_companions_delivers_none_of_their_hooks_commands_or_servers() {
+    let (project, _stub, _dir) = world(ITEMS);
+    materialized(&project, &["--no-companions"]);
+    project.file_lacks("out/.claude/settings.json", "acme-guard");
+    project.file_is_absent("out/.claude/commands/acme-check.md");
+    project.file_is_absent("out/.mcp.json");
+}
+
 #[test]
 fn a_premised_companion_fragment_is_offered_in_the_premise_index_and_delivered_when_named() {
     let (project, _stub, _dir) = world(LOADOUT);

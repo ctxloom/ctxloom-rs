@@ -412,3 +412,135 @@ fn reprise_guidance(w: &mut World, reaches: String) {
         w.bob_lacks(REPRISE_MARKER);
     }
 }
+
+// ------------------------------------------------ j001800: Alice's guardrails
+
+const TASK_RUNNER_MARKER: &str = "J001800-TASK-RUNNER-GUIDANCE-MARKER";
+const REUSE_MARKER: &str = "J001800-REUSE-BEFORE-YOU-WRITE-MARKER";
+/// What the stub's `pre_tool` hooks run, in place of `ltk evaluate`.
+const GUARD_COMMAND: &str = "stub-guard evaluate";
+
+/// The tools of the shell and file-edit classes in claude, written out here
+/// rather than derived from the loadout (Go's `j001800LtkGuardedTools`): a
+/// superset check, so a narrowed matcher fails it though the loadout and the
+/// delivery agree.
+const GUARDED_TOOLS: [&str; 6] = [
+    "Bash",
+    "PowerShell",
+    "Edit",
+    "Write",
+    "MultiEdit",
+    "NotebookEdit",
+];
+
+/// The task-runner companion's loadout: guidance, and a guard on each tool
+/// class it declares.
+fn guard_loadout() -> String {
+    format!(
+        "run:\n  version: 1.0.0\n  hooks:\n    pre_tool:\n      - command: {GUARD_COMMAND}\n        tool: shell\n        type: command\n      - command: {GUARD_COMMAND}\n        tool: file_edit\n        type: command\n  fragments:\n    task-runner:\n      content: {TASK_RUNNER_MARKER}\n"
+    )
+}
+
+/// The tool classes the guard loadout declares, one hook each.
+const DECLARED_CLASSES: usize = 2;
+
+#[given("Alice's project exists")]
+fn alice_project(w: &mut World) {
+    w.common.project = super::Project::initialized();
+    super::j000200_scaffold(w, "claude-code");
+}
+
+/// Both companions are the stub: registered with the command that runs it.
+#[given("ltk and reprise are installed on Alice's machine")]
+fn alice_companions(w: &mut World) {
+    let scratch = w.scratch();
+    let loadouts = [
+        ("ltk", guard_loadout()),
+        (
+            "reprise",
+            format!(
+                "run:\n  version: 1.0.0\n  fragments:\n    reuse:\n      content: {REUSE_MARKER}\n"
+            ),
+        ),
+    ];
+    for (name, loadout) in loadouts {
+        let stub = Stub::install(&scratch.join("companions"), name, &loadout);
+        let args = stub.add_args(name);
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        w.common.project.run_with(&[], &args).succeeds();
+    }
+}
+
+/// Go's `materializeDefault`: the default profile for claude-code into `out`.
+fn alice_materialized(w: &mut World) {
+    w.common.run_lines(
+        "ctxloom materialize default --target out --backend claude-code",
+        "",
+    );
+    w.ran().succeeds();
+}
+
+fn alice_context(w: &mut World) -> String {
+    alice_materialized(w);
+    w.common
+        .project
+        .read("out/CLAUDE.md")
+        .unwrap_or_else(|| panic!("no out/CLAUDE.md: {}", w.ran().said()))
+}
+
+#[then("her assistant receives ltk's task-runner guidance")]
+fn alice_has_task_runner(w: &mut World) {
+    let body = alice_context(w);
+    assert!(body.contains(TASK_RUNNER_MARKER), "{body}");
+}
+
+#[then("her assistant receives reprise's reuse-before-you-write guidance")]
+fn alice_has_reuse(w: &mut World) {
+    let body = alice_context(w);
+    assert!(body.contains(REUSE_MARKER), "{body}");
+}
+
+#[then("her assistant's engine is configured to run ltk on every shell command and file edit")]
+fn alice_engine_guards(w: &mut World) {
+    alice_materialized(w);
+    let raw = w
+        .common
+        .project
+        .read("out/.claude/settings.json")
+        .unwrap_or_else(|| panic!("no out/.claude/settings.json: {}", w.ran().said()));
+    let settings: serde_json::Value =
+        serde_json::from_str(&raw).unwrap_or_else(|e| panic!("settings.json: {e}: {raw}"));
+    let entries = settings["hooks"]["PreToolUse"]
+        .as_array()
+        .unwrap_or_else(|| panic!("no PreToolUse hooks: {raw}"));
+    let matchers: Vec<&str> = entries
+        .iter()
+        .filter(|entry| {
+            entry["hooks"].as_array().is_some_and(|hooks| {
+                hooks
+                    .iter()
+                    .any(|h| h["command"].as_str() == Some(GUARD_COMMAND))
+            })
+        })
+        .map(|entry| entry["matcher"].as_str().unwrap_or_default())
+        .collect();
+    assert!(
+        !matchers.is_empty(),
+        "no PreToolUse hook runs {GUARD_COMMAND:?}: {raw}"
+    );
+    let covered: Vec<&str> = matchers.iter().flat_map(|m| m.split('|')).collect();
+    let missing: Vec<&str> = GUARDED_TOOLS
+        .iter()
+        .copied()
+        .filter(|tool| !covered.contains(tool))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "the matchers {matchers:?} do not cover {missing:?}: {raw}"
+    );
+    assert_eq!(
+        matchers.len(),
+        DECLARED_CLASSES,
+        "one registration per declared tool class, neither adding nor dropping one: {matchers:?}"
+    );
+}
