@@ -216,3 +216,19 @@ fn test_a_name_only_the_project_registers_cannot_be_removed_from_home() {
     );
     assert_eq!(mem.writes(), 0);
 }
+
+#[test]
+fn test_remove_of_another_name_than_the_registered_one_is_refused() {
+    let (library, mem) = world();
+    library
+        .companion_add(&plain(), "acme", &cmd(&["acme"]))
+        .result
+        .unwrap();
+    let writes = mem.writes();
+    for yes in [false, true] {
+        assert!(
+            err(library.companion_remove(&plain(), "ltk", yes)).contains("CompanionNotRegistered")
+        );
+    }
+    assert_eq!(mem.writes(), writes);
+}

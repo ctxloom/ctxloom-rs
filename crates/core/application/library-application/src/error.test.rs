@@ -137,3 +137,26 @@ fn test_notices_name_themselves_and_show_their_args() {
     assert!(english(&root).contains("/nowhere"));
     assert!(english(&finding).contains("a thing"));
 }
+
+// virtuous-word: the notices and refusals of the companion slice are in the
+// samples the catalog test walks.
+#[test]
+fn the_companion_diagnostics_have_samples() {
+    let codes: Vec<String> = diagnostic_samples()
+        .iter()
+        .map(|d| d.code().to_string())
+        .collect();
+    for want in [
+        "companion-not-on-path",
+        "loadout-probe-failed",
+        "loadout-unparseable",
+        "config-companions-bare",
+        "write-companion-program-missing",
+        "write-companion-no-command",
+    ] {
+        assert!(
+            codes.iter().any(|c| c.ends_with(want)),
+            "no sample for {want}: {codes:?}"
+        );
+    }
+}

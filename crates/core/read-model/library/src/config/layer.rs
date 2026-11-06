@@ -120,7 +120,8 @@ fn migrate(value: &mut Value, found: u64) {
 /// the higher layer replaces; an agent binding replaces the lower layer's of
 /// the same name wholesale; `companions` names union (a project cannot
 /// unregister a home companion), a name's command the highest layer's that
-/// registers it.
+/// registers it (both are what the mappings' key-by-key merge gives, and a
+/// list replaces).
 pub fn merge_layers(layers: &[Value]) -> Value {
     let mut merged = Value::Map(Vec::new());
     for layer in layers {
@@ -141,19 +142,6 @@ fn merge_one(into: &mut Value, layer: &Value) {
                     }
                     for (name, binding) in agents {
                         *mine.entry(name) = binding.clone();
-                    }
-                } else {
-                    *into.entry(key) = value.clone();
-                }
-            }
-            "companions" => {
-                if let Value::Map(registered) = value {
-                    let mine = into.entry("companions");
-                    if !matches!(mine, Value::Map(_)) {
-                        *mine = Value::Map(Vec::new());
-                    }
-                    for (name, registration) in registered {
-                        *mine.entry(name) = registration.clone();
                     }
                 } else {
                     *into.entry(key) = value.clone();
