@@ -1,0 +1,19 @@
+# The allowed exceptions to `just lint-fixtures` (scripts/exec-mode-check.sh):
+# a test line that gives a file (or a modelled entry) an executable mode on
+# purpose, none of them a program a test runs. One per line:
+#   <file> | <text on the line> | <why>
+# A fake program to run is fixture_program::install_program, never one of these.
+crates/adapters/driven/cache-files/src/lib.test.rs | chmod(&fs, "cache/readonly", 0o500) | a directory made unwritable (searchable only); never run
+crates/adapters/driven/cache-files/src/lib.test.rs | chmod(&fs, "cache/locked", 0o700) | a directory restored to usable; never run
+crates/adapters/driven/cache-files/src/lib.test.rs | chmod(&fs, "cache/readonly", 0o700) | a directory restored to usable; never run
+crates/adapters/driven/content-fs/src/lib.test.rs | file_system::Perms::Exact(Mode::from_bits(0o755)) | the execute bit is what `executable_files` lists; the script is never run
+crates/adapters/driven/remote-git/src/fixtures.test.rs | Perms::Exact(Mode::from_bits(0o755)) | a file with the execute bit for git to commit and the clone to carry; never run
+crates/core/read-model/library/src/write/archive.test.rs | .mode(0o040_755) | the mode field of an in-memory zip entry (a directory), no file written
+crates/core/read-model/library/src/write/archive.test.rs | .mode(0o104_755) | the mode field of an in-memory zip entry, no file written
+crates/core/read-model/library/src/write/archive.test.rs | .mode(0o100_001) | the mode field of an in-memory zip entry, no file written
+crates/core/read-model/library/src/write/archive.test.rs | .mode(0o100_100) | the mode field of an in-memory zip entry, no file written
+crates/core/read-model/library/src/write/archive.test.rs | (0o120_777, true) | the mode of an in-memory zip entry (a symlink), no file written
+crates/root/bin/ctxloom/src/library_cli.test.rs | files::set_mode(project.dir().join(&script), 0o755) | the execute bit is what `skill show` reports of a skill's script; never run
+crates/root/bin/ctxloom/src/library.test.rs | files::set_mode(self.project.join(rel), 0o755) | the execute bit is what a skill package's listing reports; never run
+crates/root/lib/ctxloom-wiring/src/lib.test.rs | executable(&first, "plain", 0o755) | the PATH search finds only executable files; never run
+crates/root/lib/ctxloom-wiring/src/lib.test.rs | executable(&second, "both", 0o755) | the PATH search finds only executable files; never run

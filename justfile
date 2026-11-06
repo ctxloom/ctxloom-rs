@@ -13,6 +13,7 @@ TOP := `git rev-parse --show-toplevel`
 
 import 'gates/gates.just'
 import 'gates/os-gates.just'
+import 'gates/fixture-gates.just'
 import 'gates/arch-gates.just'
 
 # What gates/arch-gates.just takes from this justfile: the arch-lint binary, built
@@ -108,6 +109,7 @@ lint: lint-arch
         exit 1
     fi
     {{TOP}}/scripts/os-cfg-check.sh
+    {{TOP}}/scripts/exec-mode-check.sh
     terse=(-q --message-format=short)
     [ "${VERBOSE:-}" = 1 ] && terse=()
     exec just --justfile {{TOP}}/justfile _run lint workspace cargo \
@@ -157,13 +159,14 @@ clean-target:
 
 # The self-tests of this repository's scripts against fixture trees.
 [group('check')]
-[doc("Self-tests of the scripts: mutants-batch, closeout, ltk rules, output budget")]
+[doc("Self-tests of the scripts: mutants-batch, closeout, ltk rules, output budget, exec-mode check")]
 [no-exit-message]
 selftest:
     @{{TOP}}/scripts/mutants-batch.selftest.sh
     @{{TOP}}/scripts/closeout.selftest.sh
     @{{TOP}}/scripts/ltk-rules-check.sh
     @{{TOP}}/scripts/output-budget.selftest.sh
+    @{{TOP}}/scripts/exec-mode-check.selftest.sh
 
 # Run the ctxloom binary (cargo run, quiet) with the given arguments.
 [group('dev')]

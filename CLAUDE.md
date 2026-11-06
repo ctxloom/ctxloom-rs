@@ -214,6 +214,23 @@ naming its backup), beside taskloom's `state.db` and never the same file (D26). 
 through the `file-system` seam, so a test under a temporary home touches
 nothing else. ctxloom writes no SQL of its own.
 
+## A test's fake program is `fixture_program::install_program`
+
+A test that needs a program on a path (an editor, a `git`, a runtime, a
+companion) calls ctxloom-lib's `fixture_program::install_program(fs, path,
+body)` (a dev-dependency) and runs what it returns. Writing a script with an
+executable mode and exec'ing it is racy in a multithreaded test process (a
+thread's fork holds a copy of the writer: "text file busy", ETXTBSY); the
+program is instead a link to a committed shim that `sh` runs the script
+beside it through, so no file the test wrote is exec'd. No crate keeps a
+helper of its own for this (a thin wrapper that only shapes the call is fine).
+`just lint-fixtures` (`scripts/exec-mode-check.sh`, part of `just lint`) fails
+a test line that gives a file an executable mode, unless
+`scripts/exec-mode-allow.txt` lists it with why (a mode that is data: the bit
+git commits, a listing reports, a PATH search wants). Its self-test is
+`scripts/exec-mode-check.selftest.sh` (`just selftest`). The script and the
+`gates/fixture-gates.just` recipe are copies of ctxloom-lib's.
+
 ## Errors are localizable: a code, args, and an en-US message
 
 Every error implements `angzarr_diagnostic::Diagnostic`: a stable code
