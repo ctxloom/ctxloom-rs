@@ -407,3 +407,11 @@ fn test_merging_no_layers_is_an_empty_mapping_and_a_non_mapping_layer_adds_nothi
     let scalar_layer = Value::Scalar("x".to_string());
     assert_eq!(merge_layers(&[scalar_layer]), Value::Map(Vec::new()));
 }
+
+// Only generation 7 migrates the retired key away: a generation 8 file that
+// still has it keeps it, for the schema to refuse as unknown.
+#[test]
+fn test_generation_8_keeps_essence_max_chars_for_the_schema_to_judge() {
+    let r = read("schema_version: 8\nconfig:\n  essence_max_chars: 4096\n").unwrap();
+    assert_eq!(text(&r.value, "config.essence_max_chars"), "4096");
+}
