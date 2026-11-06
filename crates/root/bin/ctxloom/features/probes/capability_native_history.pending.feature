@@ -2,6 +2,9 @@
 # NOT ported: any of it yet. The feature is @pending: the runner skips it and
 #   no World has its steps. Porting a scenario moves it, unchanged, into
 #   capability_native_history.feature with its steps (gherkin_lint.test.rs).
+#   Left out, not pending: "claude writes through a symlinked projects/ and
+#   leaves the link in place": it runs the vendor binary directly, so it tests
+#   Claude Code, not ctxloom.
 
 @live @probe-p14-native-history
 @pending
@@ -36,15 +39,3 @@ Feature: P14 — claude keeps its conversation history under the config home's p
     Examples:
       | engine      | runtime            | workspace |
       | claude-code | container-rootless | none      |
-
-  # (b) The vendor binary directly, in a throwaway HOME and CLAUDE_CONFIG_DIR
-  # whose projects/ is the layout's own relative link.
-  Scenario Outline: claude writes through a symlinked projects/ and leaves the link in place
-    Given the native-history probe targets "<engine>" under runtime "<runtime>" and workspace "<workspace>" with projects symlinked
-    When it runs one native-history turn
-    Then claude wrote its history through the symlink and left the link in place
-
-    @claude-code @host @ws-none @var-symlinked-projects
-    Examples:
-      | engine      | runtime | workspace |
-      | claude-code | host    | none      |

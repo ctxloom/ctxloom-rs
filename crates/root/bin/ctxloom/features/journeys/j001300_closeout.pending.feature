@@ -2,6 +2,10 @@
 # NOT ported: any of it yet. The feature is @pending: the runner skips it and
 #   no World has its steps. Porting a scenario moves it, unchanged, into
 #   j001300_closeout.feature with its steps (gherkin_lint.test.rs).
+#   The two `session purge --older-than` scenarios below (the sweep reports
+#   every session's fate; the sweep removes only what it can prove is safe)
+#   are new-design scenarios, not Go's, and await product plan step 4
+#   (docs/plans/ctxloom-features.md); they replace Go's sweep scenarios.
 #   The ported scenarios are in the files that say `Ported from journeys/j001300_closeout.feature`.
 
 @doc
@@ -20,17 +24,14 @@ Feature: The close-out — the end of a workstream
   assistant everything the team has ever written down, and nothing that
   Friday's work discovered.
 
-  The one thing she runs at the end is `ctxloom session sweep`, and it is
-  deterministic: a fixed table decides every ended session of the project, and
-  each action goes through the same leaf, with the same refusals, that this
-  file specifies one at a time — worktrees, then reclaim, then retention. It
-  removes what it can prove is safe and reports the rest; the same sessions
-  give the same report. There is deliberately no top-level `cleanup` verb; the
-  sweep lives under the noun it tidies.
+  The one thing she runs at the end is `ctxloom session purge --older-than
+  <age>`, and it is deterministic: a fixed table decides every ended session
+  of the project, with the same refusals as purging one session. It removes
+  what it can prove is safe and reports the rest; the same sessions give the
+  same report. A purged session is gone, from disk and from the listing.
 
   # COMMAND SURFACES THIS FILE COVERS: `ctxloom doctor`, `session worktrees`
-  # and its `purge` leaf, `session purge` and `session transcript purge`, and
-  # `session sweep`.
+  # (listing) and `session purge`.
   #
   # NOTE ON WHAT THE FIXTURES BUILD. A close-out flow is defined almost
   # entirely by what it REFUSES to do, and a refusal cannot be tested against a
@@ -93,51 +94,81 @@ Feature: The close-out — the end of a workstream
     When I run "ctxloom doctor"
     Then the checks warn that the design notes sit in the harp directory's unclassified top level
 
-  # ---- Step 4: retention -------------------------------------------------
-  # Read-only default, the confirmation line's first rule. Inspect always. The
-  # payload assertion is that the report DESTROYED NOTHING — a "report" that
-  # deletes as a side effect is the worst possible version of this leaf.
-  #
-  # `ctxloom session purge <harp>` reports without destroying: with no `--yes`,
-  # nothing on disk or in the session index changes, on a TTY or not.
+  # Report-only by default: with no `--yes`, nothing on disk or in the
+  # session index changes, and the report says what would go and what stays.
   Scenario: Purge shows its work before it destroys anything
+    # substitution: the report-only run exits 4 (confirmation required off a terminal).
     Given a finished session "amber-quiet-heron" whose transcript retention has passed
     And a session "brisk-copper-moth" that finished an hour ago
     When I run "ctxloom session purge amber-quiet-heron"
-    Then the report lists what would be destroyed and what would be kept
+    Then the command exits with code 4
+    And the report lists what would be destroyed and what would be kept
     And every byte of every session is still on disk
 
-  # WHAT "EMPTY" MEANS, and the one thing it may never take. Emptying a session
-  # sweeps the machine-written bulk ctxloom wrote into it — the recorded
-  # conversation. That is the whole point of the verb, and it sets the
-  # deadline this whole flywheel runs against: a lesson still sitting in a
-  # session directory when retention reaches it is a lesson lost.
-  #
-  # Two things survive regardless. The index entry stays, marked purged, because
-  # a session that vanishes from the index is indistinguishable from one that
-  # never existed. And human-authored artifacts are never negotiable — they are
-  # NAMED in the report rather than silently skipped, because a file kept but
-  # never mentioned is a file nobody will ever file.
-  #
-  # The session's output dir — its plans, and the summary an older ctxloom
-  # left there — is the human's, and no destroyer reaches it. What this row
-  # owns is the authored file planted in a real harp directory, which a wrong
-  # implementation would really have destroyed.
+  # Purge takes only what ctxloom wrote. Human-authored files planted in a harp
+  # directory are never taken: the session is refused whole, and each file is
+  # named in the report, because a file kept but never mentioned is a file
+  # nobody will ever file. The output dir is the human's and is never touched.
   Scenario: Emptying a session takes everything ctxloom wrote, and nothing Alice did
+    # substitution: purge is all or nothing, so a session holding authored files is refused whole and keeps its index entry until she files or deletes them.
     Given a finished session "amber-quiet-heron" carrying design notes nobody filed
     When I run "ctxloom session purge amber-quiet-heron --yes"
-    Then the machine-written bulk of "amber-quiet-heron" is gone
+    Then the command fails
+    And the machine-written bulk of "amber-quiet-heron" is still there
     And its output dir is untouched, and its index entry survives
     And her unfiled design notes are still there, and were named in the report
 
-  # Maximal friction on the irreversible case. Engines compact their own
-  # sessions, so a session's transcript is its only record — for a structured
-  # run the canonical transcript is the ONLY copy, and nothing can re-derive
-  # it once the engine's own store has rotated. So a transcript is kept until
-  # the session ended more than session_transcript_retention ago (30 days by
-  # default), and the refusal says that is why. No flag overrides it.
+  # A session's transcript is its only record, so it is kept until the session
+  # ended more than session_transcript_retention ago (30 days by default), and
+  # the refusal says that is why. No flag overrides it.
   Scenario: Emptying a session that ended within its retention refuses, and says why
     Given a session "brisk-copper-moth" that finished an hour ago
     When I run "ctxloom session purge brisk-copper-moth --yes"
     Then ctxloom refuses, naming the session and that its transcript is within its retention
     And every byte of every session is still on disk
+
+  # One command closes the workstream out, and nothing in it is decided by a
+  # model: each session's facts decide its fate by a fixed table. Without
+  # --yes it names each session's fate and destroys nothing.
+  Scenario: The sweep reports every session's fate before it changes anything
+    # substitution: the verb is `session purge --older-than` (`session sweep` is retired); the report-only run exits 4 (confirmation required off a terminal).
+    Given a finished session "amber-quiet-heron" whose transcript retention has passed
+    And a finished session "brisk-copper-moth" whose transcript retention has passed
+    And every session has been idle for 120 days
+    When I run "ctxloom session purge --older-than 90d"
+    Then the command exits with code 4
+    And the sweep report names "amber-quiet-heron" and "brisk-copper-moth"
+    And every byte of every session is still on disk
+
+  # Purging by age inherits every refusal of purging one session, over a mixed
+  # fixture where each refusal has something real to refuse. A running session
+  # and one whose liveness nothing can prove are skipped whole. A session
+  # holding uncommitted work is skipped whole, its work in place. A kept
+  # session is skipped, and the report names the command that releases it.
+  # The rest are gone. An internal one-shot is nobody's only record of
+  # anything, so it goes at any transcript age.
+  Scenario: The sweep removes only what it can prove is safe, and says why it left the rest
+    # substitution: the verb is `session purge --older-than` (`session sweep` is retired); a purged session is gone from the listing, and a session holding uncommitted work keeps its clean worktree too.
+    Given a finished session "amber-quiet-heron" whose transcript retention has passed
+    And a finished session "brisk-copper-moth" marked keep
+    And an internal one-shot session "gray-oneshot-wisp" that finished an hour ago
+    And a finished session "olive-dirty-finch" whose transcript retention has passed
+    And session "olive-dirty-finch" left a clean scratch worktree
+    And session "olive-dirty-finch" left a scratch worktree holding uncommitted work
+    And a session "teal-running-wren" that is still running
+    And session "teal-running-wren" left a scratch worktree of its own
+    And a session "slate-unproven-vole" nothing can prove the liveness of
+    And session "slate-unproven-vole" left a scratch worktree of its own
+    And every session has been idle for 120 days
+    When I run "ctxloom session purge --older-than 90d --yes"
+    Then the sweep skipped "teal-running-wren" and "slate-unproven-vole" without touching either
+    And the uncommitted work is still there, spared in place
+    And the report says why each spared worktree was left alone
+    And the machine-written bulk of "amber-quiet-heron" is gone
+    And the machine-written bulk of "gray-oneshot-wisp" is gone
+    And the sweep kept the transcript of "brisk-copper-moth" and named "ctxloom session keep brisk-copper-moth --undo"
+    And the sweep kept the transcript of "olive-dirty-finch" and named "ctxloom-wt-wip"
+    When I run "ctxloom session list --all"
+    Then the output does not contain "amber-quiet-heron"
+    And the output does not contain "gray-oneshot-wisp"
+    And the output contains "olive-dirty-finch"

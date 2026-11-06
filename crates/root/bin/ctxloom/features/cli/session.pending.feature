@@ -3,6 +3,9 @@
 #   no World has its steps. Porting a scenario moves it, unchanged, into
 #   session.feature with its steps (gherkin_lint.test.rs).
 #   The ported scenarios are in the files that say `Ported from cli/session.feature`.
+#   Left out, not pending: the `session remove` Rule (retired: `session purge`
+#   is the one destroyer, cli/session_purge.feature) and the `session adopt`
+#   Rule (dropped: it repaired transcripts a Go defect orphaned).
 
 @doc
 @pending
@@ -25,19 +28,15 @@ Feature: session — the record of what your assistant did, and the tools to pru
     ctxloom session list [--state live|ended|unknown]
     ctxloom session show <harp>
     ctxloom session edit <harp> --name <new>
-    ctxloom session remove <harp> [--yes]
     ctxloom session keep <harp> [--undo]
-    ctxloom session adopt <harp> [--yes]
     ctxloom session search <word>... [--state live|ended|unknown]
     ctxloom session transcript              (bare: lists)
     ctxloom session transcript list [<harp>]
     ctxloom session transcript show <harp>
     ctxloom session transcript watch <harp>
-    ctxloom session transcript purge <harp> [--yes]
     ctxloom session worktrees               (bare: lists)
     ctxloom session worktrees list [<harp>]
-    ctxloom session worktrees purge <harp> [--yes]
-    ctxloom session purge <harp> [--yes]
+    ctxloom session purge <harp> | --older-than <age> [--yes]
     ctxloom session approvals
 
   Rule: Reading the record touches nothing
@@ -178,60 +177,6 @@ Feature: session — the record of what your assistant did, and the tools to pru
       Then the command fails
       And the output contains "no-such-harp"
 
-  Rule: Adopt re-indexes orphaned vendor transcripts into a harp's lineage
-
-    A rotation the index never recorded — chiefly a claude-code /clear
-    before the rotation-lineage fix — can leave a vendor transcript on disk
-    with no index row and no rotation record. `session adopt` scans the
-    same claude project directory as the harp's current transcript for
-    files like that, and reports which ones belong in this harp's lineage.
-
-    Without --yes this only reports; nothing on disk or in the session
-    index changes. --yes seeds the harp's Rotations through the session
-    store.
-
-    # Tabled by format: `session adopt` is wired to emit(), so off a terminal
-    # (which this harness always is) the no-flag row now gets the JSON
-    # sessionAdoptResult, not renderSessionAdopt's "would adopt" verb-tensed
-    # summary line. "would adopt" is prose the text renderer builds from the
-    # candidate's verdict ("adopt") plus the dry-run/--yes state; the JSON
-    # row asserts that same underlying verdict directly instead.
-    Scenario Outline: A dry run reports the orphan and changes nothing
-      Given an initialized ctxloom project
-      And a recorded session "amber-swift-owl" with a claude vendor transcript spanning "2026-04-10T00:00:00Z" to "2026-04-10T01:00:00Z"
-      And an orphaned claude vendor transcript "orphan-one" for "amber-swift-owl" spanning "2026-04-05T00:00:00Z" to "2026-04-05T01:00:00Z"
-      When I run "ctxloom <flags> session adopt amber-swift-owl"
-      Then the command succeeds
-      And the output reports "candidates[session_id=orphan-one].session_id" as "<names the orphan>"
-      And the output reports "candidates[session_id=orphan-one].verdict" as "<names the verdict>"
-
-      @json-default
-      Examples: no --format at all takes the derived default off a terminal; an explicit one wins in both directions
-        | flags         | names the orphan | names the verdict |
-        |               | orphan-one        | adopt              |
-        | --format json | orphan-one        | adopt              |
-        | --format text | orphan-one        | would adopt        |
-
-    Scenario: --yes seeds the lineage through the store
-      Given an initialized ctxloom project
-      And a recorded session "amber-swift-owl" with a claude vendor transcript spanning "2026-04-10T00:00:00Z" to "2026-04-10T01:00:00Z"
-      And an orphaned claude vendor transcript "orphan-one" for "amber-swift-owl" spanning "2026-04-05T00:00:00Z" to "2026-04-05T01:00:00Z"
-      When I run "ctxloom session adopt amber-swift-owl --yes"
-      Then the command succeeds
-      And the output contains "orphan-one"
-
-    # The session's engine decides what adopt can read: one whose transcript
-    # readers cannot say when their records were written is refused by that
-    # missing capability, naming the engine, rather than silently scanning
-    # nothing.
-    Scenario: A backend without a readable store is refused, naming it
-      Given an initialized ctxloom project
-      And a recorded session "amber-swift-owl" for backend "mock"
-      When I run "ctxloom session adopt amber-swift-owl"
-      Then the command fails
-      And the output contains "mock"
-      And the output contains "supplies no transcript reader that can say when its records were written"
-
   Rule: The transcript is a population of its own
 
     A session's recorded conversation has its own listing, its own stream and
@@ -278,38 +223,6 @@ Feature: session — the record of what your assistant did, and the tools to pru
       When I run "ctxloom session watch amber-swift-owl"
       Then the command fails
       And the output contains "unknown command"
-
-  Rule: Delete removes a session, all of it
-
-    Purge empties a session and leaves it listed. Delete removes it: the
-    index entry and the transcript. Deleting only the index entry would leave
-    every byte on disk and the session merely unfindable, which is a delete
-    from the index's point of view and from nobody else's.
-
-    Authored files are outside both verbs. They are never destroyed, and the
-    report names them so a kept file is never silently kept. The output dir
-    is the human's and is left where it is.
-
-    Scenario: Delete reports before it removes
-      Given an initialized ctxloom project
-      And a finished session "amber-swift-owl" with a transcript
-      When I run "ctxloom session remove amber-swift-owl"
-      Then the command succeeds
-      And the output contains "removed nothing"
-      And the output contains "ctxloom session remove amber-swift-owl --yes"
-      And the home file ".ctxloom/sessions/amber-swift-owl/transcripts/transcript.jsonl" exists
-      When I run "ctxloom session list --all"
-      Then the output contains "amber-swift-owl"
-
-    Scenario: --yes removes the index entry and the transcript
-      Given an initialized ctxloom project
-      And a finished session "amber-swift-owl" with a transcript and a summary an older ctxloom left
-      When I run "ctxloom session remove amber-swift-owl --yes"
-      Then the command succeeds
-      And the home file ".ctxloom/sessions/amber-swift-owl/transcripts/transcript.jsonl" does not exist
-      And the output file "essence.md" of session "amber-swift-owl" exists
-      When I run "ctxloom session list --all"
-      Then the output does not contain "amber-swift-owl"
 
   Rule: Pending approvals are readable from any terminal, and only readable
 
