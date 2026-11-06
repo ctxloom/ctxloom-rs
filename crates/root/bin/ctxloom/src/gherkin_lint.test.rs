@@ -33,12 +33,20 @@
 //! steps all share), and run `just test`: the discovery test runs it, this
 //! lint compares it. A step the Rust port must say differently is a
 //! `# substitution:`, never a silent edit.
+//!
+//! Go's scenarios not yet ported are copied, as Go wrote them, into
+//! `<name>.pending.feature` beside the port (`<name>.feature`), with
+//! `@pending` on its `Feature:` and no `# world:` line: no World has their
+//! steps, so the runner skips the file, and this lint still compares its
+//! text with Go's. The file name and the tag go together, and `@pending` goes
+//! on no Rule or scenario (the runner skips whole files only). Porting one
+//! moves it, unchanged, out of the pending file into the port.
 
 use std::path::{Path, PathBuf};
 
 use cucumber::gherkin::{Examples, Feature, GherkinEnv, Scenario, Step};
 
-use super::gherkin_common::{feature_files, features_dir, header_values, world_of};
+use super::gherkin_common::{feature_files, features_dir, header_values, is_pending, world_of};
 use super::host_var;
 use crate::tests::files;
 
@@ -159,7 +167,11 @@ fn parse(text: &str) -> Result<Feature, String> {
 /// The header's findings: a world, the Go files ported from, what is left out.
 fn header_findings(text: &str) -> Vec<String> {
     let mut found = Vec::new();
-    if let Err(e) = world_of(text) {
+    if is_pending(text) {
+        if !header_values(text, "# world:").is_empty() {
+            found.push("a @pending feature runs in no World; drop its `# world:` line".to_string());
+        }
+    } else if let Err(e) = world_of(text) {
         found.push(e);
     }
     let left_out = header_values(text, "# NOT ported:");
@@ -272,10 +284,43 @@ fn go_units(dir: &Path, rel: &str) -> Result<Vec<Unit>, String> {
     Ok(units(&parse(&text).map_err(|e| format!("{rel}: {e}"))?))
 }
 
+/// The pending convention's findings: the file name and the feature's tag go
+/// together, and no Rule or scenario carries the tag.
+fn pending_findings(rel: &str, text: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let named = rel.ends_with(".pending.feature");
+    match (named, is_pending(text)) {
+        (true, false) => {
+            found.push("a .pending.feature without @pending on its Feature".to_string())
+        }
+        (false, true) => found
+            .push("@pending on the Feature of a file not named <name>.pending.feature".to_string()),
+        _ => {}
+    }
+    if let Ok(feature) = parse(text) {
+        let tagged = |tags: &[String]| tags.iter().any(|t| t == "pending");
+        for rule in feature.rules.iter().filter(|r| tagged(&r.tags)) {
+            found.push(format!("Rule {:?}: @pending goes on the Feature, not a Rule (the runner skips whole files)", rule.name));
+        }
+        let scenarios = feature
+            .scenarios
+            .iter()
+            .chain(feature.rules.iter().flat_map(|r| &r.scenarios));
+        for s in scenarios.filter(|s| tagged(&s.tags)) {
+            found.push(format!(
+                "scenario {:?}: @pending goes on the Feature of a .pending.feature, not a scenario",
+                s.name
+            ));
+        }
+    }
+    found
+}
+
 /// All the findings of one Rust feature file; `go` is the Go checkout, when
 /// there is one.
 fn findings(rel: &str, text: &str, go: Option<&Path>) -> Vec<String> {
     let mut found = header_findings(text);
+    found.extend(pending_findings(rel, text));
     let sources = ported_from(text);
     let feature = parse(text);
     let all_new = feature.as_ref().is_ok_and(|f| {
@@ -387,6 +432,28 @@ mod lint {
         let ok = "# world: base\n# NOT ported: nothing\nFeature: f\n";
         assert!(header_findings(ok).is_empty());
         assert!(header_findings("# world: nope\n# NOT ported:\n").len() == 2);
+    }
+
+    #[test]
+    fn a_pending_feature_needs_no_world_and_refuses_one() {
+        let pending = "# NOT ported: any of it yet\n\n@pending\nFeature: f\n";
+        assert!(header_findings(pending).is_empty());
+        let with_world = format!("# world: base\n{pending}");
+        assert_eq!(header_findings(&with_world).len(), 1);
+    }
+
+    #[test]
+    fn the_pending_name_and_tag_go_together_and_only_on_the_feature() {
+        let pending = "@pending\nFeature: f\n  Scenario: one\n    Then x\n";
+        let plain = "Feature: f\n  Scenario: one\n    Then x\n";
+        assert!(pending_findings("cli/a.pending.feature", pending).is_empty());
+        assert!(pending_findings("cli/a.feature", plain).is_empty());
+        assert_eq!(pending_findings("cli/a.feature", pending).len(), 1);
+        assert_eq!(pending_findings("cli/a.pending.feature", plain).len(), 1);
+        let on_scenario = "Feature: f\n  @pending\n  Scenario: one\n    Then x\n";
+        assert_eq!(pending_findings("cli/a.feature", on_scenario).len(), 1);
+        let on_rule = "Feature: f\n  @pending\n  Rule: r\n    Scenario: one\n      Then x\n";
+        assert_eq!(pending_findings("cli/a.feature", on_rule).len(), 1);
     }
 
     #[test]
