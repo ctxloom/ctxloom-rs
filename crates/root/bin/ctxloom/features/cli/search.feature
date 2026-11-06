@@ -296,3 +296,18 @@ Feature: search — finding content by name, tag and type, here and upstream
         |               | 1            | bundle                  |
         | --format json | 1            | bundle                  |
         | --format text | Results (1): | demo                    |
+
+  Rule: A search that matches nothing says so
+
+    "No such content" and "the search never ran" must not look the same, so
+    an empty result is reported as one, never as no output at all.
+
+    Scenario: A search that matches nothing says so, rather than printing nothing
+      # new: the empty answer, which is the one a diagnosis reaches for first.
+      Given an initialized ctxloom project
+      And a bundle "demo" exists
+      And a fragment "testing" in bundle "demo" exists
+      When I run "ctxloom search --local no-such-content-anywhere"
+      Then the command succeeds
+      And the output reports "count" as "0"
+      And the search said, in so many words, that nothing matched

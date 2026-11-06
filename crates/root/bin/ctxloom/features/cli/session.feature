@@ -4,6 +4,7 @@
 #   Left out: the `session remove` Rule (retired: `session purge`
 #   is the one destroyer, cli/session_purge.feature) and the `session adopt`
 #   Rule (dropped: it repaired transcripts a Go defect orphaned).
+# Ported from journeys/j001200_recall.feature (its empty search, the last scenario of the reading Rule)
 
 @doc
 @pending
@@ -126,6 +127,16 @@ Feature: session — the record of what your assistant did, and the tools to pru
       When I run "ctxloom session list --state running"
       Then the command fails
       And the output contains "live, ended, unknown"
+
+    # "Nothing matched" and "the search did not run" must not look the same:
+    # an empty result is said in so many words, never answered with no output.
+    Scenario: A query that matches nothing says so rather than printing nothing
+      # substitution: a recorded session the query does not match stands in for the journey's March fixture.
+      Given an initialized ctxloom project
+      And a recorded session "amber-swift-owl"
+      When I run "ctxloom session search J001200-MATCHES-ABSOLUTELY-NOTHING"
+      Then the command succeeds
+      And ctxloom says plainly that nothing matched
 
   Rule: Renaming is a field assignment, so it rides `edit`
 

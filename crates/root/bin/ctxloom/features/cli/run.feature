@@ -1,5 +1,6 @@
 # world: base
 # Ported from cli/run.feature (rev f36e8dfb2)
+# Ported from journeys/j001200_recall.feature (rev f36e8dfb2): resuming a session, the last Rule
 # NOT ported: the scenarios tagged @pending (the mock engine's recorded input,
 #   one-shot, dry-run, tag and agent selection, deny_tools, the opencode TUI):
 #   they need `run` to launch an engine. Plan override: clap's usage error says
@@ -371,3 +372,26 @@ Feature: run — assembling a project's context and handing it to an engine
       When Alice runs the opencode label interactively with the prompt "hello tui"
       Then the scripted opencode TUI ran on a terminal with the prompt as a flag, the guidance and Alice's preferences in its config dir
       And the bridge plugin in its config dir fires ctxloom's session-start and mail-drain for opencode, and the TUI is told its wake socket
+
+  @pending
+  Rule: Resuming a session folds in its recorded conversation, and leaves the record as it was
+
+    `run --session <harp>` reads the session's recorded conversation, the one
+    ctxloom keeps whatever engine held it, and folds it into the run's
+    context. The fixture's session carries one marker in its title and
+    another only in its conversation, so "found by its title" and "resumed
+    with its conversation" are told apart.
+
+    Scenario: Resuming the March session puts that conversation back in front of a model
+      # substitution: the journey's March fixture is a Given of the scenario, not a Background.
+      Given a design question everyone remembers deciding and nobody remembers why
+      When I run "ctxloom run --session amber-quiet-heron --dry-run -p default"
+      Then the assembled context carries the conversation she had in March
+
+    # A resume that consumed, truncated or rewrote what it read would fail the
+    # second person to ask. The record is read back by its bytes.
+    Scenario: Recalling a session does not consume it
+      # substitution: the journey's March fixture is a Given of the scenario, not a Background.
+      Given a design question everyone remembers deciding and nobody remembers why
+      When I run "ctxloom run --session amber-quiet-heron --dry-run -p default"
+      Then the canonical transcript she recalled from is still on disk, untouched

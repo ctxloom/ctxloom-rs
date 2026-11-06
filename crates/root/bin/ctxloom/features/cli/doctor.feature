@@ -1,6 +1,7 @@
 # world: base
 # Ported from cli/doctor.feature
-# NOT ported: nothing; every rule is ported, the credentials rule
+# Ported from journeys/j001300_closeout.feature (rev f36e8dfb2): authored files in a session's directory, the last Rule, tagged @pending
+# NOT ported: the Rule tagged @pending (a doctor check Rust lacks); every other rule is ported, the credentials rule
 #   (DOCTOR-CHECK-CREDENTIALS-m5) included. Plan overrides: the trust-store
 #   half of HOOKS-TRUST-d4 is dead since ADR 0037 and the marker is kept for
 #   the hooks half; run-end and runner/MCP-state checks are S6's; the lockstep
@@ -173,6 +174,20 @@ Feature: doctor — the deterministic diagnosis, and the one finding that fails 
       Then the command succeeds
       And the JSON output array "checks" contains an object whose "marker" is "DOCTOR-CHECK-GITIGNORE-f6" and whose "status" is "ok"
 
+    Scenario: A blanket rule spelled as a glob is the same finding
+      # new: `.ctxloom/*` hides the project's content as surely as `.ctxloom/`, and doctor names the command that replaces it.
+      Given an initialized ctxloom project
+      And the project already has the file ".gitignore":
+        """
+        .ctxloom/*
+        """
+      When I run "ctxloom doctor"
+      Then the command succeeds
+      And the output contains "ctxloom manage gitignore install"
+      When I run "ctxloom --format json doctor"
+      Then the command succeeds
+      And the JSON output array "checks" contains an object whose "marker" is "DOCTOR-CHECK-GITIGNORE-f6" and whose "status" is "warn"
+
   Rule: The one broken state nothing else can see
 
     A settings file that LAUNCHES ctxloom as an MCP server is invisible
@@ -313,3 +328,20 @@ Feature: doctor — the deterministic diagnosis, and the one finding that fails 
       When I run "ctxloom doctor"
       Then the command succeeds
       And the output contains "a process ctxloom does not own"
+
+  @pending
+  Rule: Authored files in a session's directory are named, with where they belong
+
+    A session's directory holds machine state only, row by row; readable
+    outputs belong in the session's output dir. A file a person or an agent
+    wrote at the directory's top level is classified by no row: on the host it
+    sits where nobody looks, and a containerized agent writing there loses it
+    when the container exits. Doctor warns about each one and names the output
+    dir it belongs in.
+
+    Scenario: Authored artifacts in the unclassified middle of a harp directory are flagged
+      # substitution: the project Given is the scenario's own, not the journey's Background.
+      Given an initialized ctxloom project
+      And a finished session "amber-quiet-heron" carrying design notes nobody filed
+      When I run "ctxloom doctor"
+      Then the checks warn that the design notes sit in the harp directory's unclassified top level

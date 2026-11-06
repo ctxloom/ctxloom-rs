@@ -303,24 +303,6 @@ fn home_file(w: &mut World, step: &Step, rel: String) {
         .write_home(&rel, &format!("{}\n", doc(step)));
 }
 
-/// Go's fixture: the exact line the gitignore check calls a superseded blanket
-/// rule, under which `.ctxloom/content` can never be committed.
-#[given("the project still carries the superseded blanket ctxloom ignore rule")]
-fn blanket_ignore(w: &mut World) {
-    w.common.project.write(".gitignore", ".ctxloom/*\n");
-}
-
-#[then("the checks name the ignore rule and the command that retires it")]
-fn checks_name_the_rule(w: &mut World) {
-    let said = w.ran().said();
-    for needle in [".ctxloom", "manage gitignore install"] {
-        assert!(
-            said.contains(needle),
-            "doctor never said {needle:?}: {said}"
-        );
-    }
-}
-
 #[given("a malformed ctxloom config")]
 fn malformed(w: &mut World) {
     w.common.project.write(

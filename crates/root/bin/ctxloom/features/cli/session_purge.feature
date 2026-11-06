@@ -171,3 +171,18 @@ Feature: session purge — the one destroyer, and a purged session is gone
       When I run "ctxloom session purge --yes"
       Then the command fails
       And the machine-written bulk of "amber-quiet-heron" is still there
+
+  Rule: Purge takes only what ctxloom wrote
+
+    A session holding a file the human wrote is refused whole, and the report
+    names each file, because a file kept but never mentioned is a file nobody
+    will ever file. The session's output dir is never touched.
+
+    Scenario: Emptying a session takes everything ctxloom wrote, and nothing Alice did
+      # substitution: the project Given is the Background's; purge is all or nothing, so a session holding authored files is refused whole and keeps its index entry until she files or deletes them.
+      Given a finished session "amber-quiet-heron" carrying design notes nobody filed
+      When I run "ctxloom session purge amber-quiet-heron --yes"
+      Then the command fails
+      And the machine-written bulk of "amber-quiet-heron" is still there
+      And its output dir is untouched, and its index entry survives
+      And her unfiled design notes are still there, and were named in the report
