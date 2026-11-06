@@ -58,3 +58,21 @@ fn a_commands_failure_is_its_diagnostic_and_its_exit_code() {
     assert_eq!(error.code(), "ctxloom-cli-unknown-format");
     assert_eq!(error.args().len(), 1);
 }
+
+// A catalog test elsewhere renders these: one value of each error here.
+#[test]
+fn the_samples_are_one_of_each_error_here() {
+    let codes: Vec<String> = super::diagnostic_samples()
+        .iter()
+        .map(|sample| sample.code().to_string())
+        .collect();
+    assert_eq!(
+        codes,
+        [
+            "ctxloom-cli-usage",
+            "ctxloom-cli-unknown-verb",
+            "ctxloom-cli-unknown-format",
+            "ctxloom-cli-output"
+        ]
+    );
+}
