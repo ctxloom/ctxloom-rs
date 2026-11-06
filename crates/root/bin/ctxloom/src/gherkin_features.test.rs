@@ -1,7 +1,8 @@
 //! Feature discovery: every `.feature` file under `features/` is run, with the
 //! World its `# world:` header line names (`gherkin_common::world_of`). Adding
 //! a feature needs no hand-written test; `gherkin_lint.test.rs` has the
-//! convention and the parity lint.
+//! convention and the parity lint. A `@pending` feature (Go's scenarios not
+//! yet ported, `<name>.pending.feature`) has no World and is not run.
 //!
 //! The features run concurrently, a thread each up to the machine's cores
 //! (each cucumber run also runs 4 scenarios at once). `GHERKIN_ONLY=<text>`
@@ -10,14 +11,18 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
-use super::gherkin_common::{feature_files, features_dir, world_of};
+use super::gherkin_common::{feature_files, features_dir, is_pending, world_of};
 use super::host_var;
 use crate::tests::files;
 
-/// Run one feature with its World; whether it passed.
+/// Run one feature with its World; whether it passed. A pending feature is
+/// skipped.
 fn run_one(rel: &str) -> Result<(), String> {
     let path = features_dir().join(rel);
     let text = files::read(&path).map_err(|e| format!("{rel}: {e}"))?;
+    if is_pending(&text) {
+        return Ok(());
+    }
     let passed = match world_of(&text).map_err(|e| format!("{rel}: {e}"))? {
         "base" => super::gherkin::run(&path),
         "surfaces" => super::gherkin_surfaces::run(&path),
