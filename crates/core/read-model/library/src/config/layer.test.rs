@@ -176,6 +176,13 @@ fn test_a_companions_map_at_generation_8_or_9_is_left_to_the_schema() {
     // A list at the current generation is a schema violation, not a note.
     let r = read("schema_version: 9\ncompanions: [acme]\n").unwrap();
     assert!(r.notes.is_empty());
+    assert!(
+        r.value.get("companions").is_some(),
+        "a current file is not migrated: the schema judges the list"
+    );
+    // One generation below, an empty list is dropped by the migration.
+    let below = read("schema_version: 8\ncompanions: []\n").unwrap();
+    assert!(below.value.get("companions").is_none());
 }
 
 // merge_with: lists the higher layer sets replace the lower's (koanf's default)

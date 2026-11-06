@@ -106,10 +106,9 @@ fn migrate(value: &mut Value, found: u64) {
     }
     // 8 to 9: companions are registered with their command. A list with names
     // in it was refused before this; an empty one registers nothing.
-    if found < 9
-        && value
-            .get("companions")
-            .is_some_and(|c| !matches!(c, Value::Map(_)))
+    if value
+        .get("companions")
+        .is_some_and(|c| !matches!(c, Value::Map(_)))
     {
         value.remove("companions");
     }
