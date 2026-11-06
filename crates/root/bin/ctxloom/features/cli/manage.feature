@@ -30,7 +30,8 @@ Feature: manage — wiring ctxloom into a project, and taking it back out
   including the refusals and the shapes that only matter to a machine. The
   narrative version — Alice's first hour, and satisfying herself she can back
   out — is journeys/j000100_adopt_and_back_out.feature, which asserts what a PERSON
-  sees.
+  sees; she sets ctxloom up with `init` and never wires her assistant's files
+  in, so the wiring, its report and its removal are asserted only here.
 
   Rule: Installing scaffolds the project for one engine, and validates which
 
@@ -51,6 +52,7 @@ Feature: manage — wiring ctxloom into a project, and taking it back out
     # of them for its recorded engine fails here.
     # (ruled 2026-09-21: sessions carry their surfaces)
     Scenario Outline: Installing scaffolds the project and writes no engine file
+      # substitution: the nested .gitignore is also asserted to name the private cache, the rule that keeps ctxloom's working state out of source control.
       Given an empty project directory
       When Alice installs ctxloom for <engine>:
         """
@@ -60,6 +62,7 @@ Feature: manage — wiring ctxloom into a project, and taking it back out
       And the file ".ctxloom/config.yaml" is valid YAML
       And the file ".ctxloom/config.yaml" contains "<engine>"
       And the file ".ctxloom/.gitignore" contains "ctxloom"
+      And the file ".ctxloom/.gitignore" contains "/cache"
       And the file ".claude/settings.json" does not exist
       And the file ".mcp.json" does not exist
       And the file "CLAUDE.md" does not exist
@@ -584,6 +587,7 @@ Feature: manage — wiring ctxloom into a project, and taking it back out
     # (ruled 2026-09-21: sessions carry their surfaces — the harness this
     # strips is what an explicit materialize wrote)
     Scenario: Uninstall strips the harness but keeps the project's own content
+      # substitution: the context file materialize wrote is asserted gone too, and the project's default profile asserted kept beside its config.
       Given an empty project directory
       When Alice wires ctxloom in:
         """
@@ -602,8 +606,10 @@ Feature: manage — wiring ctxloom into a project, and taking it back out
       # ctxloom created the settings file in this empty project, so the empty
       # plan removes it outright: nothing of the harness is left to strip.
       And the file ".claude/settings.json" does not exist
+      And the file "CLAUDE.md" does not exist
       And the file ".mcp.json" registers no MCP server named "ctxloom"
       And the file ".ctxloom/config.yaml" exists
+      And the file ".ctxloom/content/bundles/v2/project/profiles/default.yaml" exists
 
     # THE GATE FOR THE DELIVERY LAYER: uninstall is the empty plan over the
     # ownership record, so nothing of the harness is left behind; a run
