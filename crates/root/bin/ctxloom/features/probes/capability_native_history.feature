@@ -1,8 +1,6 @@
-# Ported from probes/capability_native_history.feature (rev f36e8dfb2): every scenario, as Go wrote them.
-# NOT ported: any of it yet. The feature is @pending: the runner skips it and
-#   no World has its steps. Porting a scenario moves it, unchanged, into
-#   capability_native_history.feature with its steps (gherkin_lint.test.rs).
-#   Left out, not pending: "claude writes through a symlinked projects/ and
+# Ported from probes/capability_native_history.feature (rev f36e8dfb2)
+# NOT ported: any of it yet (the Feature is @pending).
+#   Left out: "claude writes through a symlinked projects/ and
 #   leaves the link in place": it runs the vendor binary directly, so it tests
 #   Claude Code, not ctxloom.
 

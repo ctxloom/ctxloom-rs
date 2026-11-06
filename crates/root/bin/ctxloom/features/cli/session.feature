@@ -1,9 +1,7 @@
-# Ported from cli/session.feature (rev f36e8dfb2): the scenarios not yet ported, as Go wrote them.
-# NOT ported: any of it yet. The feature is @pending: the runner skips it and
-#   no World has its steps. Porting a scenario moves it, unchanged, into
-#   session.feature with its steps (gherkin_lint.test.rs).
-#   The ported scenarios are in the files that say `Ported from cli/session.feature`.
-#   Left out, not pending: the `session remove` Rule (retired: `session purge`
+# Ported from cli/session.feature (rev f36e8dfb2)
+# NOT ported: any of it yet (the Feature is @pending).
+#   The rest of Go's file is in the files that say `Ported from cli/session.feature`.
+#   Left out: the `session remove` Rule (retired: `session purge`
 #   is the one destroyer, cli/session_purge.feature) and the `session adopt`
 #   Rule (dropped: it repaired transcripts a Go defect orphaned).
 

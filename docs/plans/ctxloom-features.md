@@ -21,16 +21,18 @@ feature file; it belongs in git history.
 
 ## Where it stands
 
-- **Pending copies.** Every Go scenario not yet ported sits beside its port, verbatim, in
-  `crates/root/bin/ctxloom/features/**/<name>.pending.feature`. The Feature is tagged `@pending`
-  and has no `# world:`; the runner skips it and the parity lint still compares it with Go's
-  (commit `80e01ca`, on `main`).
+- **Pending scenarios.** Every Go scenario not yet ported sits, verbatim, in the Rust file that
+  ports its Go file (`crates/root/bin/ctxloom/features/**/<name>.feature`), tagged `@pending` on
+  the scenario or on its Rule. A file none of whose scenarios is ported yet is `@pending` on its
+  Feature and has no `# world:`. The runner leaves pending scenarios out, and the parity lint
+  still compares each with Go's (convention: `gherkin_lint.test.rs`). The journeys still keep
+  theirs in `journeys/<name>.pending.feature` until each is folded into its port.
 - **Not copied:** j002500 and j002600 (taskloom's), and the probes that test Claude Code itself.
   The two probe files gherkin 0.16 could not parse (`capability_context_approaches`,
   `engine_isolation_matrix`) are pending. One description word in each Go file was lowercased
   so they parse.
 - **Sessions rewritten** to the rulings below: `cli/session_purge.feature`,
-  `cli/session_worktrees.feature`, `journeys/j001300_closeout.feature` and their pending files.
+  `cli/session_worktrees.feature`, `journeys/j001300_closeout.feature` and its pending file.
   Eleven scenarios fail against today's binary until the product follows (step 4).
 
 ## Decided
@@ -170,15 +172,15 @@ feature file; it belongs in git history.
    - Assert clap's exact wording until codes replace English.
    - Make the bundle-fixture step refuse keys it does not translate.
 3. **The vocabulary pass over the features.** Rename to the decided names in ported and pending
-   files, and strip implementation history from every comment. Pending files then carry
+   scenarios, and strip implementation history from every comment. Pending scenarios then carry
    `# substitution:` lines where they differ from Go.
 4. **The product follows the features.** Each item below is a feature change, then the code that
    turns it green:
    - **sessions** (already rewritten; the eleven red scenarios);
    - **the llm rework:**
      - `cli/llm.feature`'s credential refusal moves to `engines:`;
-     - `llm.pending` is dropped, except the credential rule and what `engine list`/`show`
-       covers;
+     - `cli/llm.feature`'s @pending scenarios are dropped, except the credential rule and what
+       `engine list`/`show` covers;
      - `--llm` becomes `--engine`, plus `--model`, `--effort` and `--permissions` on agents;
      - `llm:` fixtures become `engines:`;
      - run and profile take `--agent` or `--engine`;

@@ -1,7 +1,5 @@
-# Ported from probes/capability_hook_firing.feature (rev f36e8dfb2): every scenario, as Go wrote them.
-# NOT ported: any of it yet. The feature is @pending: the runner skips it and
-#   no World has its steps. Porting a scenario moves it, unchanged, into
-#   capability_hook_firing.feature with its steps (gherkin_lint.test.rs).
+# Ported from probes/capability_hook_firing.feature (rev f36e8dfb2)
+# NOT ported: any of it yet (the Feature is @pending).
 
 @live
 @pending

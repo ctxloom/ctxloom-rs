@@ -1,7 +1,5 @@
-# Ported from cli/content_distill.feature (rev f36e8dfb2): every scenario, as Go wrote them.
-# NOT ported: any of it yet. The feature is @pending: the runner skips it and
-#   no World has its steps. Porting a scenario moves it, unchanged, into
-#   content_distill.feature with its steps (gherkin_lint.test.rs).
+# Ported from cli/content_distill.feature (rev f36e8dfb2)
+# NOT ported: any of it yet (the Feature is @pending).
 
 @pending
 Feature: Distilling authored content — does the compression happen, is it kept, and is a bad one refused?

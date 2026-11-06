@@ -1,10 +1,8 @@
 # world: surfaces
-# Ported from cli/materialize.feature
-# NOT ported: these Go scenarios, and why:
-#   - "A run in a project with materialized context warns and names the
-#     remedy": needs a running mock engine (S6).
-
-
+# Ported from cli/materialize.feature (rev f36e8dfb2)
+# NOT ported: the Rule tagged @pending, "A run says so when the project holds
+#   materialized context": it needs a running mock engine (S6).
+@doc
 Feature: materialize — the profiles' surfaces written at rest, any subset of them
 
   `ctxloom materialize` writes the assembled profiles into a directory as
@@ -90,3 +88,19 @@ Feature: materialize — the profiles' surfaces written at rest, any subset of t
       When I run "ctxloom materialize dev --backend mock --yes"
       Then the command succeeds
       And the file "MOCK_CONTEXT.md" contains "FRAGMENT-BODY-testing"
+
+  @pending
+  Rule: A run says so when the project holds materialized context
+
+    Scenario: A run in a project with materialized context warns and names the remedy
+      Given an initialized ctxloom project
+      And a bundle "demo" exists
+      And a fragment "testing" in bundle "demo" exists
+      And a profile "dev" with bundle "demo"
+      And the mock LLM responds "MOCK-REPLY"
+      When I run "ctxloom materialize dev --backend mock --surface context --yes"
+      Then the command succeeds
+      When I run "ctxloom run --one-shot --profile dev unicorn-prompt"
+      Then the command succeeds
+      And the output contains "MOCK-REPLY"
+      And the output contains "ctxloom materialize --release --surface context"
