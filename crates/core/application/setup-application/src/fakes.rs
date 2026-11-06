@@ -19,6 +19,8 @@ pub(crate) struct State {
     pub files: BTreeMap<String, Vec<u8>>,
     pub targets: BTreeMap<String, Inspected>,
     pub refuse_path: Option<String>,
+    /// A path `read_absolute` fails on.
+    pub unreadable: Option<String>,
     pub log: Vec<String>,
 }
 
@@ -114,6 +116,12 @@ impl SurfaceStore for Store {
     }
 
     fn read_absolute(&self, path: &str) -> Result<Option<Vec<u8>>, SurfaceError> {
+        if self.state().unreadable.as_deref() == Some(path) {
+            return Err(SurfaceError::Io {
+                file: path.to_string(),
+                detail: "Is a directory".to_string(),
+            });
+        }
         Ok(self.state().files.get(path).cloned())
     }
 

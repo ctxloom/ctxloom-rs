@@ -16,3 +16,6 @@ setup-application-unknown-hook-engine = --engine { $engine } names no engine who
 setup-application-unknown-hook-engine-fix = name one of: { $known }
 setup-application-unknown-event = unknown hook event "{ $event }"; the lifecycle events are { $known }
 setup-application-config-write = config-write: { $detail }
+setup-application-diff-file-missing = materialize --diff: { $path } does not exist, so there is nothing to compare against
+setup-application-diff-file-missing-fix = name the delivered file to compare with, e.g. another checkout's CLAUDE.md
+setup-application-diff-file-unreadable = materialize --diff: could not read { $path } to compare against: { $detail }

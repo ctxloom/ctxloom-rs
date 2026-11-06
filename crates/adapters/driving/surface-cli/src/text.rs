@@ -3,8 +3,8 @@
 use std::io::{self, Write};
 
 use setup_application::{
-    CheckReport, GitignoreReport, HooksList, InstallPlan, InstallReport, MaterializeResult,
-    UninstallReport,
+    CheckReport, GitignoreReport, HooksList, InstallPlan, InstallReport, MaterializeDiff,
+    MaterializeResult, UninstallReport,
 };
 
 pub(crate) fn install(w: &mut dyn Write, report: &InstallReport) -> io::Result<()> {
@@ -157,6 +157,24 @@ pub(crate) fn materialize(w: &mut dyn Write, result: &MaterializeResult) -> io::
         writeln!(w, "error: {error}")?;
     }
     writeln!(w, "Status: {}", result.status)
+}
+
+/// `materialize --diff`: that the two match, or the diff naming what is on one
+/// side and not the other.
+pub(crate) fn materialize_diff(w: &mut dyn Write, found: &MaterializeDiff) -> io::Result<()> {
+    if found.identical {
+        return writeln!(
+            w,
+            "{}'s materialized context matches {}: no difference.",
+            found.label, found.compared_to
+        );
+    }
+    writeln!(
+        w,
+        "Comparing {}'s materialized context with {} \u{2014} content present on one side and absent on the other:",
+        found.label, found.compared_to
+    )?;
+    write!(w, "{}", found.diff)
 }
 
 #[cfg(test)]

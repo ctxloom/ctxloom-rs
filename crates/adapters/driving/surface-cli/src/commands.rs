@@ -138,8 +138,8 @@ fn materialize() -> Command {
         .arg(
             Arg::new("diff")
                 .long("diff")
-                .action(ArgAction::SetTrue)
-                .help("Show what would change, as a dry run does"),
+                .value_name("FILE")
+                .help("Compare the context as it would be written against this file, writing nothing"),
         )
         .arg(
             Arg::new("force")

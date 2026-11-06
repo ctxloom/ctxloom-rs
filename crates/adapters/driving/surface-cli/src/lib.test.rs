@@ -49,7 +49,21 @@ fn test_materialize_takes_profiles_and_repeatable_backends_and_surfaces() {
     assert_eq!(many(args, "surface"), vec!["context", "hooks"]);
     assert_eq!(one(args, "target").as_deref(), Some("out"));
     assert!(flag(args, "release") && flag(args, "yes") && flag(args, "dry-run"));
-    assert!(!flag(args, "force") && !flag(args, "diff"));
+    assert!(!flag(args, "force") && one(args, "diff").is_none());
+}
+
+#[test]
+fn test_diff_takes_a_file_not_a_switch() {
+    let m = parse(&["materialize", "dev", "--diff", "../bob/CLAUDE.md"]);
+    let (_, args) = m.subcommand().expect("materialize");
+    assert_eq!(one(args, "diff").as_deref(), Some("../bob/CLAUDE.md"));
+    assert_eq!(many(args, "profiles"), vec!["dev"]);
+    // A bare --diff is a usage error: there is no file to compare against.
+    let bare = nouns()
+        .into_iter()
+        .fold(Command::new("ctxloom"), Command::subcommand)
+        .try_get_matches_from(["ctxloom", "materialize", "--diff"]);
+    assert!(bare.is_err());
 }
 
 #[test]
@@ -421,7 +435,7 @@ mod commands_run {
     }
 
     #[test]
-    fn materialize_delivers_and_dry_run_or_diff_only_plans() {
+    fn materialize_delivers_and_dry_run_only_plans() {
         let delivered = go(
             &[
                 "materialize",
@@ -441,25 +455,154 @@ mod commands_run {
         );
         assert!(delivered.out.contains("mock: wrote "), "{}", delivered.out);
         assert!(!delivered.world.store.state().claims.is_empty());
-        for flag in ["--dry-run", "--diff"] {
-            let planned = go(
-                &[
-                    "materialize",
-                    "--target",
-                    "/out",
-                    "--backend",
-                    "mock",
-                    "dev",
-                    flag,
-                ],
-                Format::Text,
-            );
-            assert_eq!(planned.exit.unwrap(), 0, "{flag}");
-            assert!(
-                planned.world.store.state().claims.is_empty(),
-                "{flag} must not deliver"
-            );
+        let planned = go(
+            &[
+                "materialize",
+                "--target",
+                "/out",
+                "--backend",
+                "mock",
+                "dev",
+                "--dry-run",
+            ],
+            Format::Text,
+        );
+        assert_eq!(planned.exit.unwrap(), 0);
+        assert!(
+            planned.world.store.state().claims.is_empty(),
+            "--dry-run must not deliver"
+        );
+    }
+
+    /// `materialize --diff FILE` over a world holding `files`.
+    fn diff_go(line: &[&str], format: Format, files: &[(&str, &str)]) -> Ran {
+        let world = world(CONFIG);
+        for (path, text) in files {
+            world
+                .store
+                .state()
+                .files
+                .insert(path.to_string(), text.as_bytes().to_vec());
         }
+        let matches = parse(line);
+        let call = Call {
+            matches: &matches,
+            explicit_format: Some(format),
+            default_format: Format::Json,
+            stdout_is_terminal: false,
+            globals: library_application::Flags::default(),
+        };
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        let exit = run(
+            &world.setup,
+            "materialize",
+            &call,
+            &catalog(),
+            &mut out,
+            &mut err,
+        );
+        Ran {
+            exit,
+            out: String::from_utf8(out).unwrap(),
+            err: String::from_utf8(err).unwrap(),
+            world,
+        }
+    }
+
+    #[test]
+    fn diff_prints_the_unified_diff_and_writes_nothing() {
+        let ran = diff_go(
+            &["materialize", "--diff", "bob.md", "--backend", "mock"],
+            Format::Text,
+            &[("/p/bob.md", "BOB-ONLY-LINE\n")],
+        );
+        assert_eq!(ran.exit.unwrap(), 0);
+        assert!(
+            ran.out.starts_with(
+                "Comparing the default agent's materialized context with bob.md \u{2014} content present on one side and absent on the other:\n--- bob.md\n+++ the default agent (materialized here)\n@@ -1 +1,"
+            ),
+            "{}",
+            ran.out
+        );
+        assert!(ran.out.contains("\n-BOB-ONLY-LINE\n"), "{}", ran.out);
+        assert!(ran.out.contains("\n+FRAGMENT-BODY-testing"), "{}", ran.out);
+        let state = ran.world.store.state();
+        assert!(state.claims.is_empty());
+        assert!(state.log.is_empty(), "{:?}", state.log);
+    }
+
+    #[test]
+    fn diff_over_the_same_context_says_there_is_no_difference() {
+        let first = diff_go(
+            &["materialize", "--diff", "bob.md", "--backend", "mock"],
+            Format::Json,
+            &[("/p/bob.md", "x")],
+        );
+        let first: serde_json::Value = serde_json::from_str(&first.out).unwrap();
+        assert_eq!(first["identical"], false);
+        // Feed the context back: the diff's "+" lines are the context.
+        let context: String = first["diff"]
+            .as_str()
+            .unwrap()
+            .lines()
+            .filter_map(|l| l.strip_prefix('+').filter(|_| !l.starts_with("+++")))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        let same = diff_go(
+            &[
+                "materialize",
+                "dev",
+                "--diff",
+                "bob.md",
+                "--backend",
+                "mock",
+            ],
+            Format::Text,
+            &[("/p/bob.md", &context)],
+        );
+        assert_eq!(same.exit.unwrap(), 0);
+        assert_eq!(
+            same.out,
+            "dev's materialized context matches bob.md: no difference.\n"
+        );
+    }
+
+    #[test]
+    fn diff_json_is_the_flat_object() {
+        let ran = diff_go(
+            &[
+                "materialize",
+                "dev",
+                "--diff",
+                "bob.md",
+                "--backend",
+                "mock",
+            ],
+            Format::Json,
+            &[("/p/bob.md", "x")],
+        );
+        assert_eq!(ran.exit.unwrap(), 0);
+        let json: serde_json::Value = serde_json::from_str(&ran.out).unwrap();
+        assert_eq!(json["profiles"], serde_json::json!(["dev"]));
+        assert_eq!(json["compared_to"], "bob.md");
+        assert_eq!(json["identical"], false);
+        assert!(json["diff"]
+            .as_str()
+            .unwrap()
+            .starts_with("--- bob.md\n+++ dev (materialized here)\n"));
+    }
+
+    #[test]
+    fn diff_over_a_missing_file_fails_naming_it() {
+        let ran = diff_go(
+            &["materialize", "--diff", "nowhere.md", "--backend", "mock"],
+            Format::Text,
+            &[],
+        );
+        let failure = ran.exit.expect_err("a missing file");
+        assert_eq!(failure.exit, 1);
+        assert_eq!(failure.cause.code(), "setup-application-diff-file-missing");
+        assert_eq!(ran.out, "");
     }
 
     #[test]

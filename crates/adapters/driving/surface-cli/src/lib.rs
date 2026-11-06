@@ -16,7 +16,9 @@ use clap::ArgMatches;
 use cli_support::{flag, many, one, say_notices};
 use library_application::Flags;
 use serde::Serialize;
-use setup_application::{InstallRequest, MaterializeRequest, Setup, SetupError, SurfaceSpec};
+use setup_application::{
+    DiffRequest, InstallRequest, MaterializeRequest, Setup, SetupError, SurfaceSpec,
+};
 
 pub use commands::nouns;
 
@@ -210,6 +212,22 @@ fn materialize(
         .map(|s| SurfaceSpec::parse(s))
         .collect::<Result<Vec<_>, _>>()
         .map_err(failed)?;
+    if let Some(file) = one(args, "diff") {
+        let request = DiffRequest {
+            profiles: many(args, "profiles"),
+            engines: many(args, "backend"),
+            surfaces,
+            release: flag(args, "release"),
+            file,
+            flags: cx.flags.clone(),
+        };
+        let done = cx.setup.materialize_diff(&request).map_err(failed)?;
+        say_notices(&done.notices, PROG, cx.format, cx.catalog, err);
+        emit(cx, out, &done.value, |w| {
+            text::materialize_diff(w, &done.value)
+        })?;
+        return Ok(0);
+    }
     let request = MaterializeRequest {
         profiles: many(args, "profiles"),
         target: one(args, "target"),
@@ -217,7 +235,7 @@ fn materialize(
         engines: many(args, "backend"),
         surfaces,
         release: flag(args, "release"),
-        dry_run: flag(args, "dry-run") || flag(args, "diff"),
+        dry_run: flag(args, "dry-run"),
         leave_launch_context: false,
         flags: cx.flags.clone(),
     };

@@ -38,6 +38,10 @@ pub enum SetupError {
     UnknownEvent { event: String, known: String },
     /// `util config-write` that would not write.
     ConfigWrite { detail: String },
+    /// `materialize --diff FILE` over a file that is not there.
+    DiffFileMissing { path: String },
+    /// `materialize --diff FILE` over a file that could not be read.
+    DiffFileUnreadable { path: String, detail: String },
 }
 
 impl SetupError {
@@ -82,6 +86,8 @@ impl Diagnostic for SetupError {
             SetupError::UnknownHookEngine { .. } => code!("unknown-hook-engine"),
             SetupError::UnknownEvent { .. } => code!("unknown-event"),
             SetupError::ConfigWrite { .. } => code!("config-write"),
+            SetupError::DiffFileMissing { .. } => code!("diff-file-missing"),
+            SetupError::DiffFileUnreadable { .. } => code!("diff-file-unreadable"),
         }
     }
 
@@ -102,6 +108,11 @@ impl Diagnostic for SetupError {
             | SetupError::UnknownHookEngine { engine, known } => vec![
                 ("engine", engine.as_str().into()),
                 ("known", known.as_str().into()),
+            ],
+            SetupError::DiffFileMissing { path } => vec![("path", path.as_str().into())],
+            SetupError::DiffFileUnreadable { path, detail } => vec![
+                ("path", path.as_str().into()),
+                ("detail", detail.as_str().into()),
             ],
             SetupError::EngineNotApplied { engine } => vec![("engine", engine.as_str().into())],
             SetupError::EmptyContext { profiles, engine } => vec![
@@ -155,6 +166,13 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         }),
         Box::new(SetupError::ConfigWrite {
             detail: "vendor.json is not valid json".into(),
+        }),
+        Box::new(SetupError::DiffFileMissing {
+            path: "../bob/CLAUDE.md".into(),
+        }),
+        Box::new(SetupError::DiffFileUnreadable {
+            path: "../bob".into(),
+            detail: "Is a directory".into(),
         }),
     ]
 }

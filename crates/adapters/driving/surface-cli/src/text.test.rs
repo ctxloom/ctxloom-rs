@@ -198,3 +198,33 @@ fn materialize_lists_only_what_each_engine_did() {
          Status: ok\n"
     );
 }
+
+fn diff_found(identical: bool) -> setup_application::MaterializeDiff {
+    setup_application::MaterializeDiff {
+        profiles: vec!["a".into(), "b".into()],
+        compared_to: "../bob/CLAUDE.md".into(),
+        identical,
+        diff: if identical {
+            String::new()
+        } else {
+            "--- ../bob/CLAUDE.md\n+++ a+b (materialized here)\n@@ -1 +1,2 @@\n x\n+y\n".into()
+        },
+        label: "a+b".into(),
+    }
+}
+
+#[test]
+fn materialize_diff_says_when_the_two_match() {
+    assert_eq!(
+        words(|w| materialize_diff(w, &diff_found(true))),
+        "a+b's materialized context matches ../bob/CLAUDE.md: no difference.\n"
+    );
+}
+
+#[test]
+fn materialize_diff_introduces_the_diff_and_prints_it_whole() {
+    assert_eq!(
+        words(|w| materialize_diff(w, &diff_found(false))),
+        "Comparing a+b's materialized context with ../bob/CLAUDE.md \u{2014} content present on one side and absent on the other:\n--- ../bob/CLAUDE.md\n+++ a+b (materialized here)\n@@ -1 +1,2 @@\n x\n+y\n"
+    );
+}

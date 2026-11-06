@@ -439,7 +439,7 @@ fn landed(outcome: &mut EngineOutcome, kind: Kind, target: &str, files: &[String
     }
 }
 
-fn findings_text(notice: &library_application::Notice) -> String {
+pub(crate) fn findings_text(notice: &library_application::Notice) -> String {
     match notice {
         library_application::Notice::Finding { text, .. } => text.clone(),
         other => format!("{other:?}"),
