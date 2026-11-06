@@ -80,3 +80,66 @@ fn test_changes_within_two_contexts_share_a_hunk() {
     let far = from.replace("line 2\n", "A\n").replace("line 10\n", "B\n");
     assert_eq!(unified(&from, &far, "x", "y").matches("@@ -").count(), 2);
 }
+
+/// The length of the longest common subsequence, by the plain recursion.
+fn lcs(a: &[&str], b: &[&str]) -> usize {
+    match (a.split_first(), b.split_first()) {
+        (Some((x, a_rest)), Some((y, b_rest))) => {
+            if x == y {
+                1 + lcs(a_rest, b_rest)
+            } else {
+                lcs(a_rest, b).max(lcs(a, b_rest))
+            }
+        }
+        _ => 0,
+    }
+}
+
+#[test]
+fn test_the_edit_script_is_minimal_and_loses_no_line() {
+    // A fixed generator over a three-letter alphabet: many repeated lines,
+    // so a wrong choice of what to keep costs extra changes.
+    let mut seed: u32 = 7;
+    let mut next = move |bound: u32| {
+        seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+        (seed >> 16) % bound
+    };
+    for _ in 0..300 {
+        let make = |len: u32, next: &mut dyn FnMut(u32) -> u32| -> Vec<&'static str> {
+            (0..len)
+                .map(|_| ["a", "b", "c"][next(3) as usize])
+                .collect()
+        };
+        let (la, lb) = (next(8), next(8));
+        let from = make(la, &mut next);
+        let to = make(lb, &mut next);
+        let text = |lines: &[&str]| lines.iter().map(|l| format!("{l}\n")).collect::<String>();
+        let diff = unified(&text(&from), &text(&to), "x", "y");
+        let removed = diff
+            .lines()
+            .filter(|l| l.starts_with('-') && !l.starts_with("---"))
+            .count();
+        let added = diff
+            .lines()
+            .filter(|l| l.starts_with('+') && !l.starts_with("+++"))
+            .count();
+        let kept = lcs(&from, &to);
+        assert_eq!(removed, from.len() - kept, "{from:?} -> {to:?}\n{diff}");
+        assert_eq!(added, to.len() - kept, "{from:?} -> {to:?}\n{diff}");
+        // With every line within context of a change, the hunks are the texts.
+        if from.len() <= 3 && to.len() <= 3 {
+            let side = |marks: [char; 2]| -> Vec<&str> {
+                diff.lines()
+                    .skip(2)
+                    .filter(|l| !l.starts_with("@@"))
+                    .filter(|l| marks.contains(&l.chars().next().unwrap_or('?')))
+                    .map(|l| &l[1..])
+                    .collect()
+            };
+            if !diff.is_empty() {
+                assert_eq!(side([' ', '-']), from, "{diff}");
+                assert_eq!(side([' ', '+']), to, "{diff}");
+            }
+        }
+    }
+}
