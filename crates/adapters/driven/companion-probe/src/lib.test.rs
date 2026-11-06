@@ -1,6 +1,7 @@
 //! Go's `companions.Verify` (`companions.go`): the probe is
 //! `<bin> loadout --format yaml`; it must succeed and print something.
 
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -18,13 +19,25 @@ fn env() -> Arc<EnvSnapshot> {
     ]))
 }
 
+/// A program that runs `body`: linked to `scripts/interpret.sh`, with the
+/// script beside it, so the written file is read by `sh` and never exec'd
+/// (see that file for why).
 fn script(body: &str) -> (Rooted, String) {
     let dir = Rooted::temp().unwrap();
     let path = os::fixture("/ctxloom-companion-x");
-    dir.write_atomic(&path, body.as_bytes(), Perms::Exact(Mode::from_bits(0o755)))
-        .unwrap();
-    let shown = dir.real_path(&path).unwrap().to_str().unwrap().to_string();
-    (dir, shown)
+    let shown = dir.real_path(&path).unwrap();
+    let host = file_system::Os::new(os::host(), Path::new(os::host().flavor().top())).unwrap();
+    let mut beside = shown.clone().into_os_string();
+    beside.push(".body");
+    host.write_atomic(
+        Path::new(&beside),
+        body.as_bytes(),
+        Perms::Exact(Mode::FILE),
+    )
+    .unwrap();
+    let shim = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../scripts/interpret.sh");
+    host.symlink_dir(&shim, &shown).unwrap();
+    (dir, shown.to_str().unwrap().to_string())
 }
 
 #[test]

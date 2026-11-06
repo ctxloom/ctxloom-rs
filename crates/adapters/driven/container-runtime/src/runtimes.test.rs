@@ -21,11 +21,23 @@ fn machine() -> (Arc<Rooted>, PathBuf) {
     (fs, bin)
 }
 
+/// A runtime that runs `body`: linked to `scripts/interpret.sh`, with the
+/// script beside it, so the written file is read by `sh` and never exec'd
+/// (see that file for why).
 fn script(fs: &Rooted, dir: &Path, name: &str, body: &str) {
-    let path = dir.join(name);
+    let real = fs.real_path(&dir.join(name)).unwrap();
+    let host = file_system::Os::new(os::host(), Path::new(os::host().flavor().top())).unwrap();
+    let mut beside = real.clone().into_os_string();
+    beside.push(".body");
     let text = format!("#!/bin/sh\n{body}\n");
-    fs.write_atomic(&path, text.as_bytes(), Perms::Exact(Mode::from_bits(0o755)))
-        .unwrap();
+    host.write_atomic(
+        Path::new(&beside),
+        text.as_bytes(),
+        Perms::Exact(Mode::FILE),
+    )
+    .unwrap();
+    let shim = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../scripts/interpret.sh");
+    host.symlink_dir(&shim, &real).unwrap();
 }
 
 /// The snapshot the runtimes' markers are read from: none of its own.

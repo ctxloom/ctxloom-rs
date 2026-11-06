@@ -3,6 +3,7 @@
 //! is shown without the real program. One test of the real program is
 //! `real.test.rs`.
 
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -25,15 +26,26 @@ fn env(vars: &[(&str, &str)]) -> Arc<EnvSnapshot> {
     Arc::new(EnvSnapshot::of(vars.iter().copied()))
 }
 
+/// A program that runs `body`: `/taskloom` linked to `scripts/interpret.sh`
+/// with the script beside it, so the written file is read by `sh` and never
+/// exec'd (see that file for why). The path of the program on the host.
+fn program(dir: &Rooted, body: &[u8]) -> std::path::PathBuf {
+    let real = dir.real_path(&os::fixture("/taskloom")).unwrap();
+    let host = file_system::Os::new(os::host(), Path::new(os::host().flavor().top())).unwrap();
+    let mut beside = real.clone().into_os_string();
+    beside.push(".body");
+    host.write_atomic(Path::new(&beside), body, Perms::Exact(Mode::FILE))
+        .unwrap();
+    let shim = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../scripts/interpret.sh");
+    host.symlink_dir(&shim, &real).unwrap();
+    real
+}
+
 /// A `taskloom` that is a script in a directory of its own, and a client for
-/// project `p1` running it (`run-within` waits out the moment another
-/// thread's fork may hold the script open for writing).
+/// project `p1` running it.
 fn stub(body: &str) -> (Rooted, TaskloomCli) {
     let dir = Rooted::temp().unwrap();
-    let path = os::fixture("/taskloom");
-    dir.write_atomic(&path, body.as_bytes(), Perms::Exact(Mode::from_bits(0o755)))
-        .unwrap();
-    let real = dir.real_path(&path).unwrap();
+    let real = program(&dir, body.as_bytes());
     let shown = real.to_str().unwrap();
     let cli = TaskloomCli::new(env(&[(BIN_VAR, shown), ("PATH", SHELL_PATH)]), "p1")
         .with_timeout(Duration::from_secs(20));
@@ -155,14 +167,10 @@ fn taskloom_runs_in_exactly_the_injected_environment() {
         return;
     }
     let dir = Rooted::temp().unwrap();
-    let path = os::fixture("/taskloom");
-    dir.write_atomic(
-        &path,
+    let real = program(
+        &dir,
         b"#!/bin/sh\nenv | sort > \"$(dirname \"$0\")/seen\"\necho '[]'\n",
-        Perms::Exact(Mode::from_bits(0o755)),
-    )
-    .unwrap();
-    let real = dir.real_path(&path).unwrap();
+    );
     let shown = real.to_str().unwrap();
     let cli = TaskloomCli::new(
         env(&[

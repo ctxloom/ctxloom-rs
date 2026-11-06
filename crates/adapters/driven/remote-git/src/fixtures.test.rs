@@ -37,7 +37,8 @@ pub(crate) fn put(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) {
         .unwrap();
 }
 
-/// A file the host would run.
+/// A file with the execute bit, for git to commit; never run (a program
+/// to run is `put_program`).
 pub(crate) fn put_exec(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) {
     fs().write_atomic(
         path.as_ref(),
@@ -45,6 +46,18 @@ pub(crate) fn put_exec(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) {
         Perms::Exact(Mode::from_bits(0o755)),
     )
     .unwrap();
+}
+
+/// A program that runs `body`: `path` is linked to `scripts/interpret.sh`
+/// with the script beside it, so the written file is read by `sh` and never
+/// exec'd (see that file for why).
+pub(crate) fn put_program(path: impl AsRef<Path>, body: impl AsRef<[u8]>) {
+    let mut beside = path.as_ref().as_os_str().to_owned();
+    beside.push(".body");
+    fs().write_atomic(Path::new(&beside), body.as_ref(), Perms::Exact(Mode::FILE))
+        .unwrap();
+    let shim = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../scripts/interpret.sh");
+    fs().symlink_dir(&shim, path.as_ref()).unwrap();
 }
 
 pub(crate) fn slurp(path: impl AsRef<Path>) -> String {

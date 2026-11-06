@@ -12,7 +12,7 @@ use process_env::EnvSnapshot;
 use isolation_ports::Backends;
 
 use super::{Engines, Registered};
-use crate::fixtures::{mkdirs, put_mode, root, unix};
+use crate::fixtures::{mkdirs, put_mode, put_program, root, unix};
 
 const LOADOUT: &str =
     "#!/bin/sh\ncase \"$1\" in\n  loadout) printf 'init:\\n  tooling: \"acme-tools\"\\n';;\nesac\n";
@@ -27,11 +27,7 @@ fn registered(names: &[&str], register: &[&str]) -> (file_system::Rooted, Regist
         mkdirs(d);
     }
     for name in names {
-        put_mode(
-            bin.join(format!("ctxloom-companion-{name}")),
-            LOADOUT,
-            0o755,
-        );
+        put_program(bin.join(format!("ctxloom-companion-{name}")), LOADOUT);
     }
     let base = EnvSnapshot::from_process();
     let path = format!("{}:/usr/bin:/bin", bin.display());
