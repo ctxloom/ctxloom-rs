@@ -87,7 +87,7 @@ fn edit_script<'a>(from: &[&'a str], to: &[&'a str]) -> Vec<(Tag, &'a str)> {
             ops.push((Tag::Equal, from[i]));
             i += 1;
             j += 1;
-        } else if i < from.len() && (j == to.len() || table[i + 1][j] >= table[i][j + 1]) {
+        } else if i < from.len() && (j == to.len() || table[i + 1][j] == table[i][j]) {
             ops.push((Tag::Delete, from[i]));
             i += 1;
         } else {
