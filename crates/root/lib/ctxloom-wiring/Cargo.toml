@@ -81,6 +81,10 @@ session-ports = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 
 [dev-dependencies]
+# Builds this crate's own `test-support` feature for its tests (the seed, bind
+# and session tests need it) without turning it on for the `ctxloom` binary:
+# the feature adds code here and changes no trait another crate implements.
+ctxloom-wiring = { path = ".", features = ["test-support"] }
 harp-core.workspace = true
 angzarr-embedded = { workspace = true, features = ["test-support"] }
 tokio = { workspace = true, features = ["macros", "rt"] }

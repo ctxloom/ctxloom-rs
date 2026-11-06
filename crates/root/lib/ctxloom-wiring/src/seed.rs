@@ -13,7 +13,7 @@ use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 use angzarr_embedded::v1::{command_page, Command, CommandBook, CommandPage, Cover, Uuid};
-use angzarr_embedded::{Kernel, Payload, Sampled, Timestamp};
+use angzarr_embedded::{Kernel, Payload, Processed, ReadStore, Sampled, Store, Timestamp};
 use file_system::{Open, Perms};
 use os::Mode;
 use ports::{Clock, CommandIds, ProjectIdentity};
@@ -123,36 +123,7 @@ impl Wiring {
         };
         let started = before(seed.started_ago);
         // The name first, as the real mint takes it (plan 3.1).
-        let claim = NameClaimCommand::from(ClaimName {
-            project_id: project.id.clone(),
-            harp: seed.harp.clone(),
-            session: uuid::Uuid::from_bytes(id).to_string(),
-        });
-        let claims = sessions_application::registry();
-        Kernel::new(&claims)
-            .handle::<NameClaimAggregate, _>(
-                store,
-                CommandBook {
-                    cover: Some(Cover {
-                        domain: NAMES_DOMAIN.to_string(),
-                        root: Some(claim_root(&project.id, &seed.harp)),
-                        edition: None,
-                    }),
-                    page: Some(CommandPage {
-                        body: Some(command_page::Body::Command(Command {
-                            payload: Some(claim.to_any()),
-                        })),
-                        ..CommandPage::default()
-                    }),
-                    handling: None,
-                },
-                &Sampled {
-                    now: started,
-                    command_id: System.command_id(),
-                },
-            )
-            .await
-            .map_err(|failure| seed_error(format!("{failure:?}")))?;
+        claim_name(store, &project.id, seed, id, started).await?;
         run(
             started,
             MintSession {
@@ -258,6 +229,47 @@ impl Wiring {
 /// A report from a port, as a seed error.
 fn seed_error_of(report: angzarr_diagnostic::Report) -> LibError {
     seed_error(angzarr_diagnostic::Diagnostic::code(&report))
+}
+
+/// Claim the session's name, first, as the real mint does.
+async fn claim_name<S: Store + ReadStore + Processed + Send + Sync>(
+    store: &S,
+    project_id: &str,
+    seed: &Seed,
+    id: [u8; 16],
+    started: Timestamp,
+) -> Result<(), LibError> {
+    let claim = NameClaimCommand::from(ClaimName {
+        project_id: project_id.to_string(),
+        harp: seed.harp.clone(),
+        session: uuid::Uuid::from_bytes(id).to_string(),
+    });
+    let claims = sessions_application::registry();
+    Kernel::new(&claims)
+        .handle::<NameClaimAggregate, _>(
+            store,
+            CommandBook {
+                cover: Some(Cover {
+                    domain: NAMES_DOMAIN.to_string(),
+                    root: Some(claim_root(project_id, &seed.harp)),
+                    edition: None,
+                }),
+                page: Some(CommandPage {
+                    body: Some(command_page::Body::Command(Command {
+                        payload: Some(claim.to_any()),
+                    })),
+                    ..CommandPage::default()
+                }),
+                handling: None,
+            },
+            &Sampled {
+                now: started,
+                command_id: System.command_id(),
+            },
+        )
+        .await
+        .map(drop)
+        .map_err(|failure| seed_error(format!("{failure:?}")))
 }
 
 #[cfg(test)]

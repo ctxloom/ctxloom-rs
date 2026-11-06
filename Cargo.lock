@@ -771,6 +771,7 @@ dependencies = [
  "ctxloom-cli",
  "ctxloom-ports",
  "ctxloom-store-sqlite",
+ "ctxloom-wiring",
  "deps",
  "deps-application",
  "deps-cli",
