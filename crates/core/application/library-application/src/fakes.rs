@@ -584,7 +584,7 @@ impl CompanionLoadouts for Mem {
             .companions
             .get(name)
             .cloned()
-            .unwrap_or(CompanionLoadout::Absent)
+            .unwrap_or(CompanionLoadout::NoLoadout)
     }
 }
 
@@ -607,8 +607,8 @@ pub struct Setup<'a> {
     pub executable: &'a [&'a str],
     pub path: &'a [(&'a str, &'a str)],
     pub environ: &'a [(&'a str, &'a str)],
-    /// The loadout each registered companion answers with; one not listed is
-    /// absent.
+    /// The loadout each registered companion answers with; one not listed has no
+    /// loadout (and is not said).
     pub companions: &'a [(&'a str, CompanionLoadout)],
 }
 
