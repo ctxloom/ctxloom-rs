@@ -1,18 +1,17 @@
 # world: surfaces
 # Ported from journeys/j000800_onboarding.feature
-# NOT ported: the Scenario Outline "Companion-dependent guidance reaches Bob
-#   only if he has the companion", both rows. A companion's loadout does not
-#   reach `materialize` in this port: a registered fake `reprise` that prints
-#   a loadout with a run fragment is probed by `companion add` and never
-#   read into the materialized context (Go's Prober.ProbeCompanionLoadouts
-#   has no counterpart). The "installed" row cannot pass, and the "not
-#   installed" row without it would assert only that nothing arrived that
-#   could not have arrived.
+# NOT ported: nothing.
 # substitution: "Bob clones the project" is a `git clone` of the team's bare
 #   origin made in the scenario's temporary directory; every remote is a
 #   local bare repository. "Bob starts a session" is, as in Go, `materialize
 #   default` into `out` for claude-code. Go's `mock` engine row runs on this
-#   port's `mock`, whose native surface is MOCK_CONTEXT.md.
+#   port's `mock`, whose native surface is MOCK_CONTEXT.md. A companion
+#   is registered with the command that runs it (nothing is searched for), so
+#   "installed" is the stub companion (the compiled
+#   `ctxloom-companion-stub`, standing in for reprise: only the shape of the
+#   guidance it delivers is asserted, never reprise's wording) registered in
+#   Bob's home config with `companion add --command`; "not installed" is
+#   `reprise` registered with a command whose program is not there.
 @doc
 Feature: A new engineer clones the repo and is already set up
 
@@ -59,6 +58,29 @@ Feature: A new engineer clones the repo and is already set up
     And Bob starts a session
     Then his assistant receives the company's content
     And his assistant still receives the team's own context, because the project is first-party
+
+  # LOCKED — GRACEFUL DEGRADATION and its contrast in one place, the case a new
+  # machine makes unavoidable: Bob will have some of the team's companion tools and
+  # not others. Whatever does not depend on the missing companion must arrive and
+  # nothing may fail — a setup that breaks on an absent optional tool is one no new
+  # hire can complete. The companion-dependent guidance reaches him ONLY when the
+  # companion is present, which is what makes the degradation meaningful rather than
+  # silent loss. (A setup with the companion is Bob-on-a-fuller-machine, not a
+  # different person — so the Background still holds for both rows.)
+  Scenario Outline: Companion-dependent guidance reaches Bob only if he has the companion
+    Given the team's context includes guidance for the "reprise" companion
+    And the "reprise" companion is <presence> on Bob's machine
+    When Bob clones the project
+    And Bob starts a session
+    Then his assistant receives the team's context that does not depend on reprise
+    And the reprise-dependent guidance <reaches> his assistant
+    And nothing fails because of the companion's presence or absence
+
+    Examples:
+      | presence      | reaches        |
+      | installed     | reaches        |
+      | not installed | does not reach |
+
 
   # LOCKED — hermetic materialization, over the engine axis.
   Scenario Outline: Bob's engine is not Alice's and the team's context still reaches him natively

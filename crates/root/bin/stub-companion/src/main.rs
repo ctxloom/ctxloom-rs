@@ -2,12 +2,14 @@
 //! program that answers what ctxloom asks of a companion, so a test exercises
 //! the protocol through a genuine exec rather than a shell shim.
 //!
-//! It answers from files beside itself, named for how it was invoked
-//! (`<program path>.<suffix>`), so one built binary stands in for any number
-//! of companions: a test links or copies it under the name it wants (`reprise`,
-//! `ctxloom-companion-acme`) and writes the files beside that.
+//! It answers from files beside a prefix, so one built binary stands in for
+//! any number of companions: a test registers
+//! `[stub, --files, <dir>/reprise]` as a companion's command and writes the
+//! files `<dir>/reprise.loadout` (and, to misbehave, `.exit` or `.hang`). With
+//! no `--files` the prefix is the path the program was invoked by.
 //!
-//! - `version [--format json]`: `{"name":..,"version":"0.0.0-stub"}`.
+//! - `version [--format json]`: `{"name":..,"version":"0.0.0-stub"}`, the
+//!   name being the prefix's last segment.
 //! - `loadout --format yaml`: the `.loadout` file, verbatim; nothing if there
 //!   is none. A `.exit` file holding a number makes it exit with that code
 //!   instead; a `.hang` file makes it never answer.
@@ -52,13 +54,19 @@ fn program_name(invoked: &str) -> &str {
     invoked.rsplit(['/', '\\']).next().unwrap_or(invoked)
 }
 
-/// The reply to `args` for the program invoked as `invoked`; `beside` reads
-/// the file `<invoked>.<suffix>`.
-fn answer(invoked: &str, args: &[String], beside: &dyn Fn(&str) -> Option<String>) -> Reply {
+/// The reply to `args` for the program invoked as `invoked`; `read` reads the
+/// file at a path. The files are beside `--files <prefix>` when the arguments
+/// open with it, else beside `invoked`.
+fn answer(invoked: &str, args: &[String], read: &dyn Fn(&str) -> Option<String>) -> Reply {
+    let (prefix, args) = match args {
+        [flag, prefix, rest @ ..] if flag == "--files" => (prefix.as_str(), rest),
+        _ => (invoked, args),
+    };
+    let beside = |suffix: &str| read(&format!("{prefix}.{suffix}"));
     match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {
         ["version", ..] => Reply::said(format!(
             "{{\"name\":\"{}\",\"version\":\"0.0.0-stub\"}}\n",
-            program_name(invoked)
+            program_name(prefix)
         )),
         ["loadout", "--format", "yaml"] => {
             if beside("hang").is_some() {
@@ -85,12 +93,8 @@ fn main() -> ExitCode {
     let args: Vec<String> = argv.collect();
     let host = os::host();
     let fs = Os::new(host.clone(), Path::new(host.flavor().top())).ok();
-    let beside = |suffix: &str| {
-        fs.as_ref()?
-            .read_to_string(Path::new(&format!("{invoked}.{suffix}")))
-            .ok()
-    };
-    let reply = answer(&invoked, &args, &beside);
+    let read = |path: &str| fs.as_ref()?.read_to_string(Path::new(path)).ok();
+    let reply = answer(&invoked, &args, &read);
     if reply.hang {
         loop {
             std::thread::park();

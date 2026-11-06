@@ -1,11 +1,13 @@
 use super::*;
 
-/// Files by the name beside the program.
+/// Files by suffix beside the program `/x/reprise` or the prefix `/d/acme`.
 fn beside<'a>(files: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
-    move |suffix| {
+    move |path| {
         files
             .iter()
-            .find(|(name, _)| *name == suffix)
+            .find(|(suffix, _)| {
+                path.ends_with(&format!(".{suffix}")) && !path.contains("elsewhere")
+            })
             .map(|(_, text)| (*text).to_string())
     }
 }
@@ -100,4 +102,39 @@ fn the_program_name_is_the_last_segment() {
         "ctxloom-companion-stub"
     );
     assert_eq!(program_name("reprise"), "reprise");
+}
+
+#[test]
+fn files_prefix_names_where_the_files_are_and_the_program() {
+    let seen = std::cell::RefCell::new(Vec::new());
+    let read = |path: &str| {
+        seen.borrow_mut().push(path.to_string());
+        (path == "/d/acme.loadout").then(|| "run:\n".to_string())
+    };
+    let reply = answer(
+        "/target/stub",
+        &args(&["--files", "/d/acme", "loadout", "--format", "yaml"]),
+        &read,
+    );
+    assert_eq!((reply.code, reply.stdout.as_str()), (0, "run:\n"));
+    let version = answer(
+        "/target/stub",
+        &args(&["--files", "/d/acme", "version"]),
+        &read,
+    );
+    assert!(
+        version.stdout.contains("\"name\":\"acme\""),
+        "{}",
+        version.stdout
+    );
+    assert!(
+        seen.borrow().iter().all(|p| p.starts_with("/d/acme.")),
+        "{:?}",
+        seen.borrow()
+    );
+}
+
+#[test]
+fn a_files_flag_with_nothing_after_it_is_a_usage_error() {
+    assert_eq!(answer("/x/p", &args(&["--files"]), &beside(&[])).code, 2);
 }

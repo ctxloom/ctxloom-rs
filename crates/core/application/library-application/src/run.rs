@@ -287,7 +287,14 @@ impl Project {
         if selection.profiles.is_empty()
             && selection.fragments.is_empty()
             && selection.tags.is_empty()
+            && self
+                .catalog_with_companions()
+                .companion_fragments()
+                .is_empty()
         {
+            // Nothing selected and no companion to add to it. (With one, the
+            // assembly goes on: Go assembles the companions' fragments
+            // whatever the selection.)
             return Ok(Package::default());
         }
         let set = self.resolve_profiles(&selection.profiles, findings)?;

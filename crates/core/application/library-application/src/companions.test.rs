@@ -316,3 +316,20 @@ fn a_registered_name_that_is_no_plain_name_is_said_and_never_asked() {
     )));
     assert!(mem.asked_companions().is_empty());
 }
+
+#[test]
+fn companions_are_assembled_even_when_nothing_else_is_selected() {
+    let companions = only_reprise(Loaded(LOADOUT.to_string()));
+    let (library, _) = setup(&[CONFIG_WITH], &companions, &[]);
+    let outcome = library.assemble(&plain(), &AssembleRequest::default());
+    let assembled = outcome.result.unwrap();
+    assert_eq!(assembled.context, "COMPANION-MARKER");
+    assert_eq!(
+        assembled.fragments_loaded,
+        ["ctxloom+companion:reprise#fragments/guide"]
+    );
+    // Without a companion, nothing selected is nothing assembled.
+    let (bare, _) = setup(&[CONFIG_WITH], &[], &[]);
+    let nothing = bare.assemble(&plain(), &AssembleRequest::default());
+    assert_eq!(nothing.result.unwrap().context, "");
+}

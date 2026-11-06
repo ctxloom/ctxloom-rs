@@ -2,15 +2,18 @@
 # Ported from journeys/j001800_guardrails.feature
 # NOT ported: "Alice's assistant receives the task-runner and
 #   reuse-before-you-write guidance" and "ltk's own guidance is honest about
-#   what it does — a redirect, not a block". Both need a registered
-#   companion's loadout to reach the materialized context (ltk's guidance
-#   fragment and its PreToolUse hook wiring in .claude/settings.json;
-#   reprise's fragment). It does not in this port: a fake `ltk` and
-#   `reprise` (made with fixture-program::install_program and registered
-#   with `companion add`) are probed and recorded, and `materialize` writes
-#   neither their fragments nor their hooks. Go's
-#   Prober.ProbeCompanionLoadouts has no counterpart here, and ltk's loadout
-#   text is not in this repository. Ported: Bob, who has neither companion.
+#   what it does — a redirect, not a block".
+#   The first needs the companions' PreToolUse hook wiring in
+#   .claude/settings.json as well as their fragments; a companion's fragments
+#   now reach the materialized context (virtuous-word, companions slice 1),
+#   its hooks do not yet (slice 2), and it is Go's ltk and reprise it names.
+#   The second asserts ltk's OWN wording ("ltk is a cooperative redirect, not
+#   a sandbox"), which is ltk's loadout text, not ctxloom's: the stub
+#   companion every companion test uses (the compiled
+#   ctxloom-companion-stub) can deliver a marker but cannot prove what ltk
+#   says about itself, and a stand-in that repeats the sentence would assert
+#   nothing. It waits for ltk's real loadout. Ported: Bob, who has neither
+#   companion (registered with a command whose program is not there).
 @doc
 Feature: Guardrails — when the assistant does not listen
 

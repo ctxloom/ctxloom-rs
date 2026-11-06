@@ -17,6 +17,7 @@ use super::super::Ran;
 use super::{
     j000700_commit, j000700_project, j000700_pull, World, J000700_BUNDLE, J000700_PROFILE,
 };
+use crate::tests::companion_stub::Stub;
 use crate::tests::files;
 
 const TEAM_MARKER: &str = "J000800-TEAM-STANDARDIZED-CONTEXT-MARKER";
@@ -34,8 +35,9 @@ pub(super) struct State {
     /// The commit the team's lockfile froze when Carol held the upstream
     /// bundle: what "the versions the team pinned" means.
     pinned_sha: String,
-    /// Bob's `PATH`, once a companion is hidden from it.
-    path: Option<String>,
+    /// The loadout the team's reprise guidance is, once a step says there is
+    /// one.
+    reprise_loadout: Option<String>,
     /// The last command Bob ran.
     last: Option<Ran>,
     /// The engine and target of the last `starts a session on`.
@@ -46,9 +48,7 @@ impl World {
     /// `ctxloom args` in Bob's checkout (on the `PATH` he has).
     fn bob_runs(&mut self, args: &[&str]) {
         let dir = self.bob_dir().to_path_buf();
-        let path = self.onboarding.path.clone();
-        let env: Vec<(&str, &str)> = path.iter().map(|p| ("PATH", p.as_str())).collect();
-        self.onboarding.last = Some(self.common.project.run_in_with(&dir, &env, args));
+        self.onboarding.last = Some(self.common.project.run_in(&dir, args));
     }
 
     /// Go's `bobMaterialized`: his default profile into `out`, again, and the
@@ -167,20 +167,6 @@ fn locked_sha(raw: &str, bundle: &str) -> String {
         }
     }
     panic!("the lockfile has no sha for {bundle:?}:\n{raw}");
-}
-
-/// The `PATH` without any directory that would satisfy a lookup of `bin`
-/// (Go's `j001800ScrubFromPath`): a host that has the real program installed
-/// must not make "not installed" depend on the host.
-fn without(path: &std::ffi::OsStr, bin: &str) -> String {
-    let kept: Vec<PathBuf> = files::search_path(path)
-        .into_iter()
-        .filter(|dir| !files::exists(dir.join(bin)))
-        .collect();
-    std::env::join_paths(kept)
-        .expect("a PATH")
-        .to_string_lossy()
-        .into_owned()
 }
 
 // ------------------------------------------------------------ Background
@@ -366,13 +352,63 @@ fn receives_company(w: &mut World) {
     w.bob_has(COMPANY_MARKER);
 }
 
-// --------------------------------------------- a companion Bob does not have
+// ------------------------------------------------ a companion Bob may not have
 
-#[given(regex = r#"^the "(reprise|ltk)" companion is not installed on Bob's machine$"#)]
-fn not_installed(w: &mut World, bin: String) {
-    let current = match &w.onboarding.path {
-        Some(path) => std::ffi::OsString::from(path),
-        None => crate::tests::host_var("PATH").unwrap_or_default(),
+const REPRISE_MARKER: &str = "J000800-REPRISE-DEPENDENT-GUIDANCE-MARKER";
+
+#[given(r#"the team's context includes guidance for the "reprise" companion"#)]
+fn team_has_reprise_guidance(w: &mut World) {
+    w.onboarding.reprise_loadout = Some(format!(
+        "run:\n  version: 1.0.0\n  fragments:\n    guidance:\n      content: {REPRISE_MARKER}\n"
+    ));
+}
+
+/// A companion is registered in the home with the command that runs it.
+/// Installed is the stub companion (the compiled `ctxloom-companion-stub`,
+/// asked for the team's guidance); not installed is a command whose program is
+/// not there, registered all the same, so "nothing fails" is held with a
+/// registration that cannot be run.
+#[given(regex = r#"^the "(reprise|ltk)" companion is (installed|not installed) on Bob's machine$"#)]
+fn companion_presence(w: &mut World, name: String, presence: String) {
+    let scratch = w.scratch();
+    if presence == "installed" {
+        let loadout = w
+            .onboarding
+            .reprise_loadout
+            .clone()
+            .unwrap_or_else(|| panic!("no loadout was given for the {name:?} companion"));
+        let stub = Stub::install(&scratch.join("companions"), &name, &loadout);
+        let args = stub.add_args(&name);
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        let ran = w.common.project.run_with(&[], &args);
+        ran.succeeds();
+        return;
+    }
+    let gone = scratch.join("not-installed").join(&name);
+    let held = w
+        .common
+        .project
+        .read_home(".ctxloom/config.yaml")
+        .unwrap_or_else(|| "schema_version: 9\n".to_string());
+    let entry = format!("  {name}:\n    command: [{}]\n", gone.display());
+    let config = if held.contains("\ncompanions:\n") {
+        held.replacen("\ncompanions:\n", &format!("\ncompanions:\n{entry}"), 1)
+    } else {
+        format!("{held}companions:\n{entry}")
     };
-    w.onboarding.path = Some(without(&current, &bin));
+    w.common.project.write_home(".ctxloom/config.yaml", &config);
+}
+
+#[then("his assistant receives the team's context that does not depend on reprise")]
+fn receives_independent_context(w: &mut World) {
+    w.bob_has(TEAM_MARKER);
+}
+
+#[then(regex = r"^the reprise-dependent guidance (reaches|does not reach) his assistant$")]
+fn reprise_guidance(w: &mut World, reaches: String) {
+    if reaches == "reaches" {
+        w.bob_has(REPRISE_MARKER);
+    } else {
+        w.bob_lacks(REPRISE_MARKER);
+    }
 }

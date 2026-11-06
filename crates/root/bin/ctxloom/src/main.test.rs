@@ -179,6 +179,12 @@ pub(crate) mod files;
 #[path = "catalog.test.rs"]
 mod catalog;
 
+#[path = "companion_stub.test.rs"]
+pub(crate) mod companion_stub;
+
+#[path = "companion_assembly.test.rs"]
+mod companion_assembly;
+
 #[path = "deps.test.rs"]
 mod deps;
 
