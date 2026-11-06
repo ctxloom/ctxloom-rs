@@ -52,7 +52,6 @@ Feature: closeout — the sweep
   #
   # Closed: `ctxloom session sweep --yes`.
   Scenario: The sweep removes only what it can prove is safe, and says why it left the rest
-    # substitution: Go's last row (the sweep kept olive-dirty-finch's transcript and named ctxloom-wt-wip) is not asserted here; the reason was not recorded when this was ported (S11), see the parity report.
     Given a finished session "amber-quiet-heron" whose transcript retention has passed
     And a finished session "brisk-copper-moth" marked keep
     And an internal one-shot session "gray-oneshot-wisp" that finished an hour ago
@@ -72,3 +71,4 @@ Feature: closeout — the sweep
     And the machine-written bulk of "amber-quiet-heron" is gone
     And the machine-written bulk of "gray-oneshot-wisp" is gone
     And the sweep kept the transcript of "brisk-copper-moth" and named "ctxloom session keep brisk-copper-moth --undo"
+    And the sweep kept the transcript of "olive-dirty-finch" and named "ctxloom-wt-wip"

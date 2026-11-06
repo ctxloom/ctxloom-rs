@@ -7,6 +7,7 @@
 //! | liveness unprovable                           | skipped whole; the manual route is named |
 //! | marked keep                                   | held; `session keep --undo` is named |
 //! | nothing left to purge                         | untouched                   |
+//! | a scratch worktree must be preserved          | spared from purge, naming it |
 //! | no purge age                                  | held (purges have no default) |
 //! | last active after the purge age               | left                        |
 //! | its transcript within the retention           | held, saying why            |
@@ -132,7 +133,9 @@ pub async fn sweep<S: SessionService + WorktreeUse>(
     let mut untouched = 0;
     for view in &views {
         let harp = view.record.harp.as_str();
-        rows.extend(worktree_rows(service, harp, request.yes)?);
+        let checkouts = worktree_rows(service, harp, request.yes)?;
+        let preserved = preserved_worktree(&checkouts).map(str::to_string);
+        rows.extend(checkouts.into_iter().map(|c| c.row));
         let purge = format!("ctxloom session purge {harp} --yes");
         let decided = match view.state {
             State::Live => Some(row(
@@ -166,6 +169,20 @@ pub async fn sweep<S: SessionService + WorktreeUse>(
             rows.push(decided);
             continue;
         }
+        // Go's DecideSweep: a checkout that must be preserved spares its
+        // session from purge too, whatever the purge age says.
+        if let Some(worktree) = preserved {
+            rows.push(row(
+                harp,
+                "spare",
+                Verdict::Left,
+                &format!(
+                    "its scratch worktree {worktree} must be preserved, so the session is spared from reclaim and purge and the work stays where it is"
+                ),
+                String::new(),
+            ));
+            continue;
+        }
         let Some(cutoff) = request.purge_cutoff else {
             rows.push(row(
                 harp,
@@ -189,6 +206,19 @@ pub async fn sweep<S: SessionService + WorktreeUse>(
         }
         rows.push(purge_row(service, harp, &purge, request.yes).await?);
     }
+    let counts = tally(&rows);
+    Ok(SweepReport {
+        purge_cutoff: request
+            .purge_cutoff
+            .map(|at| stamp::rfc3339(at)[..10].to_string()),
+        rows,
+        counts,
+        untouched,
+    })
+}
+
+/// How many rows of each verdict.
+fn tally(rows: &[SweepRow]) -> BTreeMap<&'static str, u64> {
     let mut counts: BTreeMap<&'static str, u64> = [
         Verdict::Done,
         Verdict::Planned,
@@ -200,17 +230,22 @@ pub async fn sweep<S: SessionService + WorktreeUse>(
     .iter()
     .map(|v| (v.name(), 0))
     .collect();
-    for r in &rows {
+    for r in rows {
         *counts.entry(r.verdict.name()).or_default() += 1;
     }
-    Ok(SweepReport {
-        purge_cutoff: request
-            .purge_cutoff
-            .map(|at| stamp::rfc3339(at)[..10].to_string()),
-        rows,
-        counts,
-        untouched,
-    })
+    counts
+}
+
+/// One checkout's row, and whether it must be preserved.
+struct Checkout {
+    row: SweepRow,
+    preserved: Option<String>,
+}
+
+/// The first checkout that must be preserved (spared in place, or skipped:
+/// not the sweep's to remove), by name.
+fn preserved_worktree(checkouts: &[Checkout]) -> Option<&str> {
+    checkouts.iter().find_map(|c| c.preserved.as_deref())
 }
 
 /// A session's scratch checkouts, through the worktree leaf and with the
@@ -220,7 +255,7 @@ fn worktree_rows<S: WorktreeUse>(
     service: &mut S,
     harp: &str,
     apply: bool,
-) -> Result<Vec<SweepRow>, ReclaimError> {
+) -> Result<Vec<Checkout>, ReclaimError> {
     let report = match service.worktrees(Some(harp), apply) {
         Ok(report) => report,
         Err(IsolationError::NoSession { .. }) => return Ok(Vec::new()),
@@ -229,7 +264,11 @@ fn worktree_rows<S: WorktreeUse>(
     Ok(report
         .worktrees
         .iter()
-        .map(|checkout| worktree_row(harp, checkout))
+        .map(|checkout| Checkout {
+            row: worktree_row(harp, checkout),
+            preserved: matches!(checkout.verdict, Worktree::Spared | Worktree::Skipped)
+                .then(|| checkout.worktree.clone()),
+        })
         .collect())
 }
 

@@ -391,6 +391,63 @@ fn each_scratch_checkout_is_a_row_with_its_verdict_and_reason() {
     assert!(by("running").is_some());
 }
 
+// Go's DecideSweep: a scratch worktree that must be preserved spares its
+// session from purge (little-pamphlet), so its transcript is never asked of
+// the purge, and a row says which worktree is why.
+#[test]
+fn a_session_with_a_preserved_worktree_is_spared_from_purge() {
+    for verdict in [Worktree::Spared, Worktree::Skipped] {
+        let mut fake = Fake {
+            views: vec![
+                view("olive-dirty-finch", State::Ended, 120, false),
+                view("amber-quiet-heron", State::Ended, 120, false),
+            ],
+            scratch: vec![
+                scratch("olive-dirty-finch", "clean", Worktree::Reaped, ""),
+                scratch("olive-dirty-finch", "wip", verdict, "uncommitted changes"),
+            ],
+            ..Fake::default()
+        };
+        let report = ready(sweep(&mut fake, &request(true))).unwrap();
+        assert_eq!(
+            fake.asked,
+            vec![
+                ("amber-quiet-heron".to_string(), false, Scope::Purge),
+                ("amber-quiet-heron".to_string(), true, Scope::Purge)
+            ],
+            "{verdict:?}: only the session without a preserved worktree is purged"
+        );
+        let spare: Vec<_> = report
+            .rows
+            .iter()
+            .filter(|r| r.harp == "olive-dirty-finch" && r.action == "spare")
+            .collect();
+        assert_eq!(spare.len(), 1);
+        assert_eq!(spare[0].verdict, Verdict::Left);
+        assert!(spare[0].reason.contains("ctxloom-wt-wip"));
+        assert!(spare[0].reason.contains("spared from reclaim and purge"));
+        assert!(report
+            .rows
+            .iter()
+            .all(|r| !(r.harp == "olive-dirty-finch" && r.action == "purge")));
+    }
+}
+
+// A reaped or reapable checkout is no reason to spare the session.
+#[test]
+fn a_reaped_or_reapable_worktree_does_not_spare_its_session() {
+    for verdict in [Worktree::Reaped, Worktree::Reapable] {
+        let mut fake = Fake {
+            views: vec![view("amber-quiet-heron", State::Ended, 120, false)],
+            scratch: vec![scratch("amber-quiet-heron", "clean", verdict, "")],
+            ..Fake::default()
+        };
+        let report = ready(sweep(&mut fake, &request(false))).unwrap();
+        assert!(report.rows.iter().any(|r| r.action == "purge"));
+        assert!(report.rows.iter().all(|r| r.action != "spare"));
+    }
+}
+
 // A plan reaps nothing: a reapable checkout is planned, with the command.
 #[test]
 fn a_reapable_checkout_is_planned_naming_the_leaf_that_removes_it() {
