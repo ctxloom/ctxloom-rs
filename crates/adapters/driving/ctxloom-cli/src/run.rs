@@ -3,8 +3,6 @@
 use std::ffi::OsString;
 use std::io::Write;
 
-#[cfg(feature = "test-support")]
-use angzarr_diagnostic::Diagnostic;
 use angzarr_presentation::{write_json, Catalog, Format};
 use clap::error::{ContextKind, ContextValue, ErrorKind};
 use clap::{Command, FromArgMatches};
@@ -28,30 +26,6 @@ pub struct Context {
 pub trait Services {
     /// The commands another crate owns, joined to this command line.
     fn extension(&mut self) -> &mut dyn Extension;
-
-    /// A newly minted session id.
-    #[cfg(feature = "test-support")]
-    fn session_name(&mut self) -> String;
-
-    /// The run id of an incarnation of a session.
-    #[cfg(feature = "test-support")]
-    fn run_id(&mut self, session: &str, incarnation: u64) -> Result<String, Box<dyn Diagnostic>>;
-
-    /// A project's store, opened under the home: where its database is.
-    #[cfg(feature = "test-support")]
-    fn open_store(&mut self, project: &str) -> Result<String, Box<dyn Diagnostic>>;
-
-    /// Plant a session (`ctxloom test seed-session`); its stable id.
-    #[cfg(feature = "test-support")]
-    fn seed_session(
-        &mut self,
-        seed: &crate::commands::SeedArgs,
-    ) -> Result<String, Box<dyn Diagnostic>>;
-
-    /// One value of every diagnostic the binary can raise besides this
-    /// crate's own.
-    #[cfg(feature = "test-support")]
-    fn diagnostic_samples(&self) -> Vec<Box<dyn Diagnostic>>;
 }
 
 /// Run `args` and answer: the exit code.
@@ -92,8 +66,6 @@ pub fn run(
             clap_complete::generate(args.shell, &mut command, PROG, out);
             Ok(())
         }
-        #[cfg(feature = "test-support")]
-        Some(Verb::Test(verb)) => crate::test_commands::run(verb, format, catalog, services, out),
         None => Ok(()),
     };
     match answered {

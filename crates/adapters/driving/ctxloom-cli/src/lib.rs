@@ -10,18 +10,15 @@
 //!   catalog has one. Stdout holds answers only.
 //! - Exit codes: 0, 1 failed, 2 refused, 3 fatal findings.
 //! - `-v` is accepted everywhere and changes no output.
-//! - With the `test-support` feature, the hidden `test` commands.
+//! - With the `test-support` feature, `diagnostic_samples` (the hidden `test`
+//!   commands are the wiring's, mounted as an extension).
 
 mod commands;
 mod error;
 mod extension;
 mod run;
-#[cfg(feature = "test-support")]
-mod test_commands;
 
 pub use angzarr_presentation::Catalog;
-#[cfg(feature = "test-support")]
-pub use commands::SeedArgs;
 pub use commands::{shaped, BARE_RUNS_DEFAULT, PROG};
 #[cfg(any(test, feature = "test-support"))]
 pub use error::diagnostic_samples;

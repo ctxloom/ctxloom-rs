@@ -222,6 +222,10 @@ pub struct Commands {
     wired: Option<Wired>,
     /// The sessions use cases, built when a command first needs them.
     pub(crate) sessions: Option<Sessions>,
+    /// The diagnostics beyond the wiring's and the command line's that
+    /// `ctxloom test diagnostics` lists: the composition root's to name.
+    #[cfg(feature = "test-support")]
+    samples: crate::Samples,
 }
 
 struct Wired {
@@ -237,7 +241,18 @@ impl Commands {
             env,
             wired: None,
             sessions: None,
+            #[cfg(feature = "test-support")]
+            samples: Vec::new,
         }
+    }
+
+    /// The diagnostics `ctxloom test diagnostics` lists besides the wiring's
+    /// and the command line's own.
+    #[cfg(feature = "test-support")]
+    #[must_use]
+    pub fn with_diagnostic_samples(mut self, samples: crate::Samples) -> Commands {
+        self.samples = samples;
+        self
     }
 
     /// The engines' callbacks, over the setup use cases.
@@ -305,6 +320,8 @@ impl Extension for Commands {
         nouns.extend(setup_cli::nouns());
         nouns.extend(container_cli::nouns());
         nouns.extend(sessions::nouns());
+        #[cfg(feature = "test-support")]
+        nouns.push(crate::test_commands::noun());
         nouns
     }
 
@@ -316,6 +333,17 @@ impl Extension for Commands {
         out: &mut dyn Write,
         err: &mut dyn Write,
     ) -> Result<u8, Failure> {
+        #[cfg(feature = "test-support")]
+        if noun == crate::test_commands::NOUN {
+            let env = Arc::clone(&self.env);
+            return crate::test_commands::run(
+                || Wiring::new(env),
+                self.samples,
+                call,
+                catalog,
+                out,
+            );
+        }
         if noun == "container" {
             return crate::isolation::container(&self.env, call, catalog, out);
         }

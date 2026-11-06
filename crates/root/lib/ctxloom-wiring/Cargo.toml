@@ -77,6 +77,8 @@ embedded-edge.workspace = true
 angzarr-embedded-host.workspace = true
 # Only the seed uses the session-ports directly.
 session-ports = { workspace = true, optional = true }
+# Only the test-only commands render a sample list.
+serde = { workspace = true, optional = true }
 
 [dev-dependencies]
 harp-core.workspace = true
@@ -87,12 +89,15 @@ mutants.workspace = true
 file-system = { workspace = true, features = ["test-support"] }
 
 [features]
-# `diagnostic_samples`, for other crates' catalog tests, and the seed the
-# acceptance tests plant sessions with (`ctxloom test seed-session`).
+# `diagnostic_samples`, for other crates' catalog tests, the seed the
+# acceptance tests plant sessions with, and the hidden `ctxloom test ...`
+# commands, mounted as an extension. All of it is added code: nothing here
+# changes what another crate must implement.
 test-support = [
     "ctxloom-store-sqlite/test-support",
     "ctxloom-cli/test-support",
     "dep:session-ports",
+    "dep:serde",
 ]
 
 [lints]

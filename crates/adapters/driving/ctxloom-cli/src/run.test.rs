@@ -6,9 +6,6 @@
 use std::ffi::OsString;
 use std::io::Write;
 
-#[cfg(feature = "test-support")]
-use angzarr_diagnostic::Diagnostic;
-
 use super::*;
 use angzarr_presentation::Format;
 use clap::{Arg, Command};
@@ -57,26 +54,6 @@ pub(crate) struct Wire(pub(crate) Fake);
 impl Services for Wire {
     fn extension(&mut self) -> &mut dyn Extension {
         &mut self.0
-    }
-
-    #[cfg(feature = "test-support")]
-    fn session_name(&mut self) -> String {
-        String::new()
-    }
-
-    #[cfg(feature = "test-support")]
-    fn run_id(&mut self, _: &str, _: u64) -> Result<String, Box<dyn Diagnostic>> {
-        Ok(String::new())
-    }
-
-    #[cfg(feature = "test-support")]
-    fn open_store(&mut self, _: &str) -> Result<String, Box<dyn Diagnostic>> {
-        Ok(String::new())
-    }
-
-    #[cfg(feature = "test-support")]
-    fn diagnostic_samples(&self) -> Vec<Box<dyn Diagnostic>> {
-        Vec::new()
     }
 }
 

@@ -5,6 +5,7 @@ use super::*;
 use std::path::PathBuf;
 
 use ::process_env::EnvSnapshot;
+use angzarr_presentation::Format;
 
 fn verbs(noun: &Command) -> Vec<String> {
     noun.get_subcommands()
@@ -120,30 +121,37 @@ impl World {
 }
 
 /// Run `line` through the extension; its exit, stdout and stderr.
-fn run_line(commands: &mut Commands, line: &[&str]) -> (u8, String, String) {
+pub(crate) fn run_line(commands: &mut Commands, line: &[&str]) -> (u8, String, String) {
+    try_line(commands, Format::Json, line).unwrap_or_else(|f| panic!("failed: {}", f.cause))
+}
+
+/// Run `line` through the extension, answering in `format`: its exit, stdout
+/// and stderr, or the failure it ended in.
+pub(crate) fn try_line(
+    commands: &mut Commands,
+    format: Format,
+    line: &[&str],
+) -> Result<(u8, String, String), Failure> {
     let program = Command::new("ctxloom")
         .subcommand_required(true)
         .subcommands(commands.nouns());
     let argv = std::iter::once("ctxloom").chain(line.iter().copied());
     let matches = program.try_get_matches_from(argv).unwrap();
     let noun = matches.subcommand_name().unwrap().to_string();
-    let json = angzarr_presentation::Format::Json;
     let call = Call::with_globals(
         &matches,
-        Some(json),
-        json,
+        Some(format),
+        format,
         library_application::Flags::default(),
     );
-    let catalog = Catalog::en_us(&[crate::EN_US]).unwrap();
+    let catalog = Catalog::en_us(&[crate::EN_US, ctxloom_cli::EN_US]).unwrap();
     let (mut out, mut err) = (Vec::new(), Vec::new());
-    let code = commands
-        .run(&noun, &call, &catalog, &mut out, &mut err)
-        .unwrap_or_else(|f| panic!("failed: {}", f.cause));
-    (
+    let code = commands.run(&noun, &call, &catalog, &mut out, &mut err)?;
+    Ok((
         code,
         String::from_utf8(out).unwrap(),
         String::from_utf8(err).unwrap(),
-    )
+    ))
 }
 
 /// The names of the files under `dir`, relative to it, sorted.

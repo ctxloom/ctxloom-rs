@@ -32,15 +32,6 @@ pub enum CliError {
         error: Box<dyn Diagnostic>,
         exit: u8,
     },
-    /// A test command that refuses.
-    #[cfg(feature = "test-support")]
-    TestRefused,
-    /// A test command with fatal findings.
-    #[cfg(feature = "test-support")]
-    TestFindings { count: u64 },
-    /// What a service behind a test command said.
-    #[cfg(feature = "test-support")]
-    Service(Box<dyn Diagnostic>),
     /// What an extension's command said: its own diagnostic and exit code.
     Extension(crate::extension::Failure),
 }
@@ -52,12 +43,6 @@ impl CliError {
             CliError::Usage { .. } | CliError::UnknownVerb { .. } | CliError::Format { .. } => 2,
             CliError::Output { .. } => 1,
             CliError::Command { exit, .. } => *exit,
-            #[cfg(feature = "test-support")]
-            CliError::TestRefused => 2,
-            #[cfg(feature = "test-support")]
-            CliError::TestFindings { .. } => 3,
-            #[cfg(feature = "test-support")]
-            CliError::Service(_) => 1,
             CliError::Extension(failure) => failure.exit,
         }
     }
@@ -86,12 +71,6 @@ impl Diagnostic for CliError {
             CliError::Format { .. } => code!("unknown-format"),
             CliError::Output { .. } => code!("output"),
             CliError::Command { error, .. } => error.code(),
-            #[cfg(feature = "test-support")]
-            CliError::TestRefused => code!("test-refused"),
-            #[cfg(feature = "test-support")]
-            CliError::TestFindings { .. } => code!("test-findings"),
-            #[cfg(feature = "test-support")]
-            CliError::Service(cause) => cause.code(),
             CliError::Extension(failure) => failure.cause.code(),
         }
     }
@@ -112,12 +91,6 @@ impl Diagnostic for CliError {
             ],
             CliError::Format { value } => vec![("value", value.as_str().into())],
             CliError::Command { error, .. } => error.args(),
-            #[cfg(feature = "test-support")]
-            CliError::TestRefused => Vec::new(),
-            #[cfg(feature = "test-support")]
-            CliError::TestFindings { count } => vec![("count", (*count).into())],
-            #[cfg(feature = "test-support")]
-            CliError::Service(cause) => cause.args(),
             CliError::Extension(failure) => failure.cause.args(),
         }
     }
@@ -164,10 +137,6 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(CliError::Output {
             detail: "broken pipe".to_string(),
         }),
-        #[cfg(feature = "test-support")]
-        Box::new(CliError::TestRefused),
-        #[cfg(feature = "test-support")]
-        Box::new(CliError::TestFindings { count: 1 }),
     ]
 }
 

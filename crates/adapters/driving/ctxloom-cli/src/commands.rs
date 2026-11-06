@@ -48,10 +48,6 @@ pub enum Verb {
         after_help = "Examples:\n  ctxloom completion bash > /etc/bash_completion.d/ctxloom"
     )]
     Completion(CompletionArgs),
-    /// Commands for the tests only
-    #[cfg(feature = "test-support")]
-    #[command(subcommand, hide = true)]
-    Test(TestVerb),
 }
 
 /// `completion`'s argument.
@@ -60,78 +56,6 @@ pub struct CompletionArgs {
     /// The shell to generate for
     #[arg(value_enum, value_name = "SHELL")]
     pub shell: clap_complete::Shell,
-}
-
-#[cfg(feature = "test-support")]
-#[derive(Subcommand, Debug)]
-pub enum TestVerb {
-    /// Refuse (exit 2)
-    Refuse,
-    /// Report fatal findings (exit 3)
-    Findings,
-    /// Print a sample list
-    Sample {
-        /// Print the empty list
-        #[arg(long)]
-        empty: bool,
-    },
-    /// Print every diagnostic the binary can raise, as envelopes
-    Diagnostics,
-    /// Mint a session id
-    SessionId,
-    /// Print a run's id
-    RunId {
-        /// The session's id (a UUID)
-        session: String,
-        /// The incarnation's number
-        incarnation: u64,
-    },
-    /// Open a project's store under the home
-    OpenStore {
-        /// The project's id
-        project: String,
-    },
-    /// Plant a session in the cwd's project store, and the files a fixture
-    /// writes beside it; print its stable id
-    SeedSession(SeedArgs),
-}
-
-/// What `ctxloom test seed-session` plants (see the acceptance tests).
-#[cfg(feature = "test-support")]
-#[derive(Args, Debug, Clone, Default)]
-pub struct SeedArgs {
-    /// The session's name
-    pub harp: String,
-    /// Another project than the cwd's
-    #[arg(long)]
-    pub project: Option<String>,
-    /// Seconds ago it was minted
-    #[arg(long, default_value_t = 86_400)]
-    pub started_ago: u64,
-    /// Seconds ago its last run ended; left out, it never ended
-    #[arg(long)]
-    pub ended_ago: Option<u64>,
-    /// `free` makes its lock file with nothing holding it; `none` makes none
-    #[arg(long, default_value = "none")]
-    pub lock: String,
-    /// Record the canonical transcript Go's fixture records
-    #[arg(long)]
-    pub transcript: bool,
-    /// Mark its transcript kept
-    #[arg(long)]
-    pub keep: bool,
-    /// An internal one-shot's session
-    #[arg(long)]
-    pub oneshot: bool,
-    /// The engine's session it is bound to
-    #[arg(long)]
-    pub native_id: Option<String>,
-    /// The engine's transcript it is bound to
-    #[arg(long)]
-    pub native_transcript: Option<String>,
-    /// An authored file in the session directory
-    #[arg(long)]
-    pub other_file: Vec<String>,
 }
 
 /// The command with its version flag (`--version`, long only: `-v` is

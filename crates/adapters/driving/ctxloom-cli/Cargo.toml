@@ -21,9 +21,10 @@ serde_json.workspace = true
 angzarr-presentation = { workspace = true, features = ["test-support"] }
 
 [features]
-# The test-only commands (`ctxloom test ...`), and `diagnostic_samples`, for
-# other crates' catalog tests. No release build turns it on.
-test-support = ["angzarr-presentation/test-support"]
+# `diagnostic_samples`, for other crates' catalog tests: it adds a function and
+# nothing a caller must implement. (The hidden `ctxloom test ...` commands are
+# the wiring's, mounted through `Extension`.)
+test-support = []
 
 [lints]
 workspace = true

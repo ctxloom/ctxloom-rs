@@ -24,6 +24,12 @@ pub enum LibError {
     /// The test-only seed could not plant a session.
     #[cfg(feature = "test-support")]
     Seed { detail: String },
+    /// A test command that refuses.
+    #[cfg(feature = "test-support")]
+    TestRefused { verb: String },
+    /// A test command with fatal findings.
+    #[cfg(feature = "test-support")]
+    TestFindings { count: u64 },
 }
 
 impl fmt::Display for LibError {
@@ -43,6 +49,10 @@ impl Diagnostic for LibError {
             LibError::Store(_) => code!("store"),
             #[cfg(feature = "test-support")]
             LibError::Seed { .. } => code!("seed"),
+            #[cfg(feature = "test-support")]
+            LibError::TestRefused { .. } => code!("test-refused"),
+            #[cfg(feature = "test-support")]
+            LibError::TestFindings { .. } => code!("test-findings"),
         }
     }
 
@@ -57,6 +67,10 @@ impl Diagnostic for LibError {
             LibError::Store(cause) => vec![("error", Arg::Nested(Box::new(cause.clone())))],
             #[cfg(feature = "test-support")]
             LibError::Seed { detail } => vec![("ext_err_txt", detail.as_str().into())],
+            #[cfg(feature = "test-support")]
+            LibError::TestRefused { verb } => vec![("verb", verb.as_str().into())],
+            #[cfg(feature = "test-support")]
+            LibError::TestFindings { count } => vec![("count", (*count).into())],
         }
     }
 }
@@ -90,6 +104,12 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
         Box::new(LibError::Seed {
             detail: "no such project".to_string(),
         }),
+        #[cfg(feature = "test-support")]
+        Box::new(LibError::TestRefused {
+            verb: "refuse".to_string(),
+        }),
+        #[cfg(feature = "test-support")]
+        Box::new(LibError::TestFindings { count: 1 }),
     ]
 }
 
