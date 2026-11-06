@@ -144,6 +144,9 @@ feature file; it belongs in git history.
   ctxloom used to do) and no technical detail (files, keys, harness mechanics, why an
   assertion is shaped as it is). Rationale a test still needs lives in the cli feature or
   the step definitions.
+- **Companions are added, never discovered.** No scan finds companions, so a journey that
+  relies on one shows the user adding it to the project (`companion add`) before it matters
+  (j000300's setup augmentation first).
 - **Dropped:**
   - the probes that test Claude Code itself (P12, P13, P15-P18, and P14's direct cell);
   - the `container-rootful` rows that can only skip;
