@@ -1,8 +1,6 @@
 # world: surfaces
 # Ported from journeys/j000800_onboarding.feature (rev f36e8dfb2)
-# NOT ported: the scenario tagged @pending: Carol's adding the companion has
-#   no steps yet, and `companion add` does not yet write to the project.
-#   "Materializing for an engine that cannot carry hooks says so" is
+# NOT ported: "Materializing for an engine that cannot carry hooks says so" is
 #   materialize's contract, in cli/materialize.feature.
 @doc
 Feature: A new engineer clones the repo and is already set up
@@ -56,10 +54,8 @@ Feature: A new engineer clones the repo and is already set up
   # Bob's machine has some of the team's companion tools and not others.
   # What does not depend on a missing companion still reaches him, nothing
   # fails, and a companion's own guidance reaches him only when he has it.
-  @pending
   Scenario Outline: Companion-dependent guidance reaches Bob only if he has the companion
-    # substitution: Carol adds the companion to the team's project herself; Bob's machine has its program or not.
-    Given Carol has added the "reprise" companion to the team's project
+    Given the team's context includes guidance for the "reprise" companion
     And the "reprise" companion is <presence> on Bob's machine
     When Bob clones the project
     And Bob starts a session

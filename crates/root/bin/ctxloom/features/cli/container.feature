@@ -150,11 +150,9 @@ Feature: container — the images isolated agents run in, and the questions you 
     # named no engine at all would describe nothing while still looking like a
     # report.
     #
-    # unsent-refinish, ruled 2026-09-04: a bare invocation resolves through
-    # cfg.PrimaryLabel() (Config.ResolveLLM's empty-label case), so setting
-    # llm.defaults.primary: mock here redirects the resolved default to the
-    # image this Rule's Background already builds, and shared_fs can genuinely
-    # earn "ok" without a vendor build.
+    # A bare invocation resolves the project's default engine, so making mock
+    # the default points it at the image this Rule's Background already
+    # builds, and shared_fs can genuinely earn "ok" without a vendor build.
     Scenario Outline: With no backend named, the check reports on the project's default
       Given an initialized ctxloom project
       And the mock LLM responds "MOCK-REPLY-NEVER-SENT-CONTAINER-CHECK-ONLY-PROBES"

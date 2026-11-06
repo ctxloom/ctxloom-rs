@@ -14,8 +14,7 @@ Feature: init — the setup interview, and what it does to a project that alread
   a terminal — hands the whole thing to your engine for one setup interview:
   companions, then profiles and content, then agents bound to them. It writes
   no engine file into the project: the interview, like every `ctxloom run`, is
-  a session carrying ctxloom's hooks and MCP server in its own session home
-  (ruled 2026-09-21: sessions carry their surfaces). It is a solo core verb
+  a session carrying ctxloom's hooks and MCP server in its own session home. It is a solo core verb
   with exactly one thing under it, `init prompt`, which re-emits that
   interview body for a shell or a script.
 

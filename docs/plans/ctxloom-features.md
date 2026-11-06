@@ -147,7 +147,7 @@ feature file; it belongs in git history.
   assertion is shaped as it is). Rationale a test still needs lives in the cli feature or
   the step definitions.
 - **Companions are added, never discovered.** No scan finds companions, so a journey that
-  relies on one shows the user adding it to the project (`companion add`) before it matters
+  relies on one shows the user adding it (`companion add`, which writes her home, never the project) before it matters
   (j000300's setup augmentation first).
 - **Dropped:**
   - the probes that test Claude Code itself (P12, P13, P15-P18, and P14's direct cell);

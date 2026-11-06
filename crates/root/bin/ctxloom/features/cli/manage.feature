@@ -49,8 +49,8 @@ Feature: manage — wiring ctxloom into a project, and taking it back out
     # ABSENCE, ON THE FILESYSTEM. Install's exit code and its report both
     # say "no engine file was written"; only the tree can prove it. Every
     # engine's own well-known files are named, so an install that wrote one
-    # of them for its recorded engine fails here.
-    # (ruled 2026-09-21: sessions carry their surfaces)
+    # of them for its recorded engine fails here. A session's surfaces live
+    # in its session home, never in the project.
     Scenario Outline: Installing scaffolds the project and writes no engine file
       # substitution: the nested .gitignore is also asserted to name the private cache, the rule that keeps ctxloom's working state out of source control.
       Given an empty project directory
@@ -89,9 +89,8 @@ Feature: manage — wiring ctxloom into a project, and taking it back out
     # refresh is the one at-rest delivery that leaves a launch-borne context
     # out.) claude also gets ctxloom's session-start hook (the session-start
     # notices), which names no context.
-    # (ruled 2026-09-21: sessions carry their surfaces — the project-side
-    # copy is an explicit materialize's, so it is spelled out after the
-    # scaffold)
+    # The project-side copy is an explicit materialize's, so it is spelled
+    # out after the scaffold.
     #
     # --degraded: the scaffold's seed profile inherits ctxloom's published
     # default profile, a remote parent `manage install` pulls — but
@@ -134,8 +133,7 @@ Feature: manage — wiring ctxloom into a project, and taking it back out
     # when one exists — a bare "file does not exist" would also be satisfied
     # by an install that wrote nothing at all, which the context rows above
     # already rule out.
-    # (ruled 2026-09-21: sessions carry their surfaces; ctxloom injects its
-    # MCP only while it is running, via its own companion)
+    # ctxloom's MCP server is registered only in a running session's home.
     Scenario Outline: No engine gets ctxloom registered as an MCP server at rest
       Given an empty project directory
       When Alice installs ctxloom for <engine> and wires its files in:
@@ -168,8 +166,7 @@ Feature: manage — wiring ctxloom into a project, and taking it back out
     #
     # Two engines carry a command surface, which is what makes "in its own
     # idiom" a claim two rows can disagree about.
-    # (ruled 2026-09-21: sessions carry their surfaces — the project-side
-    # command files are an explicit materialize's)
+    # The project-side command files are an explicit materialize's.
     @pending
     Scenario Outline: Every engine gets ctxloom's shipped commands in its own idiom
       Given an empty project directory
@@ -249,8 +246,8 @@ Feature: manage — wiring ctxloom into a project, and taking it back out
     # is served by the running session's endpoint and injected into the
     # session's registry at start, so an explicit materialize registers no
     # managed MCP server in the project — a "true" here would claim a wiring
-    # the engine could not launch (ruled 2026-09-21: ctxloom injects its MCP
-    # only while it is running, via its own companion).
+    # the engine could not launch: ctxloom's MCP server is registered only in a
+    # running session's home.
     Scenario Outline: Check reports which surfaces are actually wired
       # substitution: the Examples column headers "hooks are wired" etc. are spelled with underscores (cucumber-rs does not substitute a placeholder that has spaces).
       Given an initialized ctxloom project
@@ -584,8 +581,7 @@ Feature: manage — wiring ctxloom into a project, and taking it back out
     # form, its executable and its verb separate JSON strings.
     # The MCP claim PARSES the file rather than checking for the bare
     # substring "ctxloom".
-    # (ruled 2026-09-21: sessions carry their surfaces — the harness this
-    # strips is what an explicit materialize wrote)
+    # The harness this strips is what an explicit materialize wrote.
     Scenario: Uninstall strips the harness but keeps the project's own content
       # substitution: the context file materialize wrote is asserted gone too, and the project's default profile asserted kept beside its config.
       Given an empty project directory
@@ -617,9 +613,8 @@ Feature: manage — wiring ctxloom into a project, and taking it back out
     # uninstall left it. Where the run delivered is read off the mock's
     # record, written while it ran: the run's teardown releases a delivery
     # into the project, so the install's files being absent afterwards shows
-    # only that nothing was left behind. Ruled 2026-09-21: sessions carry their surfaces; the project
-    # is written only under a root the binding selects, and the project-side
-    # files this scenario removes are an explicit materialize's.
+    # only that nothing was left behind. The project-side files this scenario
+    # removes are an explicit materialize's.
     @pending
     Scenario: After an uninstall, a run delivers into its session and the project stays clean
       Given an initialized ctxloom project

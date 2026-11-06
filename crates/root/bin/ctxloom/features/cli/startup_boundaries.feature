@@ -7,9 +7,8 @@ Feature: What a start writes, and whose pins it reads
   Starting a session is not a read-only act. Startup sweeps worktrees,
   containers and authored session files, syncs remote dependencies, and
   delivers the engine's managed surfaces — settings, hooks, MCP config and
-  context — into the SESSION's own home (ruled 2026-09-21: sessions carry
-  their surfaces; the project is written only by the explicit hooks
-  install). That is ctxloom's job, not a side effect.
+  context — into the SESSION's own home; the project is written only by an explicit
+  install. That is ctxloom's job, not a side effect.
 
   Two boundaries around that start are asserted here. Both are NEGATIVE claims
   — "this was not written", "this did not abort" — and a negative claim is
@@ -76,7 +75,7 @@ Feature: What a start writes, and whose pins it reads
       # home (the mock's context file), and the project gains exactly one
       # file: the identity marker a real run establishes and a dry run only
       # looks up — so it is absent from the snapshot both dry runs left.
-      # Sessions carry their surfaces; nothing else of the start lands here.
+      # A session's surfaces live in its session home; nothing else of the start lands here.
       When I run "ctxloom run --one-shot --profile dev hello"
       Then the command succeeds
       And the output contains "MOCK-REPLY"

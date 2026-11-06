@@ -21,8 +21,8 @@ Feature: Companions shape how a project is set up
     Given her company ships a companion carrying the company's onboarding steps
     And her own tooling ships a companion carrying her setup preferences
     When Alice initializes ctxloom in her project
-    And she adds her company's companion to her project
-    And she adds her own tooling's companion to her project
+    And she adds her company's companion
+    And she adds her own tooling's companion
     And she runs ctxloom's setup interview
     Then the setup interview includes ctxloom's own setup guidance
     And it includes the company's onboarding steps
@@ -34,8 +34,8 @@ Feature: Companions shape how a project is set up
     Given her company ships a companion carrying the company's onboarding steps
     And her own tooling ships a companion carrying her setup preferences
     When Alice initializes ctxloom in her project
-    And she adds her company's companion to her project
-    And she adds her own tooling's companion to her project
+    And she adds her company's companion
+    And she adds her own tooling's companion
     And she runs ctxloom's setup interview with companions switched off
     Then the setup interview includes ctxloom's own setup guidance
     And it does not include the company's onboarding steps
@@ -47,7 +47,7 @@ Feature: Companions shape how a project is set up
     # substitution: Alice adds the company's companion herself, then runs the interview with her real assistant.
     Given her company ships a companion whose setup guidance asks her assistant to confirm a company codeword
     When Alice initializes ctxloom in her project
-    And she adds her company's companion to her project
+    And she adds her company's companion
     And she runs ctxloom's setup interview with her real <engine> assistant
     Then the assistant's setup response confirms the company codeword
 
