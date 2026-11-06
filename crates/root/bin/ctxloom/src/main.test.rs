@@ -77,6 +77,20 @@ pub(crate) fn binary() -> &'static Path {
     })
 }
 
+/// Write `payload` to the child's stdin and close it; whether the child took
+/// it. A child that exited, or closed stdin, without reading (a command that
+/// refuses its arguments first) is EPIPE here, which is the child's answer and
+/// not the step's failure: the step then asserts on the exit it got. Any other
+/// write error is a real one.
+pub(crate) fn feed(mut stdin: std::process::ChildStdin, payload: &str) -> bool {
+    use std::io::{ErrorKind, Write};
+    match stdin.write_all(payload.as_bytes()) {
+        Ok(()) => true,
+        Err(e) if e.kind() == ErrorKind::BrokenPipe => false,
+        Err(e) => panic!("the payload is not written: {e}"),
+    }
+}
+
 /// One finished process.
 pub(crate) struct Ran {
     /// The exit code; -1 when a signal ended the process.
@@ -280,6 +294,9 @@ mod util;
 
 #[path = "usage.test.rs"]
 mod usage;
+
+#[path = "feed.test.rs"]
+mod feed_tests;
 
 #[path = "version.test.rs"]
 mod version;

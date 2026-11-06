@@ -8,7 +8,6 @@
 //! initialized ctxloom project", "a bundle ...", "a profile ..."; here that is
 //! [`Project`].
 
-use std::io::Write;
 use std::process::{Command, Stdio};
 
 use serde_json::Value;
@@ -41,12 +40,7 @@ impl Project {
             command.env(name, value);
         }
         let mut child = command.spawn().expect("ctxloom runs");
-        child
-            .stdin
-            .take()
-            .expect("stdin")
-            .write_all(stdin.as_bytes())
-            .expect("the payload is written");
+        crate::tests::feed(child.stdin.take().expect("stdin"), stdin);
         Ran::of(child.wait_with_output().expect("ctxloom finishes"))
     }
 

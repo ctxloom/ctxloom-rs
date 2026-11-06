@@ -6,7 +6,6 @@
 //! foresee, and stdout is the engine's input, so the stdout assertions parse
 //! stdout ALONE, never the combined stream.
 
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -36,12 +35,7 @@ impl Env {
             command.env(name, value);
         }
         let mut child = command.spawn().expect("ctxloom runs");
-        child
-            .stdin
-            .take()
-            .expect("stdin")
-            .write_all(stdin.as_bytes())
-            .expect("the payload is written");
+        crate::tests::feed(child.stdin.take().expect("stdin"), stdin);
         Ran::of(child.wait_with_output().expect("ctxloom finishes"))
     }
 }
