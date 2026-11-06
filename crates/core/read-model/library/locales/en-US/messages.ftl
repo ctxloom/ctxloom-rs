@@ -27,6 +27,7 @@ library-profile-unreadable = profile { $name } cannot be read: { $ext_err_txt }
 ## Bundles.
 
 library-bundle-empty = bundle is empty: { $bytes } bytes parsed to a document declaring no version and no items (fragments, commands, skills, mcp, profiles or hooks) — an empty, truncated, comment-only or `null` file parses as valid YAML but is not a bundle
+library-bundle-loadout-empty = loadout is empty: { $bytes } bytes parsed to a document declaring neither a run: nor an init: section
 library-bundle-newer = bundle: schema_version { $generation }: written by a newer format than this binary reads; upgrade the binary (this binary reads up to { $current })
 library-bundle-not-integer = bundle: format version cannot be read: schema_version is not an integer
 library-bundle-syntax = invalid bundle YAML: { $cause }

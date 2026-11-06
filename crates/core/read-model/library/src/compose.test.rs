@@ -561,3 +561,97 @@ fn test_a_duplicate_under_another_name_is_reported_and_under_the_same_name_is_no
     let package = assemble(&cat, &one_name, &Options::default());
     assert!(package.findings.is_empty(), "{:?}", package.findings);
 }
+
+// ---------------------------------------------------------------- companions
+
+const LOADOUT: &str = "version: 1.0.0\nfragments:\n  guide:\n    content: \"Companion guide.\"\n  later:\n    premise: \"about to do the later thing\"\n    content: \"Later.\"\n";
+
+fn corpus_with_companion() -> Catalog {
+    corpus().with_companions(vec![(
+        "reprise".to_string(),
+        crate::document::parse_document(LOADOUT).unwrap(),
+    )])
+}
+
+fn companion_selection(catalog: &Catalog, profile_fragments: &[&str]) -> Selection {
+    let profile = profile(|p| {
+        p.fragments = profile_fragments.iter().map(|f| frag(f, 0)).collect();
+    });
+    let selection = select(
+        &[profile],
+        &corpus(),
+        &SelectRequest::default(),
+        &mut Vec::new(),
+    );
+    with_companion_asks(selection, catalog)
+}
+
+#[test]
+fn test_companion_fragments_follow_the_profile_selected_ones() {
+    let catalog = corpus_with_companion();
+    let selection = companion_selection(&catalog, &["style", "rules"]);
+    assert_eq!(
+        names(&selection.fragments),
+        [
+            "style",
+            "rules",
+            "ctxloom+companion:reprise#fragments/guide",
+            "ctxloom+companion:reprise#fragments/later",
+        ]
+    );
+    assert!(selection.fragments[2..]
+        .iter()
+        .all(|a| a.priority == 0 && a.version.is_empty()));
+}
+
+#[test]
+fn test_without_companions_the_selection_is_as_it_was() {
+    let catalog = corpus();
+    let plain = select(
+        &[profile(|p| p.fragments = vec![frag("style", 0)])],
+        &catalog,
+        &SelectRequest::default(),
+        &mut Vec::new(),
+    );
+    assert_eq!(with_companion_asks(plain.clone(), &catalog), plain);
+}
+
+#[test]
+fn test_a_companion_fragment_is_delivered_unless_it_has_a_premise() {
+    let catalog = corpus_with_companion();
+    let selection = companion_selection(&catalog, &["style"]);
+    let package = assemble(&catalog, &selection, &Options::default());
+    assert_eq!(
+        package.context,
+        format!("Prefer small functions.{SECTION_SEPARATOR}Companion guide.")
+    );
+    assert_eq!(package.premised.len(), 1);
+    assert_eq!(
+        package.premised[0].reference,
+        "ctxloom+companion:reprise#fragments/later"
+    );
+    assert_eq!(package.premised[0].premise, "about to do the later thing");
+    assert_eq!(package.premised[0].body, "Later.");
+    assert!(package.findings.is_empty(), "{:?}", package.findings);
+}
+
+#[test]
+fn test_a_premised_companion_fragment_loads_when_named() {
+    let catalog = corpus_with_companion();
+    let mut selection = companion_selection(&catalog, &[]);
+    selection
+        .explicit
+        .push("ctxloom+companion:reprise#fragments/later".to_string());
+    let package = assemble(&catalog, &selection, &Options::default());
+    assert!(package.context.contains("Later."));
+    assert!(package.premised.is_empty());
+}
+
+#[test]
+fn test_a_companion_fragment_the_profile_names_too_is_assembled_once() {
+    let catalog = corpus_with_companion();
+    let selection = companion_selection(&catalog, &["ctxloom+companion:reprise#fragments/guide"]);
+    let package = assemble(&catalog, &selection, &Options::default());
+    assert_eq!(package.context, "Companion guide.");
+    assert_eq!(package.fragments.len(), 1);
+}

@@ -6,6 +6,8 @@
 //! - [`model`]: a bundle and its items.
 //! - [`document`] and [`tree`]: a bundle read from an inline document, and
 //!   from its tree of files; [`frontmatter`] splits an item file.
+//! - [`loadout`]: a companion's loadout document, its `run:` bundle and
+//!   typed `init:` section.
 //! - [`profile`]: profiles, and their resolution with parents.
 //! - [`catalog`]: the project's bundles and the lookups over them.
 //! - [`compose`]: selection (bookend, priority, dedupe) and assembly of the
@@ -24,6 +26,7 @@ pub mod document;
 mod error;
 pub mod findings;
 pub mod frontmatter;
+pub mod loadout;
 pub mod model;
 pub mod mustache;
 pub mod premise;

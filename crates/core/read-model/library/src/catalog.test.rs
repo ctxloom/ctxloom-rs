@@ -284,3 +284,80 @@ fn test_an_installed_bundle_is_found_by_its_canonical_reference() {
         .is_err());
     assert!(catalog_of(&[("alpha", ALPHA)]).lookup(KIT).is_err());
 }
+
+// ---------------------------------------------------------------- companions
+
+const LOADOUT_RUN: &str = "version: 1.0.0\nfragments:\n  guide:\n    tags: [house]\n    content: \"Companion guide.\"\n  zeta:\n    premise: \"about to zeta\"\n    content: \"Zeta.\"\n";
+
+fn with_reprise() -> Catalog {
+    corpus().with_companions(vec![(
+        "reprise".to_string(),
+        crate::document::parse_document(LOADOUT_RUN).unwrap(),
+    )])
+}
+
+#[test]
+fn test_a_companion_is_a_bundle_under_its_companion_reference() {
+    let cat = with_reprise();
+    let entry = cat.lookup("ctxloom+companion:reprise").unwrap();
+    assert_eq!(entry.name, "ctxloom+companion:reprise");
+    assert_eq!(cat.companion_of(&entry.name), Some("reprise"));
+    // A companion no one registered is no bundle.
+    assert!(cat.lookup("ctxloom+companion:ltk").is_err());
+}
+
+#[test]
+fn test_a_project_bundle_is_no_companion() {
+    let cat = with_reprise();
+    assert_eq!(cat.companion_of("alpha"), None);
+    assert_eq!(cat.companion_of("ghost"), None);
+    assert_eq!(corpus().companion_of("ctxloom+companion:reprise"), None);
+}
+
+#[test]
+fn test_a_companions_fragment_is_read_under_its_companion_reference() {
+    let cat = with_reprise();
+    let read = cat
+        .read_fragment("ctxloom+companion:reprise#fragments/guide")
+        .unwrap();
+    assert_eq!(read.len(), 1);
+    assert_eq!(
+        read[0].item_ref,
+        "ctxloom+companion:reprise#fragments/guide"
+    );
+    assert_eq!(read[0].content, "Companion guide.");
+    assert_eq!(read[0].tags, strings(&["house"]));
+    // A project bundle's item keeps its local reference.
+    let alpha = cat.read_fragment("alpha#fragments/rules").unwrap();
+    assert_eq!(alpha[0].item_ref, "ctxloom+local:alpha#fragments/rules");
+}
+
+#[test]
+fn test_the_companions_asks_follow_the_reference_then_the_fragment_name() {
+    let mut cat = corpus().with_companions(vec![
+        (
+            "reprise".to_string(),
+            crate::document::parse_document(LOADOUT_RUN).unwrap(),
+        ),
+        (
+            "ltk".to_string(),
+            crate::document::parse_document(
+                "version: 1\nfragments:\n  b: {content: b}\n  a: {content: a}\n",
+            )
+            .unwrap(),
+        ),
+    ]);
+    let asks: Vec<String> = cat.companion_fragments();
+    assert_eq!(
+        asks,
+        [
+            "ctxloom+companion:ltk#fragments/a",
+            "ctxloom+companion:ltk#fragments/b",
+            "ctxloom+companion:reprise#fragments/guide",
+            "ctxloom+companion:reprise#fragments/zeta",
+        ]
+    );
+    assert!(corpus().companion_fragments().is_empty());
+    cat = corpus();
+    assert!(cat.companion_fragments().is_empty());
+}

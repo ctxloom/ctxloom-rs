@@ -239,6 +239,28 @@ pub trait LoadoutProbe {
     fn answers(&self, path: &str) -> Result<(), Unanswered>;
 }
 
+/// What asking a registered companion for its loadout came to.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum CompanionLoadout {
+    /// It printed a loadout document: its text.
+    Loaded(String),
+    /// Its binary is not on the `PATH` (or the name names no binary).
+    Absent,
+    /// It ran and printed nothing: a companion with no loadout to give.
+    NoLoadout,
+    /// It could not be run, failed, or took too long: what happened.
+    ProbeFailed(String),
+}
+
+/// The loadouts of the companions a project registers, fetched fresh each
+/// time they are asked for (Go's `Prober.ProbeCompanionLoadouts`): the one
+/// place a companion's binary is run for its session-time contribution.
+pub trait CompanionLoadouts {
+    /// The loadout of the companion registered as `name`. Never fatal: every
+    /// way it can fail is an outcome.
+    fn loadout(&self, name: &str) -> CompanionLoadout;
+}
+
 /// The project's regenerable cache (`.ctxloom/cache`): measured and removed
 /// by path below the app dir, nothing else (S12, `ctxloom clean`).
 pub trait ProjectCache {

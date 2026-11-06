@@ -398,6 +398,26 @@ pub fn bookend(asks: Vec<FragmentAsk>) -> Vec<FragmentAsk> {
     sorted
 }
 
+/// `selection` with every fragment of the catalog's companion loadouts asked
+/// for after the profile-selected ones (Go's `companionAsks`): companions by
+/// reference, fragments by name, each at priority 0 and after the bookending.
+/// "Unconditional" means not profile-selected: each ask still goes through
+/// [`assemble`], so a premise holds it back and a second copy of an item is
+/// assembled once.
+pub fn with_companion_asks(mut selection: Selection, catalog: &Catalog) -> Selection {
+    selection.fragments.extend(
+        catalog
+            .companion_fragments()
+            .into_iter()
+            .map(|name| FragmentAsk {
+                name,
+                version: String::new(),
+                priority: 0,
+            }),
+    );
+    selection
+}
+
 /// What an assembly takes besides the selection.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
 pub struct Options {

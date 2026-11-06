@@ -42,6 +42,9 @@ pub struct Catalog {
     entries: Vec<Entry>,
     /// The entries installed from remotes, by name.
     origins: std::collections::BTreeMap<String, RemoteOrigin>,
+    /// The entries that are a companion's loadout, by name, each to the
+    /// companion's binary name: the entry's provenance.
+    companions: std::collections::BTreeMap<String, String>,
 }
 
 /// A fragment or command as a listing shows it.
@@ -93,7 +96,51 @@ impl Catalog {
         Catalog {
             entries,
             origins: std::collections::BTreeMap::new(),
+            companions: std::collections::BTreeMap::new(),
         }
+    }
+
+    /// The catalog with the `run:` bundles of companions added, each as
+    /// `(binary name, bundle)`: an entry named by the companion's canonical
+    /// reference (`ctxloom+companion:<bin>`), which says where it came from.
+    /// A binary whose name mints no reference contributes nothing.
+    pub fn with_companions(mut self, loadouts: Vec<(String, Bundle)>) -> Catalog {
+        for (bin, bundle) in loadouts {
+            let Ok(parts) = Parts::companion(&bin) else {
+                continue;
+            };
+            let name = parts.render(false);
+            self.entries.retain(|e| e.name != name);
+            self.entries.push(Entry {
+                manifest_path: name.clone(),
+                name: name.clone(),
+                bundle,
+            });
+            self.companions.insert(name, bin);
+        }
+        self.entries.sort_by(|a, b| a.name.cmp(&b.name));
+        self
+    }
+
+    /// The binary whose loadout the entry `name` is; none for a bundle of
+    /// the project or installed from a remote.
+    pub fn companion_of(&self, name: &str) -> Option<&str> {
+        self.companions.get(name).map(String::as_str)
+    }
+
+    /// The fragments the companions' loadouts carry, as the references an
+    /// assembly asks for them by: companions by reference, fragments by name.
+    pub fn companion_fragments(&self) -> Vec<String> {
+        self.entries
+            .iter()
+            .filter(|e| self.companions.contains_key(&e.name))
+            .flat_map(|e| {
+                e.bundle
+                    .fragments
+                    .keys()
+                    .map(|fragment| format!("{}#fragments/{fragment}", e.name))
+            })
+            .collect()
     }
 
     /// Say which of the entries are bundles installed from remotes, by name:
@@ -137,6 +184,9 @@ impl Catalog {
                 .find(|e| e.name == name)
                 .ok_or_else(not_found);
         }
+        if let Some(entry) = self.companion_entry(ask) {
+            return Ok(entry);
+        }
         if has_scheme(ask) && Parts::parse(ask).is_ok() {
             return self.installed(ask).ok_or_else(not_found);
         }
@@ -166,6 +216,13 @@ impl Catalog {
                     .join(", "),
             }),
         }
+    }
+
+    /// The companion's entry `ask` is a reference to.
+    fn companion_entry(&self, ask: &str) -> Option<&Entry> {
+        let canonical = refs::canonical_bundle_ref(ask).ok()?;
+        self.companions.get(&canonical)?;
+        self.entries.iter().find(|e| e.name == canonical)
     }
 
     /// The entry installed from the remote bundle `ask` is a reference to.
@@ -398,8 +455,12 @@ pub fn item_tags(bundle_tags: &[String], own: &[String]) -> Vec<String> {
     out
 }
 
-/// The canonical reference of an item of a local bundle.
+/// The canonical reference of an item of a local bundle, or of a bundle that
+/// is named by its canonical reference already (a companion's).
 pub fn item_ref(bundle: &str, kind: ItemKind, name: &str) -> String {
+    if has_scheme(bundle) {
+        return format!("{bundle}#{}/{name}", kind.dir());
+    }
     format!("ctxloom+local:{bundle}#{}/{name}", kind.dir())
 }
 

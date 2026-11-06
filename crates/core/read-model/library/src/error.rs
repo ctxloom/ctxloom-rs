@@ -171,6 +171,9 @@ impl Diagnostic for ProfileError {
 pub enum BundleError {
     /// A document that declares no version and no items.
     Empty { bytes: u64 },
+    /// A loadout document that declares neither a `run:` nor an `init:`
+    /// section.
+    LoadoutEmpty { bytes: u64 },
     /// An envelope written by a newer format than this reads.
     Newer { generation: u64, current: u64 },
     /// An envelope's `schema_version` that is not an integer.
@@ -225,6 +228,7 @@ impl Diagnostic for BundleError {
     fn code(&self) -> &str {
         match self {
             BundleError::Empty { .. } => code!("bundle-empty"),
+            BundleError::LoadoutEmpty { .. } => code!("bundle-loadout-empty"),
             BundleError::Newer { .. } => code!("bundle-newer"),
             BundleError::NotInteger => code!("bundle-not-integer"),
             BundleError::Syntax { .. } => code!("bundle-syntax"),
@@ -243,7 +247,9 @@ impl Diagnostic for BundleError {
 
     fn args(&self) -> Vec<(&str, Arg)> {
         match self {
-            BundleError::Empty { bytes } => vec![("bytes", (*bytes).into())],
+            BundleError::Empty { bytes } | BundleError::LoadoutEmpty { bytes } => {
+                vec![("bytes", (*bytes).into())]
+            }
             BundleError::Newer {
                 generation,
                 current,
@@ -502,6 +508,7 @@ fn profile_samples() -> Vec<Box<dyn Diagnostic>> {
 fn bundle_samples() -> Vec<Box<dyn Diagnostic>> {
     vec![
         Box::new(BundleError::Empty { bytes: 0 }),
+        Box::new(BundleError::LoadoutEmpty { bytes: 0 }),
         Box::new(BundleError::Newer {
             generation: 5,
             current: 4,
