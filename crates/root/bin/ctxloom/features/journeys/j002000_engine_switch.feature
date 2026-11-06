@@ -1,10 +1,11 @@
 # world: surfaces
 # Ported from journeys/j002000_engine_switch.feature
-# NOT ported: the other three scenarios. "The engine changes under the binding
-#   and the context does not" and "Nothing tells her what the team just gave
-#   up" need the mock-lossy engine, which this port does not register (the new
-#   engine here is `mock`); "History recorded under the old engine survives
-#   the move" needs the session-index seeding of J001200.
+# NOT ported: "Nothing tells her what the team just gave up". It asserts that
+#   `doctor`, `manage check` and `agent show` EACH name the hook event the new
+#   engine cannot carry; this port has no per-agent capability-loss report on
+#   any of them (only the materialize report names a lost surface or hook
+#   event), so the scenario would fail on a missing product behaviour, not a
+#   defect in the port. Not built (owner ruling pending).
 @doc
 Feature: Engine switch day
 
@@ -49,6 +50,21 @@ Feature: Engine switch day
   Background:
     Given Alice's team has standardised on one engine and is moving to another
 
+  # THE MIGRATION ITSELF, as a sequence rather than a capability. The swap is
+  # asserted on the file ON DISK and on what `agent show` reports — the two can
+  # disagree, and a binding that changed in config while the inspector still
+  # reports the old engine is a migration nobody can verify.
+  #
+  # UNTAGGED: confirmed to pass as written, and confirmed to BITE. Dropping
+  # `entry.Engine = orKeep(...)` from operations.SetAgent — so `agent edit
+  # --llm` reports "Updated agent" and writes the old engine back — turns
+  # this red on the on-disk assertion, which is the failure the scenario names.
+  Scenario: The engine changes under the binding and the context does not
+    Given the team's guidance reaches the old engine's own surface
+    When Alice swaps the engine under the binding
+    Then the binding on disk names the new engine, and so does what ctxloom reports
+    And the same guidance reaches the new engine's own surface, unchanged
+
   # FOLDED (Phase 3, D-row not previously numbered): "manage install --engine
   # <unknown>" used to have its own scenario here too, but cli/manage.feature's
   # "A misspelled engine is refused by name, and nothing is scaffolded" already
@@ -87,3 +103,23 @@ Feature: Engine switch day
       ctxloom agent edit dev --llm bogus-engine
       """
     Then ctxloom refuses and names the engines it knows
+
+  # THE PORTABILITY PAYOFF, and the reason owning a canonical transcript is
+  # worth its cost. History that dies with the engine that produced it is
+  # history rented from a vendor. The assertion is deliberately cheap and
+  # deliberately present: it is the property most likely to be broken by an
+  # unrelated change and least likely to be noticed, because nobody looks for
+  # old sessions until they need one.
+  #
+  # UNTAGGED, but only after the assertion was made capable of failing. As
+  # written it searched the COMBINED output for the harp, and Manager.Reconcile
+  # warns "session <harp> dropped from the index" when it reaps one — so the
+  # message announcing the history was deleted satisfied the check for the
+  # history surviving. Measured: with operations.isUnrecoverable inverted for
+  # compacted entries the listing returned zero rows and the scenario stayed
+  # green. It now reads the ROWS out of `session list --all --format json`
+  # stdout, and that same mutation turns it red.
+  Scenario: History recorded under the old engine survives the move
+    Given a session was recorded under the old engine before the switch
+    When Alice swaps the engine under the binding
+    Then the sessions recorded under the old engine are still listed after the switch

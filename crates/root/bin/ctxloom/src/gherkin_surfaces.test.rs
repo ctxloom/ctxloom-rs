@@ -11,8 +11,8 @@
 //!   items is refused by the tree reader).
 //! - a skill's execute bit comes from the sidecar's `executable:` (plan 8.2),
 //!   not from the file's mode.
-//! - the engines are the ones this port registers: `claude-code`, `mock` and
-//!   `mock-launch`.
+//! - the engines are the ones this port registers: `claude-code`, `mock`,
+//!   `mock-launch`, `mock-lossy` and `mock-noskills`.
 
 use std::fmt;
 use std::path::Path;
@@ -52,6 +52,8 @@ struct World {
     hand_authored: Option<(String, String)>,
     /// The engine and target of the last team materialize.
     team: Option<(String, String)>,
+    /// The context the old engine's surface held before the switch (j002000).
+    before: Option<String>,
 }
 
 impl fmt::Debug for World {
@@ -76,6 +78,7 @@ impl World {
             common: Common::new(),
             hand_authored: None,
             team: None,
+            before: None,
         }
     }
 
@@ -601,6 +604,13 @@ fn report_names_hook(w: &mut World, engine: String) {
         said.to_lowercase().contains("hook"),
         "the {engine} materialize report never mentions hooks at all: {said}"
     );
+    if engine == "mock-lossy" {
+        // Go's materialize_loss_report_test.go: the line says WHICH hook and WHY.
+        assert!(
+            said.contains("mock-lossy has no native session_start event"),
+            "the {engine} report names the hook but not why: {said}"
+        );
+    }
 }
 
 #[then(regex = r"^(\S+) still carries Alice's hand-authored conventions, byte-for-byte$")]
@@ -650,14 +660,14 @@ fn carries_marker(w: &mut World, rel: String, marker: String) {
 const J002000_MARKER: &str = "J002000-TEAM-GUIDANCE-MARKER";
 
 /// Go's `j002000Setup`: a project declaring both engines (the new one is
-/// `mock`, this port's stand-in for Go's `mock-lossy`), an agent `dev` bound
+/// `mock-lossy`, as in Go), an agent `dev` bound
 /// to the old one, and the team's guidance composed into the profile it names.
 #[given("Alice's team has standardised on one engine and is moving to another")]
 fn j002000_setup(w: &mut World) {
     w.common.project = Project::initialized();
     w.common.project.write(
         ".ctxloom/config.yaml",
-        "schema_version: 8\nllm:\n  configs:\n    claude-code:\n      type: claude-code\n    mock:\n      type: mock\n  defaults:\n    primary: claude-code\n    fast: claude-code\nagents:\n  dev:\n    llm: claude-code\n    profiles:\n      - default\ndefault_agent: dev\n",
+        "schema_version: 8\nllm:\n  configs:\n    claude-code:\n      type: claude-code\n    mock-lossy:\n      type: mock-lossy\n  defaults:\n    primary: claude-code\n    fast: claude-code\nagents:\n  dev:\n    llm: claude-code\n    profiles:\n      - default\ndefault_agent: dev\n",
     );
     let root = ".ctxloom/content/bundles/v2/house";
     w.common.project.write(
@@ -678,6 +688,139 @@ fn j002000_setup(w: &mut World) {
         "",
     );
     w.ran().succeeds();
+}
+
+const J002000_AGENT: &str = "dev";
+const J002000_OLD: &str = "claude-code";
+const J002000_NEW: &str = "mock-lossy";
+/// Go's `j001200Harp`: the session recorded before the switch.
+const J002000_HARP: &str = "amber-quiet-heron";
+
+/// Go's `j002000Materialize`: the default profile materialized for `engine`,
+/// and the bytes of the context file that engine reads.
+fn j002000_materialize(w: &mut World, engine: &str) -> String {
+    let target = format!("out-{engine}");
+    w.common.run_lines(
+        &format!("ctxloom materialize default --target {target} --backend {engine}"),
+        "",
+    );
+    w.ran().succeeds();
+    let file = if engine == J002000_OLD {
+        "CLAUDE.md"
+    } else {
+        "MOCK_CONTEXT.md"
+    };
+    w.common
+        .project
+        .read(&format!("{target}/{file}"))
+        .unwrap_or_else(|| {
+            panic!(
+                "materializing for {engine} wrote no {file}: {}",
+                w.ran().said()
+            )
+        })
+}
+
+#[given("the team's guidance reaches the old engine's own surface")]
+fn j002000_before(w: &mut World) {
+    let body = j002000_materialize(w, J002000_OLD);
+    assert!(
+        body.contains(J002000_MARKER),
+        "the {J002000_OLD} surface does not carry the team's guidance before the switch: {body}"
+    );
+    w.before = Some(body);
+}
+
+#[when("Alice swaps the engine under the binding")]
+fn j002000_swap(w: &mut World) {
+    w.common.run_lines(
+        &format!("ctxloom agent edit {J002000_AGENT} --llm {J002000_NEW}"),
+        "",
+    );
+}
+
+#[then("the binding on disk names the new engine, and so does what ctxloom reports")]
+fn j002000_bound(w: &mut World) {
+    let config = w
+        .common
+        .project
+        .read(".ctxloom/config.yaml")
+        .expect("config.yaml");
+    let recorded = config
+        .lines()
+        .skip_while(|l| l.trim() != format!("{J002000_AGENT}:"))
+        .skip(1)
+        .find_map(|l| l.trim().strip_prefix("llm:").map(|v| v.trim().to_string()))
+        .unwrap_or_else(|| {
+            panic!("config.yaml records no llm label for {J002000_AGENT}: {config}")
+        });
+    assert_eq!(
+        recorded,
+        J002000_NEW,
+        "config.yaml still binds the agent after the swap: {}",
+        w.ran().said()
+    );
+    w.common
+        .run_lines(&format!("ctxloom agent show {J002000_AGENT}"), "");
+    w.ran().succeeds();
+    assert!(
+        w.ran().stdout.contains(J002000_NEW),
+        "`agent show` does not name {J002000_NEW} after the swap: {}",
+        w.ran().stdout
+    );
+}
+
+#[then("the same guidance reaches the new engine's own surface, unchanged")]
+fn j002000_after(w: &mut World) {
+    let after = j002000_materialize(w, J002000_NEW);
+    assert!(
+        after.contains(J002000_MARKER),
+        "the {J002000_NEW} surface does not carry the team's guidance after the switch: {after}"
+    );
+    let before = w.before.clone().expect("no before-state was captured");
+    assert_eq!(
+        before.trim(),
+        after.trim(),
+        "the composed context differs across the switch"
+    );
+}
+
+/// Go's `a session was recorded under the old engine before the switch`: an
+/// ended session with its canonical transcript, seeded through `ctxloom test
+/// seed-session` (the Rust store has no sidecar to write).
+#[given("a session was recorded under the old engine before the switch")]
+fn j002000_session(w: &mut World) {
+    let ran = w.common.project.run(&[
+        "test",
+        "seed-session",
+        J002000_HARP,
+        "--transcript",
+        "--lock",
+        "free",
+        "--started-ago",
+        "7200",
+        "--ended-ago",
+        "3600",
+    ]);
+    assert_eq!(ran.code, 0, "seeding {J002000_HARP}: {}", ran.said());
+}
+
+/// Asserted on the listing's rows, parsed out of stdout, never on the
+/// combined output (Go's note: a reap warning names the harp it deleted).
+#[then("the sessions recorded under the old engine are still listed after the switch")]
+fn j002000_listed(w: &mut World) {
+    w.common
+        .run_lines("ctxloom session list --all --format json", "");
+    w.ran().succeeds();
+    let rows = w.json();
+    let rows = rows.as_array().cloned().unwrap_or_default();
+    assert!(
+        rows.iter()
+            .any(|r| r["harp"].as_str() == Some(J002000_HARP)),
+        "the session recorded before the switch is no longer a row ({} row(s)): {}",
+        rows.len(),
+        w.ran().said()
+    );
 }
 
 /// Go's `ctxloom refuses and names the engines it knows`.
