@@ -1,5 +1,5 @@
 # Ported from journeys/j002300_cross_engine_delegation.feature (rev f36e8dfb2)
-# NOT ported: any of it yet; it waits for the coordinator.
+# NOT ported: the scenarios tagged @pending: they wait for the coordinator.
 
 @pending
 Feature: Delegation — each child sees only its own context, over a real two-way bus

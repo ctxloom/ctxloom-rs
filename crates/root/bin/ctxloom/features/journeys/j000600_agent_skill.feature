@@ -1,7 +1,7 @@
 # Ported from journeys/j000600_agent_skill.feature (rev f36e8dfb2)
-# NOT ported: any of it yet; the scenario waits for `ctxloom run` to launch an
-#   engine. Each engine's skill folder, and the skill's full body and script
-#   reaching it, are cli/skill.feature's.
+# NOT ported: the scenarios tagged @pending: it waits for `ctxloom run` to
+#   launch an engine. The skill's body and script reaching each engine's skill
+#   folder are cli/skill.feature's.
 
 @pending
 Feature: A skill you author once, and your assistant simply has

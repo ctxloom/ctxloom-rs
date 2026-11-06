@@ -1,7 +1,7 @@
 # Ported from journeys/j002400_container.feature (rev f36e8dfb2)
-# NOT ported: any of it yet; it waits for `ctxloom run` to launch an engine in
-#   a container. `container check` and `container build` are
-#   cli/container.feature's.
+# NOT ported: the scenarios tagged @pending: it waits for `ctxloom run` to
+#   launch an engine in a container. `container check` and `container build`
+#   are cli/container.feature's.
 
 @pending
 Feature: The container runtime axis — can an engine actually land in a container here, and did it?

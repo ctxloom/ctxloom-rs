@@ -1,7 +1,7 @@
 # Ported from journeys/j002200_isolation.feature (rev f36e8dfb2)
-# NOT ported: any of it yet; it waits for `ctxloom run` to launch an engine.
-#   The container gates, the dry-run preview, the worktree's git exclude and
-#   the credential refusals are cli/run.pending.feature's.
+# NOT ported: the scenarios tagged @pending: they wait for `ctxloom run` to
+#   launch an engine. The container gates, the dry-run preview, the worktree's
+#   git exclude and the credential refusals are cli/run.feature's.
 
 @doc
 @pending

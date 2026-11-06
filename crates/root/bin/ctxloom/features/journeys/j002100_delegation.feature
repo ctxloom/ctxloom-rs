@@ -1,7 +1,7 @@
 # Ported from journeys/j002100_delegation.feature (rev f36e8dfb2)
-# NOT ported: any of it yet; it waits for the coordinator. The reserved-kind
-#   refusal and agent_stop's idempotence are
-#   cli/coordination_contract.pending.feature's.
+# NOT ported: the scenarios tagged @pending: they wait for the coordinator.
+#   The reserved-kind refusal and agent_stop's idempotence are
+#   cli/coordination_contract.feature's.
 
 @doc
 @pending

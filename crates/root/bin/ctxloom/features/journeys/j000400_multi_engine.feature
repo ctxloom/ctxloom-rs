@@ -1,6 +1,6 @@
 # Ported from journeys/j000400_multi_engine.feature (rev f36e8dfb2)
-# NOT ported: any of it yet; these scenarios wait for `ctxloom run` to launch
-#   an engine. What one materialize delivers to each engine is
+# NOT ported: the scenarios tagged @pending: they wait for `ctxloom run` to
+#   launch an engine. What one materialize delivers to each engine is
 #   cli/materialize.feature's.
 
 @doc
