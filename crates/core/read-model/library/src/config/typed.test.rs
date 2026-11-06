@@ -12,13 +12,13 @@ fn parse(text: &str) -> Value {
 #[test]
 fn test_the_yaml_go_prints() {
     let doc = typed(
-        &parse("schema_version: 8\nisolation_pids_limit: 512\nisolation_memory_limit: 4g\ncompanions: [acme, beta]\nconfig:\n  statusline: false\nagents:\n  dev:\n    llm: claude-code\n    env: [ALPHA]\n"),
+        &parse("schema_version: 8\nisolation_pids_limit: 512\nisolation_memory_limit: 4g\ncompanions:\n  acme: {command: [acme-bin, --x]}\n  beta: {command: [beta-bin]}\nconfig:\n  statusline: false\nagents:\n  dev:\n    llm: claude-code\n    env: [ALPHA]\n"),
         &[],
         Order::Sorted,
     );
     assert_eq!(
         to_yaml(&doc),
-        "agents:\n  dev:\n    env:\n      - ALPHA\n    llm: claude-code\ncompanions:\n  - acme\n  - beta\nconfig:\n  statusline: false\nisolation_memory_limit: 4g\nisolation_pids_limit: \"512\"\nschema_version: 8\n"
+        "agents:\n  dev:\n    env:\n      - ALPHA\n    llm: claude-code\ncompanions:\n  acme:\n    command:\n      - acme-bin\n      - --x\n  beta:\n    command:\n      - beta-bin\nconfig:\n  statusline: false\nisolation_memory_limit: 4g\nisolation_pids_limit: \"512\"\nschema_version: 8\n"
     );
 }
 

@@ -86,7 +86,6 @@ enum Pat {
     PrefixKey,
     MemoryLimit,
     PidsLimit,
-    Companion,
     NoEquals,
     Url,
 }
@@ -102,7 +101,6 @@ impl Pat {
             Pat::PrefixKey => "^ctrl[-+].$",
             Pat::MemoryLimit => "^\\s*([0-9]+(\\.[0-9]+)?\\s*([kKmMgGtT]([iI]?[bB])?|[bB])?|[uU][nN][lL][iI][mM][iI][tT][eE][dD])\\s*$",
             Pat::PidsLimit => "^\\s*([0-9]+|[uU][nN][lL][iI][mM][iI][tT][eE][dD])\\s*$",
-            Pat::Companion => "^[A-Za-z0-9][A-Za-z0-9._-]*$",
             Pat::NoEquals => "^[^=]+$",
             Pat::Url => "^https?://",
         }
@@ -126,11 +124,6 @@ impl Pat {
                 let t = s.trim_matches(char::is_whitespace);
                 t.eq_ignore_ascii_case("unlimited")
                     || (!t.is_empty() && t.chars().all(|c| c.is_ascii_digit()))
-            }
-            Pat::Companion => {
-                let mut chars = s.chars();
-                chars.next().is_some_and(|c| c.is_ascii_alphanumeric())
-                    && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
             }
             Pat::NoEquals => !s.is_empty() && !s.contains('=') && !s.contains('\n'),
             Pat::Url => s.starts_with("http://") || s.starts_with("https://"),
@@ -412,16 +405,10 @@ fn root() -> Node {
             ("isolation_pids_limit", limit(Pat::PidsLimit)),
             ("output_dir", non_empty()),
             ("isolation_engines", list(non_empty())),
+            // A registration: the name, and the command that runs it.
             (
                 "companions",
-                Node::Array {
-                    items: Box::new(Node::Str {
-                        choices: &[],
-                        pattern: Some(Pat::Companion),
-                        min_len: true,
-                    }),
-                    unique: true,
-                },
+                map_of(object(vec![("command", list(non_empty()))])),
             ),
             ("agents", map_of(binding())),
             ("default_agent", string()),

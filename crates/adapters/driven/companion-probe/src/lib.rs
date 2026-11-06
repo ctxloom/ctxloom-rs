@@ -49,23 +49,32 @@ impl ProcessProbe {
 }
 
 impl LoadoutProbe for ProcessProbe {
-    fn answers(&self, path: &str) -> Result<(), Unanswered> {
-        self.loadout(path).map(drop)
+    fn answers(&self, command: &[String]) -> Result<(), Unanswered> {
+        self.loadout(command).map(drop)
     }
 }
 
 impl ProcessProbe {
-    /// The text `<path> loadout --format yaml` prints, under the same bound
-    /// and with the same failures as [`answers`](LoadoutProbe::answers).
-    pub fn loadout(&self, path: &str) -> Result<String, Unanswered> {
-        let spec = Spec::new(path)
+    /// The text `<command...> loadout --format yaml` prints, under the same
+    /// bound and with the same failures as [`answers`](LoadoutProbe::answers).
+    /// The system finds a bare program name as it does for any command; this
+    /// searches for nothing.
+    pub fn loadout(&self, command: &[String]) -> Result<String, Unanswered> {
+        let Some((program, arguments)) = command.split_first() else {
+            return Err(Unanswered::Failed("the command is empty".to_string()));
+        };
+        let spec = Spec::new(program)
+            .args(arguments)
             .args(["loadout", "--format", "yaml"])
             .envs(self.env.vars());
         let outcome = run_within(
             &spec,
             &Within::new(self.limit).drain_grace(self.drain_grace),
         )
-        .map_err(|e| Unanswered::Failed(e.io().to_string()))?;
+        .map_err(|e| match e.io().kind() {
+            std::io::ErrorKind::NotFound => Unanswered::Missing(e.io().to_string()),
+            _ => Unanswered::Failed(e.io().to_string()),
+        })?;
         let Some(status) = outcome.status else {
             return Err(Unanswered::Failed(format!(
                 "did not answer within {}ms",
@@ -74,7 +83,12 @@ impl ProcessProbe {
         };
         let printed = outcome.stdout;
         if !status.success() {
-            return Err(Unanswered::Failed(status.to_string()));
+            // An exit with a status answered; a signal did not.
+            return Err(if status.code().is_some() {
+                Unanswered::Exited(status.to_string())
+            } else {
+                Unanswered::Failed(status.to_string())
+            });
         }
         if printed.is_empty() {
             return Err(Unanswered::Silent);

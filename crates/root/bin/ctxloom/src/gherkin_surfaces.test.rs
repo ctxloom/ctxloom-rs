@@ -691,7 +691,7 @@ fn j002000_setup(w: &mut World) {
     w.common.project = Project::initialized();
     w.common.project.write(
         ".ctxloom/config.yaml",
-        "schema_version: 8\nllm:\n  configs:\n    claude-code:\n      type: claude-code\n    mock-lossy:\n      type: mock-lossy\n  defaults:\n    primary: claude-code\n    fast: claude-code\nagents:\n  dev:\n    llm: claude-code\n    profiles:\n      - default\ndefault_agent: dev\n",
+        "schema_version: 9\nllm:\n  configs:\n    claude-code:\n      type: claude-code\n    mock-lossy:\n      type: mock-lossy\n  defaults:\n    primary: claude-code\n    fast: claude-code\nagents:\n  dev:\n    llm: claude-code\n    profiles:\n      - default\ndefault_agent: dev\n",
     );
     let root = ".ctxloom/content/bundles/v2/house";
     w.common.project.write(
@@ -1180,7 +1180,7 @@ fn j000200_scaffold(w: &mut World, engine: &str) {
     w.common.project.write(
         ".ctxloom/config.yaml",
         &format!(
-            "schema_version: 8\nllm:\n  configs:\n    {engine}:\n      type: {engine}\n  defaults:\n    primary: {engine}\n    fast: {engine}\nagents:\n  default:\n    llm: {engine}\n    profiles:\n      - default\ndefault_agent: default\n"
+            "schema_version: 9\nllm:\n  configs:\n    {engine}:\n      type: {engine}\n  defaults:\n    primary: {engine}\n    fast: {engine}\nagents:\n  default:\n    llm: {engine}\n    profiles:\n      - default\ndefault_agent: default\n"
         ),
     );
     w.common.run_lines(
@@ -1291,7 +1291,7 @@ fn j001900_setup(w: &mut World) {
     w.common.project = Project::initialized();
     w.common.project.write(
         ".ctxloom/config.yaml",
-        "schema_version: 8\nllm:\n  configs:\n    claude-code:\n      type: claude-code\n  defaults:\n    primary: claude-code\n    fast: claude-code\n",
+        "schema_version: 9\nllm:\n  configs:\n    claude-code:\n      type: claude-code\n  defaults:\n    primary: claude-code\n    fast: claude-code\n",
     );
     w.common.run_lines(
         "ctxloom bundle create seed -d \"J000200 seed bundle\"\nctxloom profile create default --include seed -d \"J000200 default profile\"",

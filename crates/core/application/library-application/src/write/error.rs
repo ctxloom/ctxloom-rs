@@ -124,12 +124,14 @@ write_errors! {
     LlmField { label, detail } = "write-llm-field";
     /// A name that is no companion's.
     CompanionName { name } = "write-companion-name";
-    /// A companion with no binary on the PATH.
-    CompanionNotOnPath { bin, name } = "write-companion-not-on-path";
-    /// A binary that does not answer the probe.
-    NotACompanion { path, detail } = "write-not-a-companion";
-    /// A binary that prints no loadout.
-    CompanionSilent { path } = "write-companion-silent";
+    /// A companion whose program does not exist.
+    CompanionProgramMissing { program, name } = "write-companion-program-missing";
+    /// A companion registered with no command.
+    CompanionNoCommand { name } = "write-companion-no-command";
+    /// A command that does not answer the probe.
+    NotACompanion { command, detail } = "write-not-a-companion";
+    /// A command that prints no loadout.
+    CompanionSilent { command } = "write-companion-silent";
     /// A companion that is not registered.
     CompanionNotRegistered { name } = "write-companion-not-registered";
     /// An MCP server nobody ships in the bundle.

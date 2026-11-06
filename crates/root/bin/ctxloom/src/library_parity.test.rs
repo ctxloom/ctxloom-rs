@@ -48,6 +48,28 @@ const OWNER_REFUSALS: [&str; 8] = [
     "cfg-notint-bundle-list",
 ];
 
+/// Fixtures Go reads that register companions by bare name (`companions:
+/// [acme]`, schema 8): from schema 9 a companion is a name and the command
+/// that runs it, and the bare list is refused, never migrated (virtuous-word,
+/// owner ruling 2026-11-06). Their rows hold the refusal (exit 2, no answer)
+/// where Go answered; the new shape's behaviour is held by `library_config`'s
+/// layering test on `cfg/layers9`, and by `library_cli`'s companion tests.
+const BARE_COMPANION_FIXTURES: [&str; 3] = ["cfg/v8", "cfg/layers", "cfg/layers-empty-companions"];
+
+/// Go's golden as this build words it where the owner changed it (virtuous-word,
+/// 2026-11-06): the schema stamp (Go writes 8, this build 9: the companions
+/// registration) and the hint under an empty `companion list` (a companion is
+/// added with the command that runs it).
+fn as_changed(golden: &str) -> String {
+    golden
+        .replace("schema_version: 8", "schema_version: 9")
+        .replace("\"schema_version\": 8", "\"schema_version\": 9")
+        .replace(
+            "Use 'ctxloom companion add <name>' to register one.",
+            "Use 'ctxloom companion add <name> --command <program> [args...]' to register one.",
+        )
+}
+
 /// A dry run's keys that are compared (D16); the rest print later slices'
 /// surfaces.
 const DRY_RUN_KEYS: [&str; 9] = [
@@ -145,7 +167,9 @@ fn mismatch(row: &Row, project: &Project) -> Option<String> {
         .trim()
         .parse()
         .expect("an exit code");
-    if OWNER_REFUSALS.contains(&row.id.as_str()) {
+    if OWNER_REFUSALS.contains(&row.id.as_str())
+        || BARE_COMPANION_FIXTURES.contains(&row.fixture.as_str())
+    {
         // owner override of Go, D15, 2026-11-03
         return (ran.code != 2 || !ran.stdout.trim().is_empty())
             .then(|| format!("want a refusal (exit 2, no answer): {}", ran.said()));
@@ -162,7 +186,7 @@ fn mismatch(row: &Row, project: &Project) -> Option<String> {
             ran.said()
         ));
     }
-    let want = golden(&row.id, "stdout");
+    let want = as_changed(&golden(&row.id, "stdout"));
     let got = project.normalized(&ran.stdout);
     if want.trim().is_empty() {
         return (!got.trim().is_empty()).then(|| format!("stdout should be empty: {got:?}"));

@@ -1,40 +1,37 @@
-//! The `CompanionLoadouts` port as processes: a registered companion name
-//! mapped to the program that answers for it, and that program asked for its
-//! loadout under the probe's bound (Go's `Prober.ProbeCompanionLoadouts`).
+//! The `CompanionLoadouts` port as processes (Go's
+//! `Prober.ProbeCompanionLoadouts`): a registered companion's command run for
+//! its loadout under the probe's bound. Nothing resolves a name or searches a
+//! path; the command is exactly what the registration holds.
 //!
-//! Which program a name stands for is not decided here: the adapter is given
-//! it, already resolved. How a registration names its program is the
-//! composition root's to settle.
+//! The outcomes are Go's: a program that does not exist is absent; one that
+//! ran and exited with a status offers no loadout (quietly); one that was
+//! killed, timed out, could not be started or printed nothing failed.
 
-use std::collections::BTreeMap;
-
-use ctxloom_ports::{CompanionLoadout, CompanionLoadouts, Unanswered};
+use ctxloom_ports::{CompanionLoadout, CompanionLoadouts, RegisteredCompanion, Unanswered};
 
 use crate::ProcessProbe;
 
-/// Companions as programs, by registered name.
+/// Companions run as the commands that are registered for them.
 pub struct ProcessCompanions {
-    /// Each registered name's program path.
-    programs: BTreeMap<String, String>,
     probe: ProcessProbe,
 }
 
 impl ProcessCompanions {
-    /// Companions answering through the programs at the given paths, asked
-    /// through `probe`. A name with no program is absent.
-    pub fn new(programs: BTreeMap<String, String>, probe: ProcessProbe) -> ProcessCompanions {
-        ProcessCompanions { programs, probe }
+    /// Companions asked through `probe`.
+    pub fn new(probe: ProcessProbe) -> ProcessCompanions {
+        ProcessCompanions { probe }
     }
 }
 
 impl CompanionLoadouts for ProcessCompanions {
-    fn loadout(&self, name: &str) -> CompanionLoadout {
-        let Some(path) = self.programs.get(name) else {
-            return CompanionLoadout::Absent;
-        };
-        match self.probe.loadout(path) {
+    fn loadout(&self, companion: &RegisteredCompanion) -> CompanionLoadout {
+        match self.probe.loadout(&companion.command) {
             Ok(text) => CompanionLoadout::Loaded(text),
-            Err(Unanswered::Silent) => CompanionLoadout::NoLoadout,
+            Err(Unanswered::Missing(_)) => CompanionLoadout::Absent,
+            Err(Unanswered::Exited(_)) => CompanionLoadout::NoLoadout,
+            Err(Unanswered::Silent) => {
+                CompanionLoadout::ProbeFailed("it printed no loadout".to_string())
+            }
             Err(Unanswered::Failed(detail)) => CompanionLoadout::ProbeFailed(detail),
         }
     }

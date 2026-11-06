@@ -489,7 +489,7 @@ fn test_the_listing_reads_each_axis_of_a_binding_back() {
         project.profile("dev", "dev-base");
         project.write(
             ".ctxloom/config.yaml",
-            "schema_version: 8\nagents:\n  developer:\n    llm: claude-code\n    profiles:\n      - dev\n    runtime: container-rootless\n",
+            "schema_version: 9\nagents:\n  developer:\n    llm: claude-code\n    profiles:\n      - dev\n    runtime: container-rootless\n",
         );
         let ran = run_with_flags(&project, &["agent", "list"], flags);
         ran.succeeds();
@@ -518,7 +518,7 @@ fn test_bare_agent_lists_the_bindings() {
         project.profile("dev", "dev-base");
         project.write(
             ".ctxloom/config.yaml",
-            "schema_version: 8\nagents:\n  developer:\n    profiles: [dev]\n",
+            "schema_version: 9\nagents:\n  developer:\n    profiles: [dev]\n",
         );
         let ran = run_with_flags(&project, &["agent"], flags);
         ran.succeeds().lacks("Available Commands:");
@@ -543,7 +543,7 @@ fn test_showing_one_binding_reports_what_was_declared_and_what_it_resolves_to() 
         project.profile("dev", "dev-base");
         project.write(
             ".ctxloom/config.yaml",
-            "schema_version: 8\nagents:\n  developer:\n    llm: claude-code\n    profiles: [dev]\n    runtime: container-rootless\n",
+            "schema_version: 9\nagents:\n  developer:\n    llm: claude-code\n    profiles: [dev]\n    runtime: container-rootless\n",
         );
         let ran = run_with_flags(&project, &["agent", "show", "developer"], flags);
         ran.succeeds();
@@ -586,7 +586,7 @@ fn test_a_binding_still_carrying_auth_is_refused_naming_the_key() {
     let project = Project::initialized();
     project.write(
         ".ctxloom/config.yaml",
-        "schema_version: 8\nagents:\n  developer:\n    profiles: [dev]\n    auth: login\n",
+        "schema_version: 9\nagents:\n  developer:\n    profiles: [dev]\n    auth: login\n",
     );
     project
         .run(&["agent", "list"])
@@ -633,7 +633,7 @@ fn test_a_label_the_team_wrote_is_told_apart_from_one_ctxloom_supplied() {
         let project = Project::initialized();
         project.write(
             ".ctxloom/config.yaml",
-            "schema_version: 8\nllm:\n  configs:\n    big:\n      type: mock\n      model: o1\n    claude-code:\n      type: claude-code\n      model: opus\n  defaults:\n    primary: claude-code\n",
+            "schema_version: 9\nllm:\n  configs:\n    big:\n      type: mock\n      model: o1\n    claude-code:\n      type: claude-code\n      model: opus\n  defaults:\n    primary: claude-code\n",
         );
         let ran = run_with_flags(&project, &["llm", "list"], flags);
         ran.succeeds();
@@ -664,7 +664,7 @@ fn test_mcp_server_list_names_the_servers_the_default_agents_bundles_ship() {
     project.profile("dev", "demo");
     project.write(
         ".ctxloom/config.yaml",
-        "schema_version: 8\nagents:\n  developer:\n    profiles: [dev]\ndefault_agent: developer\n",
+        "schema_version: 9\nagents:\n  developer:\n    profiles: [dev]\ndefault_agent: developer\n",
     );
     let ran = project.run(&["mcp", "server", "list"]);
     ran.succeeds();
@@ -692,7 +692,7 @@ fn test_a_native_mcp_block_fails_the_load_and_names_the_key() {
     let project = Project::initialized();
     project.write(
         ".ctxloom/config.yaml",
-        "schema_version: 8\nmcp:\n    auto_register_ctxloom: true\n    servers:\n        tools:\n            command: echo\n",
+        "schema_version: 9\nmcp:\n    auto_register_ctxloom: true\n    servers:\n        tools:\n            command: echo\n",
     );
     project
         .run(&["mcp", "server", "list"])
@@ -709,11 +709,11 @@ fn test_a_projects_companions_are_added_to_the_home_registrations() {
     let project = Project::initialized();
     project.write_home(
         ".ctxloom/config.yaml",
-        "schema_version: 8\ncompanions: [acme]\n",
+        "schema_version: 9\ncompanions:\n  acme: {command: [acme-bin]}\n",
     );
     project.write(
         ".ctxloom/config.yaml",
-        "schema_version: 8\ncompanions: [beta]\n",
+        "schema_version: 9\ncompanions:\n  beta: {command: [beta-bin]}\n",
     );
     let ran = project.run(&["companion", "list", "--format", "json"]);
     ran.succeeds();
@@ -729,51 +729,48 @@ fn test_an_empty_project_list_does_not_unregister_a_home_companion() {
     let project = Project::initialized();
     project.write_home(
         ".ctxloom/config.yaml",
-        "schema_version: 8\ncompanions: [acme]\n",
+        "schema_version: 9\ncompanions:\n  acme: {command: [acme-bin]}\n",
     );
     project.write(
         ".ctxloom/config.yaml",
-        "schema_version: 8\ncompanions: []\n",
+        "schema_version: 9\ncompanions: {}\n",
     );
     let ran = project.run(&["companion", "list", "--format", "json"]);
     ran.succeeds();
     assert_eq!(reports_as(&ran.json(), "0.name"), "acme");
 }
 
-// companion.feature: Scenario: List answers which binary each registered
-// name resolves to (and Scenario: Bare companion lists the registered
-// companions): the binary is `ctxloom-companion-<name>`, looked for on PATH
+// companion.feature: Scenario: List answers which program each registered
+// name runs, and whether it is there (and Scenario: Bare companion lists the
+// registered companions): the command is what the registration holds, and the
+// program is only looked for, never run.
 #[test]
-fn test_list_answers_which_binary_each_registered_name_resolves_to() {
+fn test_list_answers_the_command_each_registered_name_runs_and_whether_it_is_there() {
     let project = Project::initialized();
+    let exe = project.dir().join("bin").join("acme-bin");
+    files::put_program(&exe, "#!/bin/sh\nexit 9\n");
     project.write_home(
         ".ctxloom/config.yaml",
-        "schema_version: 8\ncompanions: [acme]\n",
+        &format!(
+            "schema_version: 9\ncompanions:\n  acme:\n    command: [{}, --as, acme]\n  gone:\n    command: [/no/such/program]\n",
+            exe.display()
+        ),
     );
-    let bin = project.dir().join("bin");
-    let exe = bin.join("ctxloom-companion-acme");
-    files::put_program(&exe, "#!/bin/sh\n");
-    let path = format!(
-        "{}:{}",
-        bin.display(),
-        crate::tests::host_var("PATH")
-            .and_then(|v| v.into_string().ok())
-            .unwrap_or_default()
-    );
-    let ran = project.run_with(
-        &[("PATH", &path)],
-        &["companion", "list", "--format", "json"],
-    );
+    let ran = project.run(&["companion", "list", "--format", "json"]);
     ran.succeeds();
     let doc = ran.json();
     assert_eq!(reports_as(&doc, "0.name"), "acme");
-    assert_eq!(reports_as(&doc, "0.bin"), "ctxloom-companion-acme");
-    assert_eq!(reports_as(&doc, "0.resolves"), "true");
+    assert_eq!(reports_as(&doc, "0.command.0"), exe.display().to_string());
+    assert_eq!(reports_as(&doc, "0.command.2"), "acme");
+    assert_eq!(reports_as(&doc, "0.exists"), "true");
+    assert_eq!(reports_as(&doc, "1.name"), "gone");
+    assert_eq!(reports_as(&doc, "1.exists"), "false");
     project
-        .run_with(&[("PATH", &path)], &["companion"])
+        .run(&["companion", "--format", "text"])
         .succeeds()
         .contains("acme")
-        .contains("ctxloom-companion-acme")
+        .contains("--as acme")
+        .contains("NOT FOUND")
         .lacks("Available Commands:");
 }
 

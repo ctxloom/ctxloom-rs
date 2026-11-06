@@ -49,7 +49,7 @@ use std::sync::Arc;
 use ::process_env::EnvSnapshot;
 
 use super::{LibError, Wiring};
-use crate::fixtures::{canonical, exists, mkdirs, put_mode, remove_dir, root, unix};
+use crate::fixtures::{canonical, exists, fs, mkdirs, put_mode, remove_dir, root, unix};
 
 /// The process's environment is one: tests that set it take this first.
 pub(crate) static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -316,6 +316,38 @@ fn test_programs_are_found_on_the_path_in_its_order_and_only_if_executable_files
     );
     assert_eq!(search.find("adir"), None, "a directory is no program");
     assert_eq!(search.find("nosuch"), None);
+}
+
+#[test]
+fn test_a_name_with_a_separator_is_that_file_and_the_path_is_not_searched() {
+    if !unix() {
+        return;
+    }
+    let mut env = Env::new("pathfile");
+    let (on_path, elsewhere) = (env.dir.join("on_path"), env.dir.join("elsewhere"));
+    mkdirs(&on_path);
+    mkdirs(&elsewhere);
+    for dir in [&on_path, &elsewhere] {
+        fixture_program::install_program(&*fs(), &dir.join("tool"), "#!/bin/sh\n").unwrap();
+    }
+    executable(&elsewhere, "plain", 0o644);
+    env.set("PATH", on_path.clone().into_os_string());
+    let wiring = from_process().ok().unwrap();
+    let search = wiring.path_search();
+    let named = elsewhere.join("tool").display().to_string();
+    assert_eq!(search.find(&named), Some(named.clone()));
+    assert_eq!(
+        search.find(&elsewhere.join("plain").display().to_string()),
+        None,
+        "a file that cannot be run"
+    );
+    assert_eq!(
+        search.find(&elsewhere.join("missing").display().to_string()),
+        None
+    );
+    // A relative name with a separator is not looked for in the PATH's
+    // directories either.
+    assert_eq!(search.find("./tool"), None);
 }
 
 #[test]

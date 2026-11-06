@@ -18,7 +18,7 @@ fn texts(doc: &str) -> Vec<String> {
 // the fixture `cfg/v8`: every key of the schema, correctly used
 #[test]
 fn test_a_config_using_every_key_correctly_has_no_violation() {
-    let doc = "schema_version: 8\neditor:\n  command: vim\n  args: [-u, NONE]\nconfig:\n  use_distilled: false\n  silence_unsupported: true\n  statusline: false\nsync:\n  auto_sync: false\nworkspace: worktree\nruntime: host\ndelegation:\n  concurrency: 3\n  depth: 2\n  idle_timeout: 5m\nshell_timeout:\n  default: 30s\n  max: 1h\nisolation_images:\n  claude-code: example.com/img:1\nisolation_base: ctxloom\nisolation_memory_limit: 4g\nisolation_pids_limit: 512\noutput_dir: /var/out\nisolation_engines: [claude-code]\ncompanions: [acme, beta]\nui:\n  prefix_key: ctrl-b\n  list_window: 7d\nsession_reap_age: 30d\nsession_purge_age: 90d\nsession_transcript_retention: 365d\nnon_tty_format: json\nauth: login\nagents:\n  dev:\n    llm: claude-code\n    profiles: [p1]\n    runtime: host\n    driving: oneshot\n    env_host: false\n    env: [ALPHA]\n    permissions:\n      approver: human\n      claude-code:\n        mode: plan\ndefault_agent: dev\nllm:\n  configs:\n    claude-code:\n      type: claude-code\n      model: opus\n  defaults:\n    primary: claude-code\n";
+    let doc = "schema_version: 8\neditor:\n  command: vim\n  args: [-u, NONE]\nconfig:\n  use_distilled: false\n  silence_unsupported: true\n  statusline: false\nsync:\n  auto_sync: false\nworkspace: worktree\nruntime: host\ndelegation:\n  concurrency: 3\n  depth: 2\n  idle_timeout: 5m\nshell_timeout:\n  default: 30s\n  max: 1h\nisolation_images:\n  claude-code: example.com/img:1\nisolation_base: ctxloom\nisolation_memory_limit: 4g\nisolation_pids_limit: 512\noutput_dir: /var/out\nisolation_engines: [claude-code]\ncompanions:\n  acme:\n    command: [acme-bin, --flag]\n  beta:\n    command: [beta-bin]\nui:\n  prefix_key: ctrl-b\n  list_window: 7d\nsession_reap_age: 30d\nsession_purge_age: 90d\nsession_transcript_retention: 365d\nnon_tty_format: json\nauth: login\nagents:\n  dev:\n    llm: claude-code\n    profiles: [p1]\n    runtime: host\n    driving: oneshot\n    env_host: false\n    env: [ALPHA]\n    permissions:\n      approver: human\n      claude-code:\n        mode: plan\ndefault_agent: dev\nllm:\n  configs:\n    claude-code:\n      type: claude-code\n      model: opus\n  defaults:\n    primary: claude-code\n";
     assert_eq!(texts(doc), Vec::<String>::new());
 }
 
@@ -100,8 +100,8 @@ fn test_a_value_of_the_wrong_shape_says_what_it_holds_and_what_was_expected() {
         ["config.yaml: `editor.args` holds a string, expected array"]
     );
     assert_eq!(
-        texts("schema_version: 8\ncompanions: foo\n"),
-        ["config.yaml: `companions` holds a string, expected array"]
+        texts("schema_version: 9\ncompanions: foo\n"),
+        ["config.yaml: `companions` holds a string, expected object"]
     );
     assert_eq!(
         texts("schema_version: 8\nagents:\n  d:\n    profiles: dev\n"),
@@ -169,10 +169,15 @@ fn test_an_override_value_is_checked_at_its_path() {
     assert!(err.contains("value must be one of"), "{err}");
     assert!(validate_at(&p("delegation.concurrency"), &Value::Scalar("0".into())).is_err());
     assert!(validate_at(
-        &p("companions"),
+        &p("companions.acme.command"),
         &Value::Seq(vec![Value::Scalar("a".into())])
     )
     .is_ok());
+    assert!(validate_at(
+        &p("companions"),
+        &Value::Seq(vec![Value::Scalar("a".into())])
+    )
+    .is_err());
 }
 
 // config.go resolveConfigSection: the sections, in the order `config show
@@ -257,7 +262,7 @@ fn test_an_llm_entry_is_judged_by_the_shape_its_type_names() {
 // the string patterns the schema writes, each accepting and refusing
 #[test]
 fn test_each_string_pattern_accepts_and_refuses() {
-    let cases: [(Pat, &[&str], &[&str]); 7] = [
+    let cases: [(Pat, &[&str], &[&str]); 6] = [
         (
             Pat::PrefixKey,
             &["ctrl-b", "ctrl+x"],
@@ -277,11 +282,6 @@ fn test_each_string_pattern_accepts_and_refuses() {
             Pat::PidsLimit,
             &["512", "  8 ", "unlimited", "UNLIMITED"],
             &["", " ", "a1", "-1", "1.5"],
-        ),
-        (
-            Pat::Companion,
-            &["acme", "a1.b_c-d", "1x"],
-            &["", "-a", ".a", "a b", "a/b"],
         ),
         (Pat::NoEquals, &["a", "a b"], &["", "a=b", "a\nb"]),
         (
@@ -332,7 +332,7 @@ fn test_a_memory_limit_is_a_number_with_a_unit_or_unlimited() {
 fn test_the_schema_describes_exactly_the_paths_it_lists() {
     let path = |p: &[&str]| -> Vec<String> { p.iter().map(ToString::to_string).collect() };
     for known in [
-        &["companions", "0"][..],
+        &["companions", "acme", "command", "0"][..],
         &["editor", "command"],
         &["llm", "configs", "x", "binary_path"],
         &["llm", "configs", "x", "provider", "base_url"],
@@ -342,7 +342,7 @@ fn test_the_schema_describes_exactly_the_paths_it_lists() {
         assert!(known_path(&path(known)), "{known:?}");
     }
     for unknown in [
-        &["companions", "x"][..],
+        &["companions", "acme", "x"][..],
         &["editor", "bogus"],
         &["agents", "dev", "nope"],
         &["llm", "configs", "x", "nope"],
@@ -369,4 +369,29 @@ fn test_a_scalar_reads_as_the_type_the_validator_names() {
     ] {
         assert_eq!(type_of_scalar(text), kind, "{text}");
     }
+}
+
+// generation 9: a registration is a name and its command.
+#[test]
+fn test_a_companion_is_registered_with_a_command_list() {
+    assert_eq!(
+        texts("schema_version: 9\ncompanions:\n  acme:\n    command: [acme-bin, loadout]\n"),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        texts("schema_version: 9\ncompanions:\n  acme:\n    command: acme-bin\n"),
+        ["config.yaml: `companions.acme.command` holds a string, expected array"]
+    );
+    assert_eq!(
+        texts("schema_version: 9\ncompanions:\n  acme:\n    command: [\"\"]\n"),
+        ["config.yaml: `companions.acme.command.0` breaks the schema: length must be >= 1, but got 0"]
+    );
+    assert_eq!(
+        texts("schema_version: 9\ncompanions:\n  acme:\n    cmd: [a]\n"),
+        ["unknown key `companions.acme.cmd` in config.yaml: ctxloom does not know it (known keys at `companions.acme`: command)"]
+    );
+    assert_eq!(
+        texts("schema_version: 9\ncompanions: [acme]\n"),
+        ["config.yaml: `companions` holds a array, expected object"]
+    );
 }

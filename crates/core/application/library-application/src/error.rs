@@ -36,6 +36,13 @@ pub enum AppError {
         found: u64,
         oldest: u64,
     },
+    /// A config layer that registers companions by bare name, as the
+    /// generations before 9 wrote them; `found` is its generation.
+    ConfigCompanionsBare {
+        path: String,
+        found: u64,
+        names: String,
+    },
     /// A config layer whose `schema_version` is not an integer.
     ConfigVersionUnreadable { path: String },
     /// A config with a key the schema does not know: each violation.
@@ -151,6 +158,7 @@ impl AppError {
             AppError::AgentExclusive { .. }
             | AppError::ConfigNewer { .. }
             | AppError::ConfigOlder { .. }
+            | AppError::ConfigCompanionsBare { .. }
             | AppError::ConfigVersionUnreadable { .. }
             | AppError::RunNeedsDryRun
             | AppError::SearchRemote
@@ -176,6 +184,7 @@ impl Diagnostic for AppError {
             AppError::ConfigUnparsable { .. } => code!("config-unparsable"),
             AppError::ConfigNewer { .. } => code!("config-newer"),
             AppError::ConfigOlder { .. } => code!("config-older"),
+            AppError::ConfigCompanionsBare { .. } => code!("config-companions-bare"),
             AppError::ConfigVersionUnreadable { .. } => code!("config-version-unreadable"),
             AppError::ConfigUnknownKey { .. } => code!("config-unknown-key"),
             AppError::ConfigBreaksSchema { .. } => code!("config-breaks-schema"),
@@ -221,6 +230,7 @@ impl Diagnostic for AppError {
             ],
             AppError::ConfigNewer { .. }
             | AppError::ConfigOlder { .. }
+            | AppError::ConfigCompanionsBare { .. }
             | AppError::ConfigVersionUnreadable { .. } => version_args(self),
             AppError::ConfigUnknownKey { violations }
             | AppError::ConfigBreaksSchema { violations } => {
@@ -323,6 +333,11 @@ fn version_args(error: &AppError) -> Vec<(&str, Arg)> {
             ("path", path.as_str().into()),
             ("found", (*found).into()),
             ("current", (*current).into()),
+        ],
+        AppError::ConfigCompanionsBare { path, found, names } => vec![
+            ("path", path.as_str().into()),
+            ("found", (*found).into()),
+            ("names", names.as_str().into()),
         ],
         AppError::ConfigOlder {
             path,
@@ -455,6 +470,11 @@ fn version_samples() -> Vec<Box<dyn Diagnostic>> {
             path: path(),
             found: 9,
             current: 8,
+        }),
+        Box::new(AppError::ConfigCompanionsBare {
+            path: path(),
+            found: 8,
+            names: "acme, ltk".to_string(),
         }),
         Box::new(AppError::ConfigOlder {
             path: path(),

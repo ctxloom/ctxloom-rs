@@ -17,7 +17,7 @@ use serde_json::Value;
 use super::{binary, files, Ran};
 
 /// Go's `minimalConfig` (`steps_fixture.go`): the smallest project config.
-pub(crate) const MINIMAL_CONFIG: &str = "schema_version: 8\n";
+pub(crate) const MINIMAL_CONFIG: &str = "schema_version: 9\n";
 
 /// The editors Go's acceptance steps pin in the home config
 /// (`steps_fixture.go`): `sh -c <script> editor <tmpfile>`, so `$1` is the
@@ -37,10 +37,10 @@ pub(crate) enum Editor {
 impl Editor {
     pub(crate) fn home_config(self) -> &'static str {
         match self {
-            Editor::Marker => "schema_version: 8\neditor:\n  command: sh\n  args:\n    - \"-c\"\n    - 'printf \"\\nEDITED-BY-TEST\\n\" >> \"$1\"'\n    - editor\n",
-            Editor::Empties => "schema_version: 8\neditor:\n  command: sh\n  args:\n    - \"-c\"\n    - 'printf \"\" > \"$1\"'\n    - editor\n",
-            Editor::Description => "schema_version: 8\neditor:\n  command: sh\n  args:\n    - \"-c\"\n    - 'sed \"s/^description:.*/description: EDITED-BY-TEST/\" \"$1\" > \"$1.edited\" && mv \"$1.edited\" \"$1\"'\n    - editor\n",
-            Editor::Command => "schema_version: 8\neditor:\n  command: sh\n  args:\n    - \"-c\"\n    - 'sed \"s/^\\( *\\)command:.*/\\1command: EDITED-BY-TEST/\" \"$1\" > \"$1.edited\" && mv \"$1.edited\" \"$1\"'\n    - editor\n",
+            Editor::Marker => "schema_version: 9\neditor:\n  command: sh\n  args:\n    - \"-c\"\n    - 'printf \"\\nEDITED-BY-TEST\\n\" >> \"$1\"'\n    - editor\n",
+            Editor::Empties => "schema_version: 9\neditor:\n  command: sh\n  args:\n    - \"-c\"\n    - 'printf \"\" > \"$1\"'\n    - editor\n",
+            Editor::Description => "schema_version: 9\neditor:\n  command: sh\n  args:\n    - \"-c\"\n    - 'sed \"s/^description:.*/description: EDITED-BY-TEST/\" \"$1\" > \"$1.edited\" && mv \"$1.edited\" \"$1\"'\n    - editor\n",
+            Editor::Command => "schema_version: 9\neditor:\n  command: sh\n  args:\n    - \"-c\"\n    - 'sed \"s/^\\( *\\)command:.*/\\1command: EDITED-BY-TEST/\" \"$1\" > \"$1.edited\" && mv \"$1.edited\" \"$1\"'\n    - editor\n",
         }
     }
 }
@@ -65,7 +65,7 @@ impl Project {
         project.write(".ctxloom/config.yaml", MINIMAL_CONFIG);
         project.write_home(
             ".ctxloom/config.yaml",
-            "schema_version: 8\neditor:\n  command: \"true\"\n",
+            "schema_version: 9\neditor:\n  command: \"true\"\n",
         );
         project
     }

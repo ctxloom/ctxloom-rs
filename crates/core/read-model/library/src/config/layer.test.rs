@@ -92,17 +92,90 @@ fn test_keys_other_than_agents_still_deep_merge() {
 }
 
 // merge_test.go: TestLayerMergeFunc_CompanionsUnionAcrossLayers /
-// _ProjectCannotRemoveAHomeCompanion / TestLoad_ProjectCompanionsAddToHomes
+// _ProjectCannotRemoveAHomeCompanion / TestLoad_ProjectCompanionsAddToHomes,
+// on the registration as a map (generation 9).
 #[test]
 fn test_companions_union_across_layers_and_a_project_cannot_remove_one() {
-    let v = merged(&["companions: [acme, beta]\n", "companions: [beta, gamma]\n"]);
-    assert_eq!(seq(&v, "companions"), ["acme", "beta", "gamma"]);
-    let kept = merged(&["companions: [acme]\n", "companions: []\n"]);
+    let v = merged(&[
+        "companions:\n  acme: {command: [acme-bin]}\n  beta: {command: [beta-bin]}\n",
+        "companions:\n  beta: {command: [other]}\n  gamma: {command: [gamma-bin]}\n",
+    ]);
+    let names: Vec<&str> = v
+        .get("companions")
+        .and_then(Value::as_map)
+        .unwrap()
+        .iter()
+        .map(|(k, _)| k.as_str())
+        .collect();
+    assert_eq!(names, ["acme", "beta", "gamma"]);
+    let kept = merged(&[
+        "companions:\n  acme: {command: [acme-bin]}\n",
+        "companions: {}\n",
+    ]);
     assert_eq!(
-        seq(&kept, "companions"),
-        ["acme"],
-        "an empty project list does not unregister"
+        kept.get("companions")
+            .and_then(Value::as_map)
+            .map(<[_]>::len),
+        Some(1),
+        "an empty project map does not unregister"
     );
+}
+
+#[test]
+fn test_a_companions_command_is_the_highest_layers() {
+    let v = merged(&[
+        "companions:\n  beta: {command: [home-bin, --home]}\n",
+        "companions:\n  beta: {command: [project-bin]}\n",
+    ]);
+    assert_eq!(seq(&v, "companions.beta.command"), ["project-bin"]);
+    let v = merged(&[
+        "companions:\n  beta: {command: [home-bin]}\n",
+        "editor:\n  command: vim\n",
+    ]);
+    assert_eq!(seq(&v, "companions.beta.command"), ["home-bin"]);
+}
+
+// generation 9: companions are registered with their command.
+#[test]
+fn test_a_bare_name_list_at_a_generation_before_9_is_noted_not_migrated() {
+    for generation in [7, 8] {
+        let r = read(&format!(
+            "schema_version: {generation}\ncompanions: [acme, ltk]\n"
+        ))
+        .unwrap();
+        assert_eq!(
+            r.notes,
+            [Note::LegacyCompanions {
+                found: generation,
+                names: vec!["acme".to_string(), "ltk".to_string()]
+            }]
+        );
+    }
+}
+
+#[test]
+fn test_an_empty_or_absent_companions_list_loads_and_migrates() {
+    for doc in [
+        "schema_version: 8\ncompanions: []\neditor:\n  command: vim\n",
+        "schema_version: 7\ncompanions:\neditor:\n  command: vim\n",
+        "schema_version: 8\neditor:\n  command: vim\n",
+    ] {
+        let r = read(doc).unwrap();
+        assert!(r.notes.is_empty(), "{doc:?}: {:?}", r.notes);
+        assert!(r.value.get("companions").is_none(), "{doc:?}");
+        assert_eq!(text(&r.value, "schema_version"), "9");
+    }
+}
+
+#[test]
+fn test_a_companions_map_at_generation_8_or_9_is_left_to_the_schema() {
+    // Not a bare list: nothing here to refuse; the schema judges the shape.
+    let r = read("schema_version: 8\ncompanions:\n  acme: {command: [a]}\n").unwrap();
+    assert!(r.notes.is_empty());
+    assert!(r.value.get("companions").is_some());
+    // A list at the current generation is a schema violation, not a note.
+    let r = read("schema_version: 9\ncompanions: [acme]\n").unwrap();
+    assert!(r.notes.is_empty());
 }
 
 // merge_with: lists the higher layer sets replace the lower's (koanf's default)
@@ -151,11 +224,11 @@ fn test_a_config_that_declares_llm_configs_is_left_as_it_is() {
 // note naming it, and the layer is read as written
 #[test]
 fn test_a_newer_older_or_unreadable_stamp_is_a_note_and_the_layer_is_read_as_written() {
-    let newer = read("schema_version: 9\neditor:\n  command: vim\n").unwrap();
+    let newer = read("schema_version: 10\neditor:\n  command: vim\n").unwrap();
     assert_eq!(
         newer.notes,
         [Note::Newer {
-            found: 9,
+            found: 10,
             current: u64::from(CURRENT)
         }]
     );
@@ -198,7 +271,7 @@ fn test_generation_7_drops_essence_max_chars_and_the_section_it_empties() {
     assert!(get(&r.value, "config.essence_max_chars").is_none());
     assert_eq!(
         text(&r.value, "schema_version"),
-        "8",
+        "9",
         "the stamp follows the migration"
     );
 
@@ -261,9 +334,9 @@ fn notes_of(text: &str) -> Vec<Note> {
 #[test]
 fn test_the_generation_boundaries_give_these_notes_exactly() {
     assert_eq!(
-        notes_of("schema_version: 9\nk: v\n"),
+        notes_of("schema_version: 10\nk: v\n"),
         [Note::Newer {
-            found: 9,
+            found: 10,
             current: u64::from(CURRENT)
         }]
     );
@@ -296,15 +369,15 @@ fn test_a_stamp_with_spaces_around_its_number_is_read() {
 
 #[test]
 fn test_a_layer_that_gave_a_note_is_read_as_written_and_a_current_one_is_stamped() {
-    let newer = read("schema_version: 9\nk: v\n").expect("readable");
+    let newer = read("schema_version: 10\nk: v\n").expect("readable");
     assert_eq!(
         newer.value.get("schema_version").and_then(Value::as_str),
-        Some("9")
+        Some("10")
     );
     let old = read("schema_version: 7\nk: v\n").expect("readable");
     assert_eq!(
         old.value.get("schema_version").and_then(Value::as_str),
-        Some("8"),
+        Some("9"),
         "migrated in memory, stamped with the current generation"
     );
 }

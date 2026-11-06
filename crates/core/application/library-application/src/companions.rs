@@ -58,8 +58,17 @@ impl Project {
             return Vec::new();
         };
         let mut loaded = Vec::new();
-        for name in self.config.companions() {
-            match port.loadout(&name) {
+        for companion in self.config.companions() {
+            let name = companion.name.clone();
+            // A hand-written name that is no plain name is said, not run.
+            if !crate::write::companions::valid_name(&name) {
+                self.notices.push(Notice::LoadoutProbeFailed {
+                    name,
+                    detail: "not a plain companion name".to_string(),
+                });
+                continue;
+            }
+            match port.loadout(&companion) {
                 CompanionLoadout::Loaded(text) => match parse_loadout(&text) {
                     Ok(loadout) => loaded.push((name, loadout.run)),
                     Err(cause) => self

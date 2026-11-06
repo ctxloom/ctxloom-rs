@@ -70,12 +70,12 @@ fn test_an_unreadable_shape_reduces_the_config_to_nothing() {
 fn test_the_loaded_document_is_stamped_with_the_current_generation() {
     let mut map = parse("editor:\n  command: vim\n").unwrap();
     stamp(&mut map);
-    assert_eq!(map.get("schema_version").and_then(Value::as_str), Some("8"));
+    assert_eq!(map.get("schema_version").and_then(Value::as_str), Some("9"));
     let mut nothing = Value::Null;
     stamp(&mut nothing);
     assert_eq!(
         nothing.get("schema_version").and_then(Value::as_str),
-        Some("8")
+        Some("9")
     );
     assert!(matches!(nothing, Value::Map(_)));
 }
@@ -91,7 +91,7 @@ mod loading {
     use crate::fakes::Setup;
     use ctxloom_ports::ConfigFiles;
 
-    const STAMPED: &str = "schema_version: 8\neditor:\n  command: vim\n";
+    const STAMPED: &str = "schema_version: 9\neditor:\n  command: vim\n";
 
     fn loaded(
         layers: &[&str],
@@ -219,4 +219,34 @@ mod loading {
         );
         assert_eq!(command(&value).as_deref(), Some("nano"));
     }
+}
+
+// generation 9: a companion is registered with the command that runs it.
+#[test]
+fn test_companions_are_read_by_name_with_their_commands() {
+    let c = config(
+        "companions:\n  zed:\n    command: [zed-bin]\n  acme:\n    command: [acme-bin, --as, acme]\n  bare: {}\n",
+    );
+    let all: Vec<(String, Vec<String>)> = c
+        .companions()
+        .into_iter()
+        .map(|r| (r.name, r.command))
+        .collect();
+    assert_eq!(
+        all,
+        [
+            (
+                "acme".to_string(),
+                vec![
+                    "acme-bin".to_string(),
+                    "--as".to_string(),
+                    "acme".to_string()
+                ]
+            ),
+            ("bare".to_string(), Vec::new()),
+            ("zed".to_string(), vec!["zed-bin".to_string()]),
+        ]
+    );
+    assert!(config("editor:\n  command: vim\n").companions().is_empty());
+    assert!(config("companions: [acme]\n").companions().is_empty());
 }

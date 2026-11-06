@@ -27,13 +27,23 @@ pub(crate) struct PathSearch {
     pub(crate) dirs: Vec<PathBuf>,
 }
 
+impl PathSearch {
+    fn runnable(&self, candidate: &std::path::Path) -> Option<String> {
+        let meta = self.fs.metadata(candidate).ok()?;
+        (meta.kind == Kind::File && meta.executable).then(|| candidate.display().to_string())
+    }
+}
+
 impl Executables for PathSearch {
     fn find(&self, name: &str) -> Option<String> {
-        self.dirs.iter().find_map(|dir| {
-            let candidate = dir.join(name);
-            let meta = self.fs.metadata(&candidate).ok()?;
-            (meta.kind == Kind::File && meta.executable).then(|| candidate.display().to_string())
-        })
+        // A name with a separator is the file it names, not a name to search
+        // the directories for.
+        if name.contains(['/', '\\']) {
+            return self.runnable(std::path::Path::new(name));
+        }
+        self.dirs
+            .iter()
+            .find_map(|dir| self.runnable(&dir.join(name)))
     }
 }
 
@@ -101,12 +111,9 @@ pub(crate) fn build(
         environ,
     )
     .with_write_ports(ports)
-    // No registered name stands for a program yet: how a registration names
-    // its program is undecided, so every companion is absent until it is.
-    .with_companions(Arc::new(ProcessCompanions::new(
-        std::collections::BTreeMap::new(),
-        ProcessProbe::standard(Arc::clone(wiring.env())),
-    )));
+    .with_companions(Arc::new(ProcessCompanions::new(ProcessProbe::standard(
+        Arc::clone(wiring.env()),
+    ))));
     Ok(match remotes {
         Some(remotes) => library.with_remotes(remotes),
         None => library,

@@ -35,7 +35,7 @@ fn update(
 // config_save.go saveLocked
 #[test]
 fn test_a_section_is_replaced_whole_sorted_and_the_rest_of_the_file_is_kept() {
-    let layer = "# mine\nschema_version: 8\nauth: token # kept\nagents:\n  b:\n    llm: x\n";
+    let layer = "# mine\nschema_version: 9\nauth: token # kept\nagents:\n  b:\n    llm: x\n";
     let (out, mem) = update(&[layer], Scope::Project, "agents", |current| {
         let mut agents = current.expect("the held section");
         *agents.entry("a") = map(&[("llm", scalar("y"))]);
@@ -44,7 +44,7 @@ fn test_a_section_is_replaced_whole_sorted_and_the_rest_of_the_file_is_kept() {
     assert_eq!(out.unwrap(), "/p/.ctxloom/config.yaml");
     assert_eq!(
         mem.config(Scope::Project).unwrap(),
-        "# mine\nschema_version: 8\nauth: token # kept\nagents:\n  a:\n    llm: y\n  b:\n    llm: x\n"
+        "# mine\nschema_version: 9\nauth: token # kept\nagents:\n  a:\n    llm: y\n  b:\n    llm: x\n"
     );
 }
 
@@ -52,24 +52,30 @@ fn test_a_section_is_replaced_whole_sorted_and_the_rest_of_the_file_is_kept() {
 fn test_the_edit_sees_none_where_the_section_is_not_there() {
     let (out, mem) = update(&[CONFIG], Scope::Project, "companions", |current| {
         assert_eq!(current, None);
-        Ok(Some(Value::Seq(vec![scalar("acme")])))
+        Ok(Some(Value::Map(vec![(
+            "acme".to_string(),
+            map(&[("command", Value::Seq(vec![scalar("acme-bin")]))]),
+        )])))
     });
     out.unwrap();
     assert_eq!(
         mem.config(Scope::Project).unwrap(),
-        "schema_version: 8\ncompanions:\n  - acme\n"
+        "schema_version: 9\ncompanions:\n  acme:\n    command:\n      - acme-bin\n"
     );
 }
 
 #[test]
 fn test_a_file_that_is_not_there_is_made_with_the_generation_stamp() {
     let (out, mem) = update(&[], Scope::Home, "companions", |_| {
-        Ok(Some(Value::Seq(vec![scalar("acme")])))
+        Ok(Some(Value::Map(vec![(
+            "acme".to_string(),
+            map(&[("command", Value::Seq(vec![scalar("acme-bin")]))]),
+        )])))
     });
     assert_eq!(out.unwrap(), "/h/.ctxloom/config.yaml");
     assert_eq!(
         mem.config(Scope::Home).unwrap(),
-        "schema_version: 8\ncompanions:\n  - acme\n"
+        "schema_version: 9\ncompanions:\n  acme:\n    command:\n      - acme-bin\n"
     );
     assert_eq!(mem.config(Scope::Project), None);
 }
@@ -77,19 +83,19 @@ fn test_a_file_that_is_not_there_is_made_with_the_generation_stamp() {
 #[test]
 fn test_a_section_taken_out_is_taken_out_of_the_file() {
     let (out, mem) = update(
-        &["schema_version: 8\ncompanions:\n  - acme\n"],
+        &["schema_version: 9\ncompanions:\n  acme:\n    command:\n      - acme-bin\n"],
         Scope::Project,
         "companions",
         |_| Ok(None),
     );
     out.unwrap();
-    assert_eq!(mem.config(Scope::Project).unwrap(), "schema_version: 8\n");
+    assert_eq!(mem.config(Scope::Project).unwrap(), "schema_version: 9\n");
 }
 
 #[test]
 fn test_a_change_that_changes_nothing_writes_nothing() {
     let (out, mem) = update(
-        &["schema_version: 8\ncompanions:\n  - acme\n"],
+        &["schema_version: 9\ncompanions:\n  acme:\n    command:\n      - acme-bin\n"],
         Scope::Project,
         "companions",
         Ok,
@@ -112,7 +118,7 @@ fn test_a_file_that_does_not_parse_is_refused_and_not_written() {
     }
     .fixture();
     let out = library.run(&plain(), |p| {
-        mem.set_config(Scope::Project, "schema_version: 8\nllm: [unclosed\n");
+        mem.set_config(Scope::Project, "schema_version: 9\nllm: [unclosed\n");
         p.update_config(Scope::Project, "agents", |_| Ok(Some(Value::Null)))
     });
     let err = out.result.unwrap_err();
@@ -120,7 +126,7 @@ fn test_a_file_that_does_not_parse_is_refused_and_not_written() {
     assert_eq!(mem.writes(), 0);
     assert_eq!(
         mem.config(Scope::Project).unwrap(),
-        "schema_version: 8\nllm: [unclosed\n"
+        "schema_version: 9\nllm: [unclosed\n"
     );
 }
 

@@ -51,7 +51,7 @@ struct File {
 }
 
 type Editing = Box<dyn FnMut(&str, &str) -> Result<String, String> + Send>;
-type Probing = Box<dyn FnMut(&str) -> Result<(), Unanswered> + Send>;
+type Probing = Box<dyn FnMut(&[String]) -> Result<(), Unanswered> + Send>;
 
 struct State {
     root: bool,
@@ -74,6 +74,8 @@ struct State {
     companions: BTreeMap<String, CompanionLoadout>,
     /// The companions asked for their loadout, in order.
     asked: Vec<String>,
+    /// The commands the add-time probe was run on, in order.
+    probed: Vec<Vec<String>>,
     edits: Vec<(String, String)>,
     opened: Vec<String>,
     refuse_apply: Option<String>,
@@ -218,7 +220,10 @@ impl Mem {
     }
 
     /// The probe's answer for a program path.
-    pub fn set_probe(&self, probe: impl FnMut(&str) -> Result<(), Unanswered> + Send + 'static) {
+    pub fn set_probe(
+        &self,
+        probe: impl FnMut(&[String]) -> Result<(), Unanswered> + Send + 'static,
+    ) {
         self.lock().probe = Some(Box::new(probe));
     }
 
@@ -561,15 +566,22 @@ impl Editor for Mem {
 }
 
 impl LoadoutProbe for Mem {
-    fn answers(&self, path: &str) -> Result<(), Unanswered> {
-        match self.lock().probe.as_mut() {
-            Some(probe) => probe(path),
+    fn answers(&self, command: &[String]) -> Result<(), Unanswered> {
+        let mut state = self.lock();
+        state.probed.push(command.to_vec());
+        match state.probe.as_mut() {
+            Some(probe) => probe(command),
             None => Ok(()),
         }
     }
 }
 
 impl Mem {
+    /// The commands `companion add` probed, in order.
+    pub fn probed_commands(&self) -> Vec<Vec<String>> {
+        self.lock().probed.clone()
+    }
+
     /// The companions asked for their loadout, in the order they were asked.
     pub fn asked_companions(&self) -> Vec<String> {
         self.lock().asked.clone()
@@ -577,12 +589,12 @@ impl Mem {
 }
 
 impl CompanionLoadouts for Mem {
-    fn loadout(&self, name: &str) -> CompanionLoadout {
+    fn loadout(&self, companion: &ctxloom_ports::RegisteredCompanion) -> CompanionLoadout {
         let mut state = self.lock();
-        state.asked.push(name.to_string());
+        state.asked.push(companion.name.clone());
         state
             .companions
-            .get(name)
+            .get(&companion.name)
             .cloned()
             .unwrap_or(CompanionLoadout::NoLoadout)
     }
@@ -635,6 +647,7 @@ impl Setup<'_> {
                 .map(|(n, l)| ((*n).to_string(), l.clone()))
                 .collect(),
             asked: Vec::new(),
+            probed: Vec::new(),
             edits: Vec::new(),
             opened: Vec::new(),
             refuse_apply: None,
@@ -695,4 +708,4 @@ pub fn plain() -> Flags {
 /// A bundle envelope with a version, for a tree.
 pub const ENVELOPE: (&str, &str) = ("bundle.yaml", "schema_version: 4\nversion: 1.0.0\n");
 
-pub const CONFIG: &str = "schema_version: 8\n";
+pub const CONFIG: &str = "schema_version: 9\n";

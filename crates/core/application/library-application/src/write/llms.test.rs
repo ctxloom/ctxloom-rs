@@ -11,7 +11,7 @@ use crate::Library;
 
 fn world() -> (Library, Arc<Mem>) {
     Setup {
-        layers: &["schema_version: 8\neditor:\n  command: 'true'\n", CONFIG],
+        layers: &["schema_version: 9\neditor:\n  command: 'true'\n", CONFIG],
         ..Setup::default()
     }
     .fixture()
@@ -45,11 +45,11 @@ fn test_create_writes_the_entry_sorted_in_the_project_config_and_answers_it() {
     assert!(!done.edited);
     assert_eq!(
         mem.config(Scope::Project).unwrap(),
-        "schema_version: 8\nllm:\n  configs:\n    big:\n      model: o1\n      type: mock\n"
+        "schema_version: 9\nllm:\n  configs:\n    big:\n      model: o1\n      type: mock\n"
     );
     assert_eq!(
         mem.config(Scope::Home).unwrap(),
-        "schema_version: 8\neditor:\n  command: 'true'\n"
+        "schema_version: 9\neditor:\n  command: 'true'\n"
     );
 }
 
@@ -277,7 +277,7 @@ fn test_the_default_is_read_and_set_by_the_labels_the_project_knows() {
     );
     assert_eq!(
         mem.config(Scope::Project).unwrap(),
-        "schema_version: 8\nllm:\n  defaults:\n    primary: claude-fast\n"
+        "schema_version: 9\nllm:\n  defaults:\n    primary: claude-fast\n"
     );
     let LlmDefault::Set(again) = library
         .llm_default(&plain(), Some("claude-fast"))
@@ -317,7 +317,7 @@ fn test_the_default_keeps_the_labels_beside_it() {
     library.llm_default(&plain(), Some("big")).result.unwrap();
     assert_eq!(
         mem.config(Scope::Project).unwrap(),
-        "schema_version: 8\nllm:\n  configs:\n    big:\n      model: o1\n      type: mock\n  defaults:\n    primary: big\n"
+        "schema_version: 9\nllm:\n  configs:\n    big:\n      model: o1\n      type: mock\n  defaults:\n    primary: big\n"
     );
 }
 
@@ -365,7 +365,7 @@ fn test_remove_previews_then_takes_exactly_that_entry() {
         .unwrap();
     assert_eq!(
         mem.config(Scope::Project).unwrap(),
-        "schema_version: 8\n",
+        "schema_version: 9\n",
         "the emptied sections go too"
     );
 }

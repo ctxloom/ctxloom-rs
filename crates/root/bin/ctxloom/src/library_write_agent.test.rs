@@ -91,7 +91,7 @@ fn test_a_binding_is_written_with_sorted_keys_and_the_rest_of_the_file_is_kept()
     let project = with_dev();
     project.write(
         CONFIG,
-        "# my config\nschema_version: 8\ncompanions:\n  - acme\n",
+        "# my config\nschema_version: 9\ncompanions:\n  acme:\n    command:\n      - acme-bin\n",
     );
     project
         .run(&[
@@ -122,7 +122,7 @@ fn test_a_binding_is_written_with_sorted_keys_and_the_rest_of_the_file_is_kept()
     assert_eq!(
         project.read(CONFIG).as_deref(),
         Some(concat!(
-            "# my config\nschema_version: 8\ncompanions:\n  - acme\n",
+            "# my config\nschema_version: 9\ncompanions:\n  acme:\n    command:\n      - acme-bin\n",
             "agents:\n",
             "  dev2:\n",
             "    engine_home: session\n",

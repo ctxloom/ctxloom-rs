@@ -24,7 +24,7 @@ const DEFAULT_REMOTES: &str = "# ctxloom Remote Sources\n# Pre-configured remote
 /// `resources/profiles/default.yaml` at ca14d6046.
 const SEED_PROFILE: &str = "description: \"Local default coding profile scaffolded by `ctxloom init`: the project's primary implementer context, inheriting ctxloom-default's developer profile. Edit it freely; `ctxloom init prompt` re-enters the setup interview any time.\"\ntags:\n  - default\n# A LOCAL profile (owned and editable in this project's .ctxloom), not a bare\n# remote reference.\n#\n# The baseline-conduct parent was REMOVED with the `default` bundle it pointed\n# at. Conduct is no longer SEEDED into every project as a fixed parent; it is\n# offered by init's phase-3 survey as content carrying the `default` tag, which\n# the user includes or declines like anything else. A tag is a recommendation\n# the user answers; a seeded parent is a decision made on their behalf before\n# they arrive.\nparents:\n  - ctxloom+git://github.com/ctxloom/ctxloom-default//bundles/ai-developer@branch:main#profiles/developer\n";
 
-const CLAUDE_CONFIG: &str = "agents:\n  default:\n    engine_home: session\n    llm: claude-code\n    profiles:\n      - default\n    runtime: host\nauth: token\nconfig:\n  use_distilled: true\ndefault_agent: default\nllm:\n  configs:\n    claude-code:\n      model: opus\n      type: claude-code\n    claude-fast:\n      model: haiku\n      type: claude-code\n  defaults:\n    fast: claude-fast\n    primary: claude-code\nschema_version: 8\n";
+const CLAUDE_CONFIG: &str = "agents:\n  default:\n    engine_home: session\n    llm: claude-code\n    profiles:\n      - default\n    runtime: host\nauth: token\nconfig:\n  use_distilled: true\ndefault_agent: default\nllm:\n  configs:\n    claude-code:\n      model: opus\n      type: claude-code\n    claude-fast:\n      model: haiku\n      type: claude-code\n  defaults:\n    fast: claude-fast\n    primary: claude-code\nschema_version: 9\n";
 
 // config.feature: Scenario: Create scaffolds the config, the remotes registry
 // and the seeded profile
@@ -82,7 +82,7 @@ fn test_create_records_the_engine_it_is_given_and_refuses_one_nobody_knows() {
             .succeeds();
         let written = project.read(CONFIG).expect("the config");
         let expected = format!(
-            "agents:\n  default:\n    engine_home: session\n    llm: {engine}\n    profiles:\n      - default\n    runtime: host\nauth: token\nconfig:\n  use_distilled: true\ndefault_agent: default\nllm:\n  configs:\n    {engine}:\n      type: {engine}\n  defaults:\n    fast: {engine}\n    primary: {engine}\nschema_version: 8\n"
+            "agents:\n  default:\n    engine_home: session\n    llm: {engine}\n    profiles:\n      - default\n    runtime: host\nauth: token\nconfig:\n  use_distilled: true\ndefault_agent: default\nllm:\n  configs:\n    {engine}:\n      type: {engine}\n  defaults:\n    fast: {engine}\n    primary: {engine}\nschema_version: 9\n"
         );
         assert_eq!(written, expected);
     }
@@ -104,14 +104,14 @@ fn test_create_records_the_engine_it_is_given_and_refuses_one_nobody_knows() {
 #[test]
 fn test_create_refuses_an_existing_config_and_leaves_it_byte_for_byte_alone() {
     let project = Project::initialized();
-    project.file_contains(CONFIG, "schema_version: 8");
+    project.file_contains(CONFIG, "schema_version: 9");
     let before = project.tree(".ctxloom");
     project
         .run(&["config", "create"])
         .fails()
         .contains("config already exists");
     project
-        .file_contains(CONFIG, "schema_version: 8")
+        .file_contains(CONFIG, "schema_version: 9")
         .file_lacks(CONFIG, "engine:");
     assert_eq!(project.read(CONFIG).as_deref(), Some(MINIMAL_CONFIG));
     assert_eq!(project.tree(".ctxloom"), before);
@@ -145,7 +145,7 @@ fn test_edit_opens_the_config_in_the_editor_of_the_environment() {
         .succeeds();
     assert_eq!(
         project.read(CONFIG).as_deref(),
-        Some("schema_version: 8\n# edited\n")
+        Some("schema_version: 9\n# edited\n")
     );
     // VISUAL wins over EDITOR.
     let visual = project.dir().join("visual.sh");
@@ -183,20 +183,20 @@ fn test_a_config_write_is_a_section_merge_with_sorted_keys() {
     let project = Project::initialized();
     project.write(
         CONFIG,
-        "# my config\nschema_version: 8\noutput_dir: out # my own\ncompanions:\n  - acme\nllm:\n  configs:\n    zeta:\n      type: mock\n      model: z1\n    alpha:\n      type: mock\n",
+        "# my config\nschema_version: 9\noutput_dir: out # my own\ncompanions:\n  acme:\n    command:\n      - acme-bin\nllm:\n  configs:\n    zeta:\n      type: mock\n      model: z1\n    alpha:\n      type: mock\n",
     );
     project
         .run(&["llm", "create", "mid", "--type", "mock", "--model", "m"])
         .succeeds();
     assert_eq!(
         project.read(CONFIG).as_deref(),
-        Some("# my config\nschema_version: 8\noutput_dir: out # my own\ncompanions:\n  - acme\nllm:\n  configs:\n    alpha:\n      type: mock\n    mid:\n      model: m\n      type: mock\n    zeta:\n      model: z1\n      type: mock\n")
+        Some("# my config\nschema_version: 9\noutput_dir: out # my own\ncompanions:\n  acme:\n    command:\n      - acme-bin\nllm:\n  configs:\n    alpha:\n      type: mock\n    mid:\n      model: m\n      type: mock\n    zeta:\n      model: z1\n      type: mock\n")
     );
     // A key the write does not own is as the author left it.
     project.run(&["agent", "default", "ghost"]).succeeds();
     let after = project.read(CONFIG).expect("the config");
     assert!(
-        after.starts_with("# my config\nschema_version: 8\noutput_dir: out # my own\n"),
+        after.starts_with("# my config\nschema_version: 9\noutput_dir: out # my own\n"),
         "{after}"
     );
     assert!(after.ends_with("default_agent: ghost\n"), "{after}");
@@ -208,9 +208,9 @@ fn test_a_config_write_is_a_section_merge_with_sorted_keys() {
 #[test]
 fn test_a_config_write_never_heals_a_corrupt_file() {
     for corrupt in [
-        "schema_version: 8\nllm: [unclosed\n",
+        "schema_version: 9\nllm: [unclosed\n",
         "::: not: [valid yaml\n\tbroken",
-        "schema_version: 8\n\tagents: tab-indented\n",
+        "schema_version: 9\n\tagents: tab-indented\n",
     ] {
         let project = Project::initialized();
         project.write(CONFIG, corrupt);
@@ -244,7 +244,7 @@ fn test_a_config_write_never_heals_a_corrupt_file() {
 // rewritten either; the refusal says what to do.
 #[test]
 fn test_a_config_write_refuses_a_config_of_another_generation() {
-    for body in ["schema_version: 9\n", "schema_version: 1\n"] {
+    for body in ["schema_version: 10\n", "schema_version: 1\n"] {
         let project = Project::initialized();
         project.write(CONFIG, body);
         project.run(&["llm", "default", "claude-fast"]).fails();

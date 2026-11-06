@@ -588,24 +588,31 @@ pub fn llm_list(out: &mut dyn Write, rows: &[LlmRow]) -> io::Result<()> {
     writeln!(out, "which is a default rather than a decision.")
 }
 
-/// `companion list`.
+/// `companion list`: the name, the command, and whether the program is
+/// there (it is not run to say so).
 pub fn companion_list(out: &mut dyn Write, rows: &[CompanionRow]) -> io::Result<()> {
     if rows.is_empty() {
         return writeln!(
             out,
-            "No companions registered.\nUse 'ctxloom companion add <name>' to register one."
+            "No companions registered.\nUse 'ctxloom companion add <name> --command <program> [args...]' to register one."
         );
     }
     for row in rows {
-        let where_ = if row.resolves {
-            row.path.clone()
+        let status = if row.exists {
+            "found".to_string()
         } else {
             format!(
-                "NOT ON PATH \u{2014} install it, or: ctxloom companion remove {} --yes",
+                "NOT FOUND \u{2014} fix the command, or: ctxloom companion remove {} --yes",
                 row.name
             )
         };
-        writeln!(out, "{:<12} {:<28} {}", row.name, row.bin, where_)?;
+        writeln!(
+            out,
+            "{:<12} {:<28} {}",
+            row.name,
+            row.command.join(" "),
+            status
+        )?;
     }
     Ok(())
 }

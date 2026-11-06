@@ -62,9 +62,9 @@ impl Companions for Registered {
         };
         Ok(rows
             .into_iter()
-            .filter(|row| row.resolves)
+            .filter(|row| row.exists)
             .filter_map(|row| {
-                let text = probe.loadout(&row.path).ok()?;
+                let text = probe.loadout(&row.command).ok()?;
                 let tooling = declared(&text)?;
                 Some(Tooling {
                     source: row.name,

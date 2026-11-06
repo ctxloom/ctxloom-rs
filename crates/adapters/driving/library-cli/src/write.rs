@@ -684,19 +684,30 @@ pub(crate) fn companion(
     let name = text_arg(sub, "name");
     let code = match verb {
         "add" => {
-            let outcome = cx.library.companion_add(&cx.flags, &name);
+            let command: Vec<String> = sub
+                .try_get_many::<String>("command")
+                .ok()
+                .flatten()
+                .into_iter()
+                .chain(sub.try_get_many::<String>("args").ok().flatten())
+                .flatten()
+                .cloned()
+                .collect();
+            let outcome = cx.library.companion_add(&cx.flags, &name, &command);
             finish(cx, outcome, out, err, |done, out, _| {
                 if done.added {
                     writeln!(
                         out,
-                        "Registered companion '{}' ({} answers at {})",
-                        done.name, done.bin, done.path
+                        "Registered companion '{}' (answers: {})",
+                        done.name,
+                        done.command.join(" ")
                     )
                 } else {
                     writeln!(
                         out,
                         "Companion '{}' is already registered ({})",
-                        done.name, done.path
+                        done.name,
+                        done.command.join(" ")
                     )
                 }
             })?

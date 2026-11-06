@@ -124,7 +124,7 @@ fn test_edit_opens_the_config_in_the_editor_of_the_environment() {
         ..Setup::default()
     }
     .fixture();
-    mem.set_scaffold_for_test("config.yaml", "schema_version: 8\n");
+    mem.set_scaffold_for_test("config.yaml", "schema_version: 9\n");
     library.config_edit().result.unwrap();
     assert_eq!(mem.opened(), ["/work/.ctxloom/config.yaml"]);
 }
@@ -133,7 +133,7 @@ fn test_edit_opens_the_config_in_the_editor_of_the_environment() {
 #[test]
 fn test_edit_works_on_a_config_that_does_not_load() {
     let (library, mem) = Setup {
-        layers: &["schema_version: 8\nllm: [unclosed\n"],
+        layers: &["schema_version: 9\nllm: [unclosed\n"],
         ..Setup::default()
     }
     .fixture();

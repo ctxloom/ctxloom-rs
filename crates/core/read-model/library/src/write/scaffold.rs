@@ -81,7 +81,7 @@ pub fn initial_sections(engine: &str) -> Value {
                 ),
             ]),
         ),
-        ("schema_version", text("8")),
+        ("schema_version", text(&crate::config::CURRENT.to_string())),
     ]))
 }
 

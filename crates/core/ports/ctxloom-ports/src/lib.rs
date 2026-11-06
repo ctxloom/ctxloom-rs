@@ -119,7 +119,8 @@ pub trait UserFiles {
 /// Where a program is on the user's `PATH`.
 pub trait Executables {
     /// The path of the first file named `name` on the `PATH` that may be
-    /// run, as it is shown; none where there is none.
+    /// run, as it is shown; none where there is none. A `name` with a path
+    /// separator is the file it names, and the `PATH` is not searched.
     fn find(&self, name: &str) -> Option<String>;
 }
 
@@ -228,15 +229,30 @@ pub trait Editor {
 pub enum Unanswered {
     /// It could not be run, failed, or took too long: what happened.
     Failed(String),
+    /// The program does not exist: what the system said.
+    Missing(String),
+    /// It ran and exited with a status other than success: the program is
+    /// there and offers no loadout.
+    Exited(String),
     /// It ran and printed no loadout.
     Silent,
 }
 
-/// Whether a program answers the companion probe.
+/// Whether a command answers the companion probe.
 pub trait LoadoutProbe {
-    /// `<path> loadout --format yaml`, bounded in time: it must succeed and
-    /// print something.
-    fn answers(&self, path: &str) -> Result<(), Unanswered>;
+    /// `<command...> loadout --format yaml`, bounded in time: it must
+    /// succeed and print something. `command` is the program, then its
+    /// arguments; nothing searches for it.
+    fn answers(&self, command: &[String]) -> Result<(), Unanswered>;
+}
+
+/// A companion as the configuration registers it.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct RegisteredCompanion {
+    /// The name it is registered under.
+    pub name: String,
+    /// The program, then its arguments.
+    pub command: Vec<String>,
 }
 
 /// What asking a registered companion for its loadout came to.
@@ -244,21 +260,22 @@ pub trait LoadoutProbe {
 pub enum CompanionLoadout {
     /// It printed a loadout document: its text.
     Loaded(String),
-    /// Its binary is not on the `PATH` (or the name names no binary).
+    /// Its program does not exist.
     Absent,
-    /// It ran and printed nothing: a companion with no loadout to give.
+    /// It ran and exited with a status other than success: the program is
+    /// there and offers no loadout.
     NoLoadout,
-    /// It could not be run, failed, or took too long: what happened.
+    /// It could not be run, was killed, or took too long: what happened.
     ProbeFailed(String),
 }
 
 /// The loadouts of the companions a project registers, fetched fresh each
 /// time they are asked for (Go's `Prober.ProbeCompanionLoadouts`): the one
-/// place a companion's binary is run for its session-time contribution.
+/// place a companion's program is run for its session-time contribution.
 pub trait CompanionLoadouts {
-    /// The loadout of the companion registered as `name`. Never fatal: every
-    /// way it can fail is an outcome.
-    fn loadout(&self, name: &str) -> CompanionLoadout;
+    /// The loadout of `companion`. Never fatal: every way it can fail is an
+    /// outcome.
+    fn loadout(&self, companion: &RegisteredCompanion) -> CompanionLoadout;
 }
 
 /// The project's regenerable cache (`.ctxloom/cache`): measured and removed

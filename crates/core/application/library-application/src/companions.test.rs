@@ -9,7 +9,7 @@ use crate::{AppError, AssembleRequest, Assembled, Flags, Library, Notice, Outcom
 
 const BUNDLE: &[(&str, &str)] = &[ENVELOPE, ("fragments/own.md", "OWN-BODY\n")];
 
-const CONFIG_WITH: &str = "schema_version: 8\ncompanions: [reprise]\n";
+const CONFIG_WITH: &str = "schema_version: 9\ncompanions:\n  reprise:\n    command: [reprise]\n";
 
 const LOADOUT: &str = "run:\n  version: 1.0.0\n  fragments:\n    guide:\n      content: COMPANION-MARKER\n    later:\n      premise: about to do the later thing\n      content: LATER-BODY\n";
 
@@ -124,7 +124,7 @@ fn only_a_registered_companion_is_asked() {
 #[test]
 fn nothing_registered_asks_nothing() {
     let companions = only_reprise(Loaded(LOADOUT.to_string()));
-    let (library, mem) = setup(&["schema_version: 8\n"], &companions, &[]);
+    let (library, mem) = setup(&["schema_version: 9\n"], &companions, &[]);
     let (context, notices) = context(&library, &plain());
     assert_eq!(context, "OWN-BODY");
     assert!(notices.is_empty());
@@ -258,7 +258,7 @@ fn a_failing_companion_is_a_warning_under_strict_too() {
 
 #[test]
 fn one_companion_failing_does_not_cost_another_its_fragments() {
-    let layers = ["schema_version: 8\ncompanions: [acme, reprise, ltk]\n"];
+    let layers = ["schema_version: 9\ncompanions:\n  acme: {command: [acme]}\n  reprise: {command: [reprise]}\n  ltk: {command: [ltk]}\n"];
     let companions = [
         ("acme", Absent),
         ("reprise", Loaded(LOADOUT.to_string())),
@@ -277,7 +277,7 @@ fn one_companion_failing_does_not_cost_another_its_fragments() {
         "OWN-BODY\n\n---\n\nLTK-BODY\n\n---\n\nCOMPANION-MARKER"
     );
     assert_eq!(notices.len(), 1);
-    assert_eq!(mem.asked_companions(), ["acme", "reprise", "ltk"]);
+    assert_eq!(mem.asked_companions(), ["acme", "ltk", "reprise"]);
 }
 
 #[test]
@@ -301,4 +301,18 @@ fn a_command_that_assembles_twice_asks_each_companion_once_and_warns_once() {
     assert!(outcome.result.is_ok());
     assert_eq!(mem.asked_companions(), ["reprise"]);
     assert_eq!(outcome.notices.len(), 1);
+}
+
+#[test]
+fn a_registered_name_that_is_no_plain_name_is_said_and_never_asked() {
+    let layers = ["schema_version: 9\ncompanions:\n  -x: {command: [x]}\n  a/b: {command: [x]}\n"];
+    let (library, mem) = setup(&layers, &[], &[]);
+    let (context, notices) = context(&library, &plain());
+    assert_eq!(context, "OWN-BODY");
+    assert_eq!(notices.len(), 2, "{notices:?}");
+    assert!(notices.iter().all(|n| matches!(
+        n,
+        Notice::LoadoutProbeFailed { detail, .. } if detail == "not a plain companion name"
+    )));
+    assert!(mem.asked_companions().is_empty());
 }

@@ -16,7 +16,11 @@ pub mod schema;
 pub mod typed;
 
 /// The generation this build reads and writes.
-pub const CURRENT: u32 = 8;
+///
+/// Generation 9 registers a companion with the command that runs it
+/// (`companions: {name: {command: [program, args...]}}`); a bare-name list
+/// (generation 8, which is the only one Go reads) is refused, not migrated.
+pub const CURRENT: u32 = 9;
 
 /// The oldest generation it migrates.
 pub const OLDEST: u32 = 7;

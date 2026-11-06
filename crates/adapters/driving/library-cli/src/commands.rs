@@ -570,12 +570,28 @@ fn mcp() -> Command {
 fn companion() -> Command {
     noun("companion", "List the companion programs ctxloom runs")
         .subcommand(list(
-            "List registered companions and whether each resolves on PATH",
+            "List registered companions, their commands and whether each program exists",
         ))
         .subcommand(
             Command::new("add")
-                .about("Register a companion by name, after checking it answers")
-                .arg(one("name", "The companion's name").allow_hyphen_values(true)),
+                .about("Register a companion with the command that runs it, after checking it answers")
+                .arg(one("name", "The companion's name").allow_hyphen_values(true))
+                .trailing_var_arg(true)
+                .arg(
+                    Arg::new("command")
+                        .long("command")
+                        .value_name("PROGRAM")
+                        .required(true)
+                        .allow_hyphen_values(true)
+                        .help("The program that runs the companion; asked `loadout --format yaml` once before it is recorded"),
+                )
+                .arg(
+                    Arg::new("args")
+                        .value_name("ARGS")
+                        .num_args(0..)
+                        .allow_hyphen_values(true)
+                        .help("The program's arguments, after it; everything from the first is taken as one (put --format before them)"),
+                ),
         )
         .subcommand(
             Command::new("remove")

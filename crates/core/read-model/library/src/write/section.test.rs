@@ -211,8 +211,8 @@ fn test_a_section_is_read_where_it_is() {
 // config_save.go: a first write is a document of the generation this reads
 #[test]
 fn test_a_file_with_no_key_is_stamped_and_one_with_keys_is_left() {
-    assert_eq!(stamped("").unwrap(), "schema_version: 8\n");
-    assert_eq!(stamped("# only\n").unwrap(), "# only\nschema_version: 8\n");
+    assert_eq!(stamped("").unwrap(), "schema_version: 9\n");
+    assert_eq!(stamped("# only\n").unwrap(), "# only\nschema_version: 9\n");
     let held = "schema_version: 7\nagents: {}\n";
     assert_eq!(stamped(held).unwrap(), held);
     assert_eq!(stamped("auth: token\n").unwrap(), "auth: token\n");

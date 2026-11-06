@@ -125,7 +125,7 @@ fn test_a_labeled_engine_config_is_created_and_read_back_out_of_the_project_file
             .file_contains(CONFIG, "o1");
         assert_eq!(
             project.read(CONFIG).as_deref(),
-            Some("schema_version: 8\nllm:\n  configs:\n    big:\n      model: o1\n      type: mock\n")
+            Some("schema_version: 9\nllm:\n  configs:\n    big:\n      model: o1\n      type: mock\n")
         );
         let listed = with_flags(&project, &["llm", "list"], flags);
         if !is_text(flags) {

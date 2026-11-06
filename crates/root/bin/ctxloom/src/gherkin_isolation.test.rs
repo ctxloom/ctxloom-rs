@@ -93,7 +93,7 @@ fn mock_responds(w: &mut World, _reply: String) {
     // resolves it.
     w.common.project.write(
         ".ctxloom/config.yaml",
-        "schema_version: 8\nllm:\n  configs:\n    mock:\n      type: mock\n  defaults:\n    primary: mock\n",
+        "schema_version: 9\nllm:\n  configs:\n    mock:\n      type: mock\n  defaults:\n    primary: mock\n",
     );
 }
 
@@ -116,8 +116,15 @@ fn unregistered_companion(w: &mut World, name: String, marker: String) {
 #[given(expr = "a companion {string} declaring container tooling {string}")]
 fn registered_companion(w: &mut World, name: String, marker: String) {
     w.companion(&name, &marker);
-    w.common
-        .run_lines(&format!("ctxloom companion add {name}"), "");
+    // Registered with the command that runs it: nothing is looked up by name.
+    let program = w.bin().join(format!("ctxloom-companion-{name}"));
+    w.common.run_lines(
+        &format!(
+            "ctxloom companion add {name} --command {}",
+            program.display()
+        ),
+        "",
+    );
     w.ran().succeeds();
 }
 

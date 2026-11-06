@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 
 use angzarr_yaml::Value;
-use ctxloom_ports::{ConfigFiles, LayerText, Source};
+use ctxloom_ports::{ConfigFiles, LayerText, RegisteredCompanion, Source};
 use library::config::layer::{self, Note};
 use library::config::overrides;
 use library::config::schema::{self, Violation};
@@ -107,6 +107,15 @@ fn read_layer(layer: &LayerText, notices: &mut Vec<Notice>) -> Result<Value, App
                     path,
                     found,
                     oldest,
+                })
+            }
+            // Registered by name alone: refused, never migrated into a
+            // registration (a name says nothing of what to run).
+            Note::LegacyCompanions { found, names } => {
+                return Err(AppError::ConfigCompanionsBare {
+                    path,
+                    found,
+                    names: names.join(", "),
                 })
             }
             Note::NotInteger => return Err(AppError::ConfigVersionUnreadable { path }),
@@ -382,9 +391,21 @@ impl Config {
         out
     }
 
-    /// The names under `companions`.
-    pub fn companions(&self) -> Vec<String> {
-        list_at(&self.value, "companions")
+    /// The registered companions, by name: each with the command that runs
+    /// it (empty where the registration holds none).
+    pub fn companions(&self) -> Vec<RegisteredCompanion> {
+        let Some(Value::Map(registered)) = self.value.get("companions") else {
+            return Vec::new();
+        };
+        let mut all: Vec<RegisteredCompanion> = registered
+            .iter()
+            .map(|(name, body)| RegisteredCompanion {
+                name: name.clone(),
+                command: list_at(body, "command"),
+            })
+            .collect();
+        all.sort_by(|a, b| a.name.cmp(&b.name));
+        all
     }
 }
 

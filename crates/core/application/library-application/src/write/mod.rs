@@ -19,7 +19,7 @@ use ctxloom_ports::{Editor, LoadoutProbe, Scaffold, UserFiles};
 
 mod agents;
 mod bundles;
-mod companions;
+pub(crate) mod companions;
 mod configfile;
 mod configs;
 mod editor;

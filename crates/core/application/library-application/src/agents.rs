@@ -98,23 +98,19 @@ impl Project {
             .collect()
     }
 
+    /// The registered companions, each with whether its program exists. Only
+    /// that is checked: a companion is never run to list it.
     fn companion_list(&self) -> Vec<CompanionRow> {
         self.config
             .companions()
             .into_iter()
-            .map(|name| {
-                let bin = if matches!(name.as_str(), "ltk" | "taskloom" | "reprise") {
-                    name.clone()
-                } else {
-                    format!("ctxloom-companion-{name}")
-                };
-                let path = self.binaries.find(&bin);
-                CompanionRow {
-                    name,
-                    resolves: path.is_some(),
-                    path: path.unwrap_or_default(),
-                    bin,
-                }
+            .map(|companion| CompanionRow {
+                exists: companion
+                    .command
+                    .first()
+                    .is_some_and(|program| self.binaries.find(program).is_some()),
+                name: companion.name,
+                command: companion.command,
             })
             .collect()
     }

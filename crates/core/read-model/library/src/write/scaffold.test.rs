@@ -25,7 +25,7 @@ fn test_the_seed_profile_is_gos_resource_byte_for_byte() {
 fn test_the_claude_config_is_the_registrys_primary_and_fast_entries() {
     assert_eq!(
         initial_config("claude-code"),
-        "agents:\n  default:\n    engine_home: session\n    llm: claude-code\n    profiles:\n      - default\n    runtime: host\nauth: token\nconfig:\n  use_distilled: true\ndefault_agent: default\nllm:\n  configs:\n    claude-code:\n      model: opus\n      type: claude-code\n    claude-fast:\n      model: haiku\n      type: claude-code\n  defaults:\n    fast: claude-fast\n    primary: claude-code\nschema_version: 8\n"
+        "agents:\n  default:\n    engine_home: session\n    llm: claude-code\n    profiles:\n      - default\n    runtime: host\nauth: token\nconfig:\n  use_distilled: true\ndefault_agent: default\nllm:\n  configs:\n    claude-code:\n      model: opus\n      type: claude-code\n    claude-fast:\n      model: haiku\n      type: claude-code\n  defaults:\n    fast: claude-fast\n    primary: claude-code\nschema_version: 9\n"
     );
 }
 
@@ -40,7 +40,7 @@ fn test_an_engine_without_roles_is_one_entry_serving_both() {
     ] {
         assert_eq!(
             initial_config(engine),
-            format!("agents:\n  default:\n    engine_home: session\n    llm: {engine}\n    profiles:\n      - default\n    runtime: host\nauth: token\nconfig:\n  use_distilled: true\ndefault_agent: default\nllm:\n  configs:\n    {engine}:\n      type: {engine}\n  defaults:\n    fast: {engine}\n    primary: {engine}\nschema_version: 8\n")
+            format!("agents:\n  default:\n    engine_home: session\n    llm: {engine}\n    profiles:\n      - default\n    runtime: host\nauth: token\nconfig:\n  use_distilled: true\ndefault_agent: default\nllm:\n  configs:\n    {engine}:\n      type: {engine}\n  defaults:\n    fast: {engine}\n    primary: {engine}\nschema_version: 9\n")
         );
     }
 }
@@ -51,6 +51,6 @@ fn test_what_it_scaffolds_is_a_config_this_build_reads() {
         let doc = angzarr_yaml::parse(&initial_config(engine)).unwrap();
         assert_eq!(initial_sections(engine), doc);
         assert!(crate::config::schema::validate(&doc).is_empty(), "{engine}");
-        assert_eq!(doc.get("schema_version").and_then(Value::as_str), Some("8"));
+        assert_eq!(doc.get("schema_version").and_then(Value::as_str), Some("9"));
     }
 }

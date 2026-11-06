@@ -27,7 +27,6 @@ fn world() -> (Library, Arc<Mem>) {
     Setup {
         bundles: &[("demo", DEMO), ("project", PROJECT)],
         layers: &[CONFIG],
-        path: &[("ctxloom-companion-acme", "/usr/bin/acme")],
         ..Setup::default()
     }
     .fixture()
@@ -764,10 +763,41 @@ fn test_llm_verbs() {
 fn test_companion_verbs() {
     let (library, _mem) = world();
     assert_eq!(
-        text(&library, &["companion", "add", "acme"]),
-        "Registered companion 'acme' (ctxloom-companion-acme answers at /usr/bin/acme)\n"
+        text(
+            &library,
+            &[
+                "companion",
+                "add",
+                "acme",
+                "--command",
+                "acme-bin",
+                "--as",
+                "-x"
+            ]
+        ),
+        "Registered companion 'acme' (answers: acme-bin --as -x)\n"
     );
-    assert!(refused_code(&library, &["companion", "add", "-x"], TEXT).contains("companion"));
+    assert_eq!(
+        text(
+            &library,
+            &[
+                "companion",
+                "add",
+                "acme",
+                "--command",
+                "acme-bin",
+                "--as",
+                "-x"
+            ]
+        ),
+        "Companion 'acme' is already registered (acme-bin --as -x)\n"
+    );
+    assert!(refused_code(
+        &library,
+        &["companion", "add", "-x", "--command", "acme-bin"],
+        TEXT
+    )
+    .contains("companion"));
     assert_eq!(
         text(&library, &["companion", "remove", "acme"]),
         "Would remove companion \"acme\".\n\nNothing was removed. Re-run with --yes to apply:\n  ctxloom companion remove acme --yes\n"
@@ -783,7 +813,7 @@ fn test_companion_verbs() {
 fn test_config_create_and_edit() {
     let (library, mem) = world();
     assert!(refused_code(&library, &["config", "edit"], TEXT).contains("config-missing"));
-    mem.set_scaffold_for_test("config.yaml", "schema_version: 8\n");
+    mem.set_scaffold_for_test("config.yaml", "schema_version: 9\n");
     let said = text(&library, &["config", "edit"]);
     assert_eq!(said, "");
     assert!(!mem.opened().is_empty());

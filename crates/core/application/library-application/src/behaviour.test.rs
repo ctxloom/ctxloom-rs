@@ -52,7 +52,7 @@ fn test_degraded_by_environment_means_ctxloom_degraded_is_one() {
 // config key warns instead of refusing.
 #[test]
 fn test_the_environment_degrades_a_run_like_the_flag() {
-    let layers = ["schema_version: 8\nzzz: 1\n"];
+    let layers = ["schema_version: 9\nzzz: 1\n"];
     let strict = with(&[], &layers).library();
     assert!(strict.bundle_list(&plain()).result.is_err());
     let degraded = Setup {
@@ -66,7 +66,7 @@ fn test_the_environment_degrades_a_run_like_the_flag() {
 // non_tty_format (plan D28): the configured format off a terminal, if set.
 #[test]
 fn test_the_preferred_format_is_the_configured_one_or_none() {
-    let layers = ["schema_version: 8\nnon_tty_format: text\n"];
+    let layers = ["schema_version: 9\nnon_tty_format: text\n"];
     assert_eq!(
         with(&[], &layers).library().preferred_format(&plain()),
         Some("text".to_string())
@@ -77,7 +77,7 @@ fn test_the_preferred_format_is_the_configured_one_or_none() {
     );
     // A config the strict reader would refuse still yields its format: the
     // choice of a format must not fail the run that reports the failure.
-    let bad = ["schema_version: 8\nnon_tty_format: json\nzzz: 1\n"];
+    let bad = ["schema_version: 9\nnon_tty_format: json\nzzz: 1\n"];
     assert_eq!(
         with(&[], &bad).library().preferred_format(&plain()),
         Some("json".to_string())
@@ -374,7 +374,7 @@ fn test_skills_list_by_bundle_and_merge_tags_without_repeats() {
     assert_eq!(first.description, "Does one");
 }
 
-const AGENT_DEV: &str = "schema_version: 8\nagents:\n  dev:\n    llm: claude-code\n    profiles: [dev]\ndefault_agent: dev\n";
+const AGENT_DEV: &str = "schema_version: 9\nagents:\n  dev:\n    llm: claude-code\n    profiles: [dev]\ndefault_agent: dev\n";
 
 // profile.feature: a profile of the project bundle is named bare, any other
 // bundle's by its full reference, and its display name is the bare one.
@@ -531,7 +531,7 @@ fn search_library() -> crate::Library {
         .iter()
         .map(|(a, b)| (a.as_str(), b.as_str()))
         .collect();
-    let layers = ["schema_version: 8\nagents:\n  d:\n    llm: claude-code\n    profiles: [all]\ndefault_agent: d\n"];
+    let layers = ["schema_version: 9\nagents:\n  d:\n    llm: claude-code\n    profiles: [all]\ndefault_agent: d\n"];
     let mut with_all = refs.clone();
     with_all.push(("profiles/all.yaml", "bundles: [project]\n"));
     Setup {
@@ -749,7 +749,7 @@ fn test_a_server_name_claimed_by_two_bundles_is_a_finding_but_one_bundle_twice_i
         ("profiles/twice-a.yaml", "bundles: [x]\n"),
         ("profiles/twice-b.yaml", "bundles: [x]\n"),
     ];
-    let layers = ["schema_version: 8\nagents:\n  twice:\n    llm: claude-code\n    profiles: [twice-a, twice-b]\n"];
+    let layers = ["schema_version: 9\nagents:\n  twice:\n    llm: claude-code\n    profiles: [twice-a, twice-b]\n"];
     let library = with(&[("project", project), ("x", &x), ("y", &y)], &layers).library();
     let clash = crate::RunRequest {
         profile: "clash".to_string(),
@@ -781,7 +781,7 @@ fn test_an_agent_resolves_its_engine_from_its_label_or_its_profiles() {
         ("profiles/plain.yaml", "description: p\n"),
         ("profiles/prefers.yaml", "llm: opencode\n"),
     ];
-    let layers = ["schema_version: 8\nagents:\n  bare:\n    llm: opencode\n  weird:\n    llm: weird-label\n  inherits:\n    profiles: [plain, prefers]\n  typed:\n    llm: fancy\nllm:\n  configs:\n    fancy:\n      type: mock\n      model: m1\n"];
+    let layers = ["schema_version: 9\nagents:\n  bare:\n    llm: opencode\n  weird:\n    llm: weird-label\n  inherits:\n    profiles: [plain, prefers]\n  typed:\n    llm: fancy\nllm:\n  configs:\n    fancy:\n      type: mock\n      model: m1\n"];
     let library = with(&[("project", project)], &layers).library();
     let resolved = |name: &str| {
         ok(library.agent_show(&plain(), name, &say))
@@ -831,7 +831,7 @@ fn test_requirements_name_only_the_commands_a_host_must_have() {
         ("mcp/blank.yaml", "args: [a]\n"),
         ("profiles/all.yaml", "bundles: [project]\n"),
     ];
-    let layers = ["schema_version: 8\nagents:\n  a:\n    llm: claude-code\n    profiles: [all]\n"];
+    let layers = ["schema_version: 9\nagents:\n  a:\n    llm: claude-code\n    profiles: [all]\n"];
     let shown = ok(with(&[("project", files)], &layers)
         .library()
         .agent_show(&plain(), "a", &say));
@@ -848,7 +848,7 @@ fn test_requirements_name_only_the_commands_a_host_must_have() {
 #[test]
 fn test_the_effective_posture_follows_the_binding_then_the_label_then_the_default() {
     let project: &[(&str, &str)] = &[ENVELOPE, ("profiles/p.yaml", "description: p\n")];
-    let layers = ["schema_version: 8\npermissions:\n  approver: reviewer\nagents:\n  neutral:\n    llm: claude-code\n    permissions:\n      approver: \"\"\n  foreign:\n    llm: claude-code\n    permissions:\n      opencode:\n        mode: whatever\n  own:\n    llm: claude-code\n    permissions:\n      approver: none\n      claude-code:\n        mode: plan\n  modeless:\n    llm: claude-code\n    permissions:\n      claude-code:\n        other: x\n  labelled:\n    llm: strict\n  labelled-approver:\n    llm: strict\n    permissions:\n      approver: human\n  mocked:\n    llm: mock\nllm:\n  configs:\n    strict:\n      type: claude-code\n      permissions:\n        mode: bypassPermissions\n        approver: none\n"];
+    let layers = ["schema_version: 9\npermissions:\n  approver: reviewer\nagents:\n  neutral:\n    llm: claude-code\n    permissions:\n      approver: \"\"\n  foreign:\n    llm: claude-code\n    permissions:\n      opencode:\n        mode: whatever\n  own:\n    llm: claude-code\n    permissions:\n      approver: none\n      claude-code:\n        mode: plan\n  modeless:\n    llm: claude-code\n    permissions:\n      claude-code:\n        other: x\n  labelled:\n    llm: strict\n  labelled-approver:\n    llm: strict\n    permissions:\n      approver: human\n  mocked:\n    llm: mock\nllm:\n  configs:\n    strict:\n      type: claude-code\n      permissions:\n        mode: bypassPermissions\n        approver: none\n"];
     let library = with(&[("project", project)], &layers).library();
     // --degraded keeps a value the schema refuses (an empty approver), so the
     // fall-through past an empty declaration can be seen.
@@ -876,7 +876,7 @@ fn test_the_effective_posture_follows_the_binding_then_the_label_then_the_defaul
     let bare = Setup {
         ..with(
             &[("project", project)],
-            &["schema_version: 8\nagents:\n  a:\n    llm: claude-code\n"],
+            &["schema_version: 9\nagents:\n  a:\n    llm: claude-code\n"],
         )
     }
     .library();
@@ -904,11 +904,11 @@ fn test_a_dry_run_settles_the_workspace_and_runtime_axes() {
         agent: "plain".to_string(),
         ..crate::RunRequest::default()
     };
-    let bare = format!("schema_version: 8\n{agent}");
+    let bare = format!("schema_version: 9\n{agent}");
     assert_eq!(run(&bare, dev.clone()), pair("none", "container-rootless"));
     assert_eq!(run(&bare, plain_agent.clone()), pair("none", "host"));
     let configured =
-        format!("schema_version: 8\nworkspace: worktree\nruntime: container-rootful\n{agent}");
+        format!("schema_version: 9\nworkspace: worktree\nruntime: container-rootful\n{agent}");
     assert_eq!(
         run(&configured, dev.clone()),
         pair("worktree", "container-rootless")
@@ -928,7 +928,7 @@ fn test_a_dry_run_settles_the_workspace_and_runtime_axes() {
 #[test]
 fn test_the_prompt_is_given_or_the_saved_commands_body() {
     let files: &[(&str, &str)] = &[ENVELOPE, ("prompts/saved.md", "SAVED BODY\n")];
-    let layers = ["schema_version: 8\nagents:\n  d:\n    llm: claude-code\ndefault_agent: d\n"];
+    let layers = ["schema_version: 9\nagents:\n  d:\n    llm: claude-code\ndefault_agent: d\n"];
     let library = with(&[("b", files)], &layers).library();
     let prompt = |given: &str, saved: &str| {
         library
@@ -978,7 +978,7 @@ fn test_degraded_tolerates_a_missing_default_agent_only() {
         nothing.dry_run(&degraded, &named).result,
         Err(AppError::LaunchNoAgent { .. })
     ));
-    let ghost = with(&[], &["schema_version: 8\ndefault_agent: ghost\n"]).library();
+    let ghost = with(&[], &["schema_version: 9\ndefault_agent: ghost\n"]).library();
     assert!(ghost
         .dry_run(&degraded, &crate::RunRequest::default())
         .result
@@ -995,7 +995,7 @@ fn test_degraded_tolerates_a_missing_default_agent_only() {
 // lists what is usable: the labels and the real engines, each once, sorted.
 #[test]
 fn test_an_unknown_llm_lists_the_usable_ones() {
-    let layers = ["schema_version: 8\nllm:\n  configs:\n    opencode:\n      type: opencode\n      model: m\n    zed:\n      type: mock\n"];
+    let layers = ["schema_version: 9\nllm:\n  configs:\n    opencode:\n      type: opencode\n      model: m\n    zed:\n      type: mock\n"];
     let request = crate::RunRequest {
         profile: "x".to_string(),
         llm: "nosuch".to_string(),
@@ -1090,8 +1090,8 @@ fn degraded() -> crate::Flags {
 #[test]
 fn test_a_layer_of_the_wrong_shape_reduces_the_config_even_if_a_later_layer_mends_it() {
     let layers = [
-        "schema_version: 8\ncompanions: acme\n",
-        "schema_version: 8\ncompanions: [beta]\neditor:\n  command: vim\n",
+        "schema_version: 9\ncompanions: acme\n",
+        "schema_version: 9\ncompanions:\n  beta: {command: [b]}\neditor:\n  command: vim\n",
     ];
     let library = with(&[], &layers).library();
     let editor = ok(library.config_show(&degraded(), Some("editor"), false));
@@ -1108,7 +1108,7 @@ fn test_a_layer_of_the_wrong_shape_reduces_the_config_even_if_a_later_layer_mend
 // do about it: remove an unknown key, or give a known one a value it accepts.
 #[test]
 fn test_a_violation_is_said_with_its_remedy() {
-    let layers = ["schema_version: 8\nzzz: 1\ncompanions: acme\n"];
+    let layers = ["schema_version: 9\nzzz: 1\ncompanions: acme\n"];
     let out = with(&[], &layers)
         .library()
         .config_show(&degraded(), None, false);
@@ -1133,7 +1133,7 @@ fn test_a_violation_is_said_with_its_remedy() {
 // below a section, and reads on.
 #[test]
 fn test_degraded_drops_unknown_keys_at_any_depth() {
-    let layers = ["schema_version: 8\nzzz: 1\neditor:\n  command: vim\n  nonsense: 2\n"];
+    let layers = ["schema_version: 9\nzzz: 1\neditor:\n  command: vim\n  nonsense: 2\n"];
     let library = with(&[], &layers).library();
     let shown = ok(library.config_show(&degraded(), None, true));
     assert!(shown.json.get("zzz").is_none(), "{}", shown.json);
@@ -1144,7 +1144,7 @@ fn test_degraded_drops_unknown_keys_at_any_depth() {
 // one with an empty list of profiles and no llm is dropped.
 #[test]
 fn test_an_agent_is_kept_when_profiles_alone_bind_it() {
-    let layers = ["schema_version: 8\nagents:\n  by-profiles:\n    profiles: [p]\n  empty:\n    profiles: []\n    runtime: host\n"];
+    let layers = ["schema_version: 9\nagents:\n  by-profiles:\n    profiles: [p]\n  empty:\n    profiles: []\n    runtime: host\n"];
     let out = with(&[], &layers).library().agent_list(&plain());
     assert_eq!(out.notices.len(), 1);
     let rows = out.result.unwrap();
@@ -1157,7 +1157,7 @@ fn test_an_agent_is_kept_when_profiles_alone_bind_it() {
 // config.feature: env_host is read as a boolean, absent when unset.
 #[test]
 fn test_an_agents_env_host_is_true_false_or_unset() {
-    let layers = ["schema_version: 8\nagents:\n  on:\n    llm: claude-code\n    env_host: true\n  off:\n    llm: claude-code\n    env_host: false\n  unset:\n    llm: claude-code\n"];
+    let layers = ["schema_version: 9\nagents:\n  on:\n    llm: claude-code\n    env_host: true\n  off:\n    llm: claude-code\n    env_host: false\n  unset:\n    llm: claude-code\n"];
     let rows = ok(with(&[], &layers).library().agent_list(&plain()));
     let by = |name: &str| rows.iter().find(|r| r.name == name).unwrap().env_host;
     assert_eq!(

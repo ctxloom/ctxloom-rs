@@ -298,8 +298,10 @@ pub struct LlmRemoved {
 #[derive(Clone, Debug, Serialize)]
 pub struct CompanionAdded {
     pub name: String,
-    pub bin: String,
-    pub path: String,
+    /// The program, then its arguments, as registered.
+    pub command: Vec<String>,
+    /// Whether the registration is new or changed a command; false when it
+    /// was already registered exactly so.
     pub added: bool,
 }
 

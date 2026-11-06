@@ -111,7 +111,7 @@ fn test_a_config_carrying_an_inline_profiles_block_is_refused_naming_the_key() {
     project.bundle("demo");
     project.write(
         ".ctxloom/config.yaml",
-        "schema_version: 8\nprofiles:\n  definitions:\n    dev:\n      bundles:\n        - demo\n",
+        "schema_version: 9\nprofiles:\n  definitions:\n    dev:\n      bundles:\n        - demo\n",
     );
     project
         .run(&["config", "show", "llm"])
@@ -149,7 +149,7 @@ fn test_a_misspelled_subcommand_fails_instead_of_printing_help() {
 #[test]
 fn test_an_unknown_key_is_refused_naming_it_and_degraded_carries_on() {
     let project = Project::initialized();
-    project.write(".ctxloom/config.yaml", "schema_version: 8\nzzz: 1\n");
+    project.write(".ctxloom/config.yaml", "schema_version: 9\nzzz: 1\n");
     let refused = project.run(&["bundle", "list"]);
     refused
         .fails()
@@ -163,7 +163,7 @@ fn test_an_unknown_key_is_refused_naming_it_and_degraded_carries_on() {
 
 // internal/migrations/config/internal/v8/step_test.go: TestStep_DropsEssenceMaxChars
 // and TestStep_EmptiedSectionLeavesAndAbsentKeyIsUntouched, through the
-// binary: a schema 7 config loads, and shows as 8 without the key.
+// binary: a schema 7 config loads, and shows as 9 without the key.
 #[test]
 fn test_a_schema_7_config_migrates_in_memory_dropping_essence_max_chars() {
     let project = Project::initialized();
@@ -174,7 +174,7 @@ fn test_a_schema_7_config_migrates_in_memory_dropping_essence_max_chars() {
     let ran = project.run(&["config", "show", "--format", "json"]);
     ran.succeeds().lacks("essence_max_chars");
     let doc = ran.json();
-    assert_eq!(reports_as(&doc, "schema_version"), "8");
+    assert_eq!(reports_as(&doc, "schema_version"), "9");
     assert_eq!(reports_as(&doc, "config.use_distilled"), "false");
     // The file is not touched: persisting an upgrade is --write-upgrades'.
     let kept = files::read(project.dir().join(".ctxloom/config.yaml")).unwrap();
@@ -198,8 +198,8 @@ fn test_a_schema_7_config_migrates_in_memory_dropping_essence_max_chars() {
 fn test_a_config_of_another_generation_is_refused() {
     for (config, said) in [
         (
-            "schema_version: 9\neditor:\n  command: vim\n",
-            "schema_version 9: written by a newer format than this binary reads",
+            "schema_version: 10\neditor:\n  command: vim\n",
+            "schema_version 10: written by a newer format than this binary reads",
         ),
         (
             "schema_version: 6\neditor:\n  command: vim\n",
@@ -231,7 +231,7 @@ fn test_a_config_of_another_generation_is_refused() {
 // merge by name, a scalar of the project wins.
 #[test]
 fn test_layers_merge_home_under_project() {
-    let project = Project::from_fixture("cfg/layers");
+    let project = Project::from_fixture("cfg/layers9");
     let doc = project
         .run(&["config", "show", "--format", "json"])
         .succeeds()
@@ -242,9 +242,14 @@ fn test_layers_merge_home_under_project() {
     assert_eq!(reports_as(&doc, "agents.proj.llm"), "claude-code");
     assert!(contains_value(&doc, "agents.proj.profiles", "x"), "{doc}");
     assert!(contains_value(&doc, "agents.home.profiles", "h"), "{doc}");
+    // Names union; a name's command is the project's where both register it.
     assert_eq!(
         doc["companions"],
-        serde_json::json!(["acme", "beta", "gamma"])
+        serde_json::json!({
+            "acme": {"command": ["acme-bin"]},
+            "beta": {"command": ["other-beta"]},
+            "gamma": {"command": ["gamma-bin"]},
+        })
     );
 }
 
@@ -291,7 +296,7 @@ fn test_without_a_project_the_home_config_is_the_whole_configuration() {
     let project = Project::bare();
     project.write_home(
         ".ctxloom/config.yaml",
-        "schema_version: 8\neditor:\n  command: nano\n",
+        "schema_version: 9\neditor:\n  command: nano\n",
     );
     let ran = project.run_in(
         project.dir(),
@@ -302,4 +307,46 @@ fn test_without_a_project_the_home_config_is_the_whole_configuration() {
         !files::exists(project.dir().join(".ctxloom")),
         "reading creates nothing"
     );
+}
+
+// virtuous-word (owner ruling 2026-11-06): schema 9 registers a companion with
+// the command that runs it. A bare-name list, as Go and schema 8 wrote it, is
+// refused with what to do; nothing is migrated.
+#[test]
+fn test_a_bare_name_companions_list_is_refused_telling_how_to_register_again() {
+    for generation in [7, 8] {
+        let project = Project::initialized();
+        project.write(
+            ".ctxloom/config.yaml",
+            &format!("schema_version: {generation}\ncompanions: [acme, ltk]\n"),
+        );
+        let ran = project.run(&["config", "show", "editor", "--format", "text"]);
+        assert_eq!(ran.code, 2, "{}", ran.said());
+        ran.contains("companions acme, ltk are registered by name alone")
+            .contains("ctxloom companion add <name> --command <program>");
+        assert!(ran.stdout.is_empty(), "no answer is given: {}", ran.stdout);
+        let kept = files::read(project.dir().join(".ctxloom/config.yaml")).unwrap();
+        assert!(kept.contains("companions: [acme, ltk]"), "not rewritten");
+    }
+    // A config registering none, or the empty list, loads as before.
+    let project = Project::initialized();
+    project.write(
+        ".ctxloom/config.yaml",
+        "schema_version: 8\ncompanions: []\neditor:\n  command: vim\n",
+    );
+    project
+        .run(&["config", "show", "editor", "--format", "json"])
+        .succeeds();
+}
+
+// config show on the registration: the text form is the YAML Go prints, now a
+// map of name to command.
+#[test]
+fn test_config_show_prints_the_registration_as_a_map_of_commands() {
+    let project = Project::from_fixture("cfg/layers9");
+    let ran = project.run(&["config", "show", "companions", "--format", "text"]);
+    ran.succeeds();
+    ran.contains("acme:\n  command:\n    - acme-bin\n")
+        .contains("beta:\n  command:\n    - other-beta\n")
+        .contains("gamma:\n  command:\n    - gamma-bin\n");
 }

@@ -395,10 +395,10 @@ pub struct LlmRow {
 #[derive(Clone, Debug, Serialize)]
 pub struct CompanionRow {
     pub name: String,
-    pub bin: String,
-    pub resolves: bool,
-    #[serde(skip_serializing_if = "no_text")]
-    pub path: String,
+    /// The program, then its arguments.
+    pub command: Vec<String>,
+    /// Whether the program is there; it is not run to find out.
+    pub exists: bool,
 }
 
 /// A registered MCP server.

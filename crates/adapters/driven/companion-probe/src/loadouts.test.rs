@@ -1,83 +1,129 @@
-//! The `CompanionLoadouts` port over a process: `Prober.ProbeCompanionLoadouts`' four
-//! outcomes, over programs the adapter is given.
+//! The `CompanionLoadouts` port over a process: `Prober.ProbeCompanionLoadouts`'
+//! outcomes, over the command a registration holds.
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use file_system::Rooted;
+use file_system::{Fs, Rooted};
 use process_env::EnvSnapshot;
 
 use super::*;
 
-fn companions(programs: &[(&str, &str)], limit: Duration) -> ProcessCompanions {
-    let programs = programs
-        .iter()
-        .map(|(n, p)| ((*n).to_string(), (*p).to_string()))
-        .collect();
-    ProcessCompanions::new(
-        programs,
-        ProcessProbe::new(
-            limit,
-            Arc::new(EnvSnapshot::of([("PATH", "/usr/bin:/bin")])),
-        ),
-    )
+fn companions(limit: Duration) -> ProcessCompanions {
+    ProcessCompanions::new(ProcessProbe::new(
+        limit,
+        Arc::new(EnvSnapshot::of([("PATH", "/usr/bin:/bin")])),
+    ))
 }
 
-/// A program running `body`, as `bin` in a directory of its own.
-fn program(bin: &str, body: &str) -> (Rooted, String) {
+fn registered(command: &[&str]) -> RegisteredCompanion {
+    RegisteredCompanion {
+        name: "x".to_string(),
+        command: command.iter().map(ToString::to_string).collect(),
+    }
+}
+
+/// A program running `body`, in a directory of its own.
+fn program(body: &str) -> (Rooted, String) {
     let dir = Rooted::temp().unwrap();
-    let path =
-        fixture_program::install_program(&dir, &os::fixture(&format!("/{bin}")), body).unwrap();
+    let path = fixture_program::install_program(&dir, &os::fixture("/prog"), body).unwrap();
     (dir, path.to_str().unwrap().to_string())
 }
 
 const SECS: Duration = Duration::from_secs(5);
 
 #[test]
-fn a_name_with_no_program_is_absent() {
-    let c = companions(&[], SECS);
-    assert_eq!(c.loadout("reprise"), CompanionLoadout::Absent);
+fn a_program_that_prints_a_loadout_loads() {
+    let (_dir, path) = program("#!/bin/sh\nprintf 'run:\\n  version: 1\\n'\n");
+    assert_eq!(
+        companions(SECS).loadout(&registered(&[&path])),
+        CompanionLoadout::Loaded("run:\n  version: 1\n".to_string())
+    );
 }
 
 #[test]
-fn a_companion_that_prints_nothing_has_no_loadout() {
-    let (_dir, path) = program("x", "#!/bin/sh\nexit 0\n");
-    let c = companions(&[("x", &path)], SECS);
-    assert_eq!(c.loadout("x"), CompanionLoadout::NoLoadout);
+fn the_registered_arguments_come_before_the_protocols() {
+    let (dir, path) = program("#!/bin/sh\necho \"$@\" > \"$(dirname \"$0\")/args\"\necho x\n");
+    companions(SECS).loadout(&registered(&[&path, "--as", "acme"]));
+    assert_eq!(
+        dir.read_to_string(&os::fixture("/args")).unwrap(),
+        "--as acme loadout --format yaml\n"
+    );
 }
 
 #[test]
-fn a_companion_that_fails_has_failed() {
-    let (_dir, path) = program("x", "#!/bin/sh\necho oops\nexit 3\n");
-    let c = companions(&[("x", &path)], SECS);
-    let CompanionLoadout::ProbeFailed(detail) = c.loadout("x") else {
+fn a_program_that_does_not_exist_is_absent() {
+    assert_eq!(
+        companions(SECS).loadout(&registered(&["/no/such/program"])),
+        CompanionLoadout::Absent
+    );
+}
+
+#[test]
+fn a_bare_name_is_left_to_the_system_to_find() {
+    // `true` exits 0 printing nothing: found by the system's own lookup, and
+    // it printed no loadout.
+    assert_eq!(
+        companions(SECS).loadout(&registered(&["true"])),
+        CompanionLoadout::ProbeFailed("it printed no loadout".to_string())
+    );
+}
+
+#[test]
+fn a_program_that_exits_with_a_status_offers_no_loadout() {
+    let (_dir, path) = program("#!/bin/sh\necho oops\nexit 3\n");
+    assert_eq!(
+        companions(SECS).loadout(&registered(&[&path])),
+        CompanionLoadout::NoLoadout
+    );
+}
+
+#[test]
+fn a_program_that_prints_nothing_has_failed() {
+    let (_dir, path) = program("#!/bin/sh\nexit 0\n");
+    assert_eq!(
+        companions(SECS).loadout(&registered(&[&path])),
+        CompanionLoadout::ProbeFailed("it printed no loadout".to_string())
+    );
+}
+
+#[test]
+fn a_program_killed_by_a_signal_has_failed() {
+    let (_dir, path) = program("#!/bin/sh\nkill -9 $$\n");
+    let CompanionLoadout::ProbeFailed(detail) = companions(SECS).loadout(&registered(&[&path]))
+    else {
         panic!("should fail");
     };
-    assert!(detail.contains("exit status: 3"), "{detail}");
+    assert!(detail.contains("signal"), "{detail}");
 }
 
 #[test]
-fn a_companion_that_takes_too_long_has_failed() {
-    let (_dir, path) = program("x", "#!/bin/sh\nsleep 20\n");
-    let c = companions(&[("x", &path)], Duration::from_millis(200));
-    let CompanionLoadout::ProbeFailed(detail) = c.loadout("x") else {
+fn a_program_that_cannot_be_started_has_failed() {
+    // A directory is there and cannot be run.
+    let dir = Rooted::temp().unwrap();
+    let path = dir.root().to_str().unwrap().to_string();
+    let CompanionLoadout::ProbeFailed(detail) = companions(SECS).loadout(&registered(&[&path]))
+    else {
+        panic!("should fail");
+    };
+    assert!(detail.contains("ermission"), "{detail}");
+}
+
+#[test]
+fn a_program_that_takes_too_long_has_failed() {
+    let (_dir, path) = program("#!/bin/sh\nsleep 20\n");
+    let CompanionLoadout::ProbeFailed(detail) =
+        companions(Duration::from_millis(200)).loadout(&registered(&[&path]))
+    else {
         panic!("should fail");
     };
     assert!(detail.contains("did not answer within"), "{detail}");
 }
 
 #[test]
-fn a_name_is_answered_by_its_own_program() {
-    let (_a, one) = program("a", "#!/bin/sh\nprintf 'run:\\n  version: 1\\n'\n");
-    let (_b, two) = program("b", "#!/bin/sh\nprintf 'run:\\n  version: 2\\n'\n");
-    let c = companions(&[("one", &one), ("two", &two)], SECS);
-    assert_eq!(
-        c.loadout("two"),
-        CompanionLoadout::Loaded("run:\n  version: 2\n".to_string())
-    );
-    assert_eq!(
-        c.loadout("one"),
-        CompanionLoadout::Loaded("run:\n  version: 1\n".to_string())
-    );
-    assert_eq!(c.loadout("three"), CompanionLoadout::Absent);
+fn an_empty_command_has_failed() {
+    let CompanionLoadout::ProbeFailed(detail) = companions(SECS).loadout(&registered(&[])) else {
+        panic!("should fail");
+    };
+    assert!(detail.contains("empty"), "{detail}");
 }

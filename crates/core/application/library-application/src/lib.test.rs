@@ -119,7 +119,7 @@ fn test_showing_an_unreadable_bundle_names_the_fault_and_a_missing_one_is_not_fo
 // it; --degraded warns and carries on without it.
 #[test]
 fn test_an_unknown_config_key_is_refused_and_degraded_drops_it_with_a_warning() {
-    let layers = ["schema_version: 8\nzzz: 1\n"];
+    let layers = ["schema_version: 9\nzzz: 1\n"];
     let library = setup(&layers).library();
     let refused = library.bundle_list(&plain()).result;
     match refused {
@@ -146,7 +146,7 @@ fn test_an_unknown_config_key_is_refused_and_degraded_drops_it_with_a_warning() 
 #[test]
 fn test_a_config_of_another_generation_is_refused() {
     for layer in [
-        "schema_version: 9\neditor:\n  command: vim\n",
+        "schema_version: 10\neditor:\n  command: vim\n",
         "schema_version: 6\neditor:\n  command: vim\n",
         "editor:\n  command: vim\n",
         "schema_version: abc\n",
@@ -171,11 +171,51 @@ fn test_a_config_of_another_generation_is_refused() {
     }
 }
 
+// generation 9 (virtuous-word): a bare-name `companions:` list is refused with
+// what to do about it, never migrated; a config without one loads as before.
+#[test]
+fn test_a_config_registering_companions_by_bare_name_is_refused_not_migrated() {
+    for generation in [7, 8] {
+        let layer = format!("schema_version: {generation}\ncompanions: [acme, ltk]\n");
+        let layers = [layer.as_str()];
+        let refused = setup(&layers)
+            .library()
+            .config_show(&plain(), Some("editor"), false)
+            .result
+            .err()
+            .expect("refused");
+        match &refused {
+            AppError::ConfigCompanionsBare { path, found, names } => {
+                assert_eq!(path, "/p/.ctxloom/layer-0.yaml");
+                assert_eq!(*found, generation);
+                assert_eq!(names, "acme, ltk");
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(refused.exit_code(), 2);
+    }
+}
+
+#[test]
+fn test_a_config_without_bare_companions_loads_from_generation_7_on() {
+    for layer in [
+        "schema_version: 7\neditor:\n  command: vim\n",
+        "schema_version: 8\neditor:\n  command: vim\ncompanions: []\n",
+        "schema_version: 9\neditor:\n  command: vim\n",
+    ] {
+        let layers = [layer];
+        let shown = ok(setup(&layers)
+            .library()
+            .config_show(&plain(), Some("editor"), false));
+        assert_eq!(shown.json["command"], "vim", "{layer:?}");
+    }
+}
+
 // merge.go dropEnginelessAgents: an agent naming neither an llm nor a profile
 // is dropped with a warning.
 #[test]
 fn test_an_agent_bound_to_nothing_is_dropped_with_a_warning() {
-    let layers = ["schema_version: 8\nagents:\n  ghost: {}\n  real:\n    llm: claude-code\n"];
+    let layers = ["schema_version: 9\nagents:\n  ghost: {}\n  real:\n    llm: claude-code\n"];
     let out = setup(&layers).library().agent_list(&plain());
     assert_eq!(out.notices.len(), 1);
     let rows = out.result.unwrap();
@@ -189,7 +229,7 @@ fn test_an_agent_bound_to_nothing_is_dropped_with_a_warning() {
 // environment; a malformed --config-set is a notice.
 #[test]
 fn test_overrides_beat_the_files_and_a_malformed_flag_is_a_notice() {
-    let layers = ["schema_version: 8\neditor:\n  command: vim\n"];
+    let layers = ["schema_version: 9\neditor:\n  command: vim\n"];
     let library = Setup {
         environ: &[("CTXLOOM_CONFIG_EDITOR_COMMAND", "nano")],
         ..setup(&layers)
@@ -318,7 +358,7 @@ fn test_a_skill_mode_is_the_files_execute_bit_and_a_headless_skill_is_withheld()
 // profiles; a profile that is not there is not found.
 #[test]
 fn test_the_profile_listing_marks_the_defaults_and_a_missing_profile_is_not_found() {
-    let layers = ["schema_version: 8\nagents:\n  dev:\n    llm: claude-code\n    profiles: [dev]\ndefault_agent: dev\n"];
+    let layers = ["schema_version: 9\nagents:\n  dev:\n    llm: claude-code\n    profiles: [dev]\ndefault_agent: dev\n"];
     let library = setup(&layers).library();
     let list = ok(library.profile_list(&plain()));
     let names: Vec<(&str, bool)> = list
@@ -337,7 +377,7 @@ fn test_the_profile_listing_marks_the_defaults_and_a_missing_profile_is_not_foun
 // minus what a profile excludes.
 #[test]
 fn test_the_registered_servers_follow_the_default_agents_profiles_and_their_exclusions() {
-    let layers = ["schema_version: 8\nagents:\n  dev:\n    llm: claude-code\n    profiles: [dev]\ndefault_agent: dev\n"];
+    let layers = ["schema_version: 9\nagents:\n  dev:\n    llm: claude-code\n    profiles: [dev]\ndefault_agent: dev\n"];
     let library = setup(&layers).library();
     let list = ok(library.mcp_list(&plain()));
     assert_eq!(list.servers.len(), 1);
@@ -353,7 +393,7 @@ fn test_the_registered_servers_follow_the_default_agents_profiles_and_their_excl
 // told apart from one ctxloom supplied.
 #[test]
 fn test_the_llm_listing_marks_the_default_and_who_wrote_each_label() {
-    let layers = ["schema_version: 8\nllm:\n  configs:\n    big:\n      type: mock\n      model: o1\n    claude-code:\n      type: claude-code\n      model: opus\n  defaults:\n    primary: claude-code\n"];
+    let layers = ["schema_version: 9\nllm:\n  configs:\n    big:\n      type: mock\n      model: o1\n    claude-code:\n      type: claude-code\n      model: opus\n  defaults:\n    primary: claude-code\n"];
     let rows = ok(setup(&layers).library().llm_list(&plain()));
     let by = |label: &str| rows.iter().find(|r| r.label == label).unwrap();
     assert!(by("claude-code").default && by("claude-code").authored);
@@ -364,22 +404,37 @@ fn test_the_llm_listing_marks_the_default_and_who_wrote_each_label() {
     assert!(!fast.authored, "the shipped registry is not the user's");
 }
 
-// companion.feature: the binary is ctxloom-companion-<name>, found on PATH.
+// companion.feature: a registered companion is listed with its command and
+// whether its program is there; nothing is run to say so.
 #[test]
-fn test_a_companion_resolves_to_its_binary_on_the_path() {
-    let layers = ["schema_version: 8\ncompanions: [acme, ltk]\n"];
-    let rows = ok(Setup {
-        path: &[("ctxloom-companion-acme", "/bin/ctxloom-companion-acme")],
+fn test_a_companion_is_listed_with_its_command_and_whether_the_program_exists() {
+    let layers = ["schema_version: 9\ncompanions:\n  acme:\n    command: [/bin/acme, --as, acme]\n  ltk:\n    command: [ltk]\n  none: {}\n"];
+    let (library, mem) = Setup {
+        path: &[("/bin/acme", "/bin/acme")],
         ..setup(&layers)
     }
-    .library()
-    .companion_list(&plain()));
+    .fixture();
+    let rows = ok(library.companion_list(&plain()));
+    let shown: Vec<(&str, Vec<&str>, bool)> = rows
+        .iter()
+        .map(|r| {
+            (
+                r.name.as_str(),
+                r.command.iter().map(String::as_str).collect(),
+                r.exists,
+            )
+        })
+        .collect();
     assert_eq!(
-        (rows[0].bin.as_str(), rows[0].resolves),
-        ("ctxloom-companion-acme", true)
+        shown,
+        [
+            ("acme", vec!["/bin/acme", "--as", "acme"], true),
+            ("ltk", vec!["ltk"], false),
+            ("none", vec![], false),
+        ]
     );
-    assert_eq!(rows[0].path, "/bin/ctxloom-companion-acme");
-    assert_eq!((rows[1].bin.as_str(), rows[1].resolves), ("ltk", false));
+    assert!(mem.asked_companions().is_empty(), "nothing is run to list");
+    assert!(mem.probed_commands().is_empty());
 }
 
 // search.feature: name matches rank before tag matches; a search needs a
@@ -426,7 +481,7 @@ fn test_a_search_ranks_names_before_tags_and_refuses_what_it_cannot_answer() {
 // fails loudly.
 #[test]
 fn test_a_dry_run_carries_the_composed_context_and_refuses_what_run_refuses() {
-    let layers = ["schema_version: 8\nagents:\n  dev:\n    llm: claude-fast\n    profiles: [dev]\n    runtime: host\ndefault_agent: dev\n"];
+    let layers = ["schema_version: 9\nagents:\n  dev:\n    llm: claude-fast\n    profiles: [dev]\n    runtime: host\ndefault_agent: dev\n"];
     let library = setup(&layers).library();
     let plan = ok(library.dry_run(&plain(), &RunRequest::default())).plan;
     assert_eq!(plan.llm, "claude-fast");
@@ -504,7 +559,7 @@ fn test_a_run_with_no_agent_says_why() {
         .err()
         .unwrap();
     assert!(matches!(none, AppError::LaunchNoAgents));
-    let layers = ["schema_version: 8\nagents:\n  dev:\n    llm: claude-code\n"];
+    let layers = ["schema_version: 9\nagents:\n  dev:\n    llm: claude-code\n"];
     let some = setup(&layers)
         .library()
         .dry_run(&plain(), &RunRequest::default());
@@ -564,7 +619,7 @@ fn test_assembling_reports_what_it_could_not_load() {
 // resolves to; one that does not resolve says so rather than failing.
 #[test]
 fn test_agent_show_reports_the_declaration_the_resolution_and_a_failure_to_resolve() {
-    let layers = ["schema_version: 8\nagents:\n  good:\n    llm: claude-code\n    profiles: [dev]\n  bad:\n    llm: claude-code\n    profiles: [ghost]\n"];
+    let layers = ["schema_version: 9\nagents:\n  good:\n    llm: claude-code\n    profiles: [dev]\n  bad:\n    llm: claude-code\n    profiles: [ghost]\n"];
     let library = setup(&layers).library();
     let say = |d: &dyn angzarr_diagnostic::Diagnostic| d.code().to_string();
     let good = ok(library.agent_show(&plain(), "good", &say));

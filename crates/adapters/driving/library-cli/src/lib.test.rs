@@ -45,7 +45,7 @@ const PROJECT: &[(&str, &str)] = &[
     ),
 ];
 
-const AGENTS: &str = "schema_version: 8\ncompanions: [acme]\nagents:\n  dev:\n    llm: claude-code\n    profiles: [dev]\n    runtime: host\ndefault_agent: dev\n";
+const AGENTS: &str = "schema_version: 9\ncompanions:\n  acme: {command: [acme-bin, --as, acme]}\nagents:\n  dev:\n    llm: claude-code\n    profiles: [dev]\n    runtime: host\ndefault_agent: dev\n";
 
 /// What one invocation left behind.
 struct Ran {
@@ -156,12 +156,15 @@ fn test_config_show_prints_the_effective_configuration_a_section_or_the_raw_laye
     assert_eq!(json_of(&["config"]), all);
     assert_eq!(
         json_of(&["config", "show", "companions"]),
-        serde_json::json!(["acme"])
+        serde_json::json!({"acme": {"command": ["acme-bin", "--as", "acme"]}})
     );
     let raw = json_of(&["config", "show", "--raw"]);
     assert!(raw.get("llm").is_none());
-    assert_eq!(raw["companions"], serde_json::json!(["acme"]));
-    assert!(text_of(&["config", "show", "companions"]).starts_with("- acme\n"));
+    assert_eq!(
+        raw["companions"],
+        serde_json::json!({"acme": {"command": ["acme-bin", "--as", "acme"]}})
+    );
+    assert!(text_of(&["config", "show", "companions"]).starts_with("acme:\n  command:\n"));
     assert!(text_of(&["config"]).contains("default_agent: dev\n"));
     assert_eq!(
         go(&["config", "show", "nosuch"], JSON, BARE).refused(),
@@ -311,9 +314,12 @@ fn test_profile_agent_llm_companion_and_mcp_commands() {
     assert_eq!(json_of(&["llm"]), llms);
     assert!(text_of(&["llm"]).starts_with("Available LLMs:\n"));
     let companions = json_of(&["companion", "list"]);
-    assert_eq!(companions[0]["bin"], "ctxloom-companion-acme");
+    assert_eq!(
+        companions[0],
+        serde_json::json!({"name": "acme", "command": ["acme-bin", "--as", "acme"], "exists": false})
+    );
     assert_eq!(json_of(&["companion"]), companions);
-    assert!(text_of(&["companion"]).contains("NOT ON PATH"));
+    assert!(text_of(&["companion"]).contains("NOT FOUND"));
     let servers = json_of(&["mcp", "server", "list"]);
     assert_eq!(servers["servers"][0]["name"], "tree-sitter");
     assert_eq!(json_of(&["mcp", "server"]), servers);
@@ -466,7 +472,7 @@ fn test_fatal_findings_print_the_plan_and_abort() {
 // under text.
 #[test]
 fn test_notices_are_said_as_a_json_line_or_as_words_with_their_fix() {
-    let ghost = ["schema_version: 8\nagents:\n  ghost: {}\n  real:\n    llm: claude-code\n"];
+    let ghost = ["schema_version: 9\nagents:\n  ghost: {}\n  real:\n    llm: claude-code\n"];
     let json = go(&["agent", "list"], JSON, &ghost);
     assert_eq!(json.code(), 0);
     let line: serde_json::Value = serde_json::from_str(json.err.trim_end()).unwrap();
@@ -530,9 +536,9 @@ fn test_the_format_is_asked_for_a_terminals_or_the_configurations() {
         ..default
     };
     assert!(go(&line, terminal, BARE).out.starts_with("acme"));
-    let text_config = ["schema_version: 8\ncompanions: [acme]\nnon_tty_format: text\n"];
+    let text_config = ["schema_version: 9\ncompanions:\n  acme: {command: [acme-bin, --as, acme]}\nnon_tty_format: text\n"];
     assert!(go(&line, default, &text_config).out.starts_with("acme"));
-    let json_config = ["schema_version: 8\ncompanions: [acme]\nnon_tty_format: json\n"];
+    let json_config = ["schema_version: 9\ncompanions:\n  acme: {command: [acme-bin, --as, acme]}\nnon_tty_format: json\n"];
     assert!(go(&line, default, &json_config).out.starts_with('['));
     assert!(go(&line, JSON, &text_config).out.starts_with('['));
 }

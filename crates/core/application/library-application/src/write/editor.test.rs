@@ -46,7 +46,7 @@ fn test_a_command_of_several_words_is_split_and_its_words_come_before_the_args()
 
 #[test]
 fn test_with_no_editor_in_the_config_the_environment_decides() {
-    let c = config("schema_version: 8\n");
+    let c = config("schema_version: 9\n");
     assert_eq!(
         editor_command(&c, &env(&[("VISUAL", "vim -u NONE"), ("EDITOR", "ed")])),
         command("vim", &["-u", "NONE"])

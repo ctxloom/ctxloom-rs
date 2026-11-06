@@ -16,6 +16,10 @@ pub enum Note {
     NotInteger,
     /// A file with no configuration keys at all (empty, or all comments).
     Keyless,
+    /// Companions registered by bare name, as generation 8 wrote them: a
+    /// registration is a name and the command that runs it from generation 9,
+    /// and a name alone is not migrated into one.
+    LegacyCompanions { found: u64, names: Vec<String> },
 }
 
 /// A layer, read.
@@ -52,9 +56,26 @@ pub fn read(text: &str) -> Result<Read, ConfigError> {
             found,
             oldest: u64::from(OLDEST),
         }),
-        Ok(found) => migrate(&mut value, found),
+        Ok(found) => match bare_companions(&value, found) {
+            Some(names) => notes.push(Note::LegacyCompanions { found, names }),
+            None => migrate(&mut value, found),
+        },
     }
     Ok(Read { value, notes })
+}
+
+/// The names a generation before 9 registered companions by, when it has any.
+fn bare_companions(value: &Value, found: u64) -> Option<Vec<String>> {
+    if found >= 9 {
+        return None;
+    }
+    let names: Vec<String> = value
+        .get("companions")?
+        .as_seq()?
+        .iter()
+        .filter_map(|n| n.as_str().map(ToString::to_string))
+        .collect();
+    (!names.is_empty()).then_some(names)
 }
 
 /// The generation a layer declares: none is 0.
@@ -83,13 +104,23 @@ fn migrate(value: &mut Value, found: u64) {
             }
         }
     }
+    // 8 to 9: companions are registered with their command. A list with names
+    // in it was refused before this; an empty one registers nothing.
+    if found < 9
+        && value
+            .get("companions")
+            .is_some_and(|c| !matches!(c, Value::Map(_)))
+    {
+        value.remove("companions");
+    }
     *value.entry("schema_version") = Value::Scalar(CURRENT.to_string());
 }
 
 /// The layers merged, lowest first. Mappings merge key by key; anything else
 /// the higher layer replaces; an agent binding replaces the lower layer's of
 /// the same name wholesale; `companions` names union (a project cannot
-/// unregister a home companion).
+/// unregister a home companion), a name's command the highest layer's that
+/// registers it.
 pub fn merge_layers(layers: &[Value]) -> Value {
     let mut merged = Value::Map(Vec::new());
     for layer in layers {
@@ -116,19 +147,17 @@ fn merge_one(into: &mut Value, layer: &Value) {
                 }
             }
             "companions" => {
-                let mine = into.entry("companions");
-                let mut names = match mine {
-                    Value::Seq(names) => names.clone(),
-                    _ => Vec::new(),
-                };
-                if let Value::Seq(more) = value {
-                    for name in more {
-                        if !names.contains(name) {
-                            names.push(name.clone());
-                        }
+                if let Value::Map(registered) = value {
+                    let mine = into.entry("companions");
+                    if !matches!(mine, Value::Map(_)) {
+                        *mine = Value::Map(Vec::new());
                     }
+                    for (name, registration) in registered {
+                        *mine.entry(name) = registration.clone();
+                    }
+                } else {
+                    *into.entry(key) = value.clone();
                 }
-                *mine = Value::Seq(names);
             }
             _ if matches!(value, Value::Null) => {}
             _ => {

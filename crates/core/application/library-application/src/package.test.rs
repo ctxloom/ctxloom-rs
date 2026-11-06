@@ -5,7 +5,7 @@
 use crate::fakes::{plain, Setup, ENVELOPE};
 use crate::PackageRequest;
 
-const CONFIG: &str = "schema_version: 8\nagents:\n  default:\n    llm: mock\n    profiles: [dev]\ndefault_agent: default\nllm:\n  configs:\n    mock:\n      type: mock\n    claude-code:\n      type: claude-code\n    claude-fast:\n      type: claude-code\n";
+const CONFIG: &str = "schema_version: 9\nagents:\n  default:\n    llm: mock\n    profiles: [dev]\ndefault_agent: default\nllm:\n  configs:\n    mock:\n      type: mock\n    claude-code:\n      type: claude-code\n    claude-fast:\n      type: claude-code\n";
 
 const DEMO: &[(&str, &str)] = &[
     ENVELOPE,
@@ -324,7 +324,7 @@ fn test_the_engines_are_the_ones_this_build_knows() {
 fn test_distilled_forms_are_preferred_unless_the_config_says_not() {
     assert!(package().use_distilled);
     let off = Setup {
-        layers: &["schema_version: 8\nconfig:\n  use_distilled: false\n"],
+        layers: &["schema_version: 9\nconfig:\n  use_distilled: false\n"],
         ..setup()
     };
     let p = off
@@ -350,9 +350,9 @@ fn packaged(
     .expect("a package")
 }
 
-const NO_AGENTS: &str = "schema_version: 8\n";
+const NO_AGENTS: &str = "schema_version: 9\n";
 const AGENT_WITHOUT_PROFILES: &str =
-    "schema_version: 8\nagents:\n  a:\n    llm: mock\ndefault_agent: a\nllm:\n  configs:\n    mock:\n      type: mock\n";
+    "schema_version: 9\nagents:\n  a:\n    llm: mock\ndefault_agent: a\nllm:\n  configs:\n    mock:\n      type: mock\n";
 
 #[test]
 fn test_a_project_says_whether_it_has_agents_and_profiles_to_bind_them_to() {
@@ -380,7 +380,7 @@ fn test_a_project_says_whether_it_has_agents_and_profiles_to_bind_them_to() {
 #[test]
 fn test_the_statusline_choice_keeps_the_other_config_entries() {
     let held = Setup {
-        layers: &["schema_version: 8\nconfig:\n  use_distilled: false\n  statusline: true\n"],
+        layers: &["schema_version: 9\nconfig:\n  use_distilled: false\n  statusline: true\n"],
         ..setup()
     };
     let (library, mem) = held.fixture();

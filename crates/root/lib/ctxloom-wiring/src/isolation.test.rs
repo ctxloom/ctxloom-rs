@@ -48,8 +48,9 @@ fn registered(names: &[&str], register: &[&str]) -> (file_system::Rooted, Regist
     let wiring = crate::Wiring::new(Arc::clone(&env)).unwrap();
     let library = Rc::new(crate::library::build(&wiring, None).unwrap());
     for name in register {
+        let program = bin.join(format!("ctxloom-companion-{name}"));
         library
-            .companion_add(&Flags::default(), name)
+            .companion_add(&Flags::default(), name, &[program.display().to_string()])
             .result
             .unwrap();
     }
