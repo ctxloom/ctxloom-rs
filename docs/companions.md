@@ -61,8 +61,28 @@ fragments, companions by name and fragments by name, under the reference
 is held back from the context and offered in the premise index, as any
 fragment is. A companion fragment that duplicates one already assembled is
 assembled once. The loadout is fetched fresh at each command, under a
-3-second limit. Its commands, skills, MCP servers and hooks, and its `init:`
-section, are parsed and not yet delivered.
+3-second limit.
+
+It also delivers the bundle's hooks, commands and MCP servers to the engine's
+native files (`materialize`, and the hook listing), by the same path
+a bundle's take. All are unconditional: not chosen by a profile, and a
+profile's curation of commands does not remove a companion's.
+
+- **Hooks** follow the profiles' own and precede the profiles' bundles' (then
+  ctxloom's own callbacks), companions by name (Go's `ResolveBundleHooksFor`).
+  A `pre_tool` hook may declare `tool: shell` or `tool: file_edit`; the engine
+  maps the class to its own tool names (claude: `Bash|PowerShell` and
+  `Edit|Write|MultiEdit|NotebookEdit`).
+- **Commands** are named `<companion>/<command>`, companions by name.
+- **MCP servers** claim their names before the profiles' bundles do; a
+  profile bundle declaring a name a companion holds is refused as any contest
+  for a name is, and `exclude_mcp:` removes a companion's server too.
+- **Skills** are not delivered: a loadout is one document, and a document
+  carries no skill files (only a tree-form bundle does), so there is nothing
+  of a skill to deliver. Go delivers none either.
+
+`--no-companions` delivers none of it. The `init:` section is parsed and not
+yet used.
 
 ### When a companion fails
 
