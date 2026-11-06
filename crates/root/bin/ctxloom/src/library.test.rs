@@ -273,6 +273,12 @@ impl Project {
         self.spawn(dir, &[], args)
     }
 
+    /// As [`run_in`](Project::run_in), with these environment variables too
+    /// (a `PATH` among them replaces the host's).
+    pub(crate) fn run_in_with(&self, dir: &Path, env: &[(&str, &str)], args: &[&str]) -> Ran {
+        self.spawn(dir, env, args)
+    }
+
     fn spawn(&self, cwd: &Path, env: &[(&str, &str)], args: &[&str]) -> Ran {
         let mut command = Command::new(binary());
         command

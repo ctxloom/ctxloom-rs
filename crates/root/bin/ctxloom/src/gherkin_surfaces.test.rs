@@ -67,6 +67,8 @@ struct World {
     /// Each source repository Alice has, by name: its bare repository and
     /// the marker its fragment carries (j000200).
     sources: BTreeMap<String, (PathBuf, String)>,
+    /// What the onboarding scenarios keep (j000800).
+    onboarding: onboarding::State,
 }
 
 impl fmt::Debug for World {
@@ -97,6 +99,7 @@ impl World {
             bob: None,
             command: String::new(),
             sources: BTreeMap::new(),
+            onboarding: onboarding::State::default(),
         }
     }
 
@@ -108,6 +111,9 @@ impl World {
             .any(|bytes| String::from_utf8_lossy(bytes).contains(needle))
     }
 }
+
+#[path = "gherkin_onboarding.test.rs"]
+mod onboarding;
 
 // ------------------------------------------------------------------ given
 
