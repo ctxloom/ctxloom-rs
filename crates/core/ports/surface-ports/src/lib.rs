@@ -391,6 +391,8 @@ pub trait EngineSurfaces {
     /// the reason, in event order. The engine carries hooks generally and
     /// leaves these out of its hook file; a report names each one a profile
     /// configures (Go's `Definition.HookLosses`).
+    // `vec![]` is `Vec::new()`: the mutant is the default itself.
+    #[cfg_attr(test, mutants::skip)]
     fn hook_losses(&self) -> Vec<(String, String)> {
         Vec::new()
     }
