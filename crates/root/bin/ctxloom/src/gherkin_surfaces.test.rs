@@ -14,6 +14,7 @@
 //! - the engines are the ones this port registers: `claude-code`, `mock`,
 //!   `mock-launch`, `mock-lossy` and `mock-noskills`.
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -63,6 +64,9 @@ struct World {
     bob: Option<PathBuf>,
     /// The command Carol authored (j000700).
     command: String,
+    /// Each source repository Alice has, by name: its bare repository and
+    /// the marker its fragment carries (j000200).
+    sources: BTreeMap<String, (PathBuf, String)>,
 }
 
 impl fmt::Debug for World {
@@ -92,6 +96,7 @@ impl World {
             origin: None,
             bob: None,
             command: String::new(),
+            sources: BTreeMap::new(),
         }
     }
 
@@ -1070,6 +1075,191 @@ fn j000700_not_previous(w: &mut World) {
     assert!(
         !body.contains(J000700_V1),
         "the materialized command file still carries the previous version: {body}"
+    );
+}
+
+// ----------------------------------------------------- j000200: setting up
+
+const J000200_PERSONAL: &str = "J000200-PERSONAL-REPO-CONTEXT-MARKER";
+const J000200_COMPANY: &str = "J000200-COMPANY-REPO-CONTEXT-MARKER";
+const J000200_THIRD_PARTY: &str = "J000200-THIRDPARTY-REPO-CONTEXT-MARKER";
+/// Go's `bundleName` of every source: each is a repository of one bundle.
+const J000200_BUNDLE: &str = "src";
+
+impl World {
+    /// Go's `seedSource`: a bare repository whose `main` holds a bundle of
+    /// one fragment carrying `marker` (no description: that is a fragment's
+    /// premise and would withhold it from an ordinary assembly).
+    fn seed_source(&mut self, name: &str, marker: &str) {
+        let root = self.scratch().join(format!("source-{name}"));
+        let (bare, work) = (root.join("source.git"), root.join("work"));
+        files::mkdirs(&root);
+        git_in(&root, &["init", "-q", "--bare", "-b", "main", "source.git"]);
+        git_in(&root, &["init", "-q", "-b", "main", "work"]);
+        let bundle = format!(".ctxloom/content/bundles/v2/{J000200_BUNDLE}");
+        files::put(
+            work.join(format!("{bundle}/bundle.yaml")),
+            "schema_version: 4\nversion: 1.0.0\n",
+        );
+        files::put(
+            work.join(format!("{bundle}/fragments/marker.md")),
+            format!("{marker}\n"),
+        );
+        git_in(&work, &["add", "-A"]);
+        git_in(&work, &["commit", "-q", "-m", "seed"]);
+        git_in(
+            &work,
+            &["remote", "add", "origin", bare.to_str().expect("utf-8")],
+        );
+        git_in(&work, &["push", "-q", "origin", "main"]);
+        self.sources
+            .insert(name.to_string(), (bare, marker.to_string()));
+    }
+
+    /// Go's `addSourceAsRemote`: `remote create`, referenced from the
+    /// profile, then `deps pull`: the trust act.
+    fn add_source(&mut self, name: &str) {
+        let (bare, _) = self
+            .sources
+            .get(name)
+            .cloned()
+            .expect("the source was seeded");
+        let url = format!("file://{}", bare.display());
+        self.common.run_lines(
+            &format!(
+                "ctxloom remote create {name} {url} --forge git\nctxloom profile modify default --add-bundle {name}/{J000200_BUNDLE}\nctxloom deps pull"
+            ),
+            "",
+        );
+        self.ran().succeeds();
+    }
+
+    /// Go's `materializeDefault`: the CLAUDE.md of the default profile.
+    fn materialized_default(&mut self) -> String {
+        self.common.run_lines(
+            "ctxloom materialize default --target out --backend claude-code",
+            "",
+        );
+        self.common
+            .project
+            .read("out/CLAUDE.md")
+            .unwrap_or_else(|| {
+                panic!(
+                    "materializing wrote no out/CLAUDE.md: {}",
+                    self.ran().said()
+                )
+            })
+    }
+}
+
+#[given("Alice has a fresh project directory")]
+fn j000200_fresh(w: &mut World) {
+    w.common.project = Project::bare();
+    git_in(w.common.project.dir(), &["init", "-q", "-b", "main"]);
+}
+
+#[given("Alice has a personal ctxloom repository")]
+fn j000200_personal(w: &mut World) {
+    w.seed_source("personal", J000200_PERSONAL);
+}
+
+#[given("her company has a ctxloom repository")]
+fn j000200_company(w: &mut World) {
+    w.seed_source("company", J000200_COMPANY);
+}
+
+/// Go's `ensureProjectWithEngine`: a config declaring the engine and an
+/// agent bound to it, a seed bundle and a `default` profile including it.
+fn j000200_scaffold(w: &mut World, engine: &str) {
+    w.common.project.write(
+        ".ctxloom/config.yaml",
+        &format!(
+            "schema_version: 8\nllm:\n  configs:\n    {engine}:\n      type: {engine}\n  defaults:\n    primary: {engine}\n    fast: {engine}\nagents:\n  default:\n    llm: {engine}\n    profiles:\n      - default\ndefault_agent: default\n"
+        ),
+    );
+    w.common.run_lines(
+        "ctxloom bundle create seed -d \"J000200 seed bundle\"\nctxloom profile create default --include seed -d \"J000200 default profile\"",
+        "",
+    );
+    w.ran().succeeds();
+}
+
+#[when(regex = r"^Alice runs the ctxloom setup for (\S+)$")]
+fn j000200_setup(w: &mut World, engine: String) {
+    j000200_scaffold(w, &engine);
+}
+
+#[when("she adds her personal repository as a source")]
+fn j000200_add_personal(w: &mut World) {
+    w.add_source("personal");
+}
+
+#[when("she adds her company's repository as a source")]
+fn j000200_add_company(w: &mut World) {
+    w.add_source("company");
+}
+
+#[then(regex = r"^her project is configured for (\S+)$")]
+fn j000200_configured(w: &mut World, engine: String) {
+    w.common.run_lines("ctxloom config show", "");
+    w.ran().succeeds();
+    assert!(
+        w.ran().stdout.contains(&engine),
+        "config show does not mention engine {engine}: {}",
+        w.ran().stdout
+    );
+}
+
+#[then("her personal repository's context is part of her configuration")]
+fn j000200_personal_in(w: &mut World) {
+    let body = w.materialized_default();
+    assert!(
+        body.contains(J000200_PERSONAL),
+        "the materialized context lacks the personal marker: {body}"
+    );
+}
+
+#[then("her company repository's context is part of her configuration")]
+fn j000200_company_in(w: &mut World) {
+    let body = w.materialized_default();
+    assert!(
+        body.contains(J000200_COMPANY),
+        "the materialized context lacks the company marker: {body}"
+    );
+}
+
+#[given("a third-party ctxloom repository")]
+fn j000200_third_party(w: &mut World) {
+    w.common.project = Project::bare();
+    git_in(w.common.project.dir(), &["init", "-q", "-b", "main"]);
+    j000200_scaffold(w, "claude-code");
+    w.seed_source("thirdparty", J000200_THIRD_PARTY);
+}
+
+#[when("Alice adds it as a source")]
+fn j000200_add_third_party(w: &mut World) {
+    w.add_source("thirdparty");
+}
+
+/// Go materializes the default profile and calls that a session.
+#[when("Alice starts a session")]
+fn j000200_session_starts(w: &mut World) {
+    w.common.run_lines(
+        "ctxloom materialize default --target out --backend claude-code",
+        "",
+    );
+}
+
+#[then("her assistant receives that repository's content")]
+fn j000200_receives(w: &mut World) {
+    let body = w
+        .common
+        .project
+        .read("out/CLAUDE.md")
+        .unwrap_or_else(|| panic!("no out/CLAUDE.md: {}", w.ran().said()));
+    assert!(
+        body.contains(J000200_THIRD_PARTY),
+        "the materialized context lacks the added repository's marker: {body}"
     );
 }
 
