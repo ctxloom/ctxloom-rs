@@ -24,7 +24,7 @@ feature file; it belongs in git history.
 - **Pending copies.** Every Go scenario not yet ported sits beside its port, verbatim, in
   `crates/root/bin/ctxloom/features/**/<name>.pending.feature`. The Feature is tagged `@pending`
   and has no `# world:`; the runner skips it and the parity lint still compares it with Go's
-  (commit `80e01ca`, branch `go-features-pending`).
+  (commit `80e01ca`, on `main`).
 - **Not copied:** j002500 and j002600 (taskloom's), and the probes that test Claude Code itself.
   The two probe files gherkin 0.16 could not parse (`capability_context_approaches`,
   `engine_isolation_matrix`) are pending. One description word in each Go file was lowercased
@@ -32,7 +32,6 @@ feature file; it belongs in git history.
 - **Sessions rewritten** to the rulings below: `cli/session_purge.feature`,
   `cli/session_worktrees.feature`, `journeys/j001300_closeout.feature` and their pending files.
   Eleven scenarios fail against today's binary until the product follows (step 4).
-- **Uncommitted:** the session rewrite, the probe changes, the review docs and this plan.
 
 ## Decided
 
