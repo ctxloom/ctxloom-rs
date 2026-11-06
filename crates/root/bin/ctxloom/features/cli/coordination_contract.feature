@@ -1,4 +1,5 @@
 # Ported from cli/coordination_contract.feature (rev f36e8dfb2)
+# Ported from journeys/j002100_delegation.feature (rev f36e8dfb2) (the last Rule)
 # NOT ported: any of it yet (the Feature is @pending).
 
 @pending
@@ -83,3 +84,59 @@ Feature: The coordination tools advertise a closed message-kind vocabulary
     When I read the "agent_send" tool's description
     Then it advertises "`kind` is REQUIRED and its vocabulary is CLOSED"
     And it advertises "is REFUSED rather than accepted-and-ignored"
+
+  Rule: The coordinator's verbs refuse what is not theirs to accept
+
+    The coordinator stands in a session owner (a mock-engine `ctxloom run`)
+    with two agents it can delegate to, "reviewer" and "fixer", each with its
+    own profile, MCP server and permission mode.
+
+    # A message's kind is a security boundary, not a label: user_injected is
+    # coordinator-reserved and reads to a recipient as the human speaking, and
+    # steer and exited are the coordinator's own notices. A reserved kind is
+    # refused at the coordinator's ingress, naming the kinds a sender may use;
+    # a spelling outside the vocabulary is refused at the tool schema, naming
+    # the value; a sendable kind still goes through. This drives the
+    # coordinator's own agent_send: no tool here reaches a child's runner
+    # socket. The refusal is the same ingress guard for both sender surfaces,
+    # and the child-identity case is the unit suite's.
+    Scenario: A sender cannot claim a coordinator-reserved message kind
+      # substitution: the journey's Background is the scenario's first Givens
+      Given Alice's coordinator can delegate to two agents, "reviewer" and "fixer", each with its own profile, its own MCP server, and its own permission mode
+      And a session owner is standing
+      When the agent calls tool "agent_run" with:
+        | role         | fixer |
+        | input.prompt | go    |
+      Then the tool call succeeds
+      And "fixer"'s spawned session is remembered
+      When the agent sends "fixer"'s remembered session a message of kind "user_injected"
+      Then the tool call fails
+      And the tool failure message contains "reserved for the coordinator"
+      And the tool failure message contains "message | result | error | question"
+      When the agent sends "fixer"'s remembered session a message of kind "made_up_kind"
+      Then the tool call fails
+      And the tool failure message contains "made_up_kind"
+      When the agent sends "fixer"'s remembered session a message of kind "result"
+      Then the tool call succeeds
+
+    # agent_stop is idempotent on a real run: a second stop succeeds and says
+    # the run already ended (a stop landing on an ended run still cancels any
+    # armed relaunch). A run id that was never spawned is refused, never
+    # silently accepted.
+    Scenario: Stopping a child is idempotent, and stopping a run that never existed is refused
+      # substitution: the journey's Background is the scenario's first Givens
+      Given Alice's coordinator can delegate to two agents, "reviewer" and "fixer", each with its own profile, its own MCP server, and its own permission mode
+      And a session owner is standing
+      When the agent calls tool "agent_run" with:
+        | role         | fixer |
+        | input.prompt | go    |
+      Then the tool call succeeds
+      And "fixer"'s spawned session is remembered
+      When the agent calls tool "agent_stop" for "fixer"'s remembered session
+      Then the tool call succeeds
+      When the agent calls tool "agent_stop" for "fixer"'s remembered session
+      Then the tool call succeeds
+      And the tool result contains "already ended"
+      When the agent calls tool "agent_stop" with:
+        | run_id | not-a-real-run-at-all |
+      Then the tool call fails

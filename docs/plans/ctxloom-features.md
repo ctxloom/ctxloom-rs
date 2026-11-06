@@ -141,7 +141,14 @@ feature file; it belongs in git history.
   follows what a real user actually does, in the order they do it: Alice starts with
   `ctxloom init`, not `manage install`. A command's contract (its flags, its files, its edge
   cases) belongs in its `features/cli/` file, never in a journey. A journey step that exists
-  only to exercise a command is moved to that command's cli feature.
+  only to exercise a command is moved to that command's cli feature. A journey's comments
+  and description tell the user's story and nothing else: no history (rulings, dates, what
+  ctxloom used to do) and no technical detail (files, keys, harness mechanics, why an
+  assertion is shaped as it is). Rationale a test still needs lives in the cli feature or
+  the step definitions.
+- **Companions are added, never discovered.** No scan finds companions, so a journey that
+  relies on one shows the user adding it to the project (`companion add`) before it matters
+  (j000300's setup augmentation first).
 - **Dropped:**
   - the probes that test Claude Code itself (P12, P13, P15-P18, and P14's direct cell);
   - the `container-rootful` rows that can only skip;
