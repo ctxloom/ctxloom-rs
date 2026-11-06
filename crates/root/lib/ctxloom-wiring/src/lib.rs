@@ -21,6 +21,8 @@ mod setup;
 mod sweep_config;
 #[cfg(feature = "test-support")]
 mod test_commands;
+#[cfg(feature = "test-support")]
+mod test_error;
 
 use std::io;
 use std::path::PathBuf;
@@ -60,6 +62,8 @@ pub use seed::Seed;
 pub use sweep_config::SweepSettings;
 #[cfg(feature = "test-support")]
 pub use test_commands::Samples;
+#[cfg(feature = "test-support")]
+pub use test_error::TestError;
 
 /// A newly minted session's harp: two adjectives and a noun.
 pub fn session_name() -> String {

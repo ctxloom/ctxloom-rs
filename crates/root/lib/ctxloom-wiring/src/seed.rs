@@ -24,7 +24,7 @@ use sessions::{
 };
 use system::System;
 
-use crate::{LibError, Wiring};
+use crate::{TestError, Wiring};
 
 /// A session to plant.
 #[derive(Clone, Debug, Default)]
@@ -48,25 +48,23 @@ pub struct Seed {
     pub other_files: Vec<String>,
 }
 
-fn seed_error(detail: impl ToString) -> LibError {
-    LibError::Seed {
+fn seed_error(detail: impl ToString) -> TestError {
+    TestError::Seed {
         detail: detail.to_string(),
     }
 }
 
 impl Wiring {
     /// Plant `seed`; its stable id.
-    pub fn seed_session(&self, seed: &Seed) -> Result<String, LibError> {
+    pub fn seed_session(&self, seed: &Seed) -> Result<String, TestError> {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .map_err(|e| LibError::NoRuntime {
-                detail: e.to_string(),
-            })?;
+            .map_err(seed_error)?;
         runtime.block_on(self.seed(seed))
     }
 
-    async fn seed(&self, seed: &Seed) -> Result<String, LibError> {
+    async fn seed(&self, seed: &Seed) -> Result<String, TestError> {
         let sessions = self.sessions();
         let mut identity = sessions.use_cases.identity;
         let mut stores = sessions.use_cases.stores;
@@ -172,11 +170,11 @@ impl Wiring {
     /// transcript, authored files; each backdated to the session's end, as
     /// Go's `backdateSessionDir` does, so a session that ENDED then looks
     /// untouched since.
-    fn plant_files(&self, seed: &Seed) -> Result<(), LibError> {
+    fn plant_files(&self, seed: &Seed) -> Result<(), TestError> {
         let sessions_dir = self.home.join(".ctxloom/sessions");
         let dir = sessions_dir.join(&seed.harp);
         let mut written = Vec::new();
-        let mut write = |path: &Path, body: &str| -> Result<(), LibError> {
+        let mut write = |path: &Path, body: &str| -> Result<(), TestError> {
             if let Some(parent) = path.parent() {
                 self.fs
                     .create_dir_all(parent, Mode::from_bits(0o755))
@@ -227,7 +225,7 @@ impl Wiring {
 }
 
 /// A report from a port, as a seed error.
-fn seed_error_of(report: angzarr_diagnostic::Report) -> LibError {
+fn seed_error_of(report: angzarr_diagnostic::Report) -> TestError {
     seed_error(angzarr_diagnostic::Diagnostic::code(&report))
 }
 
@@ -238,7 +236,7 @@ async fn claim_name<S: Store + ReadStore + Processed + Send + Sync>(
     seed: &Seed,
     id: [u8; 16],
     started: Timestamp,
-) -> Result<(), LibError> {
+) -> Result<(), TestError> {
     let claim = NameClaimCommand::from(ClaimName {
         project_id: project_id.to_string(),
         harp: seed.harp.clone(),

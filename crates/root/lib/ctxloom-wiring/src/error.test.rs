@@ -57,3 +57,23 @@ fn each_error_carries_the_arguments_its_message_names() {
         );
     }
 }
+
+#[test]
+fn the_samples_are_the_same_whether_or_not_test_support_is_built() {
+    // A cargo feature is additive: it adds code, never a variant. The test
+    // commands' own errors are `TestError`s, not `LibError`s.
+    let codes: Vec<String> = super::diagnostic_samples()
+        .iter()
+        .map(|d| d.code().to_string())
+        .collect();
+    assert_eq!(
+        codes,
+        [
+            "ctxloom-wiring-no-home",
+            "ctxloom-wiring-bad-session",
+            "ctxloom-wiring-no-runtime",
+            "ctxloom-wiring-store",
+            "ctxloom-wiring-store",
+        ]
+    );
+}

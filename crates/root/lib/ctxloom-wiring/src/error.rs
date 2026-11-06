@@ -11,7 +11,9 @@ pub const EN_US: (&str, &str) = (
     include_str!("../locales/en-US/messages.ftl"),
 );
 
+/// Open for extension: a new variant is not a breaking change.
 #[derive(Clone, PartialEq, Eq, Debug)]
+#[non_exhaustive]
 pub enum LibError {
     /// The home variable is not set (or is empty).
     NoHome { variable: String },
@@ -21,15 +23,6 @@ pub enum LibError {
     NoRuntime { detail: String },
     /// The project's store would not open.
     Store(StoreOpenError),
-    /// The test-only seed could not plant a session.
-    #[cfg(feature = "test-support")]
-    Seed { detail: String },
-    /// A test command that refuses.
-    #[cfg(feature = "test-support")]
-    TestRefused { verb: String },
-    /// A test command with fatal findings.
-    #[cfg(feature = "test-support")]
-    TestFindings { count: u64 },
 }
 
 impl fmt::Display for LibError {
@@ -47,12 +40,6 @@ impl Diagnostic for LibError {
             LibError::BadSession { .. } => code!("bad-session"),
             LibError::NoRuntime { .. } => code!("no-runtime"),
             LibError::Store(_) => code!("store"),
-            #[cfg(feature = "test-support")]
-            LibError::Seed { .. } => code!("seed"),
-            #[cfg(feature = "test-support")]
-            LibError::TestRefused { .. } => code!("test-refused"),
-            #[cfg(feature = "test-support")]
-            LibError::TestFindings { .. } => code!("test-findings"),
         }
     }
 
@@ -65,12 +52,6 @@ impl Diagnostic for LibError {
             ],
             LibError::NoRuntime { detail } => vec![("ext_err_txt", detail.as_str().into())],
             LibError::Store(cause) => vec![("error", Arg::Nested(Box::new(cause.clone())))],
-            #[cfg(feature = "test-support")]
-            LibError::Seed { detail } => vec![("ext_err_txt", detail.as_str().into())],
-            #[cfg(feature = "test-support")]
-            LibError::TestRefused { verb } => vec![("verb", verb.as_str().into())],
-            #[cfg(feature = "test-support")]
-            LibError::TestFindings { count } => vec![("count", (*count).into())],
         }
     }
 }
@@ -100,16 +81,6 @@ pub fn diagnostic_samples() -> Vec<Box<dyn Diagnostic>> {
                 id: "../escape".to_string(),
             },
         ))),
-        #[cfg(feature = "test-support")]
-        Box::new(LibError::Seed {
-            detail: "no such project".to_string(),
-        }),
-        #[cfg(feature = "test-support")]
-        Box::new(LibError::TestRefused {
-            verb: "refuse".to_string(),
-        }),
-        #[cfg(feature = "test-support")]
-        Box::new(LibError::TestFindings { count: 1 }),
     ]
 }
 

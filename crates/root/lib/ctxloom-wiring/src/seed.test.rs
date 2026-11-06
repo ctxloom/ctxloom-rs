@@ -11,7 +11,7 @@ use sessions_application::{
 
 use crate::commands::tests::World;
 use crate::fixtures::fs;
-use crate::{LibError, Seed};
+use crate::{Seed, TestError};
 
 const HARP: &str = "jolly-mute-magma";
 
@@ -146,7 +146,7 @@ fn a_name_already_claimed_is_refused_as_a_seed_error() {
     let wiring = world.wiring();
     wiring.seed_session(&seed()).unwrap();
     match wiring.seed_session(&seed()) {
-        Err(LibError::Seed { detail }) => assert!(!detail.is_empty()),
+        Err(TestError::Seed { detail }) => assert!(!detail.is_empty()),
         other => panic!("{other:?}"),
     }
 }

@@ -14,7 +14,7 @@ use clap::{Args, Command, FromArgMatches, Subcommand};
 use ctxloom_cli::{shaped, Call, CliError, Failure};
 use serde::Serialize;
 
-use crate::{LibError, Seed, Wiring};
+use crate::{LibError, Seed, TestError, Wiring};
 
 /// The noun these commands own.
 pub(crate) const NOUN: &str = "test";
@@ -179,12 +179,12 @@ pub(crate) fn run(
     let format = call.format();
     match verb {
         TestVerb::Refuse => Err(Failure::new(
-            LibError::TestRefused {
+            TestError::Refused {
                 verb: "refuse".to_string(),
             },
             2,
         )),
-        TestVerb::Findings => Err(Failure::new(LibError::TestFindings { count: 1 }, 3)),
+        TestVerb::Findings => Err(Failure::new(TestError::Findings { count: 1 }, 3)),
         TestVerb::Sample { empty } => output(render(out, format, &Sample(sample(empty)))),
         TestVerb::Diagnostics => output(diagnostics(samples, catalog, out)),
         TestVerb::SessionId => output(writeln!(out, "{}", crate::session_name())),
@@ -196,9 +196,8 @@ pub(crate) fn run(
             output(writeln!(out, "{id}"))
         }
         TestVerb::SeedSession(seed) => {
-            let id = wiring()
-                .and_then(|w| w.seed_session(&seed.into()))
-                .map_err(failed)?;
+            let wiring = wiring().map_err(failed)?;
+            let id = wiring.seed_session(&seed.into()).map_err(failed)?;
             output(writeln!(out, "{id}"))
         }
         TestVerb::OpenStore { project } => {
@@ -231,6 +230,7 @@ fn sample(empty: bool) -> Vec<Row> {
 fn diagnostics(samples: Samples, catalog: &Catalog, out: &mut dyn Write) -> std::io::Result<()> {
     let mut all = ctxloom_cli::diagnostic_samples();
     all.extend(crate::diagnostic_samples());
+    all.extend(crate::test_error::diagnostic_samples());
     all.extend(samples());
     let envelopes: Vec<_> = all.iter().map(|d| catalog.envelope(&**d)).collect();
     write_json(out, &envelopes)
