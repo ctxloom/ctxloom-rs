@@ -475,7 +475,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 [[package]]
 name = "cli-support"
 version = "0.1.0"
-source = "git+https://github.com/ctxloom/ctxloom-lib?rev=847b9d559e21f94784758baccdd86f782d2521b2#847b9d559e21f94784758baccdd86f782d2521b2"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=8045f898309a4afa6b8a523c060a1ad797f2b751#8045f898309a4afa6b8a523c060a1ad797f2b751"
 dependencies = [
  "angzarr-diagnostic",
  "angzarr-presentation",
@@ -1059,7 +1059,7 @@ checksum = "669a445ee724c5c69b1b06fe0b63e70a1c84bc9bb7d9696cd4f4e3ec45050408"
 [[package]]
 name = "duration-text"
 version = "0.1.0"
-source = "git+https://github.com/ctxloom/ctxloom-lib?rev=847b9d559e21f94784758baccdd86f782d2521b2#847b9d559e21f94784758baccdd86f782d2521b2"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=8045f898309a4afa6b8a523c060a1ad797f2b751#8045f898309a4afa6b8a523c060a1ad797f2b751"
 dependencies = [
  "angzarr-diagnostic",
 ]
@@ -2652,7 +2652,7 @@ dependencies = [
 [[package]]
 name = "process-env"
 version = "0.1.0"
-source = "git+https://github.com/ctxloom/ctxloom-lib?rev=847b9d559e21f94784758baccdd86f782d2521b2#847b9d559e21f94784758baccdd86f782d2521b2"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=8045f898309a4afa6b8a523c060a1ad797f2b751#8045f898309a4afa6b8a523c060a1ad797f2b751"
 dependencies = [
  "os",
 ]
@@ -2671,7 +2671,7 @@ dependencies = [
 [[package]]
 name = "project-dir"
 version = "0.1.0"
-source = "git+https://github.com/ctxloom/ctxloom-lib?rev=847b9d559e21f94784758baccdd86f782d2521b2#847b9d559e21f94784758baccdd86f782d2521b2"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=8045f898309a4afa6b8a523c060a1ad797f2b751#8045f898309a4afa6b8a523c060a1ad797f2b751"
 dependencies = [
  "angzarr-diagnostic",
  "file-system",
@@ -2986,7 +2986,7 @@ dependencies = [
 [[package]]
 name = "run-within"
 version = "0.1.0"
-source = "git+https://github.com/ctxloom/ctxloom-lib?rev=847b9d559e21f94784758baccdd86f782d2521b2#847b9d559e21f94784758baccdd86f782d2521b2"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=8045f898309a4afa6b8a523c060a1ad797f2b751#8045f898309a4afa6b8a523c060a1ad797f2b751"
 dependencies = [
  "angzarr-diagnostic",
  "file-system",
@@ -3572,7 +3572,7 @@ dependencies = [
 [[package]]
 name = "sqlite-store-opener"
 version = "0.1.0"
-source = "git+https://github.com/ctxloom/ctxloom-lib?rev=847b9d559e21f94784758baccdd86f782d2521b2#847b9d559e21f94784758baccdd86f782d2521b2"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=8045f898309a4afa6b8a523c060a1ad797f2b751#8045f898309a4afa6b8a523c060a1ad797f2b751"
 dependencies = [
  "angzarr-diagnostic",
  "angzarr-embedded",
