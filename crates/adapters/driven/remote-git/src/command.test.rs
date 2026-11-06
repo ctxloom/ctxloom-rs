@@ -6,16 +6,16 @@ use std::time::{Duration, Instant};
 
 use super::{Failed, Git, DEFAULT_TIMEOUT};
 use crate::auth::Credential;
-use crate::fixtures::{env, exists, fs, put_program, root, runs_scripts, slurp};
+use crate::fixtures::{env, exists, fs, root, runs_scripts, slurp};
 
 const TINY: Duration = Duration::from_millis(20);
 
 /// A "git" that is a script, in a directory of its own, run by `sh` and
-/// never exec'd as written (`fixtures::put_program`).
+/// never exec'd as written (`fixture_program`).
 pub(crate) fn stub(body: &str) -> (file_system::Rooted, Git) {
     let dir = root();
     let path = dir.root().join("git");
-    put_program(&path, body);
+    fixture_program::install_program(&*fs(), &path, body).unwrap();
     let git = Git::new(&path, TINY, env());
     (dir, git)
 }

@@ -722,7 +722,7 @@ fn test_the_local_variables_git_names_are_found() {
 #[test]
 fn test_a_clone_is_made_only_in_a_place_of_the_cache() {
     let fs = Arc::new(file_system::Rooted::temp().expect("a rooted filesystem"));
-    let mode = os::Mode::from_bits(0o755);
+    let mode = os::Mode::DIR;
     for dir in ["/c/inner", "/c/beside"] {
         fs.create_dir_all(Path::new(dir), mode)
             .expect("a directory");

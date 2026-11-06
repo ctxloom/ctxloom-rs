@@ -81,6 +81,7 @@ test-support = [
 ]
 
 [dev-dependencies]
+fixture-program.workspace = true
 # A GitHub API on a local port, for the acceptance tests: no network.
 forge-github = { workspace = true, features = ["test-support"] }
 # Already pinned in the workspace: the word lists the ids are checked against.

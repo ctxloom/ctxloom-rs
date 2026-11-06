@@ -4,13 +4,13 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use super::{environment, is_local, local_variables, Git, GitError, DEFAULT_TIMEOUT};
-use crate::fixtures::{env, exists, fs, put, put_program, root, runs_scripts, slurp};
+use crate::fixtures::{env, exists, fs, put, root, runs_scripts, slurp};
 
 /// A "git" that is a script, in a directory of its own.
 fn stub(body: &str) -> (file_system::Rooted, Git, Duration) {
     let dir = root();
     let path = dir.root().join("git");
-    put_program(&path, body);
+    fixture_program::install_program(&*fs(), &path, body).unwrap();
     let tiny = Duration::from_millis(20);
     (dir, Git::new(fs(), path, tiny, env()), tiny)
 }

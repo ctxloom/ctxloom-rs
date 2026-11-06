@@ -3,7 +3,6 @@
 //! is shown without the real program. One test of the real program is
 //! `real.test.rs`.
 
-use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -26,19 +25,11 @@ fn env(vars: &[(&str, &str)]) -> Arc<EnvSnapshot> {
     Arc::new(EnvSnapshot::of(vars.iter().copied()))
 }
 
-/// A program that runs `body`: `/taskloom` linked to `scripts/interpret.sh`
-/// with the script beside it, so the written file is read by `sh` and never
-/// exec'd (see that file for why). The path of the program on the host.
+/// A program that runs `body`: `/taskloom` in `dir`. The path of the program
+/// on the host.
 fn program(dir: &Rooted, body: &[u8]) -> std::path::PathBuf {
-    let real = dir.real_path(&os::fixture("/taskloom")).unwrap();
-    let host = file_system::Os::new(os::host(), Path::new(os::host().flavor().top())).unwrap();
-    let mut beside = real.clone().into_os_string();
-    beside.push(".body");
-    host.write_atomic(Path::new(&beside), body, Perms::Exact(Mode::FILE))
-        .unwrap();
-    let shim = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../scripts/interpret.sh");
-    host.symlink_dir(&shim, &real).unwrap();
-    real
+    let body = std::str::from_utf8(body).unwrap();
+    fixture_program::install_program(dir, &os::fixture("/taskloom"), body).unwrap()
 }
 
 /// A `taskloom` that is a script in a directory of its own, and a client for

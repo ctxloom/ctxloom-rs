@@ -44,9 +44,14 @@ pub(crate) fn put_mode(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>, mode: u3
     .expect("a file");
 }
 
-/// A script: a file the host would run.
-pub(crate) fn put_exec(path: impl AsRef<Path>, text: &str) {
-    put_mode(path, text, 0o755);
+/// A program that runs `text`, a script for `sh`: written beside the program
+/// and linked to a shim, so no file the test wrote is exec'd (ETXTBSY). The
+/// only way a test makes a file to run; its directory made.
+pub(crate) fn put_program(path: impl AsRef<Path>, text: &str) {
+    if let Some(parent) = path.as_ref().parent() {
+        mkdirs(parent);
+    }
+    fixture_program::install_program(&*fs(), path.as_ref(), text).expect("a program");
 }
 
 pub(crate) fn set_mode(path: impl AsRef<Path>, mode: u32) {

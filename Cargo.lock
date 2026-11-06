@@ -475,7 +475,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 [[package]]
 name = "cli-support"
 version = "0.1.0"
-source = "git+https://github.com/ctxloom/ctxloom-lib?rev=8045f898309a4afa6b8a523c060a1ad797f2b751#8045f898309a4afa6b8a523c060a1ad797f2b751"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=99fe0e39bf722aab7e183113d37ab2b87c56d189#99fe0e39bf722aab7e183113d37ab2b87c56d189"
 dependencies = [
  "angzarr-diagnostic",
  "angzarr-presentation",
@@ -495,6 +495,7 @@ version = "0.1.0"
 dependencies = [
  "ctxloom-ports",
  "file-system",
+ "fixture-program",
  "os",
  "process-env",
  "run-within",
@@ -548,6 +549,7 @@ name = "container-runtime"
 version = "0.1.0"
 dependencies = [
  "file-system",
+ "fixture-program",
  "isolation-ports",
  "mutants",
  "os",
@@ -688,6 +690,7 @@ dependencies = [
  "editor-process",
  "file-lock",
  "file-system",
+ "fixture-program",
  "forge-github",
  "futures",
  "harp-core",
@@ -785,6 +788,7 @@ dependencies = [
  "engine-mock",
  "file-lock",
  "file-system",
+ "fixture-program",
  "forge-github",
  "harp-core",
  "harp-names",
@@ -1059,7 +1063,7 @@ checksum = "669a445ee724c5c69b1b06fe0b63e70a1c84bc9bb7d9696cd4f4e3ec45050408"
 [[package]]
 name = "duration-text"
 version = "0.1.0"
-source = "git+https://github.com/ctxloom/ctxloom-lib?rev=8045f898309a4afa6b8a523c060a1ad797f2b751#8045f898309a4afa6b8a523c060a1ad797f2b751"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=99fe0e39bf722aab7e183113d37ab2b87c56d189#99fe0e39bf722aab7e183113d37ab2b87c56d189"
 dependencies = [
  "angzarr-diagnostic",
 ]
@@ -1194,6 +1198,15 @@ name = "fixedbitset"
 version = "0.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
+
+[[package]]
+name = "fixture-program"
+version = "0.1.0"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=99fe0e39bf722aab7e183113d37ab2b87c56d189#99fe0e39bf722aab7e183113d37ab2b87c56d189"
+dependencies = [
+ "file-system",
+ "os",
+]
 
 [[package]]
 name = "flate2"
@@ -2652,7 +2665,7 @@ dependencies = [
 [[package]]
 name = "process-env"
 version = "0.1.0"
-source = "git+https://github.com/ctxloom/ctxloom-lib?rev=8045f898309a4afa6b8a523c060a1ad797f2b751#8045f898309a4afa6b8a523c060a1ad797f2b751"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=99fe0e39bf722aab7e183113d37ab2b87c56d189#99fe0e39bf722aab7e183113d37ab2b87c56d189"
 dependencies = [
  "os",
 ]
@@ -2671,7 +2684,7 @@ dependencies = [
 [[package]]
 name = "project-dir"
 version = "0.1.0"
-source = "git+https://github.com/ctxloom/ctxloom-lib?rev=8045f898309a4afa6b8a523c060a1ad797f2b751#8045f898309a4afa6b8a523c060a1ad797f2b751"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=99fe0e39bf722aab7e183113d37ab2b87c56d189#99fe0e39bf722aab7e183113d37ab2b87c56d189"
 dependencies = [
  "angzarr-diagnostic",
  "file-system",
@@ -2909,6 +2922,7 @@ dependencies = [
  "base64 0.22.1",
  "deps-ports",
  "file-system",
+ "fixture-program",
  "os",
  "process-env",
  "run-within",
@@ -2986,7 +3000,7 @@ dependencies = [
 [[package]]
 name = "run-within"
 version = "0.1.0"
-source = "git+https://github.com/ctxloom/ctxloom-lib?rev=8045f898309a4afa6b8a523c060a1ad797f2b751#8045f898309a4afa6b8a523c060a1ad797f2b751"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=99fe0e39bf722aab7e183113d37ab2b87c56d189#99fe0e39bf722aab7e183113d37ab2b87c56d189"
 dependencies = [
  "angzarr-diagnostic",
  "file-system",
@@ -3572,7 +3586,7 @@ dependencies = [
 [[package]]
 name = "sqlite-store-opener"
 version = "0.1.0"
-source = "git+https://github.com/ctxloom/ctxloom-lib?rev=8045f898309a4afa6b8a523c060a1ad797f2b751#8045f898309a4afa6b8a523c060a1ad797f2b751"
+source = "git+https://github.com/ctxloom/ctxloom-lib?rev=99fe0e39bf722aab7e183113d37ab2b87c56d189#99fe0e39bf722aab7e183113d37ab2b87c56d189"
 dependencies = [
  "angzarr-diagnostic",
  "angzarr-embedded",
@@ -3926,6 +3940,7 @@ version = "0.1.0"
 dependencies = [
  "angzarr-diagnostic",
  "file-system",
+ "fixture-program",
  "mutants",
  "os",
  "process-env",
@@ -4907,6 +4922,7 @@ version = "0.1.0"
 dependencies = [
  "angzarr-diagnostic",
  "file-system",
+ "fixture-program",
  "isolation-ports",
  "mutants",
  "os",

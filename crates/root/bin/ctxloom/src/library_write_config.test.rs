@@ -14,6 +14,7 @@
 //! was.
 
 use super::library::{Project, MINIMAL_CONFIG};
+use crate::tests::files;
 
 const CONFIG: &str = ".ctxloom/config.yaml";
 
@@ -136,9 +137,8 @@ fn test_editing_a_project_with_no_config_says_so_and_names_the_fix() {
 #[test]
 fn test_edit_opens_the_config_in_the_editor_of_the_environment() {
     let project = Project::initialized();
-    project.write("editor.sh", "#!/bin/sh\nprintf '# edited\\n' >> \"$1\"\n");
-    project.make_executable("editor.sh");
     let editor = project.dir().join("editor.sh");
+    files::put_program(&editor, "#!/bin/sh\nprintf '# edited\\n' >> \"$1\"\n");
     let editor = editor.to_str().expect("utf-8");
     project
         .run_with(&[("EDITOR", editor)], &["config", "edit"])
@@ -148,9 +148,8 @@ fn test_edit_opens_the_config_in_the_editor_of_the_environment() {
         Some("schema_version: 8\n# edited\n")
     );
     // VISUAL wins over EDITOR.
-    project.write("visual.sh", "#!/bin/sh\nprintf '# visual\\n' >> \"$1\"\n");
-    project.make_executable("visual.sh");
     let visual = project.dir().join("visual.sh");
+    files::put_program(&visual, "#!/bin/sh\nprintf '# visual\\n' >> \"$1\"\n");
     project
         .run_with(
             &[

@@ -81,7 +81,7 @@ impl World {
             "#!/bin/sh\ncase \"$1\" in\n  loadout) printf 'init:\\n  tooling: \"%s\"\\n' '{marker}: install the tools this companion content needs.';;\n  version) printf '{{\"name\":\"{bin}\",\"version\":\"0.0.0-fixture\"}}\\n';;\nesac\n"
         );
         let path = self.bin().join(&bin);
-        files::put_exec(&path, &script);
+        files::put_program(&path, &script);
     }
 }
 

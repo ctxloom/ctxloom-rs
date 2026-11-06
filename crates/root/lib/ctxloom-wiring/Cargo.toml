@@ -81,6 +81,7 @@ session-ports = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 
 [dev-dependencies]
+fixture-program.workspace = true
 # Builds this crate's own `test-support` feature for its tests (the seed, bind
 # and session tests need it) without turning it on for the `ctxloom` binary:
 # the feature adds code here and changes no trait another crate implements.

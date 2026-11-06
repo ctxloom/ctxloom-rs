@@ -14,6 +14,7 @@ process-env.workspace = true
 run-within.workspace = true
 
 [dev-dependencies]
+fixture-program.workspace = true
 file-system = { workspace = true, features = ["test-support"] }
 mutants.workspace = true
 os = { workspace = true, features = ["test-support"] }

@@ -13,7 +13,7 @@ use super::{
     EXCLUDE_HEADER,
 };
 use crate::fixtures::{
-    canonical, exists, fs, is_dir, link, mkdirs, put, put_program, root, runs_scripts, slurp,
+    canonical, exists, fs, is_dir, link, mkdirs, put, root, runs_scripts, slurp,
 };
 
 const PATTERNS: [&str; 5] = [
@@ -604,7 +604,7 @@ mod hung_git {
     fn hung(fixture: &Fixture) -> (file_system::Rooted, GitWorkspaces) {
         let dir = root();
         let path = dir.root().join("git");
-        put_program(&path, "#!/bin/sh\nexec sleep 30\n");
+        fixture_program::install_program(&*fs(), &path, "#!/bin/sh\nexec sleep 30\n").unwrap();
         let git = Git::new(
             fs(),
             path,

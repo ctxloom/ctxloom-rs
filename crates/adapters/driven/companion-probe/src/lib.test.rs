@@ -1,14 +1,12 @@
 //! Go's `companions.Verify` (`companions.go`): the probe is
 //! `<bin> loadout --format yaml`; it must succeed and print something.
 
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
 use process_env::EnvSnapshot;
 
-use file_system::{Fs, Perms, Rooted};
-use os::Mode;
+use file_system::{Fs, Rooted};
 
 use super::*;
 
@@ -19,25 +17,12 @@ fn env() -> Arc<EnvSnapshot> {
     ]))
 }
 
-/// A program that runs `body`: linked to `scripts/interpret.sh`, with the
-/// script beside it, so the written file is read by `sh` and never exec'd
-/// (see that file for why).
+/// A `ctxloom-companion-x` that runs `body`, in a directory of its own.
 fn script(body: &str) -> (Rooted, String) {
     let dir = Rooted::temp().unwrap();
-    let path = os::fixture("/ctxloom-companion-x");
-    let shown = dir.real_path(&path).unwrap();
-    let host = file_system::Os::new(os::host(), Path::new(os::host().flavor().top())).unwrap();
-    let mut beside = shown.clone().into_os_string();
-    beside.push(".body");
-    host.write_atomic(
-        Path::new(&beside),
-        body.as_bytes(),
-        Perms::Exact(Mode::FILE),
-    )
-    .unwrap();
-    let shim = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../scripts/interpret.sh");
-    host.symlink_dir(&shim, &shown).unwrap();
-    (dir, shown.to_str().unwrap().to_string())
+    let program =
+        fixture_program::install_program(&dir, &os::fixture("/ctxloom-companion-x"), body).unwrap();
+    (dir, program.to_str().unwrap().to_string())
 }
 
 #[test]

@@ -752,7 +752,7 @@ fn test_list_answers_which_binary_each_registered_name_resolves_to() {
     );
     let bin = project.dir().join("bin");
     let exe = bin.join("ctxloom-companion-acme");
-    files::put_exec(&exe, "#!/bin/sh\n");
+    files::put_program(&exe, "#!/bin/sh\n");
     let path = format!(
         "{}:{}",
         bin.display(),

@@ -49,7 +49,7 @@ impl Bin {
 
     fn script(&self, file: &str, body: &str) -> PathBuf {
         let path = self.dir.root().join(file);
-        files::put_exec(&path, body);
+        files::put_program(&path, body);
         path
     }
 
