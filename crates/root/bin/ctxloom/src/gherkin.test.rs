@@ -58,6 +58,8 @@ struct World {
     planted_foreign: Vec<PathBuf>,
     /// The sessions planted with a free lock that is not held.
     lock_free_dead: Vec<String>,
+    /// What the j000100 scenarios keep.
+    adopt: adopt::State,
 }
 
 impl fmt::Debug for World {
@@ -76,6 +78,7 @@ impl CommonWorld for World {
     }
 
     fn before_run(&mut self) {
+        self.adopt_record();
         self.seed();
         self.seed_scratch();
     }
@@ -94,6 +97,7 @@ impl World {
             planted_scratch: Vec::new(),
             planted_foreign: Vec::new(),
             lock_free_dead: Vec::new(),
+            adopt: adopt::State::default(),
         }
     }
 
@@ -287,6 +291,9 @@ impl World {
         self.planted.last_mut().expect("just pushed")
     }
 }
+
+#[path = "gherkin_adopt.test.rs"]
+mod adopt;
 
 // ------------------------------------------------------------------ given
 
