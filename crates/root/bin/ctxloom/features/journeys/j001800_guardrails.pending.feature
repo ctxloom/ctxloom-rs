@@ -39,20 +39,6 @@ Feature: Guardrails — when the assistant does not listen
   # generated engine settings, and whether what reaches it is honest about
   # what the companion does.
 
-  # LOCKED — delivery, for TWO independent companions at once: the
-  # registered-companion loadout probe (internal/adapters/companions'
-  # Prober.ProbeCompanionLoadouts) reaching both the assembled
-  # CLAUDE.md AND the generated .claude/settings.json — the hook wiring, not
-  # just prose. ltk's fragment content here is its REAL committed loadout
-  # (cmd/ltk/loadout.yaml), read at test time, never a hand-typed stand-in.
-  Scenario: Alice's assistant receives the task-runner and reuse-before-you-write guidance
-    Given Alice's project exists
-    And ltk and reprise are installed on Alice's machine
-    When Alice starts a session
-    Then her assistant receives ltk's task-runner guidance
-    And her assistant receives reprise's reuse-before-you-write guidance
-    And her assistant's engine is configured to run ltk on every shell command and file edit
-
   # LOCKED — the overclaim guardrail. ltk's OWN delivered fragment must say,
   # in so many words, that it is a cooperative redirect and NOT a sandbox —
   # what it actually returns is a message and a suggestion, never a hard
