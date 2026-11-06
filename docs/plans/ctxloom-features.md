@@ -135,6 +135,11 @@ feature file; it belongs in git history.
   and recall searching conversation bodies.
 
 ### Specs
+- **Journeys are use cases; cli features are contracts.** A journey (`features/journeys/`)
+  follows what a real user actually does, in the order they do it: Alice starts with
+  `ctxloom init`, not `manage install`. A command's contract (its flags, its files, its edge
+  cases) belongs in its `features/cli/` file, never in a journey. A journey step that exists
+  only to exercise a command is moved to that command's cli feature.
 - **Dropped:**
   - the probes that test Claude Code itself (P12, P13, P15-P18, and P14's direct cell);
   - the `container-rootful` rows that can only skip;
