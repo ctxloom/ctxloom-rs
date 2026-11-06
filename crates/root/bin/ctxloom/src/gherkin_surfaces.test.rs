@@ -15,15 +15,17 @@
 //!   `mock-launch`, `mock-lossy` and `mock-noskills`.
 
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use cucumber::gherkin::Step;
 use cucumber::{given, then, when};
 use serde_json::Value;
 
+use super::deps::git_in;
 use super::gherkin_common::{common_steps, doc, Common, CommonWorld};
 use super::library::{at, reports_as, Project};
 use super::surfaces::{additional_context, hook_lines};
+use crate::tests::files;
 
 const CONTEXT_MARKER: &str = "J000400-CONTEXT-MARKER-3f8a91";
 const COMMAND_MARKER: &str = "J000400-COMMAND-BODY-MARKER-7c2d64";
@@ -56,6 +58,11 @@ struct World {
     before: Option<String>,
     /// What each inspector spelling Alice tried said (j001900).
     probes: Vec<String>,
+    /// The team's bare origin and Bob's clone of it (j000700).
+    origin: Option<PathBuf>,
+    bob: Option<PathBuf>,
+    /// The command Carol authored (j000700).
+    command: String,
 }
 
 impl fmt::Debug for World {
@@ -82,6 +89,9 @@ impl World {
             team: None,
             before: None,
             probes: Vec::new(),
+            origin: None,
+            bob: None,
+            command: String::new(),
         }
     }
 
@@ -835,6 +845,231 @@ fn refuses_naming_engines(w: &mut World) {
     assert!(
         said.contains("mock") || said.contains("claude-code"),
         "ctxloom refused without naming any engine it knows: {said}"
+    );
+}
+
+// ------------------------------------------ j000700: a team lead shares a command
+
+const J000700_BUNDLE: &str = "team-standards";
+const J000700_PROFILE: &str = "default";
+/// Go's `j000700CommandMarkerV1`/`V2`: the command before and after the edit.
+const J000700_V1: &str = "J000700-CONVENTIONAL-COMMITS-V1-USE-IMPERATIVE-MOOD-IN-THE-SUBJECT-LINE";
+const J000700_V2: &str = "J000700-CONVENTIONAL-COMMITS-V2-INCLUDE-A-SCOPE-IN-THE-SUBJECT-LINE";
+
+impl World {
+    /// The directory beside the project and home that the scenario's own
+    /// repositories live in.
+    fn scratch(&self) -> PathBuf {
+        self.common
+            .project
+            .dir()
+            .parent()
+            .expect("the project has a parent")
+            .to_path_buf()
+    }
+
+    fn bob_dir(&self) -> &Path {
+        self.bob.as_deref().expect("Bob has not pulled the project")
+    }
+
+    /// `ctxloom args` in Bob's checkout, which must succeed.
+    fn run_bob(&self, args: &[&str]) {
+        let ran = self.common.project.run_in(self.bob_dir(), args);
+        assert_eq!(
+            ran.code,
+            0,
+            "{args:?} failed in Bob's checkout: {}",
+            ran.said()
+        );
+    }
+
+    /// Go's `findBobCommandFile`: the text of the materialized command file
+    /// backing the command (its exact basename is the engine's own business).
+    fn bob_command_file(&self) -> String {
+        let dir = self.bob_dir().join("out/.claude/commands");
+        let name = if self.command.is_empty() {
+            "conventional-commits"
+        } else {
+            &self.command
+        };
+        let found = files::children(&dir)
+            .into_iter()
+            .find(|p| {
+                let file = p.file_name().expect("a name").to_string_lossy();
+                file.contains(name) && file.ends_with(".md")
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "no materialized command file for {name} under {}",
+                    dir.display()
+                )
+            });
+        files::read(found).expect("a readable command file")
+    }
+}
+
+/// Go's `j000700SetupTeamProject`: Carol's checkout on `main`, the team
+/// bundle and its default profile created by the CLI, committed, and pushed
+/// to a bare origin both Carol and Bob use.
+#[given("Carol is working in the team's project")]
+fn j000700_project(w: &mut World) {
+    w.common.project = Project::initialized();
+    let project = w.common.project.dir().to_path_buf();
+    git_in(&project, &["init", "-q", "-b", "main"]);
+    w.common.run_lines(
+        &format!(
+            "ctxloom bundle create {J000700_BUNDLE} -d \"Team standards\"\nctxloom profile create {J000700_PROFILE} --include {J000700_BUNDLE} -d \"Team default profile\""
+        ),
+        "",
+    );
+    w.ran().succeeds();
+    git_in(&project, &["add", "-A"]);
+    git_in(
+        &project,
+        &["commit", "-q", "-m", "initial ctxloom project scaffold"],
+    );
+    let origin = w.scratch().join("origin/team.git");
+    files::mkdirs(origin.parent().expect("a parent"));
+    git_in(
+        origin.parent().expect("a parent"),
+        &["init", "-q", "--bare", "-b", "main", "team.git"],
+    );
+    git_in(
+        &project,
+        &["remote", "add", "origin", origin.to_str().expect("utf-8")],
+    );
+    git_in(&project, &["push", "-q", "-u", "origin", "main"]);
+    w.origin = Some(origin);
+}
+
+/// Go's `j000700AuthorCommand`: the bundle's one command, written whole, so
+/// an edit replaces the content rather than adding to it.
+fn j000700_author(w: &mut World, name: &str, marker: &str) {
+    w.command = name.to_string();
+    w.common.project.write(
+        &format!(".ctxloom/content/bundles/v2/{J000700_BUNDLE}/prompts/{name}.md"),
+        &format!("---\ndescription: {name}\n---\n{marker}\n"),
+    );
+}
+
+#[when(regex = r#"^Carol authors a "([^"]*)" command$"#)]
+fn j000700_authors(w: &mut World, name: String) {
+    j000700_author(w, &name, J000700_V1);
+}
+
+fn j000700_commit(w: &mut World, message: &str) {
+    let project = w.common.project.dir().to_path_buf();
+    git_in(&project, &["add", "-A"]);
+    git_in(&project, &["commit", "-q", "-m", message]);
+    git_in(&project, &["push", "-q", "origin", "main"]);
+}
+
+#[when("she commits it to the project")]
+fn j000700_commits(w: &mut World) {
+    j000700_commit(w, "author the command");
+}
+
+/// Go's `j000700BobPull`: the first pull clones the origin into Bob's own
+/// directory, each later one is a real `git pull` in that checkout.
+fn j000700_pull(w: &mut World) {
+    let origin = w.origin.clone().expect("the team project was set up");
+    match w.bob.clone() {
+        None => {
+            let scratch = w.scratch();
+            git_in(
+                &scratch,
+                &[
+                    "clone",
+                    "-q",
+                    origin.to_str().expect("utf-8"),
+                    "bob-project",
+                ],
+            );
+            w.bob = Some(scratch.join("bob-project"));
+        }
+        Some(bob) => {
+            git_in(&bob, &["pull", "-q", "origin", "main"]);
+        }
+    }
+}
+
+#[when("Bob pulls the project")]
+fn j000700_bob_pulls(w: &mut World) {
+    j000700_pull(w);
+}
+
+#[then("Bob's assistant can invoke the conventional-commits command")]
+fn j000700_can_invoke(w: &mut World) {
+    w.run_bob(&[
+        "materialize",
+        J000700_PROFILE,
+        "--target",
+        "out",
+        "--backend",
+        "claude-code",
+    ]);
+    let body = w.bob_command_file();
+    assert!(
+        body.contains(J000700_V1),
+        "the materialized command file lacks the command's content: {body}"
+    );
+}
+
+#[given("Bob's assistant already has Carol's conventional-commits command")]
+fn j000700_already(w: &mut World) {
+    j000700_project(w);
+    j000700_author(w, "conventional-commits", J000700_V1);
+    j000700_commit(w, "author conventional-commits command");
+    j000700_pull(w);
+    w.run_bob(&[
+        "materialize",
+        J000700_PROFILE,
+        "--target",
+        "out",
+        "--backend",
+        "claude-code",
+    ]);
+}
+
+#[when("Carol edits the command")]
+fn j000700_edits(w: &mut World) {
+    let name = w.command.clone();
+    j000700_author(w, &name, J000700_V2);
+}
+
+#[when("she commits the change")]
+fn j000700_commits_change(w: &mut World) {
+    j000700_commit(w, "edit conventional-commits command");
+}
+
+#[when("Bob pulls the project again")]
+fn j000700_bob_pulls_again(w: &mut World) {
+    j000700_pull(w);
+}
+
+#[then("Bob's assistant has the updated command")]
+fn j000700_updated(w: &mut World) {
+    w.run_bob(&[
+        "materialize",
+        J000700_PROFILE,
+        "--target",
+        "out",
+        "--backend",
+        "claude-code",
+    ]);
+    let body = w.bob_command_file();
+    assert!(
+        body.contains(J000700_V2),
+        "the materialized command file lacks the updated marker: {body}"
+    );
+}
+
+#[then("it no longer has the previous version")]
+fn j000700_not_previous(w: &mut World) {
+    let body = w.bob_command_file();
+    assert!(
+        !body.contains(J000700_V1),
+        "the materialized command file still carries the previous version: {body}"
     );
 }
 
