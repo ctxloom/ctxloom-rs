@@ -32,7 +32,7 @@ feature file; it belongs in git history.
   `engine_isolation_matrix`) are pending. One description word in each Go file was lowercased
   so they parse.
 - **Sessions rewritten** to the rulings below: `cli/session_purge.feature`,
-  `cli/session_worktrees.feature`, `journeys/j001300_closeout.feature` and its pending file.
+  `cli/session_worktrees.feature` and `journeys/j001300_closeout.feature` (all @pending).
   Eleven scenarios fail against today's binary until the product follows (step 4).
 
 ## Decided

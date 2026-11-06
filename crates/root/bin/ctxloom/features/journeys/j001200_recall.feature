@@ -1,5 +1,5 @@
-# Ported from journeys/j001200_recall.feature
-# NOT ported: any of it yet. Elsewhere: an empty search is cli/session.pending.feature's; a dry run of a resume, and a resume leaving the record as it was, are cli/run.pending.feature's.
+# Ported from journeys/j001200_recall.feature (rev f36e8dfb2)
+# NOT ported: any of it yet (the Feature is @pending).
 
 @doc
 @pending

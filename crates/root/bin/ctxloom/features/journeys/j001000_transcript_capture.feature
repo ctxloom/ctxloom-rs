@@ -1,5 +1,5 @@
-# Ported from journeys/j001000_transcript_capture.feature
-# NOT ported: any of it yet.
+# Ported from journeys/j001000_transcript_capture.feature (rev f36e8dfb2)
+# NOT ported: any of it yet (the Feature is @pending).
 
 @doc
 @pending

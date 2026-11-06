@@ -1,5 +1,5 @@
-# Ported from journeys/j001300_closeout.feature
-# NOT ported: any of it yet. Elsewhere: purging one session is cli/session_purge.pending.feature's, its worktrees cli/session_worktrees.pending.feature's, and the check for notes left in a session's directory cli/doctor.pending.feature's.
+# Ported from journeys/j001300_closeout.feature (rev f36e8dfb2)
+# NOT ported: any of it yet (the Feature is @pending).
 
 @doc
 @pending
