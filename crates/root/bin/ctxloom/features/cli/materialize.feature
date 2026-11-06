@@ -1,8 +1,11 @@
 # world: surfaces
 # Ported from cli/materialize.feature (rev f36e8dfb2)
-# Ported from journeys/j000400_multi_engine.feature (rev f36e8dfb2) (the last Rule)
-# NOT ported: the Rule tagged @pending, "A run says so when the project holds
-#   materialized context": it needs a running mock engine (S6).
+# Ported from journeys/j000400_multi_engine.feature (rev f36e8dfb2): the Rule on one materialize delivering every surface
+# Ported from journeys/j000800_onboarding.feature (rev f36e8dfb2)
+# Ported from journeys/j001400_bundle_distribution.feature (rev f36e8dfb2)
+# NOT ported: the Rules tagged @pending: "A run says so when the project holds
+#   materialized context" needs a running mock engine (S6); "A pulled
+#   bundle's surfaces reach an agent in every workspace" has no steps yet.
 @doc
 Feature: materialize — the profiles' surfaces written at rest, any subset of them
 
@@ -159,3 +162,65 @@ Feature: materialize — the profiles' surfaces written at rest, any subset of t
         | engine      | file            |
         | claude-code | CLAUDE.md       |
         | mock        | MOCK_CONTEXT.md |
+
+  Rule: An engine that cannot carry a hook is named in the report, with why
+
+    # The report must name the hook it dropped and the reason, not merely
+    # mention hooks: mock-lossy has no session_start event, so the team's
+    # session_start hook cannot reach it.
+    Scenario: Materializing for an engine that cannot carry hooks says so
+      Given Carol's team profile carries a shared fragment, command, MCP server, and hook
+      When Alice materializes the team profile for mock-lossy
+      Then the materialize report names the hook it could not deliver to mock-lossy
+
+  @pending
+  Rule: A pulled bundle's surfaces reach an agent in every workspace, with their modes
+
+    Delivery writes the pulled bytes and modes where the agent in that
+    configuration reads them: the project directory, or a detached worktree
+    checkout outside it, and the same from a ctxloom running in a container.
+
+    Background:
+      Given Trent authors a directory-form bundle "atelier" carrying every surface kind
+
+    # The mock engine is the vehicle: its context file and skills tree are
+    # written by the same delivery every engine uses. A skill file is compared
+    # whole, and its mode is the publisher's declaration (the script 0755, the
+    # rest 0644). A fragment is merged into the engine's one context file, so
+    # its published body must appear in that file verbatim, and its mode is
+    # the context file's own: 0600, owner-only.
+    Scenario Outline: The published artifacts reach a host agent in every workspace
+      Given Trent publishes the "atelier" tree to his company repo
+      And Alice references the company's "atelier" bundle and pulls it
+      When the pulled surfaces are delivered to a "<runtime>" agent in its "<workspace>" workspace
+      Then the "<artifact>" reaches that agent's workspace carrying its published bytes
+      And the mode of "<artifact>" is "<mode>" where that agent can read it
+
+      Examples: host runtime — the workspace axis alone
+        | runtime | workspace | artifact                        | mode |
+        | host    | none      | fragments/house-style.md        | 0600 |
+        | host    | none      | skills/reviewer/SKILL.md        | 0644 |
+        | host    | none      | skills/reviewer/scripts/run.sh  | 0755 |
+        | host    | worktree  | fragments/house-style.md        | 0600 |
+        | host    | worktree  | skills/reviewer/SKILL.md        | 0644 |
+        | host    | worktree  | skills/reviewer/scripts/run.sh  | 0755 |
+
+    # ctxloom runs inside a minimal container (no git, no network, no
+    # /etc/passwd) whose only way to Alice's cache and project is a bind mount
+    # of the environment at its own path. The target is checked empty before
+    # the container starts. Only bytes are asserted: modes and ownership
+    # across a bind mount are the container cell's own tests'. @container
+    # needs a reachable daemon; @image-cell builds the image once, before the
+    # scenarios.
+    @container @image-cell
+    Scenario Outline: A pulled bundle reaches an agent delivered from inside a container
+      Given Trent publishes the "atelier" tree to his company repo
+      And Alice references the company's "atelier" bundle and pulls it
+      When the pulled surfaces are delivered to a "container" agent in its "none" workspace
+      Then the "<artifact>" reaches that agent's workspace carrying its published bytes
+
+      Examples: one row per kind of delivered surface
+        | artifact                        |
+        | fragments/house-style.md        |
+        | skills/reviewer/SKILL.md        |
+        | skills/reviewer/scripts/run.sh  |
