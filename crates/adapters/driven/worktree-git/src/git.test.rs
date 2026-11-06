@@ -120,16 +120,6 @@ fn a_git_that_outlives_its_limit_is_killed_reaped_and_named() {
     );
 }
 
-/// Whether the process is gone: no `/proc` entry, or a zombie nobody has
-/// reaped yet (an orphan waits for init).
-fn gone(pid: &str) -> bool {
-    // A process can vanish between the two looks.
-    !exists(format!("/proc/{pid}"))
-        || fs()
-            .read_to_string(Path::new(&format!("/proc/{pid}/stat")))
-            .map_or(true, |stat| stat.contains(") Z "))
-}
-
 #[test]
 fn a_hook_the_git_started_is_killed_with_it() {
     if !runs_scripts() || !exists("/proc/self") {
@@ -155,7 +145,10 @@ fn a_hook_the_git_started_is_killed_with_it() {
     }
     assert!(started.elapsed() < Duration::from_secs(40));
     let pid = slurp(dir.root().join("hook"));
-    assert!(gone(pid.trim()), "the hook {pid} outlived the git");
+    assert!(
+        run_within::process_gone(pid.trim()),
+        "the hook {pid} outlived the git"
+    );
 }
 
 #[test]

@@ -20,7 +20,7 @@ import 'gates/arch-gates.just'
 # from the same ctxloom-lib commit the workspace pins (arch_lint_rev, kept
 # equal to Cargo.toml's by `_arch-lint-ready`'s check) and installed once per
 # commit into the user's cache, shared by every worktree.
-arch_lint_rev := "99fe0e39bf722aab7e183113d37ab2b87c56d189"
+arch_lint_rev := "933cee396e4621afa22b497886ea720a602333ac"
 arch_lint_root := env_var_or_default("XDG_CACHE_HOME", env_var("HOME") / ".cache") / "ctxloom-arch-lint" / arch_lint_rev
 arch_lint := arch_lint_root / "bin/arch-lint"
 

@@ -433,12 +433,10 @@ fn a_helper_taskloom_started_is_killed_with_it() {
     }
     assert!(started.elapsed() < Duration::from_secs(40));
     let pid = read(&dir, "helper");
-    let host =
-        file_system::Os::new(os::host(), std::path::Path::new(os::host().flavor().top())).unwrap();
-    let stat = std::path::Path::new("/proc").join(pid.trim()).join("stat");
-    // Gone, or a zombie nobody has reaped yet (an orphan waits for init).
-    let state = host.read_to_string(&stat).unwrap_or_default();
-    assert!(state.is_empty() || state.contains(") Z "), "{state}");
+    assert!(
+        run_within::process_gone(pid.trim()),
+        "the helper {pid} outlived taskloom"
+    );
 }
 
 #[test]
