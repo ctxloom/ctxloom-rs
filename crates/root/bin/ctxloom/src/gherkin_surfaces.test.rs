@@ -54,6 +54,8 @@ struct World {
     team: Option<(String, String)>,
     /// The context the old engine's surface held before the switch (j002000).
     before: Option<String>,
+    /// What each inspector spelling Alice tried said (j001900).
+    probes: Vec<String>,
 }
 
 impl fmt::Debug for World {
@@ -79,6 +81,7 @@ impl World {
             hand_authored: None,
             team: None,
             before: None,
+            probes: Vec::new(),
         }
     }
 
@@ -842,4 +845,106 @@ common_steps!();
 /// Run one feature file with this World; whether it passed.
 pub(super) fn run(file: &Path) -> bool {
     super::gherkin_common::run_feature::<World>(file)
+}
+
+// ------------------------------------------------ j001900: the day it goes blind
+
+/// Go's `j001900DeployMarker`: the deploy guidance.
+const J001900_MARKER: &str = "J001900-DEPLOY-PROCESS-MARKER";
+const J001900_BUNDLE: &str = "deploy-runbook";
+
+/// Go's `j001900Setup`: a hermetic project with one engine (`claude-code`), a
+/// seed bundle and a `default` profile.
+#[given("Alice's team ships its deploy process as ctxloom content")]
+fn j001900_setup(w: &mut World) {
+    w.common.project = Project::initialized();
+    w.common.project.write(
+        ".ctxloom/config.yaml",
+        "schema_version: 8\nllm:\n  configs:\n    claude-code:\n      type: claude-code\n  defaults:\n    primary: claude-code\n    fast: claude-code\n",
+    );
+    w.common.run_lines(
+        "ctxloom bundle create seed -d \"J000200 seed bundle\"\nctxloom profile create default --include seed -d \"J000200 default profile\"",
+        "",
+    );
+    w.ran().succeeds();
+}
+
+/// Go's `j001900Delivered`: the default profile materialized for claude-code,
+/// and the bytes of the CLAUDE.md that landed.
+fn j001900_delivered(w: &mut World) -> String {
+    w.common.run_lines(
+        "ctxloom materialize default --target out --backend claude-code",
+        "",
+    );
+    w.common
+        .project
+        .read("out/CLAUDE.md")
+        .unwrap_or_else(|| panic!("materializing wrote no out/CLAUDE.md: {}", w.ran().said()))
+}
+
+/// Where Bob's delivered context is kept: beside the project, not in it.
+fn j001900_bobs_file(w: &World) -> std::path::PathBuf {
+    w.common
+        .project
+        .dir()
+        .parent()
+        .expect("the project has a parent")
+        .join("bob-delivered")
+        .join("CLAUDE.md")
+}
+
+#[given("Bob's checkout of the same project delivers the deploy guidance and Alice's does not")]
+fn j001900_bob_has_it(w: &mut World) {
+    let root = format!(".ctxloom/content/bundles/v2/{J001900_BUNDLE}");
+    w.common.project.write(
+        &format!("{root}/bundle.yaml"),
+        "schema_version: 4\nversion: 1.0.0\n",
+    );
+    w.common.project.write(
+        &format!("{root}/fragments/deploy-process.md"),
+        &format!("{J001900_MARKER}\n"),
+    );
+    // Bob's machine: the runbook composed into his profile, materialized, and
+    // kept outside Alice's project so the two are separate deliveries.
+    w.common.run_lines(
+        &format!("ctxloom profile modify default --add-bundle {J001900_BUNDLE}"),
+        "",
+    );
+    w.ran().succeeds();
+    let bobs = j001900_delivered(w);
+    let file = j001900_bobs_file(w);
+    crate::tests::files::put(&file, bobs);
+    // Alice's machine: the runbook removed from her profile.
+    w.common.run_lines(
+        &format!("ctxloom profile modify default --remove-bundle {J001900_BUNDLE}"),
+        "",
+    );
+    w.ran().succeeds();
+    let hers = j001900_delivered(w);
+    assert!(
+        !hers.contains(J001900_MARKER),
+        "Alice's context still carries the guidance: {hers}"
+    );
+}
+
+/// Go probes three spellings and passes if any answers; only
+/// `materialize --diff` exists here.
+#[when("Alice asks ctxloom to compare her delivered context with Bob's")]
+fn j001900_compare(w: &mut World) {
+    let bobs = j001900_bobs_file(w).display().to_string();
+    w.common
+        .run_lines(&format!("ctxloom materialize default --diff {bobs}"), "");
+    let said = w.ran().said();
+    w.probes.push(said);
+}
+
+#[then("ctxloom reports the deploy guidance as present for Bob and absent for her")]
+fn j001900_reported(w: &mut World) {
+    assert!(!w.probes.is_empty(), "no inspector was probed");
+    assert!(
+        w.probes.iter().any(|p| p.contains(J001900_MARKER)),
+        "no ctxloom surface answered the question: none of the {} probed invocations reported {J001900_MARKER:?}:\n{}",
+        w.probes.len(),
+        w.probes.join("\n---\n")
+    );
 }
