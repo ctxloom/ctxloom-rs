@@ -800,7 +800,9 @@ _run gate scope extractor +command:
         body=${extract#*$'\n'}
         cap=${GATE_EXTRACT_MAX:-40}
         total=$(grep -c '' <<< "$body")
-        printf '%s\n' "$body" | head -n "$cap" >&2
+        # A here-string, not a pipe: head stopping early would SIGPIPE the
+        # writer, and under pipefail the gate would exit 141, not "$rc".
+        head -n "$cap" <<< "$body" >&2
         [ "$total" -le "$cap" ] || printf '+%d more lines, see the log\n' $((total - cap)) >&2
     fi
     exit "$rc"

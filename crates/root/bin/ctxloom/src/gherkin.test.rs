@@ -58,6 +58,8 @@ struct World {
     planted_foreign: Vec<PathBuf>,
     /// The sessions planted with a free lock that is not held.
     lock_free_dead: Vec<String>,
+    /// What the j000100 scenarios keep.
+    adopt: adopt::State,
 }
 
 impl fmt::Debug for World {
@@ -76,6 +78,7 @@ impl CommonWorld for World {
     }
 
     fn before_run(&mut self) {
+        self.adopt_record();
         self.seed();
         self.seed_scratch();
     }
@@ -94,6 +97,7 @@ impl World {
             planted_scratch: Vec::new(),
             planted_foreign: Vec::new(),
             lock_free_dead: Vec::new(),
+            adopt: adopt::State::default(),
         }
     }
 
@@ -288,6 +292,9 @@ impl World {
     }
 }
 
+#[path = "gherkin_adopt.test.rs"]
+mod adopt;
+
 // ------------------------------------------------------------------ given
 
 #[given(expr = "the environment variable {string} is set to {string}")]
@@ -301,24 +308,6 @@ fn home_file(w: &mut World, step: &Step, rel: String) {
     w.common
         .project
         .write_home(&rel, &format!("{}\n", doc(step)));
-}
-
-/// Go's fixture: the exact line the gitignore check calls a superseded blanket
-/// rule, under which `.ctxloom/content` can never be committed.
-#[given("the project still carries the superseded blanket ctxloom ignore rule")]
-fn blanket_ignore(w: &mut World) {
-    w.common.project.write(".gitignore", ".ctxloom/*\n");
-}
-
-#[then("the checks name the ignore rule and the command that retires it")]
-fn checks_name_the_rule(w: &mut World) {
-    let said = w.ran().said();
-    for needle in [".ctxloom", "manage gitignore install"] {
-        assert!(
-            said.contains(needle),
-            "doctor never said {needle:?}: {said}"
-        );
-    }
 }
 
 #[given("a malformed ctxloom config")]

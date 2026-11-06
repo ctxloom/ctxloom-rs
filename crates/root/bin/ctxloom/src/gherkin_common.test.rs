@@ -13,7 +13,7 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use cucumber::gherkin::Step;
+use cucumber::gherkin::{Feature, GherkinEnv, Rule, Scenario, Step};
 use serde_json::Value;
 
 use super::library::{reports_as, Project};
@@ -283,7 +283,8 @@ macro_rules! common_steps {
 }
 pub(crate) use common_steps;
 
-/// Run one feature file with the World `W`; whether it passed.
+/// Run one feature file with the World `W`, its pending scenarios left out;
+/// whether it passed.
 pub(crate) fn run_feature<W>(file: &Path) -> bool
 where
     W: cucumber::World + cucumber::codegen::WorldInventory + fmt::Debug,
@@ -294,7 +295,9 @@ where
             .with_cli(cucumber::cli::Opts::<_, _, _, cucumber::cli::Empty>::default())
             .max_concurrent_scenarios(4)
             .fail_on_skipped()
-            .run(file),
+            .filter_run(file, |feature, rule, scenario| {
+                !is_pending(feature, rule, scenario)
+            }),
     );
     !cucumber::writer::Stats::execution_has_failed(&writer)
 }
@@ -351,12 +354,26 @@ pub(crate) fn header_lines(text: &str) -> impl Iterator<Item = &str> {
         .take_while(|l| l.is_empty() || l.starts_with('#'))
 }
 
-/// Whether a feature is pending: Go's scenarios copied but not yet ported,
-/// its `Feature:` tagged `@pending`. The runner skips it; the lint still
-/// holds its text to Go's (convention: `gherkin_lint.test.rs`).
-pub(crate) fn is_pending(text: &str) -> bool {
-    cucumber::gherkin::Feature::parse(text, cucumber::gherkin::GherkinEnv::default())
-        .is_ok_and(|f| f.tags.iter().any(|t| t == "pending"))
+/// Whether a whole feature is pending: its `Feature:` is tagged `@pending`,
+/// so none of its scenarios run and it needs no World. The runner skips the
+/// file; the lint still holds its text to Go's (convention:
+/// `gherkin_lint.test.rs`).
+pub(crate) fn is_pending_feature(text: &str) -> bool {
+    Feature::parse(text, GherkinEnv::default()).is_ok_and(|f| tagged_pending(&f.tags))
+}
+
+/// Whether a scenario is pending: Go's, copied but not yet ported, tagged
+/// `@pending` itself or through its Rule or its Feature. The runner leaves
+/// it out; the lint still holds its text to Go's.
+pub(crate) fn is_pending(feature: &Feature, rule: Option<&Rule>, scenario: &Scenario) -> bool {
+    tagged_pending(&feature.tags)
+        || rule.is_some_and(|r| tagged_pending(&r.tags))
+        || tagged_pending(&scenario.tags)
+}
+
+/// Whether a tag list carries `@pending`.
+pub(crate) fn tagged_pending(tags: &[String]) -> bool {
+    tags.iter().any(|t| t == "pending")
 }
 
 /// Which World runs a feature, from its `# world:` header line.

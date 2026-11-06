@@ -1,8 +1,8 @@
 # world: base
-# Ported from cli/init.feature
-# NOT ported: the token rule (S5's credentials), and the first-init rule (it
-#   clones the seeded remote over the network and launches the engine: S9's
-#   launch).
+# Ported from cli/init.feature (rev f36e8dfb2)
+# NOT ported: the Rules tagged @pending: the token rule (S5's credentials),
+#   and the first-init rule (it clones the seeded remote over the network and
+#   launches the engine: S9's launch).
 @doc
 Feature: init — the setup interview, and what it does to a project that already has one
 
@@ -14,8 +14,7 @@ Feature: init — the setup interview, and what it does to a project that alread
   a terminal — hands the whole thing to your engine for one setup interview:
   companions, then profiles and content, then agents bound to them. It writes
   no engine file into the project: the interview, like every `ctxloom run`, is
-  a session carrying ctxloom's hooks and MCP server in its own session home
-  (ruled 2026-09-21: sessions carry their surfaces). It is a solo core verb
+  a session carrying ctxloom's hooks and MCP server in its own session home. It is a solo core verb
   with exactly one thing under it, `init prompt`, which re-emits that
   interview body for a shell or a script.
 
@@ -98,6 +97,34 @@ Feature: init — the setup interview, and what it does to a project that alread
       Then the command succeeds
       And the output contains "personal"
 
+  @pending
+  Rule: Init never takes the agent token; without one it fails, saying how to create and export it
+
+    Every agent ctxloom launches authenticates with a long-lived token the
+    human creates with the engine's own flow (claude: `claude setup-token`)
+    and exports. ctxloom instructs; it never captures or stores the token. On
+    a terminal with none exported, init runs that flow on the human's own
+    terminal and prints the line to export it. Off a terminal there is nobody
+    to run it for, so init names the steps — in the engine's own wording, the
+    one `ctxloom auth` and `ctxloom run` show — and exits non-zero, as it does
+    under --skip-launch and after the terminal flow too: a project whose
+    agents cannot authenticate is not ready, whatever the mode. The config IS
+    written and stays written, and init says so. Once the token is exported,
+    re-running init launches the interview.
+
+    Scenario: Off a terminal with no token exported, init names how to create and export it
+      Given an initialized ctxloom project
+      And the environment variable "CLAUDE_CODE_OAUTH_TOKEN" is set to ""
+      When Alice re-runs setup with no agent token exported:
+        """
+        ctxloom init
+        """
+      Then the command exits with code 1
+      And the output contains "config is written"
+      And the output contains "claude setup-token"
+      And the output contains "export CLAUDE_CODE_OAUTH_TOKEN"
+      And the output contains "or store it in your secret manager"
+
   Rule: A mistyped subcommand must not be mistaken for a bare init
 
     `init` is RUNNABLE as well as a namespace, and that combination made it the
@@ -154,3 +181,31 @@ Feature: init — the setup interview, and what it does to a project that alread
       And the output contains "Phase 4 — Agents"
       And the output contains "Phase 5 — Close"
 
+  @pending
+  Rule: A first init asks its questions at the terminal, and says what it chose for the rest
+
+    Init's questions are asked in-process, on the user's own terminal, before
+    any engine is involved. Two things are not asked: init says, in one line,
+    that a delegation commits uncommitted work (the parent's off-branch before
+    a child's worktree is carved from it, reaching the parent's branch only
+    once the child has started; the child's on its own branch when its run
+    ends), and,
+    in another, which headless posture the default agent takes and how to
+    change it. The project it leaves has a default agent whose headless runs
+    accept file edits without asking.
+
+    # Hermetic: a stub `claude` makes claude-code the only installed engine
+    # (so init announces it rather than asking), the https clone of the seeded
+    # remote is refused, and --skip-launch stops before the auth probe and
+    # the setup session. The stub records any execution, which is how "no
+    # engine ran" is proven rather than assumed.
+    Scenario: A first init writes the answers given at the terminal
+      Given an empty project directory
+      And claude-code is the only engine installed, and nothing reaches the network
+      When Alice answers init's questions at a terminal, taking every recommendation
+      Then init told her which engine it chose, "Using claude-code (only available engine)"
+      And no engine ran during the interview
+      And the file ".ctxloom/config.yaml" contains "type: claude-code"
+      And the default agent's headless posture is "acceptEdits"
+      And init's terminal output says "Delegation commits: before a delegated agent's worktree is carved"
+      And init's terminal output says "ctxloom agent edit default --permissions <posture>"

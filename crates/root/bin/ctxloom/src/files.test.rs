@@ -87,6 +87,12 @@ pub(crate) fn remove(path: impl AsRef<Path>) {
     fs().remove_file(path.as_ref()).expect("a file to remove");
 }
 
+/// A directory and everything below it.
+pub(crate) fn remove_tree(path: impl AsRef<Path>) {
+    fs().remove_dir_all(path.as_ref())
+        .expect("a directory to remove");
+}
+
 pub(crate) fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) {
     fs().rename(from.as_ref(), to.as_ref()).expect("a rename");
 }

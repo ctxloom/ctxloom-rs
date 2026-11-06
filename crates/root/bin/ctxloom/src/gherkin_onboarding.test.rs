@@ -450,7 +450,11 @@ fn alice_project(w: &mut World) {
     super::j000200_scaffold(w, "claude-code");
 }
 
-/// Both companions are the stub: registered with the command that runs it.
+/// Both companions are the stub: registered with the command that runs it,
+/// each answering a generic loadout (a fragment with a marker; for "ltk" also
+/// a `pre_tool` hook on the `shell` and the `file_edit` tool class). The stub
+/// stands in for ltk and reprise, so neither's own wording or command is
+/// asserted: only ctxloom's half, the delivery.
 #[given("ltk and reprise are installed on Alice's machine")]
 fn alice_companions(w: &mut World) {
     let scratch = w.scratch();
@@ -500,6 +504,8 @@ fn alice_has_reuse(w: &mut World) {
     assert!(body.contains(REUSE_MARKER), "{body}");
 }
 
+/// Each declared tool class reaches the engine's settings as its own
+/// PreToolUse entry, whose matcher covers the engine's tool names for it.
 #[then("her assistant's engine is configured to run ltk on every shell command and file edit")]
 fn alice_engine_guards(w: &mut World) {
     alice_materialized(w);

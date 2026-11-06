@@ -24,7 +24,7 @@ use serde_json::Value;
 
 use super::deps::git_in;
 use super::gherkin_common::{common_steps, doc, Common, CommonWorld};
-use super::library::{at, reports_as, Project};
+use super::library::{at, Project};
 use super::surfaces::{additional_context, hook_lines};
 use crate::tests::files;
 
@@ -228,15 +228,6 @@ fn project_bundle(w: &mut World, step: &Step, name: String) {
 #[given(expr = "a {string} transcript at {string} whose turn ends with:")]
 fn transcript_at(w: &mut World, step: &Step, _engine: String, rel: String) {
     w.common.project.write(&rel, &transcript(&doc(step)));
-}
-
-#[given("ctxloom is already wired into her project")]
-fn wired(w: &mut World) {
-    w.common.run_lines(
-        "ctxloom manage install --engine claude-code --no-pull\nctxloom materialize --yes --degraded",
-        "",
-    );
-    w.ran().succeeds();
 }
 
 #[given(expr = "Carol's team profile carries a shared fragment, command, MCP server, and hook")]
@@ -469,49 +460,6 @@ fn context_contains(w: &mut World, text: String) {
 #[then("the hook's additionalContext is empty")]
 fn context_empty(w: &mut World) {
     assert_eq!(additional_context(w.ran()), "", "{}", w.ran().said());
-}
-
-// j000100
-
-#[given("ctxloom's session-start hook is wired into her assistant")]
-#[then("ctxloom's session-start hook is wired into her assistant")]
-fn session_start_wired(w: &mut World) {
-    assert!(w.common.project.registers_hook(
-        ".claude/settings.json",
-        "SessionStart",
-        "hook session-start"
-    ));
-}
-
-#[then("ctxloom's own working state is kept out of source control")]
-fn state_ignored(w: &mut World) {
-    w.common
-        .project
-        .file_contains(".ctxloom/.gitignore", "/cache");
-}
-
-#[then("ctxloom reports the engine it wired her project for")]
-fn reports_engine(w: &mut World) {
-    w.ran().contains("claude-code");
-    assert_eq!(
-        reports_as(&w.json(), "backends[backend=claude-code].hooks_present"),
-        "true"
-    );
-}
-
-#[then("nothing ctxloom wired into her assistant is left behind")]
-fn nothing_left(w: &mut World) {
-    w.common.project.file_is_absent(".claude/settings.json");
-    w.common.project.file_is_absent("CLAUDE.md");
-}
-
-#[then("the context she authored is still hers")]
-fn still_hers(w: &mut World) {
-    assert!(w.common.project.exists(".ctxloom/config.yaml"));
-    assert!(w
-        .common
-        .project
-        .exists(".ctxloom/content/bundles/v2/project/profiles/default.yaml"));
 }
 
 // j000400

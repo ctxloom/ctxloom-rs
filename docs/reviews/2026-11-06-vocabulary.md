@@ -80,7 +80,7 @@ Profiles take `--add-bundle` / `--remove-bundle` and `--add-parent` / `--remove-
 | `--kind <kind>` | Item kind, on `search` only | `--type` |
 | `--profile <p>` (repeatable) | Select a profile | `--profiles` (agent create), `-p` kept |
 | `--to <path>` | Destination | `--target` (materialize), positional export dirs, `-o` (skill export) |
-| `--home` | Write to home config instead of the project | Every write defaults to the project (owner ruling), `companion add` included; `--home` is the one way to write home |
+| `--home` | Write to home config instead of the project | Every write defaults to the project, except `companion add`, which always writes the user's home: a companion is a program on her machine, not part of the project. `--home` is the one way to send any other write home |
 | `--all` | Every project | `--all-projects` |
 | `--strict` | Warnings fail (doctor; `deps check` with updates available) | New |
 | `--resolved` | Show what a profile assembles, with origins and masks | New: `profile show --resolved` |
