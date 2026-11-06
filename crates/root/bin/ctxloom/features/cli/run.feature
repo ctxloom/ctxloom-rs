@@ -1,5 +1,6 @@
 # world: base
 # Ported from cli/run.feature (rev f36e8dfb2)
+# Ported from journeys/j002200_isolation.feature (rev f36e8dfb2) (the last three Rules)
 # NOT ported: the scenarios tagged @pending (the mock engine's recorded input,
 #   one-shot, dry-run, tag and agent selection, deny_tools, the opencode TUI):
 #   they need `run` to launch an engine. Plan override: clap's usage error says
@@ -371,3 +372,128 @@ Feature: run — assembling a project's context and handing it to an engine
       When Alice runs the opencode label interactively with the prompt "hello tui"
       Then the scripted opencode TUI ran on a terminal with the prompt as a flag, the guidance and Alice's preferences in its config dir
       And the bridge plugin in its config dir fires ctxloom's session-start and mail-drain for opencode, and the TUI is told its wake socket
+
+  @pending
+  Rule: A worktree run hides its per-agent config from the project's git
+
+    # A worktree run's per-agent config edits are kept out of the shared
+    # project tree through .git/info/exclude, not left as new files a
+    # developer could merge back by accident.
+    Scenario: A worktree run leaves the project tree clean
+      # substitution: the journey's Background is the scenario's first Given
+      Given Alice has a git-backed project with a mock agent
+      When Alice runs the mock agent under workspace "worktree" with prompt "cleanup-check"
+      Then none of the per-agent worktree config artifacts appear in the project's git status
+      And the shared git exclude file carries the ctxloom per-agent worktree config block
+
+  @pending
+  Rule: Every gate that loses a requested container refuses the run, --degraded or not
+
+    The fixture's agent asks for a container. One flag cannot mean both "I
+    accept a thinner context" and "I accept no sandbox", so --degraded never
+    rescues a lost container: each outline's two rows differ only in the flag,
+    and a single row could not tell "--degraded is ignored" from "--degraded
+    was never passed". Each gate keeps its own outcome step, which asserts its
+    own finding and the other gates' absence, since every row exits 3 and the
+    wording is all that tells the gates apart.
+
+    # A dry run does not stop at the refusal: it renders the plan it could
+    # compute, lists the finding with its fix, and exits as the run would,
+    # whatever the format. Both rows read the probed environment off the plan
+    # (runtime unavailable, reach unknown), never the host the refused run
+    # does not fall back to.
+    Scenario Outline: Previewing a container with no runtime shows the plan, then refuses as the run would
+      # substitution: the journey's Background is the scenario's first Given
+      Given Alice has a git-backed project with a mock agent
+      When Alice previews the container-bound agent with flags "<flags>"
+      Then the run aborts with an isolation finding
+      And the preview rendered its plan and the refusal's fix
+
+      Examples:
+        | flags         |
+        |               |
+        | --format json |
+
+    # The START gate: the runtime is reachable, so a container is selected,
+    # and the image cannot be produced (an override image is run as-is and
+    # never built). The finding says the session is NOT sandboxed.
+    Scenario Outline: A container that was selected and cannot start REFUSES, and --degraded does not rescue it
+      # substitution: the journey's Background is the scenario's first Given
+      Given Alice has a git-backed project with a mock agent
+      When Alice runs a container-bound agent whose image cannot be produced, with flags "<flags>"
+      Then the run aborts at the container START gate
+
+      Examples:
+        | flags      |
+        |            |
+        | --degraded |
+
+    # The same gate with both axes asked for: the container tier is the
+    # worktree-backed one, and the tier below it is a plain host worktree,
+    # which looks like isolation and is the degrade most tempting to accept.
+    # A check that recognised only the live-dir container would pass the row
+    # above and let this run land on the host.
+    Scenario Outline: A containerized worktree that cannot start REFUSES rather than keeping the worktree on the host
+      # substitution: the journey's Background is the scenario's first Given
+      Given Alice has a git-backed project with a mock agent
+      When Alice runs a container-bound agent whose image cannot be produced, with flags "--workspace worktree <flags>"
+      Then the run aborts at the container START gate
+
+      Examples:
+        | flags      |
+        |            |
+        | --degraded |
+
+    # The transport-start gate: the daemon accepts the run and the container
+    # never reaches running. The session was already told it had a boundary,
+    # so falling back would run on the host something that believes it is
+    # sandboxed. The outcome step also asserts the engine never ran: an abort
+    # that still launched it would pass on the exit code alone.
+    Scenario Outline: A container accepted by the daemon that never runs is fatal in BOTH modes
+      # substitution: the journey's Background is the scenario's first Given
+      Given Alice has a git-backed project with a mock agent
+      When Alice runs a container-bound agent whose container dies at the daemon, with flags "<flags>"
+      Then the run aborts because the container never reached running state
+
+      Examples:
+        | flags      |
+        |            |
+        | --degraded |
+
+  @pending
+  Rule: A run whose engine cannot authenticate, or cannot load its MCP servers, is refused before the engine starts
+
+    # engine_home: host leaves claude's MCP servers in the project's own
+    # .mcp.json, which claude loads only in a repository Alice trusted in her
+    # own claude: in one she never trusted, the run is refused.
+    Scenario: An in-tree AGENT run that declares engine_home: host in a project Alice never trusted is refused
+      Given Alice has a git-backed project
+      And Alice has whatever credentials "claude-code" needs to authenticate
+      And Alice has not trusted the project in her own claude
+      And Alice's agent declares engine_home "host"
+      When Alice runs the isolated "claude-code" agent under workspace "none"
+      Then the run is refused because an untrusted repository's session cannot load the project's MCP file
+
+    # A login session needs the login: with no claude login on the host, it
+    # is refused before any engine is spawned, naming what to do. The host and
+    # the container refuse alike.
+    Scenario: Alice's login session with no login on the host is refused, naming auth token
+      Given Alice has a git-backed project
+      And Alice has no "claude-code" credentials or API key on the host
+      And Alice has no "claude-code" credentials on the host
+      And Alice's agent declares engine_home "session"
+      And Alice's own session authenticates with "login"
+      When Alice runs the isolated "claude-code" agent under workspace "none"
+      Then the run is refused without any isolation finding, naming "auth: token"
+
+    # A token session authenticates with a token the human mints with `claude
+    # setup-token` and exports; ctxloom never captures or stores one. With
+    # none exported the run is refused before any engine is spawned, naming
+    # how to mint and export it. An exported API key does not stand in.
+    Scenario: A token session with no exported token is refused, naming claude setup-token
+      Given Alice has a git-backed project
+      And Alice has no "claude-code" credentials or API key on the host
+      And Alice has set the "claude-code" API key in the environment
+      And Alice's agent declares engine_home "session"
+      When Alice runs the isolated "claude-code" agent under workspace "none"
+      Then the run is refused without any isolation finding, naming "claude setup-token"

@@ -1,5 +1,6 @@
 # world: surfaces
 # Ported from cli/agent.feature (rev f36e8dfb2)
+# Ported from journeys/j002000_engine_switch.feature (rev f36e8dfb2) (the last Rule)
 # NOT ported: the scenarios tagged @pending.
 @doc
 Feature: agent — the bindings that decide what runs, on what context, and where
@@ -531,3 +532,37 @@ Feature: agent — the bindings that decide what runs, on what context, and wher
       When I run "ctxloom agent remove nosuchagent"
       Then the command fails
       And the output contains "nosuchagent"
+
+  Rule: An agent's engine switches in place, and only to an engine ctxloom knows
+
+    The fixture is an agent "dev" on claude-code, its profile carrying the
+    team's guidance and a session_end hook, and a second engine (mock-lossy)
+    to move to.
+
+    # The swap is asserted on the config on disk and on what `agent show`
+    # reports: the two can disagree, and a binding that changed in config
+    # while the inspector reports the old engine is a switch nobody can
+    # verify. The context is compared as bytes, materialized on either side
+    # of the swap: a switch that delivers different-but-valid content is
+    # worse than one that fails. Dropping the engine from the edit (so `agent
+    # edit` reports success and writes the old engine back) turns it red on
+    # the on-disk assertion.
+    Scenario: The engine changes under the binding and the context does not
+      # substitution: Go's Background (the team standardised on one engine) is the scenario's first Given
+      Given Alice's team has standardised on one engine and is moving to another
+      And the team's guidance reaches the old engine's own surface
+      When Alice swaps the engine under the binding
+      Then the binding on disk names the new engine, and so does what ctxloom reports
+      And the same guidance reaches the new engine's own surface, unchanged
+
+    # `agent create` and `agent edit` validate the engine before the write, so
+    # a typo cannot corrupt a live binding, and the refusal names the engines
+    # ctxloom knows.
+    Scenario: Binding an agent to an engine that does not exist is refused
+      # substitution: Go's Background (the team standardised on one engine) is the scenario's first Given
+      Given Alice's team has standardised on one engine and is moving to another
+      When Alice types an engine name that does not exist while swapping the binding:
+        """
+        ctxloom agent edit dev --llm bogus-engine
+        """
+      Then ctxloom refuses and names the engines it knows

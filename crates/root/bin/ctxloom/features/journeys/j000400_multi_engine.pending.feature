@@ -1,58 +1,46 @@
-# Ported from journeys/j000400_multi_engine.feature (rev f36e8dfb2): the scenarios not yet ported, as Go wrote them.
-# NOT ported: any of it yet. The feature is @pending: the runner skips it and
-#   no World has its steps. Porting a scenario moves it, unchanged, into
-#   j000400_multi_engine.feature with its steps (gherkin_lint.test.rs).
-#   The ported scenarios are in the files that say `Ported from journeys/j000400_multi_engine.feature`.
+# Ported from journeys/j000400_multi_engine.feature (rev f36e8dfb2)
+# NOT ported: any of it yet; these scenarios wait for `ctxloom run` to launch
+#   an engine. What one materialize delivers to each engine is
+#   cli/materialize.feature's.
 
 @doc
 @pending
 Feature: One shared profile, reaching every engine in its own native format
 
   A team does not standardize on one assistant. Carol's team writes one shared
-  profile — a fragment, a command, an MCP server, a hook — once. Alice's teammates
-  use different engines, and every one of them needs that
-  same profile to reach their own engine, in whatever native shape that engine
-  actually reads. ctxloom's job is to be the one place the team's standard is
-  authored, and to speak every engine's own dialect on the way out — nobody
-  forks the profile per engine, and nobody hand-translates a fragment into
-  different config formats.
+  profile, with a fragment, a command, an MCP server and a hook, once. Alice
+  uses Claude Code; Bob, working in the same checkout, uses opencode. Each of
+  them starts a session on their own engine, and each session starts with the
+  team's profile, in whatever shape that engine reads. Nobody forks the
+  profile per engine, nobody translates a fragment by hand, and the checkout
+  they share is left as it was: what each session needs is in its own session
+  home.
 
-  The engines do NOT converge on one shape, and this is not incidental —
-  it is the whole point of proving it here rather than asserting it in prose.
-  Verified straight from each engine's own surfaces declaration
-  (each engine package's surfaces.go, plus backends/mock_surfaces.go):
+  Background:
+    # new: the team's profile is the journey's starting point
+    Given Carol's team profile carries a shared fragment, command, MCP server, and hook
 
-    | engine      | context lands in            | MCP lands in   | hooks land in         | commands land in  |
-    |-------------|-----------------------------|----------------|-----------------------|-------------------|
-    | claude-code | CLAUDE.md (managed markers) | .mcp.json      | .claude/settings.json | .claude/commands/ |
-    | mock        | MOCK_CONTEXT.md (managed markers) | .mock/mcp.json | .mock/settings.json | .mock/commands/   |
+  # Alice keeps her own notes for Claude Code in the project. Her session
+  # starts with the team's guidance and her notes both; Bob's session on his
+  # engine starts with the same guidance. Neither session writes anything into
+  # the checkout they share.
+  Scenario: Alice and Bob each start a session on their own engine with the team's profile
+    # new: the journey's flow, two teammates on two engines in one checkout
+    Given Alice keeps her own notes for Claude Code in the project
+    When Alice starts a session on claude-code with the team profile
+    Then Alice's session starts with the team's guidance and her own notes
+    And Alice's session offers the team's command, MCP server and hook
+    When Bob starts a session on opencode with the team profile
+    Then Bob's session starts with the same team guidance
+    And Bob's session offers the team's command, MCP server and hook
+    And the project holds nothing either session wrote, and Alice's notes are as she wrote them
 
-  ONE REAL VENDOR SHIPS TODAY, and the second row is the test double. That is
-  stated rather than glossed: the mechanism below — one profile, each engine's
-  own native shape — is genuinely exercised across two engines, but the
-  stronger claim this journey was written for, that engines from DIFFERENT
-  VENDORS diverge in shape, is not currently demonstrable. mock stands in for
-  a second vendor and its surfaces are all project-local, so it cannot show
-  the sharpest divergence there is: an engine whose hooks, MCP servers and
-  prompts have no cwd-keyed home at all and are delivered per-session at
-  launch. That engine's narrowed materialize is the parked scenario below.
-
-  An absence a report states is a
-  fact a team can plan around; an absence nothing mentions is the same tree with
-  a lie on top of it.
-
-  Proving Alice's bytes were WRITTEN in each engine's own shape is NOT the same
-  claim as proving any engine READ them — that is what the second, much smaller
-  table below exists to prove, for the engines where it can honestly be proven
-  today.
-
-  # @live: one row per real engine the live lane drives. Each row
-  # self-skips without credentials, exactly like J000200's own @live scenario.
-  # Adding an engine here is adding a ROW — no new Go and no new steps.
-  @live
+  # On a real engine, the assistant itself can see the team's guidance: asked
+  # for a phrase that is only in the team's fragment, it answers with it.
+  @live-only
   Scenario Outline: A real engine actually receives the shared context and can use it
+    # substitution: the team's profile is the Background's, and the fragment's marker is the sentinel
     Given a real <engine> agent is available
-    And Carol's team profile carries a fragment with a sentinel marker
     When Alice asks her <engine> assistant to repeat the sentinel it can see
     Then its reply contains the sentinel marker
 

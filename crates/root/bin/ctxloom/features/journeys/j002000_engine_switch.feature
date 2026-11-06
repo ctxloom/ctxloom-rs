@@ -1,124 +1,27 @@
 # world: surfaces
 # Ported from journeys/j002000_engine_switch.feature
-# NOT ported: "Nothing tells her what the team just gave up". It asserts that
-#   `doctor`, `manage check` and `agent show` EACH name the hook event the new
-#   engine cannot carry; this port has no per-agent capability-loss report on
-#   any of them (only the materialize report names a lost surface or hook
-#   event), so the scenario would fail on a missing product behaviour, not a
-#   defect in the port. Not built (owner ruling pending).
+# NOT ported: the rest of the journey (j002000_engine_switch.pending.feature).
+#   The swap's own contract and the unknown-engine refusal are
+#   cli/agent.feature's.
 @doc
 Feature: Engine switch day
 
-  A pricing change, a policy change, a vendor doing something nobody liked —
-  and the team is moving to a different engine. This is the day ctxloom's whole
-  premise gets tested, because the premise is that your context is yours: the
-  fragments, the profiles, the trust decisions and the history belong to the
-  team, not to whichever assistant happened to be fashionable when they were
-  written.
+  A pricing change, a policy change, a vendor doing something nobody liked:
+  the team is moving to a different engine. This is the day ctxloom's premise
+  is tested, because the premise is that the team's context is the team's.
+  The fragments, the profiles and the history belong to the team, not to
+  whichever assistant was in fashion when they were written.
 
-  On paper it is one command. `agent edit dev --llm <new>` swaps the engine
-  under the binding; profiles are engine-neutral by construction, so the same
-  content composes for the new engine's own native surfaces; the canonical
-  transcript keeps the history readable; and reaching for a session the tee
-  never covered still rescues whatever the abandoned vendor's private store
-  holds.
-
-  In practice Alice discovers the pieces exist and the FLOW does not. No
-  migration story narrates the order, nothing verifies the result, and the one
-  thing she most wants to know — what does the new engine NOT do that the old
-  one did — has no surface at all. Nothing here is structural for the
-  mainstream engines, which is exactly the finding: the portability story is
-  sellable and untold.
-
-  # NOTE ON SCOPE. J000400 (j000400_multi_engine.feature) is the axis's REFERENCE
-  # feature — one profile, many engines, a matrix row per engine — and it is
-  # deliberately not a journey. This file does not turn it into one. What it
-  # asserts is what a matrix cannot express: that the swap is a SEQUENCE with a
-  # before and an after, and that the context surviving it is the SAME context
-  # rather than merely a valid one.
-  #
-  # NOTE ON THE CENTRAL ASSERTION. The comparison is between two real
-  # materializations, captured on either side of the swap, compared as bytes.
-  # A migration that delivers different-but-valid content is worse than one
-  # that fails, because the team's assistant quietly knows something different
-  # on Monday and nobody is told what.
-  #
-  # NOTE ON TAGS. Each scenario carries its own note: an untagged one records
-  # the mutation that proves it can still fail, a @wip one the product surface
-  # that does not exist yet.
+  Alice switches the team's agent to the new engine. Before she does, she
+  sees what the team would give up. After she does, the next session starts
+  with the same guidance as before, and every session the team recorded on
+  the old engine is still there to look back on.
 
   Background:
     Given Alice's team has standardised on one engine and is moving to another
 
-  # THE MIGRATION ITSELF, as a sequence rather than a capability. The swap is
-  # asserted on the file ON DISK and on what `agent show` reports — the two can
-  # disagree, and a binding that changed in config while the inspector still
-  # reports the old engine is a migration nobody can verify.
-  #
-  # UNTAGGED: confirmed to pass as written, and confirmed to BITE. Dropping
-  # `entry.Engine = orKeep(...)` from operations.SetAgent — so `agent edit
-  # --llm` reports "Updated agent" and writes the old engine back — turns
-  # this red on the on-disk assertion, which is the failure the scenario names.
-  Scenario: The engine changes under the binding and the context does not
-    Given the team's guidance reaches the old engine's own surface
-    When Alice swaps the engine under the binding
-    Then the binding on disk names the new engine, and so does what ctxloom reports
-    And the same guidance reaches the new engine's own surface, unchanged
-
-  # FOLDED (Phase 3, D-row not previously numbered): "manage install --engine
-  # <unknown>" used to have its own scenario here too, but cli/manage.feature's
-  # "A misspelled engine is refused by name, and nothing is scaffolded" already
-  # covers the identical claim with a STRONGER assertion — it checks that
-  # .ctxloom/config.yaml and .mcp.json were never written, not just that the
-  # error message named the engines. Nothing here was worth moving down; the
-  # duplicate scenario is deleted and the noun's own spec is where that leaf's
-  # coverage lives now. What remains below is the validation gap
-  # cli/manage.feature does NOT cover: the same mistake one layer up, at the
-  # `agent edit --llm` binding.
-  #
-  # The same validation question one layer up, at the binding. The two commands
-  # take the same kind of argument on the same day and are asserted separately,
-  # because they are separate code paths and a fix to one says nothing about
-  # the other. cli/agent.feature explicitly defers this leaf's `--llm`
-  # validation coverage here rather than duplicating it (see its own "create
-  # and edit are NOT an upsert" Rule comment).
-  #
-  # MEASURED: RED, and worse than the command above. `ctxloom agent edit dev
-  # --engine bogus-engine` exits 0 and WRITES the nonexistent engine into the
-  # binding. Nothing validates the name at the moment it becomes the team's
-  # configuration, so the failure surfaces later, somewhere else, as whatever a
-  # missing engine happens to look like downstream.
-  #
-  # UNTAGGED: `agent edit --llm` now validates its argument and names the
-  # engines it knows. The check lives in operations.SetAgent — `agent create`
-  # and `agent edit`'s single shared body, so both verbs are covered — and
-  # rejects before the write, so a typo'd edit cannot corrupt a live binding.
-  # Membership is operations.AvailableLLMNames (registered backends UNION the
-  # config's declared labels), the same set `llm default` accepts and offers,
-  # because an agent's engine is a LABEL and `--engine claude-fast` is one of
-  # this command's own documented examples.
-  Scenario: Binding an agent to an engine that does not exist is refused
-    When Alice types an engine name that does not exist while swapping the binding:
-      """
-      ctxloom agent edit dev --llm bogus-engine
-      """
-    Then ctxloom refuses and names the engines it knows
-
-  # THE PORTABILITY PAYOFF, and the reason owning a canonical transcript is
-  # worth its cost. History that dies with the engine that produced it is
-  # history rented from a vendor. The assertion is deliberately cheap and
-  # deliberately present: it is the property most likely to be broken by an
-  # unrelated change and least likely to be noticed, because nobody looks for
-  # old sessions until they need one.
-  #
-  # UNTAGGED, but only after the assertion was made capable of failing. As
-  # written it searched the COMBINED output for the harp, and Manager.Reconcile
-  # warns "session <harp> dropped from the index" when it reaps one — so the
-  # message announcing the history was deleted satisfied the check for the
-  # history surviving. Measured: with operations.isUnrecoverable inverted for
-  # compacted entries the listing returned zero rows and the scenario stayed
-  # green. It now reads the ROWS out of `session list --all --format json`
-  # stdout, and that same mutation turns it red.
+  # History that dies with the engine that produced it is history rented
+  # from a vendor. Nobody looks for an old session until they need one.
   Scenario: History recorded under the old engine survives the move
     Given a session was recorded under the old engine before the switch
     When Alice swaps the engine under the binding

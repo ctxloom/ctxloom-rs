@@ -1,5 +1,6 @@
 # world: surfaces
 # Ported from cli/materialize.feature (rev f36e8dfb2)
+# Ported from journeys/j000400_multi_engine.feature (rev f36e8dfb2) (the last Rule)
 # NOT ported: the Rule tagged @pending, "A run says so when the project holds
 #   materialized context": it needs a running mock engine (S6).
 @doc
@@ -104,3 +105,57 @@ Feature: materialize — the profiles' surfaces written at rest, any subset of t
       Then the command succeeds
       And the output contains "MOCK-REPLY"
       And the output contains "ctxloom materialize --release --surface context"
+
+  Rule: One materialize delivers every surface of a profile, each in its engine's own shape
+
+    # What one materialize delivering all four surfaces together proves, no
+    # per-surface spec can see: a regression that writes three surfaces and
+    # drops the fourth passes cli/fragment, cli/mcp, cli/manage and
+    # cli/command, and fails only here. Every row parses the generated file in
+    # its own format and asserts the actual field, never a bare file-exists
+    # and never a substring of a key name. A context surface writes the
+    # assembled context, never a second assembly of the fragments that could
+    # disagree with the first.
+    Scenario Outline: The same profile materializes into each engine's own native surfaces
+      Given Carol's team profile carries a shared fragment, command, MCP server, and hook
+      When Alice materializes the team profile for <engine>
+      Then the materialized <engine> context carries the shared fragment's marker, in its own native shape
+      And the materialized <engine> MCP configuration carries the shared server's command, in its own native shape
+      And the materialized <engine> hook configuration carries the shared hook's command, in its own native shape
+      And the materialized <engine> command file carries the shared command's body, in its own native shape
+
+      Examples:
+        | engine      |
+        | claude-code |
+
+    # An engine whose hooks, MCP servers and commands have no home at rest
+    # (mock-launch declares a context surface and no other) materializes its
+    # context and reports each surface it does not carry, with the reason.
+    # Absence is checked over the whole tree, so a fallback landing somewhere
+    # unexpected is caught; the profile carries a hook, a server and a command,
+    # so the absence steps cannot pass for want of anything to deliver. Both
+    # halves are asserted: skipping without reporting is a silent loss, and
+    # reporting without skipping names a surface absent while its file exists.
+    Scenario: A home-keyed engine materializes its native context, and reports the surfaces it does not carry
+      Given Carol's team profile carries a shared fragment, command, MCP server, and hook
+      When Alice materializes the team profile for mock-launch
+      Then the materialized mock-launch context carries the shared fragment's marker, in its own native shape
+      And no mock-launch surface anywhere in the materialized tree carries the shared hook's command
+      And no mock-launch surface anywhere in the materialized tree carries the shared MCP server's command
+      And no mock-launch surface anywhere in the materialized tree carries the shared command's body
+      And the materialize report names each surface mock-launch does not carry, with a reason
+
+    # Content outside ctxloom's managed markers survives byte for byte, and
+    # ctxloom's own content still lands beside it: a whole-file write in place
+    # of the managed section turns this red, the hand-authored line gone.
+    Scenario Outline: A hand-authored context file survives materialization byte-for-byte
+      Given Carol's team profile carries a shared fragment, command, MCP server, and hook
+      And Alice's team already hand-authored <file> for <engine> with their own conventions
+      When Alice materializes the team profile for <engine>
+      Then <file> still carries Alice's hand-authored conventions, byte-for-byte
+      And the materialized <engine> context carries the shared fragment's marker, in its own native shape
+
+      Examples:
+        | engine      | file            |
+        | claude-code | CLAUDE.md       |
+        | mock        | MOCK_CONTEXT.md |
