@@ -149,8 +149,10 @@ feature file; it belongs in git history.
 - **A project's sessions live in its `.ctxloom`.** Each session is one git-ignored
   directory, `.ctxloom/sessions/<harp>/`: its session home, its records and transcripts, and
   its worktree checkout, so an agent's edits are visible in the project before they are
-  merged. The session's events live there too: there is no project-level session store
-  or index. `session list` and `search` walk `.ctxloom/sessions/`, taking each session's name
+  merged. A session's state goes through angzarr-embedded, configured with in-memory
+  storage: the engine driver's I/O is event streams there, ctxloom reacts to the events, and
+  the driver writes the harp directory from them, which is the durable record. There is no
+  project-level session store or index. `session list` and `search` walk `.ctxloom/sessions/`, taking each session's name
   from its directory and the rest from the metadata inside it; a name is unique because
   it is the directory's name. Deleting `.ctxloom` removes all of it; leaving ctxloom entirely is deleting
   `~/.ctxloom` too, which holds what it keeps across projects (registered companions, cloned remotes). taskloom's `state.db` is taskloom's.
@@ -194,35 +196,18 @@ feature file; it belongs in git history.
 3. **The vocabulary pass over the features.** Rename to the decided names in ported and pending
    scenarios, and strip implementation history from every comment. Pending scenarios then carry
    `# substitution:` lines where they differ from Go.
-4. **The product follows the features.** Each item below is a feature change, then the code that
-   turns it green:
-   - **sessions** (already rewritten; the eleven red scenarios);
-   - **the llm rework:**
-     - `cli/llm.feature`'s credential refusal moves to `engines:`;
-     - `cli/llm.feature`'s @pending scenarios are dropped, except the credential rule and what
-       `engine list`/`show` covers;
-     - `--llm` becomes `--engine`, plus `--model`, `--effort` and `--permissions` on agents;
-     - `llm:` fixtures become `engines:`;
-     - run and profile take `--agent` or `--engine`;
-   - **confirmation and exit 4** on every destroyer;
-   - **`run --dry-run` writes nothing.**
+4. **The product follows the features.** A feature change, then the code that turns it green,
+   in the order of the port plan's journey milestones (`ctxloom-rs-port.plan.md` §10, M1 to
+   M10). The changes decided above (the sessions rewrite, the llm rework, confirmation and exit
+   4 on every destroyer, `run --dry-run` writing nothing) land in the milestone whose journey
+   first needs them.
 5. **The audit follow-ups.**
    - Port j000100's doctor-on-a-wired-project scenario as Go wrote it.
    - List Go's 15 doctor checks that Rust lacks in doctor.feature's header, and decide each when
      doctor is next touched.
-6. **Porting, by value per effort.**
-   1. version
-   2. fault_tolerance (asserting codes)
-   3. run's agent-vs-profile refusal
-   4. agent and profile CRUD in the new vocabulary, with `profile show --resolved`
-   5. deps, with `upgrade <ref>`, `why` and `check --strict`, after fixing the "offline" claim
-   6. config, with `get`/`set`
-   7. j001200 recall, refusing an unknown harp
-   8. j002000's swap preview, and j001900 B3 and B6
-   9. j001400 slimmed, and j002200's hermetic subset
-   10. companion loadouts (j000300, j000800, j001800)
-   11. the coordinator journeys (j002100, j002300), rewritten around the operator's view
-   12. the live lane: j002400, j001000 and the remaining probes
+6. **Porting** follows the same milestones: each turns its journey green, with the cli
+   contracts it touches. A contract no journey reaches is ported when its command is next
+   touched.
 
 ## Decisions still open
 

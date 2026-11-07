@@ -1,10 +1,17 @@
 # Introduction
 
 ctxloom-rs is the Rust ctxloom: a port of the Go ctxloom onto angzarr-embedded,
-slice by slice, with architect review of each slice as it is ported. The plan
-(`ctxloom-rs-port.plan.md`) is the source of the order and the decisions; a
-slice starts as red tests, committed red on `port/<slice>`, reviewed, then
-implemented green.
+one user journey at a time, with architect review of each milestone. The plan
+(`ctxloom-rs-port.plan.md`, §10) orders the milestones by journey
+(`crates/root/bin/ctxloom/features/journeys/`); each makes its journey's
+scenarios pass, with the cli contracts it touches. A milestone starts as red
+tests, committed red on `port/<milestone>`, reviewed, then implemented green.
+
+The features are the spec, and are written first: a journey tells a user's
+story with the commands they type; a command's contract lives in its
+`features/cli/` file. `docs/plans/ctxloom-features.md` ("Specs") and
+`docs/reviews/2026-11-06-vocabulary.md` (names) are authoritative, and where
+they disagree with older design in the port plan, they win.
 
 The Rust taskloom is a separate repository. ctxloom reaches it as git
 dependencies pinned by commit (`harp-names` and the `ports` it implements,
@@ -31,7 +38,7 @@ does not mean reading its tests too.
 Acceptance tests drive the real binary: `crates/root/bin/ctxloom/src/*.test.rs`
 build it once (with its `test-support` feature, which turns on the hidden
 `ctxloom test ...` commands) and run it as a separate process in a temporary
-home. The red tests of a slice are committed red on its branch
+home. The red tests of a milestone are committed red on its branch
 (`just test-commit` allows that off the default branch, never on it).
 
 ## Layout: a crate's directory is its role
@@ -80,7 +87,15 @@ output; its prose is withheld until the owner rules (D24, D8).
 Skill zips are written and read by `library::write::archive` over the `zip`
 crate (deflate only, default features off) and crc32fast.
 
-Slice S4 (sessions) adds:
+Slice S4 (sessions) built the following. Its store design is superseded: a
+session's state goes through angzarr-embedded with in-memory storage: the
+engine driver's I/O is event streams there, ctxloom reacts to the events, and
+the driver writes the session's directory, `.ctxloom/sessions/<harp>/` in the
+project (session home, metadata, records, worktree), from them. That directory
+is the durable record; there is no project-level session store, claim stream
+or index (list and search walk the directory; a
+name is unique because it is the directory's name), and nothing is imported
+from Go. M1 reshapes it.
 
 - `core/wire/sessions-proto`, from `proto/ctxloom/sessions/v1`;
 - `core/domain/sessions` (hand-written markup, as taskloom's `tasks`: the

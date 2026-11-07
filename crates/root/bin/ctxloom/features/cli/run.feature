@@ -487,14 +487,15 @@ Feature: run — assembling a project's context and handing it to an engine
   @pending
   Rule: A run whose engine cannot authenticate, or cannot load its MCP servers, is refused before the engine starts
 
-    # engine_home: host leaves claude's MCP servers in the project's own
+    # session_home: host leaves claude's MCP servers in the project's own
     # .mcp.json, which claude loads only in a repository Alice trusted in her
     # own claude: in one she never trusted, the run is refused.
-    Scenario: An in-tree AGENT run that declares engine_home: host in a project Alice never trusted is refused
+    Scenario: An in-tree AGENT run that declares session_home: host in a project Alice never trusted is refused
+      # new: Go's scenario of this name says engine_home; the vocabulary ruling (2026-11-06) renamed the setting to session_home, so the scenario carries the new name
       Given Alice has a git-backed project
       And Alice has whatever credentials "claude-code" needs to authenticate
       And Alice has not trusted the project in her own claude
-      And Alice's agent declares engine_home "host"
+      And Alice's agent declares session_home "host"
       When Alice runs the isolated "claude-code" agent under workspace "none"
       Then the run is refused because an untrusted repository's session cannot load the project's MCP file
 
@@ -502,10 +503,11 @@ Feature: run — assembling a project's context and handing it to an engine
     # is refused before any engine is spawned, naming what to do. The host and
     # the container refuse alike.
     Scenario: Alice's login session with no login on the host is refused, naming auth token
+      # substitution: the agent declares session_home where Go's step says engine_home (vocabulary ruling, 2026-11-06)
       Given Alice has a git-backed project
       And Alice has no "claude-code" credentials or API key on the host
       And Alice has no "claude-code" credentials on the host
-      And Alice's agent declares engine_home "session"
+      And Alice's agent declares session_home "session"
       And Alice's own session authenticates with "login"
       When Alice runs the isolated "claude-code" agent under workspace "none"
       Then the run is refused without any isolation finding, naming "auth: token"
@@ -515,10 +517,11 @@ Feature: run — assembling a project's context and handing it to an engine
     # none exported the run is refused before any engine is spawned, naming
     # how to mint and export it. An exported API key does not stand in.
     Scenario: A token session with no exported token is refused, naming claude setup-token
+      # substitution: the agent declares session_home where Go's step says engine_home (vocabulary ruling, 2026-11-06)
       Given Alice has a git-backed project
       And Alice has no "claude-code" credentials or API key on the host
       And Alice has set the "claude-code" API key in the environment
-      And Alice's agent declares engine_home "session"
+      And Alice's agent declares session_home "session"
       When Alice runs the isolated "claude-code" agent under workspace "none"
       Then the run is refused without any isolation finding, naming "claude setup-token"
 

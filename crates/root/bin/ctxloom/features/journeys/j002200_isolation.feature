@@ -123,18 +123,18 @@ Feature: Bounding what the agent can reach, even with permissions bypassed
     And Alice's own "<engine>" setup was never touched by the run
 
     Examples:
-      | engine      | declares                      |
-      | claude-code | declares engine_home "session" |
-      | claude-code | declares no engine_home        |
+      | engine      | declares                        |
+      | claude-code | declares session_home "session" |
+      | claude-code | declares no session_home        |
 
   # An agent can opt into Alice's own engine setup. It gets exactly that, and
   # ctxloom tells her the choice is unsafe.
-  Scenario Outline: An in-tree AGENT run that declares engine_home: host keeps Alice's own real home
-    # substitution: the run says the choice is unsafe; no session home is what Alice sees
+  Scenario Outline: An in-tree AGENT run that declares session_home: host keeps Alice's own real home
+    # new: Go's scenario of this name says engine_home; the vocabulary ruling (2026-11-06) renamed the setting to session_home, so the scenario carries the new name. The run says the choice is unsafe; no session home is what Alice sees
     Given Alice has a git-backed project
     And Alice has whatever credentials "<engine>" needs to authenticate
     And Alice has trusted the project in her own claude
-    And Alice's agent declares engine_home "host"
+    And Alice's agent declares session_home "host"
     When Alice runs her isolated "<engine>" agent "isolated" under workspace "none":
       """
       ctxloom run --one-shot --agent isolated --workspace none "write a short note"
