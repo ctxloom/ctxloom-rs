@@ -6,13 +6,16 @@
 //! (a re-run once read and threw them away); and `init prompt`, the setup
 //! interview body.
 //!
-//! NOT BUILT: `init` of a directory with no `.ctxloom`. It scaffolds, seeds
-//! and CLONES the trusted `ctxloom-default` remote over the network, pulls
-//! what its default profile resolves through, and hands the lot to the
-//! engine for the setup session. The clone is S3's seeded default, and the
-//! launch is S9's: it is refused, saying so, rather than half done. Also
-//! not here: minting the project identity (taskloom's registry owns it; a
-//! re-run only reads it), the dependency pull a re-run ends with, and the
+//! `init` of a directory with no `.ctxloom`: it scaffolds the project (the
+//! `Create` port, as `config create` does), which seeds the trusted
+//! `ctxloom-default` remote and the default profile inheriting from it, then
+//! pulls what that profile resolves through. A pull that fails (no network)
+//! is said and does not undo the scaffold. It writes nothing outside
+//! `.ctxloom`: the engine files wait for a session home.
+//!
+//! NOT BUILT: handing the project to the engine for the setup session on a
+//! terminal (S9's launch), the interview's questions, minting the project
+//! identity (taskloom's registry owns it; a re-run only reads it), and the
 //! agent-token check (S5's credentials).
 
 mod error;
@@ -20,13 +23,11 @@ mod error;
 use std::rc::Rc;
 use std::sync::Arc;
 
-pub use ctxloom_ports::{Scaffold, UserFiles};
+pub use ctxloom_ports::{Failure, Scaffold, UserFiles};
 use deps_application::{CreateRequest, Deps, Notice};
 use serde::Serialize;
 
-#[cfg(any(test, feature = "test-support"))]
-pub use error::diagnostic_samples;
-pub use error::{InitError, EN_US};
+pub use error::InitError;
 
 /// The setup interview's body: ctxloom's own words, copied byte for byte
 /// from Go ctxloom's `resources/commands/ctxloom-init.md` (release/0.7,
@@ -34,6 +35,12 @@ pub use error::{InitError, EN_US};
 /// D24: the owner's text, never edited here. It names `agent_run`, an MCP tool
 /// whose place in the cut list (D8) is still open.
 pub const SETUP_INTERVIEW: &str = include_str!("../resources/setup-interview.md");
+
+/// Scaffolds a project's `.ctxloom`: the config, the remotes registry and the
+/// seeded default profile; it refuses a directory that has a config.
+pub trait Create {
+    fn create(&self) -> Result<(), Failure>;
+}
 
 /// What `init` is asked.
 #[derive(Clone, Debug, Default)]
@@ -58,6 +65,8 @@ pub struct Initialized {
     /// The directory was there already.
     pub existed: bool,
     pub remotes: Vec<RemoteAdded>,
+    /// The dependencies the pull of a new project installed.
+    pub pulled: u64,
     /// What went wrong without stopping init (a remote that would not
     /// register), for the error stream.
     #[serde(skip)]
@@ -77,29 +86,45 @@ pub struct Init {
     scaffold: Arc<dyn Scaffold>,
     files: Arc<dyn UserFiles>,
     deps: Rc<Deps>,
+    create: Box<dyn Create>,
 }
 
 impl Init {
-    pub fn new(scaffold: Arc<dyn Scaffold>, files: Arc<dyn UserFiles>, deps: Rc<Deps>) -> Init {
+    pub fn new(
+        scaffold: Arc<dyn Scaffold>,
+        files: Arc<dyn UserFiles>,
+        deps: Rc<Deps>,
+        create: Box<dyn Create>,
+    ) -> Init {
         Init {
             scaffold,
             files,
             deps,
+            create,
         }
     }
 
     pub fn init(&self, request: &InitRequest) -> Result<Initialized, InitError> {
         let app_dir = self.scaffold.app_dir();
         let existed = self.files.is_dir(&app_dir).map_err(InitError::Files)?;
-        if !existed {
-            return Err(InitError::NewProjectNotBuilt { app_dir });
-        }
         let mut done = Initialized {
             app_dir,
             existed,
             remotes: Vec::new(),
+            pulled: 0,
             notices: Vec::new(),
         };
+        if !existed {
+            self.create.create().map_err(InitError::Create)?;
+            let pulled = self.deps.pull(false, true);
+            done.notices.extend(pulled.notices);
+            match pulled.result {
+                Ok(report) => done.pulled = report.installed,
+                Err(error) => done.notices.push(Notice::text(format!(
+                    "could not pull the seeded dependencies: {error}"
+                ))),
+            }
+        }
         for (index, url) in request.remotes.iter().enumerate() {
             let outcome = self.deps.remote_create(&CreateRequest {
                 name: personal_name(index),

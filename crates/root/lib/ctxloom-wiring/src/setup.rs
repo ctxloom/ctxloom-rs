@@ -10,13 +10,27 @@ use config_files::{ConfigFilesFs, ScaffoldFs};
 use content_fs::UserFilesFs;
 use deps_application::Deps;
 use doctor_checks::Doctor;
-use init_application::Init;
+use init_application::{Create, Failure, Init};
+use library_application::Library;
 use reclaim_application::Cleaner;
 
 use crate::{LibError, ProcessEnv, Wiring};
 
 /// The nouns these commands own.
 pub(crate) const NOUNS: [&str; 4] = ["auth", "clean", "doctor", "init"];
+
+/// `config create`, as init's scaffold of a new project.
+struct ConfigCreate(Library);
+
+impl Create for ConfigCreate {
+    fn create(&self) -> Result<(), Failure> {
+        let created = self.0.config_create("");
+        created
+            .result
+            .map(|_| ())
+            .map_err(|e| Box::new(e) as Failure)
+    }
+}
 
 /// The setup use cases, built together.
 pub(crate) struct SetupUseCases {
@@ -47,6 +61,7 @@ impl SetupUseCases {
             Arc::new(ScaffoldFs::new(Arc::clone(&fs), &around.cwd)),
             user,
             deps,
+            Box::new(ConfigCreate(crate::library::build(wiring, None)?)),
         );
         Ok(SetupUseCases {
             auth: Auth::new(Arc::new(ProcessEnv::from_snapshot(wiring.env()))),

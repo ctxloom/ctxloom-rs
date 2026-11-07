@@ -64,6 +64,8 @@ pub(super) struct State {
     before: Option<Snapshot>,
     /// Her assistant's own configuration in her home, then.
     assistant_before: Option<BTreeMap<String, Vec<u8>>>,
+    /// Every file of her home, then.
+    home_before: Option<BTreeMap<String, Vec<u8>>>,
 }
 
 /// Every file below `path` (or `path` itself, a file), by its path.
@@ -83,6 +85,7 @@ impl World {
         if self.adopt.before.is_none() {
             self.adopt.before = Some(self.project_now());
             self.adopt.assistant_before = Some(self.assistant_now());
+            self.adopt.home_before = Some(self.home_now());
         }
     }
 
@@ -94,6 +97,17 @@ impl World {
             .collect();
         top.sort();
         (project.tree("."), top)
+    }
+
+    /// Every file of her home, by its path below it.
+    fn home_now(&self) -> BTreeMap<String, Vec<u8>> {
+        let home = self.common.project.home();
+        let mut out = BTreeMap::new();
+        files_below(home, &mut out);
+        let prefix = format!("{}/", home.display());
+        out.into_iter()
+            .map(|(path, bytes)| (path.trim_start_matches(&prefix).to_string(), bytes))
+            .collect()
     }
 
     fn assistant_now(&self) -> BTreeMap<String, Vec<u8>> {
@@ -247,9 +261,37 @@ fn has_ctxloom(w: &mut World) {
     );
 }
 
-#[when("Alice takes ctxloom back out by deleting its directory")]
+#[when("Alice takes ctxloom back out by deleting .ctxloom and ~/.ctxloom")]
 fn delete_ctxloom(w: &mut World) {
     files::remove_tree(w.common.project.dir().join(".ctxloom"));
+    files::remove_tree(w.common.project.home().join(".ctxloom"));
+}
+
+#[then("nothing in her home directory outside ~/.ctxloom was written")]
+fn home_kept_to_its_directory(w: &mut World) {
+    let before = w.adopt.home_before.clone().expect("a command ran");
+    let (now, before) = (outside_ctxloom(&w.home_now()), outside_ctxloom(&before));
+    let changed: Vec<&String> = now
+        .keys()
+        .chain(before.keys())
+        .filter(|k| now.get(*k) != before.get(*k))
+        .collect();
+    assert!(
+        changed.is_empty(),
+        "ctxloom wrote outside ~/.ctxloom: {changed:?}"
+    );
+}
+
+#[then("her home directory is exactly as it was before she set ctxloom up")]
+fn home_as_it_was(w: &mut World) {
+    let before = w.adopt.home_before.clone().expect("a command ran");
+    let now = w.home_now();
+    let changed: Vec<&String> = now
+        .keys()
+        .chain(before.keys())
+        .filter(|k| now.get(*k) != before.get(*k))
+        .collect();
+    assert!(changed.is_empty(), "her home is not as it was: {changed:?}");
 }
 
 /// Asserted on the whole tree, not on a list of well-known files: any file

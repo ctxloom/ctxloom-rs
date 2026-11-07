@@ -191,7 +191,12 @@ fn init(
         forge: sub.get_one::<String>("forge").cloned().unwrap_or_default(),
     };
     let done = uses.init.init(&request).map_err(|e| failure(e, 1))?;
-    writeln!(out, "ctxloom directory already exists: {}", done.app_dir).map_err(output)?;
+    if done.existed {
+        writeln!(out, "ctxloom directory already exists: {}", done.app_dir).map_err(output)?;
+    } else {
+        writeln!(out, "Created ctxloom directory: {}", done.app_dir).map_err(output)?;
+        writeln!(out, "Pulled {} dependencies", done.pulled).map_err(output)?;
+    }
     for remote in &done.remotes {
         writeln!(out, "Added remote \"{}\": {}", remote.name, remote.url).map_err(output)?;
     }

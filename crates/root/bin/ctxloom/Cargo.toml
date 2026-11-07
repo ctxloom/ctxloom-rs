@@ -57,7 +57,6 @@ test-support = [
     "library/test-support",
     "library-application/test-support",
     "cache-files/test-support",
-    "init-application/test-support",
     "reclaim-application/test-support",
     "setup-cli/test-support",
     "deps/test-support",

@@ -194,7 +194,6 @@ fn test_the_binary_reports_the_diagnostics_of_every_crate_composed_in() {
         "duration-text",
         "editor-process",
         "hook-cli",
-        "init-application",
         "isolation",
         "isolation-application",
         "library",

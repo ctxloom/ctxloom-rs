@@ -23,6 +23,17 @@ struct World {
     trees: Mutex<BTreeMap<String, u64>>,
     /// The variables the launch exports.
     exported: Mutex<Vec<String>>,
+    /// The project has no `.ctxloom` yet.
+    fresh: std::sync::atomic::AtomicBool,
+}
+
+/// The scaffold, which lands.
+struct Made;
+
+impl init_application::Create for Made {
+    fn create(&self) -> Result<(), PortFailure> {
+        Ok(())
+    }
 }
 
 impl ExportedVars for World {
@@ -70,7 +81,7 @@ impl UserFiles for World {
         Ok(self.files.lock().unwrap().contains_key(path))
     }
     fn is_dir(&self, path: &str) -> Result<bool, PortFailure> {
-        Ok(path == "/work/.ctxloom")
+        Ok(path == "/work/.ctxloom" && !self.fresh.load(std::sync::atomic::Ordering::SeqCst))
     }
     fn read_file(&self, path: &str) -> Result<Vec<u8>, PortFailure> {
         Ok(self.files.lock().unwrap()[path].clone().into_bytes())
@@ -143,7 +154,12 @@ fn go_to(
         "/home/u",
         "0.1.0",
     );
-    let init = Init::new(world.clone(), world.clone(), Rc::new(fixture.deps));
+    let init = Init::new(
+        world.clone(),
+        world.clone(),
+        Rc::new(fixture.deps),
+        Box::new(Made),
+    );
     let uses = UseCases {
         auth: &auth,
         cleaner: &cleaner,
@@ -321,6 +337,21 @@ fn init_says_the_directory_exists_and_exits_zero() {
 }
 
 #[test]
+fn init_of_a_new_project_says_what_it_made_and_pulled() {
+    let r = go(&["init"], Format::Text, |world, fixture| {
+        world.fresh.store(true, std::sync::atomic::Ordering::SeqCst);
+        let url = "file:///srv/origin.git";
+        fixture.origin("origin", url);
+        fixture.profile("dev", &[&Fixture::reference(url, "demo")]);
+    });
+    assert_eq!(r.exit.unwrap(), 0);
+    assert_eq!(
+        r.out,
+        "Created ctxloom directory: /work/.ctxloom\nPulled 1 dependencies\n"
+    );
+}
+
+#[test]
 fn init_adds_each_remote_and_reports_one_that_would_not_register_as_a_warning() {
     let r = go(
         &[
@@ -365,7 +396,12 @@ fn a_noun_the_line_does_not_carry_is_a_usage_failure() {
         "/h",
         "0",
     );
-    let init = Init::new(world.clone(), world.clone(), Rc::new(fixture.deps));
+    let init = Init::new(
+        world.clone(),
+        world.clone(),
+        Rc::new(fixture.deps),
+        Box::new(Made),
+    );
     let uses = UseCases {
         auth: &auth,
         cleaner: &cleaner,
