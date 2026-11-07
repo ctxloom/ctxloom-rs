@@ -71,3 +71,7 @@ impl SetupUseCases {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "setup.test.rs"]
+mod tests;

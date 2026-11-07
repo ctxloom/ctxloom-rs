@@ -90,6 +90,11 @@ impl World {
         self.vars.push((name.into(), value.into()));
     }
 
+    /// The world's root directory.
+    pub(crate) fn dir(&self) -> &std::path::Path {
+        &self.dir
+    }
+
     #[cfg(feature = "test-support")]
     pub(crate) fn home(&self) -> PathBuf {
         self.dir.join("home")

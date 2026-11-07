@@ -196,4 +196,29 @@ mod error {
             assert!(error.to_string().contains(want.code()));
         }
     }
+
+    // Every variant is its cause's code and its cause's args, names and
+    // values, from a cause that has some.
+    #[test]
+    fn each_variant_carries_its_causes_args() {
+        use angzarr_diagnostic::Arg;
+        let cause = || {
+            Box::new(deps_application::AppError::NoRemoteNamed {
+                name: "origin".to_string(),
+            })
+        };
+        let want = cause();
+        assert_eq!(want.args().len(), 1, "the cause has an arg to carry");
+        for error in [InitError::Files(cause()), InitError::Create(cause())] {
+            assert_eq!(error.code(), want.code());
+            let args = error.args();
+            assert_eq!(args.len(), 1);
+            assert_eq!(args[0].0, want.args()[0].0);
+            assert!(
+                matches!(&args[0].1, Arg::Str(v) if v == "origin"),
+                "{:?}",
+                args[0].1
+            );
+        }
+    }
 }
