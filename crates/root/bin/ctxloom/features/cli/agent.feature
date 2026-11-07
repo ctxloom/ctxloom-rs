@@ -343,20 +343,20 @@ Feature: agent — the bindings that decide what runs, on what context, and wher
       And the output contains "unknown key `agents.developer.auth`"
 
   @pending
-  Rule: --engine-home decides WHOSE engine config home this binding's runs get
+  Rule: --session-home decides WHOSE engine configuration this binding's runs get
 
-    The other axes above pick what runs. `--engine-home` picks whose engine
-    home (~/.claude, say) it runs against — the directory the engine reads its
-    hooks, MCP registrations, prompts and skills from, and writes its session
+    The other axes above pick what runs. `--session-home` picks whose engine
+    configuration (~/.claude, say) it runs against — the directory the engine
+    reads its hooks, MCP registrations, prompts and skills from, and writes its session
     state back into. `host` (and leaving it unsaid) keeps the human's own;
-    `project` gives this binding's runs a disposable PER-SESSION home under
-    `.ctxloom/state/<harp>/home` instead, so a ctxloom agent is not handed the
+    `session` gives this binding's runs a disposable PER-SESSION home under
+    `.ctxloom/sessions/<harp>/home` instead, so a ctxloom agent is not handed the
     human's memory, plugins and personal registrations by default.
 
     # THE EFFECT, MEASURED WHERE IT LANDS. Every other scenario in this file
     # can stop at the binding, because the binding is all their axis is: no
     # engine is launched, so there is nothing further to look at. This one
-    # cannot, because a `--engine-home` that persisted perfectly and changed no
+    # cannot, because a `--session-home` that persisted perfectly and changed no
     # engine's environment is precisely the silent no-op the flag exists to
     # prevent — and `agent list`/`agent show` would report it as a success.
     #
@@ -364,18 +364,19 @@ Feature: agent — the bindings that decide what runs, on what context, and wher
     # j002200_isolation.feature) rather than a real engine binary, and reads
     # CLAUDE_CONFIG_DIR back out of the spawned process's OWN environment. The
     # difference from the sibling scenario there is the only thing under test
-    # here: that fixture writes `engine_home: session` into config.yaml itself,
-    # while this one renders NO engine_home at all and makes `ctxloom agent
-    # edit --engine-home` the sole writer. Both halves are asserted, because
+    # here: that fixture writes `session_home: session` into config.yaml itself,
+    # while this one renders NO session_home at all and makes `ctxloom agent
+    # edit --session-home` the sole writer. Both halves are asserted, because
     # they fail apart — a flag dropped before the binding leaves the file
     # without the key, and a consumer that ignores the key leaves the engine on
     # Alice's own home.
-    Scenario: --engine-home session moves the engine off Alice's own home onto a per-session one
+    Scenario: --session-home session moves the engine off Alice's own home onto a per-session one
+      # new: this port's own.
       Given Alice has a git-backed project
       And Alice has whatever credentials "claude-code" needs to authenticate
-      And Alice declares engine_home "session" on her agent with the ctxloom CLI
+      And Alice declares session_home "session" on her agent with the ctxloom CLI
       When Alice runs the isolated "claude-code" agent under workspace "none"
-      Then the file ".ctxloom/config.yaml" contains "engine_home: session"
+      Then the file ".ctxloom/config.yaml" contains "session_home: session"
       And the spy "claude-code" process's "CLAUDE_CONFIG_DIR" env var points at this session's config-home instance
       And Alice's own "claude-code" home directory was never created by the run
 

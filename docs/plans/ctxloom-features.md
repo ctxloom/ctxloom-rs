@@ -146,6 +146,19 @@ feature file; it belongs in git history.
   ctxloom used to do) and no technical detail (files, keys, harness mechanics, why an
   assertion is shaped as it is). Rationale a test still needs lives in the cli feature or
   the step definitions.
+- **A project's sessions live in its `.ctxloom`.** Each session is one git-ignored
+  directory, `.ctxloom/sessions/<harp>/`: its session home, its records and transcripts, and
+  its worktree checkout, so an agent's edits are visible in the project before they are
+  merged. The session's events live there too: there is no project-level session store
+  or index. `session list` and `search` walk `.ctxloom/sessions/`, taking each session's name
+  from its directory and the rest from the metadata inside it; a name is unique because
+  it is the directory's name. Deleting `.ctxloom` removes all of it; leaving ctxloom entirely is deleting
+  `~/.ctxloom` too, which holds what it keeps across projects (registered companions, cloned remotes). taskloom's `state.db` is taskloom's.
+- **Materialize is an export, not a delivery path.** Sessions get their context in their
+  session home; nothing a session reads is materialized. `ctxloom materialize` writes the
+  team's context out as an engine's own files for someone who does not use ctxloom, and the
+  copy is a snapshot that goes stale as the context moves on (`manage check` names it). No
+  journey materializes as part of everyday use.
 - **Companions are added, never discovered.** No scan finds companions, so a journey that
   relies on one shows the user adding it (`companion add`, which writes her home, never the project) before it matters
   (j000300's setup augmentation first).

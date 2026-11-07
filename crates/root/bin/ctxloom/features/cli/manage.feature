@@ -535,6 +535,7 @@ Feature: manage — wiring ctxloom into a project, and taking it back out
     # which no nested file can express -- and one of them is a credential, so
     # asserting it stays is not decoration.
     Scenario: Gitignore install excludes ctxloom's private state
+      # substitution: told as the user's flow, with the commands she runs.
       Given an initialized ctxloom project
       When Alice adds ctxloom's gitignore entries:
         """
@@ -543,6 +544,7 @@ Feature: manage — wiring ctxloom into a project, and taking it back out
       Then the command succeeds
       And the file ".ctxloom/.gitignore" contains "/cache"
       And the file ".ctxloom/.gitignore" contains "/state"
+      And the file ".ctxloom/.gitignore" contains "/sessions"
       And the file ".gitignore" does not exist
 
     # The shipped defect this replaced: the writer emitted a fresh comment header

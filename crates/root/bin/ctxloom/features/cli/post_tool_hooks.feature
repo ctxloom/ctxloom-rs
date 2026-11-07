@@ -1,7 +1,7 @@
 # world: surfaces
 # Ported from cli/post_tool_hooks.feature
-# NOT ported: nothing; the "session index records harp" step is a no-op here
-#   (plan 8.4: `--engine` names the codec).
+# NOT ported: nothing. The session index is the sessions directory,
+#   `.ctxloom/sessions/`: a harp is recorded by its directory.
 
 
 Feature: The PostToolUse callback — a nudge after the tool call that earns one, and silence after every other

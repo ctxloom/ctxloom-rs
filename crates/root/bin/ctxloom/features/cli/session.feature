@@ -16,7 +16,11 @@ Feature: session — the record of what your assistant did, and the tools to pru
   changes nothing until you say `--yes`.
 
   This is the comprehensive per-noun spec: what the noun DOES, leaf by leaf,
-  hermetically against a seeded session index. The narrative versions — Alice
+  hermetically against seeded sessions in the session index, the
+  `.ctxloom/sessions/` directory: one directory per session, named by its
+  harp. Listing and searching walk that directory, taking each session's name
+  from its directory and the rest of what it knows from the session's own
+  metadata inside. The narrative versions — Alice
   recalling a conversation from March, Alice closing a shipped workstream out
   — are journeys/j001200_recall.feature and j001300_closeout.feature, which
   assert what a PERSON sees.
@@ -28,6 +32,8 @@ Feature: session — the record of what your assistant did, and the tools to pru
     ctxloom session show <harp>
     ctxloom session edit <harp> --name <new>
     ctxloom session keep <harp> [--undo]
+    ctxloom session pause|resume|stop <harp>
+    ctxloom session ask <harp> "<question>"
     ctxloom session search <word>... [--state live|ended|unknown]
     ctxloom session transcript              (bare: lists)
     ctxloom session transcript list [<harp>]
@@ -281,3 +287,53 @@ Feature: session — the record of what your assistant did, and the tools to pru
       When I run "ctxloom session approvals amber-swift-owl"
       Then the command fails
       And the output contains "unknown command"
+
+  Rule: A running session is controlled by its harp: pause, resume, stop and ask
+
+    An agent is a definition; a running session is the thing Alice steers.
+    `session pause`, `resume`, `stop` and `ask` each name a running session
+    by its harp, such as a child her orchestrator delegated to.
+
+    Scenario: Pausing a running session holds it until she resumes it
+      # new: session pause.
+      Given an initialized ctxloom project
+      And a session "amber-swift-owl" that is running
+      When Alice pauses it:
+        """
+        ctxloom session pause amber-swift-owl
+        """
+      Then the command succeeds
+      And the session "amber-swift-owl" is shown paused by her
+
+    Scenario: Resuming a paused session lets it go again
+      # new: session resume.
+      Given an initialized ctxloom project
+      And a session "amber-swift-owl" that Alice has paused
+      When Alice resumes it:
+        """
+        ctxloom session resume amber-swift-owl
+        """
+      Then the command succeeds
+      And the session "amber-swift-owl" is shown running
+
+    Scenario: Stopping a running session ends it
+      # new: session stop.
+      Given an initialized ctxloom project
+      And a session "amber-swift-owl" that is running
+      When Alice stops it:
+        """
+        ctxloom session stop amber-swift-owl
+        """
+      Then the command succeeds
+      And the session "amber-swift-owl" is shown ended
+
+    Scenario: Asking a running session a question returns at once, and its answer arrives later
+      # new: session ask.
+      Given an initialized ctxloom project
+      And a session "amber-swift-owl" that is running
+      When Alice asks it a question:
+        """
+        ctxloom session ask amber-swift-owl "which migration path?"
+        """
+      Then the command succeeds without waiting for the answer
+      And the session's answer, when it comes, quotes "which migration path?"

@@ -87,7 +87,7 @@ Feature: The coordination tools advertise a closed message-kind vocabulary
 
   Rule: The coordinator's verbs refuse what is not theirs to accept
 
-    The coordinator stands in a session owner (a mock-engine `ctxloom run`)
+    Alice's orchestrator is a session owner (a mock-engine `ctxloom run`)
     with two agents it can delegate to, "reviewer" and "fixer", each with its
     own profile, MCP server and permission mode.
 
@@ -97,12 +97,12 @@ Feature: The coordination tools advertise a closed message-kind vocabulary
     # refused at the coordinator's ingress, naming the kinds a sender may use;
     # a spelling outside the vocabulary is refused at the tool schema, naming
     # the value; a sendable kind still goes through. This drives the
-    # coordinator's own agent_send: no tool here reaches a child's runner
+    # orchestrator's own agent_send: no tool here reaches a child's runner
     # socket. The refusal is the same ingress guard for both sender surfaces,
     # and the child-identity case is the unit suite's.
     Scenario: A sender cannot claim a coordinator-reserved message kind
       # substitution: the journey's Background is the scenario's first Givens
-      Given Alice's coordinator can delegate to two agents, "reviewer" and "fixer", each with its own profile, its own MCP server, and its own permission mode
+      Given Alice's orchestrator can delegate to two agents, "reviewer" and "fixer", each with its own profile, its own MCP server, and its own permission mode
       And a session owner is standing
       When the agent calls tool "agent_run" with:
         | role         | fixer |
@@ -125,7 +125,7 @@ Feature: The coordination tools advertise a closed message-kind vocabulary
     # silently accepted.
     Scenario: Stopping a child is idempotent, and stopping a run that never existed is refused
       # substitution: the journey's Background is the scenario's first Givens
-      Given Alice's coordinator can delegate to two agents, "reviewer" and "fixer", each with its own profile, its own MCP server, and its own permission mode
+      Given Alice's orchestrator can delegate to two agents, "reviewer" and "fixer", each with its own profile, its own MCP server, and its own permission mode
       And a session owner is standing
       When the agent calls tool "agent_run" with:
         | role         | fixer |

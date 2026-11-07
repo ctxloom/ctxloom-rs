@@ -28,10 +28,13 @@ Feature: Cross-engine transcript capture — every engine's conversation becomes
   Scenario Outline: An interactive engine run's own log is captured when it exits
     # substitution: Alice reads the session back through ctxloom, as she would, instead of the record's lines being inspected.
     Given a real <agent> agent is available
-    When I run the <agent> agent interactively to completion with prompt "leave a mark"
+    When Alice runs her <agent> agent interactively to completion:
+      """
+      ctxloom run --agent <agent> "leave a mark"
+      """
     Then ctxloom's record of that session holds the conversation she just had
     And the record names "<engine>" as the engine she had it with
 
     Examples:
       | agent       | engine      |
-      | Claude      | claude-code |
+      | claude      | claude-code |

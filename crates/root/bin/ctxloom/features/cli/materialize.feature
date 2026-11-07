@@ -12,7 +12,11 @@ Feature: materialize — the profiles' surfaces written at rest, any subset of t
   `ctxloom materialize` writes the assembled profiles into a directory as
   each engine's NATIVE files — its context file, MCP registry, settings and
   hooks, commands and skills — so an engine launched there with ctxloom out of
-  the loop inherits them. Each engine's kinds are owned separately, so
+  the loop inherits them. It is an export, not how ctxloom delivers: a session
+  ctxloom starts is handed its context in its own session home and never reads
+  these files. Materialize is for sharing the team's context with someone who
+  does not use ctxloom, and what it writes is a snapshot that goes stale as
+  the team's context moves on. Each engine's kinds are owned separately, so
   re-delivering one kind, or one engine, never takes another's files out, and
   `--release` takes back exactly what it names.
 

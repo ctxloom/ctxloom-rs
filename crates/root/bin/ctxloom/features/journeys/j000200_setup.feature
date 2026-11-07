@@ -19,10 +19,17 @@ Feature: Setting up ctxloom on a project
     Given Alice has a project that has never used ctxloom
     And Alice has a personal ctxloom repository
     And her company has a ctxloom repository
-    When Alice initializes ctxloom in her project
-    And she adds her personal repository as a source
-    And she adds her company's repository as a source
-    And Alice starts a session
+    When Alice sets ctxloom up in her project and adds her personal and company repositories as remotes:
+      """
+      ctxloom init --remote https://github.com/alice/ctxloom-content
+      ctxloom remote create acme https://github.com/acme/ctxloom-content
+      """
+    And she puts each repository's bundle in her profile, pulls them, and starts a session:
+      """
+      ctxloom profile edit default --add-bundle personal/house-rules --add-bundle acme/standards
+      ctxloom deps pull
+      ctxloom run
+      """
     Then her assistant receives her personal repository's content
     And her assistant receives her company repository's content
 
@@ -33,8 +40,11 @@ Feature: Setting up ctxloom on a project
     # substitution: one engine, no Outline; the Thens say what her restarted assistant receives.
     Given Alice has a personal ctxloom repository
     And her company has a ctxloom repository
-    When Alice runs the ctxloom setup
-    And she adds her personal and company repositories as sources
+    When Alice sets ctxloom up at a terminal, naming her personal repository:
+      """
+      ctxloom init --remote https://github.com/alice/ctxloom-content
+      """
+    And in the setup interview she adds her company's repository as a remote
     And the setup interview composes her agents' profiles from the sources' fragments
     And ctxloom offers to restart into her newly configured session
     And Alice accepts the restart
@@ -44,6 +54,7 @@ Feature: Setting up ctxloom on a project
   # With a real assistant: it can use what it was handed.
   @live
   Scenario Outline: The restarted <engine> assistant can see every source
+    # substitution: told as the user's flow, with the commands she runs.
     Given Alice has personal and company ctxloom repositories, served by a real <engine> assistant
     And each source carries a distinct marker phrase
     And Alice has completed setup and restarted into her configured session
@@ -51,12 +62,7 @@ Feature: Setting up ctxloom on a project
     Then its reply contains her personal repository's marker
     And its reply contains her company repository's marker
 
-    @claude-code
     Examples:
-      | engine |
-      | Claude |
-
-    @opencode
-    Examples:
-      | engine   |
-      | Opencode |
+      | engine      |
+      | claude-code |
+      | opencode    |

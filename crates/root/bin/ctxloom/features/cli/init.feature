@@ -194,6 +194,14 @@ Feature: init — the setup interview, and what it does to a project that alread
     change it. The project it leaves has a default agent whose headless runs
     accept file edits without asking.
 
+    Init also offers to add companions, by name. It seeds the offer with the
+    companions ctxloom ships whose programs are on her machine, each one she
+    can decline, and she can name others. Init looks for nothing beyond the
+    companions it ships. Each accepted or named program is checked and
+    registered in her home (`~/.ctxloom`), exactly as `companion add` would;
+    a name whose program is not on her machine is refused, saying so, and the
+    others are still added.
+
     # Hermetic: a stub `claude` makes claude-code the only installed engine
     # (so init announces it rather than asking), the https clone of the seeded
     # remote is refused, and --skip-launch stops before the auth probe and
@@ -209,3 +217,44 @@ Feature: init — the setup interview, and what it does to a project that alread
       And the default agent's headless posture is "acceptEdits"
       And init's terminal output says "Delegation commits: before a delegated agent's worktree is carved"
       And init's terminal output says "ctxloom agent edit default --permissions <posture>"
+
+    Scenario: A first init adds the companions she names, and refuses one she does not have
+      # new: init offers to add companions by name.
+      Given an empty project directory
+      And claude-code is the only engine installed, and nothing reaches the network
+      And the "ltk" program is on Alice's machine
+      And the "reprise" program is not on Alice's machine
+      When Alice runs "ctxloom init" at a terminal, answering:
+        | question                | answer      |
+        | Add companions by name? | ltk reprise |
+      Then init told her it added the companion "ltk"
+      And init told her it could not add "reprise" because its program is not on her machine
+      And the companion "ltk" is registered in her home
+      And the companion "reprise" is not registered
+      And nothing in her project outside .ctxloom was written
+
+    Scenario: A first init offers the shipped companions she has, and adds only those she accepts
+      # new: init seeds its companion offer with ctxloom's shipped companions.
+      Given an empty project directory
+      And claude-code is the only engine installed, and nothing reaches the network
+      And the shipped companions "ltk" and "reprise" are on Alice's machine
+      When Alice runs "ctxloom init" at a terminal, answering:
+        | question                   | answer |
+        | Add the ltk companion?     | yes    |
+        | Add the reprise companion? | no     |
+      Then init offered her the companions "ltk" and "reprise"
+      And the companion "ltk" is registered in her home
+      And the companion "reprise" is not registered
+
+    Scenario: A shipped companion whose program she does not have is not offered
+      # new: init offers only the shipped companions on her machine.
+      Given an empty project directory
+      And claude-code is the only engine installed, and nothing reaches the network
+      And the shipped companion "ltk" is on Alice's machine
+      And the shipped companion "reprise" is not on Alice's machine
+      When Alice runs init at a terminal, taking every recommendation:
+        """
+        ctxloom init
+        """
+      Then init offered her the companion "ltk"
+      And init did not offer her the companion "reprise"

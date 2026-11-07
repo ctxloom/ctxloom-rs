@@ -22,7 +22,8 @@ Feature: The archaeologist — what did we decide in March?
 
   # She half-remembers the question, not the session's name.
   Scenario: A phrase from the question she asked finds the session that answered it
-    When I run "ctxloom session search J001200-TITLE-WORKTREE-QUESTION"
+    # substitution: told as the user's flow, with the commands she runs.
+    When I run "ctxloom session search worktree layout"
     Then the search names the March session by a phrase from its first prompt
 
   # Before she resumes it, she makes sure it is the right one.

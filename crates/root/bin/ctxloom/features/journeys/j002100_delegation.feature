@@ -5,7 +5,7 @@
 
 @doc
 @pending
-Feature: Coordinator delegates isolated work
+Feature: Orchestrator delegates isolated work
 
   Alice runs a session that hands work out to other agents: a "reviewer" to
   read the change and a "fixer" to repair what the reviewer finds. Each has
@@ -23,30 +23,30 @@ Feature: Coordinator delegates isolated work
 
   Background:
     # substitution: the session owner is Alice's own session
-    Given Alice's coordinator can delegate to two agents, "reviewer" and "fixer", each with its own profile, its own MCP server, and its own permission mode
-    And Alice's session is running
+    Given Alice's orchestrator can delegate to two agents, "reviewer" and "fixer", each with its own profile, its own MCP server, and its own permission mode
+    And Alice's session "amber-quiet-heron" is running
 
-  # Alice's coordinator hands out both pieces of work. In the record of each
+  # Alice's orchestrator hands out both pieces of work. In the record of each
   # run, Alice sees the MCP servers and permissions that child was given: its
   # own, never its sibling's or hers, and the servers by name, never the
   # commands that launch them and the secrets those can carry.
-  Scenario: Each child is granted only its own MCP servers, never a sibling's or the coordinator's
-    # substitution: one scenario for what Alice sees of each grant (servers, permissions, names never commands)
-    When Alice's coordinator delegates the review to "reviewer" and the fix to "fixer"
+  Scenario: Each child is granted only its own MCP servers, never a sibling's or the orchestrator's
+    # new: told as the user's flow.
+    When Alice's orchestrator delegates the review to "reviewer" and the fix to "fixer"
     Then Alice sees "reviewer" was granted its own MCP server and permissions, and not "fixer"'s
     And Alice sees "fixer" was granted its own MCP server and permissions, and not "reviewer"'s
     And the record names each child's MCP servers, and never the commands that launch them
 
-  # The coordinator asks the fixer which way to go and carries on at once.
-  # The fixer's answer arrives later, as mail that starts the coordinator's
+  # The orchestrator asks the fixer which way to go and carries on at once.
+  # The fixer's answer arrives later, as mail that starts the orchestrator's
   # next turn, saying which question it answers.
   Scenario: An ask returns at once, and the child's answer arrives later as mail quoting it
-    # substitution: said as Alice's coordinator asking, and the answer arriving
-    Given Alice's coordinator has delegated the fix to "fixer"
-    When Alice's coordinator asks "fixer" "which migration path?"
-    Then the coordinator is not kept waiting for the answer
+    # substitution: said as Alice's orchestrator asking, and the answer arriving
+    Given Alice's orchestrator has delegated the fix to "fixer"
+    When Alice's orchestrator asks "fixer" "which migration path?"
+    Then the orchestrator is not kept waiting for the answer
     When "fixer" answers "the reversible one"
-    Then the coordinator's next turn starts with "fixer"'s answer, quoting the question
+    Then the orchestrator's next turn starts with "fixer"'s answer, quoting the question
 
   # The reviewer hits its rate limit and is held until the engine's reset;
   # Alice pauses the fixer herself. Her session dies and she resumes it.
@@ -56,12 +56,18 @@ Feature: Coordinator delegates isolated work
   @durable-holds
   Scenario: A held child's hold and a paused child's pause survive the session's coordinator restart
     # substitution: said as what Alice sees of her children
-    Given Alice's coordinator has delegated the review to "reviewer", which hits a rate limit resetting in 75 seconds
-    And Alice's coordinator has delegated the fix to "fixer"
+    Given Alice's orchestrator has delegated the review to "reviewer", which hits a rate limit resetting in 75 seconds
+    And Alice's orchestrator has delegated the fix to "fixer", in session "brisk-copper-moth"
     And Alice sees "reviewer" held on its rate limit, until its reset
-    When Alice pauses "fixer"
+    When Alice pauses "fixer":
+      """
+      ctxloom session pause brisk-copper-moth
+      """
     Then Alice sees "fixer" paused by her
-    When Alice's session dies and she resumes it
+    When Alice's session dies and she resumes it:
+      """
+      ctxloom run --session amber-quiet-heron
+      """
     Then Alice sees "reviewer" still held on its rate limit, until the same reset
     And Alice sees "fixer" still paused by her
     And Alice sees "reviewer" go again when its limit resets
@@ -72,9 +78,12 @@ Feature: Coordinator delegates isolated work
   @durable-holds
   Scenario: A child whose credential is refused stays held across the session's coordinator restart
     # substitution: said as what Alice sees of her children
-    Given Alice's coordinator has delegated the review to "reviewer", whose credential is refused
+    Given Alice's orchestrator has delegated the review to "reviewer", whose credential is refused
     And Alice sees "reviewer" held on its refused credential
-    When Alice's session dies and she resumes it
+    When Alice's session dies and she resumes it:
+      """
+      ctxloom run --session amber-quiet-heron
+      """
     Then Alice sees "reviewer" still held on its refused credential
 
   # Alice gives the fixer the reviewer's profile and permissions. The fixer's
@@ -82,15 +91,21 @@ Feature: Coordinator delegates isolated work
   # what that run was actually given.
   Scenario: A child's grant is journaled at enqueue and survives a later config edit unchanged
     # substitution: said as what Alice sees of each run's grant
-    Given Alice's coordinator has delegated the fix to "fixer"
-    When Alice gives "fixer" the reviewer's profile and permissions
-    And Alice's coordinator delegates the next fix to "fixer"
+    Given Alice's orchestrator has delegated the fix to "fixer"
+    When Alice gives "fixer" the reviewer's profile and permissions:
+      """
+      ctxloom agent edit fixer --add-profile reviewing --permissions plan
+      """
+    And Alice's orchestrator delegates the next fix to "fixer"
     Then Alice sees "fixer"'s first run was granted its original MCP server and permissions
     And Alice sees "fixer"'s second run was granted the reviewer's MCP server and permissions
 
   # When the work is done, Alice stops the fixer, and sees it has ended.
   Scenario: Alice stops a child she no longer needs
     # new: the operator's stop
-    Given Alice's coordinator has delegated the fix to "fixer"
-    When Alice stops "fixer"
+    Given Alice's orchestrator has delegated the fix to "fixer", in session "brisk-copper-moth"
+    When Alice stops "fixer":
+      """
+      ctxloom session stop brisk-copper-moth
+      """
     Then Alice sees "fixer" ended

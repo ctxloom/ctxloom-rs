@@ -143,3 +143,47 @@ Feature: companion — which programs ctxloom runs alongside your session
       And the output contains "acme"
       And the output contains "ctxloom-companion-acme"
       And the output does not contain "Available Commands:"
+
+  Rule: disable keeps a companion registered but its guidance reaches nothing; enable restores it; remove unregisters it
+
+    `companion disable <name>` and `companion enable <name>` write the user's
+    home, as `add` and `remove` do. A disabled companion is still listed, and
+    contributes nothing to any session or setup interview until it is enabled
+    again. Removing a companion unregisters it.
+
+    Scenario: A disabled companion stays registered, and its guidance reaches nothing
+      # new: companion disable.
+      Given an initialized ctxloom project
+      And a companion "ctxloom-companion-acme" is on PATH, not registered
+      And Alice has added the companion "acme"
+      When Alice disables it:
+        """
+        ctxloom companion disable acme
+        """
+      Then the command succeeds
+      And the companion "acme" is still registered in her home, disabled
+      And a session's context carries none of "acme"'s guidance
+
+    Scenario: Enabling a disabled companion restores its guidance
+      # new: companion enable.
+      Given an initialized ctxloom project
+      And a companion "ctxloom-companion-acme" is on PATH, not registered
+      And Alice has added the companion "acme" and disabled it
+      When Alice enables it again:
+        """
+        ctxloom companion enable acme
+        """
+      Then the command succeeds
+      And a session's context carries "acme"'s guidance
+
+    Scenario: Removing a companion unregisters it
+      # new: remove's contract beside enable and disable.
+      Given an initialized ctxloom project
+      And a companion "ctxloom-companion-acme" is on PATH, not registered
+      And Alice has added the companion "acme"
+      When Alice removes it:
+        """
+        ctxloom companion remove acme --yes
+        """
+      Then the command succeeds
+      And the companion "acme" is not registered

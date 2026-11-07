@@ -5,7 +5,7 @@
 @pending
 Feature: The close-out — the end of a workstream
 
-  The feature shipped on Friday. Monday the debris is real, and none of it is
+  The feature shipped on Monday. The next week the debris is real, and none of it is
   interesting enough that anyone will deal with it voluntarily: stale
   worktrees, several holding work that was never merged; a pile of finished
   sessions; and design notes nobody filed.
@@ -21,7 +21,8 @@ Feature: The close-out — the end of a workstream
   are merged and how to remove them herself.
 
   Background:
-    Given the feature shipped on Friday and Alice is closing the workstream out
+    # substitution: told as the user's flow, with the commands she runs.
+    Given the feature shipped on Monday and Alice is closing the workstream out the next week
 
   # She looks before anything is destroyed.
   Scenario: The sweep reports every session's fate before it changes anything

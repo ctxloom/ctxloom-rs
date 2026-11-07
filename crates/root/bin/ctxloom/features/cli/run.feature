@@ -521,3 +521,33 @@ Feature: run — assembling a project's context and handing it to an engine
       And Alice's agent declares engine_home "session"
       When Alice runs the isolated "claude-code" agent under workspace "none"
       Then the run is refused without any isolation finding, naming "claude setup-token"
+
+  @pending
+  Rule: --engine runs the engine it names, with that engine's defaults
+
+    A run says what runs in one of two ways: `--agent <name>` runs an agent,
+    and `--engine <engine>` runs that engine with its engine defaults, with
+    no agent named. An engine ctxloom does not have is refused by name, and
+    nothing runs.
+
+    Scenario: A run naming an engine runs that engine with its defaults
+      # new: run takes --engine.
+      Given an initialized ctxloom project
+      And the mock LLM responds "MOCK-REPLY"
+      When Alice runs the mock engine by name:
+        """
+        ctxloom run --one-shot --engine mock hello
+        """
+      Then the command succeeds
+      And the run was on the mock engine, with its engine defaults
+
+    Scenario: A run naming an engine ctxloom does not have is refused, naming it
+      # new: run refuses an unknown engine.
+      Given an initialized ctxloom project
+      When Alice names an engine ctxloom does not have:
+        """
+        ctxloom run --one-shot --engine bogus-engine hello
+        """
+      Then the command fails
+      And the output contains "bogus-engine"
+      And no model was asked anything

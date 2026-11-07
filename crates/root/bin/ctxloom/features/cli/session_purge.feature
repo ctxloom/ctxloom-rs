@@ -36,14 +36,14 @@ Feature: session purge — the one destroyer, and a purged session is gone
       Then the command exits with code 4
       And the output contains "removed nothing"
       And the output contains "ctxloom session purge amber-swift-owl --yes"
-      And the home file ".ctxloom/sessions/amber-swift-owl/transcripts/transcript.jsonl" exists
+      And the file ".ctxloom/sessions/amber-swift-owl/transcripts/transcript.jsonl" exists
 
     Scenario: --yes removes the index entry and the transcript
       # substitution: the project Given is the Background's; the verb is `session purge` (Go's `session remove` is retired), and the session's whole directory goes with it.
       Given a finished session "amber-swift-owl" with a transcript and a summary an older ctxloom left
       When I run "ctxloom session purge amber-swift-owl --yes"
       Then the command succeeds
-      And the home file ".ctxloom/sessions/amber-swift-owl" does not exist
+      And the file ".ctxloom/sessions/amber-swift-owl" does not exist
       And the output file "essence.md" of session "amber-swift-owl" exists
       When I run "ctxloom session list --all"
       Then the output does not contain "amber-swift-owl"
@@ -58,14 +58,14 @@ Feature: session purge — the one destroyer, and a purged session is gone
       Then the command fails
       And the output contains "cannot be proven dead"
       And the output contains "ctxloom session purge amber-swift-owl --yes --force"
-      And the home file ".ctxloom/sessions/amber-swift-owl/transcripts/transcript.jsonl" exists
+      And the file ".ctxloom/sessions/amber-swift-owl/transcripts/transcript.jsonl" exists
 
     Scenario: --force purges it anyway
       # new: Go's "--even-if-live sweeps it anyway", with `--force` overriding the unprovable-liveness refusal; the session is gone from the listing too.
       Given a finished session "amber-swift-owl" with a transcript but no session lock
       When I run "ctxloom session purge amber-swift-owl --yes --force"
       Then the command succeeds
-      And the home file ".ctxloom/sessions/amber-swift-owl/transcripts/transcript.jsonl" does not exist
+      And the file ".ctxloom/sessions/amber-swift-owl/transcripts/transcript.jsonl" does not exist
       When I run "ctxloom session list --all"
       Then the output does not contain "amber-swift-owl"
 
@@ -77,7 +77,7 @@ Feature: session purge — the one destroyer, and a purged session is gone
       Then the command fails
       And the output contains "owner is alive"
       And the output contains "--force"
-      And the home file ".ctxloom/sessions/amber-swift-owl/transcripts/transcript.jsonl" exists
+      And the file ".ctxloom/sessions/amber-swift-owl/transcripts/transcript.jsonl" exists
 
   Rule: A transcript is the session's record, kept until its retention passes
 
@@ -93,7 +93,7 @@ Feature: session purge — the one destroyer, and a purged session is gone
       When I run "ctxloom session purge brisk-copper-moth --yes"
       Then the command fails
       And the output contains "retention"
-      And the home file ".ctxloom/sessions/brisk-copper-moth/transcripts/transcript.jsonl" exists
+      And the file ".ctxloom/sessions/brisk-copper-moth/transcripts/transcript.jsonl" exists
 
     Scenario: A kept transcript is refused at any age, and the listing says it is kept
       # substitution: the project Given is the Background's; the destroyer is `session purge` (`session transcript purge` is retired).
@@ -105,12 +105,12 @@ Feature: session purge — the one destroyer, and a purged session is gone
       When I run "ctxloom session purge amber-swift-owl --yes"
       Then the command fails
       And the output contains "ctxloom session keep amber-swift-owl --undo"
-      And the home file ".ctxloom/sessions/amber-swift-owl/transcripts/transcript.jsonl" exists
+      And the file ".ctxloom/sessions/amber-swift-owl/transcripts/transcript.jsonl" exists
       When I run "ctxloom session keep amber-swift-owl --undo"
       Then the command succeeds
       When I run "ctxloom session purge amber-swift-owl --yes"
       Then the command succeeds
-      And the home file ".ctxloom/sessions/amber-swift-owl/transcripts/transcript.jsonl" does not exist
+      And the file ".ctxloom/sessions/amber-swift-owl/transcripts/transcript.jsonl" does not exist
 
   Rule: Purge takes one harp or an age, never both and never neither
 
@@ -124,7 +124,7 @@ Feature: session purge — the one destroyer, and a purged session is gone
       Given a finished session "amber-swift-owl" with a transcript
       When I run "ctxloom session purge amber-swift-owl --older-than 90d --yes"
       Then the command exits with code 2
-      And the home file ".ctxloom/sessions/amber-swift-owl/transcripts/transcript.jsonl" exists
+      And the file ".ctxloom/sessions/amber-swift-owl/transcripts/transcript.jsonl" exists
 
     Scenario: Neither a harp nor an age is refused, naming both forms
       # new: purge with nothing to select refuses rather than purging everything.
@@ -133,7 +133,7 @@ Feature: session purge — the one destroyer, and a purged session is gone
       Then the command exits with code 2
       And the output contains "ctxloom session purge <harp>"
       And the output contains "--older-than"
-      And the home file ".ctxloom/sessions/amber-swift-owl/transcripts/transcript.jsonl" exists
+      And the file ".ctxloom/sessions/amber-swift-owl/transcripts/transcript.jsonl" exists
 
   Rule: A configured purge age stands where no age is given
 

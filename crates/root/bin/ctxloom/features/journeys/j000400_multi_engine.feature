@@ -18,7 +18,7 @@ Feature: One shared profile, reaching every engine in its own native format
 
   Background:
     # new: the team's profile is the journey's starting point
-    Given Carol's team profile carries a shared fragment, command, MCP server, and hook
+    Given Carol's team profile "team" carries a shared fragment, command, MCP server, and hook
 
   # Alice keeps her own notes for Claude Code in the project. Her session
   # starts with the team's guidance and her notes both; Bob's session on his
@@ -27,10 +27,16 @@ Feature: One shared profile, reaching every engine in its own native format
   Scenario: Alice and Bob each start a session on their own engine with the team's profile
     # new: the journey's flow, two teammates on two engines in one checkout
     Given Alice keeps her own notes for Claude Code in the project
-    When Alice starts a session on claude-code with the team profile
+    When Alice starts a session on claude-code with the team profile:
+      """
+      ctxloom run --engine claude-code --profile team
+      """
     Then Alice's session starts with the team's guidance and her own notes
     And Alice's session offers the team's command, MCP server and hook
-    When Bob starts a session on opencode with the team profile
+    When Bob starts a session on opencode with the team profile:
+      """
+      ctxloom run --engine opencode --profile team
+      """
     Then Bob's session starts with the same team guidance
     And Bob's session offers the team's command, MCP server and hook
     And the project holds nothing either session wrote, and Alice's notes are as she wrote them
@@ -46,5 +52,5 @@ Feature: One shared profile, reaching every engine in its own native format
 
     Examples:
       | engine      |
-      | Claude      |
-      | Opencode    |
+      | claude-code |
+      | opencode    |

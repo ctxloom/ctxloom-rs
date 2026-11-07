@@ -21,7 +21,16 @@ Feature: The container runtime axis — can an engine actually land in a contain
   # ran somewhere else, and its work still reached her project.
   @container-only @image-mock-agent
   Scenario: A containerized run puts the engine somewhere this host is not
-    When Alice runs the mock agent with runtime "host"
+    # substitution: told as the user's flow, with the commands she runs.
+    When Alice runs the mock agent on her machine:
+      """
+      ctxloom agent edit mock --runtime host
+      ctxloom run --one-shot --agent mock "where are you running?"
+      """
     Then the engine left its record, and it ran on this host
-    When Alice runs the mock agent with runtime "container"
+    When Alice runs the mock agent in a container:
+      """
+      ctxloom agent edit mock --runtime container-rootless
+      ctxloom run --one-shot --agent mock "where are you running?"
+      """
     Then the engine left its record, and it ran inside a container, not on this host

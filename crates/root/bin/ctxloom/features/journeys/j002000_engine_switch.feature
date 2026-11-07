@@ -1,10 +1,10 @@
-# world: surfaces
 # Ported from journeys/j002000_engine_switch.feature (rev f36e8dfb2)
 # NOT ported: the scenarios tagged @pending: they wait for the engine-swap
 #   preview, the capability-loss report, and `ctxloom run` launching an
 #   engine. The swap's own contract and the unknown-engine refusal are
 #   cli/agent.feature's.
 @doc
+@pending
 Feature: Engine switch day
 
   A pricing change, a policy change, a vendor doing something nobody liked:
@@ -20,27 +20,32 @@ Feature: Engine switch day
   later is told what its engine cannot do.
 
   Background:
-    Given Alice's team has standardised on one engine and is moving to another
+    # substitution: the team's agent is "dev", moving from claude-code to opencode.
+    Given the team's agent "dev" runs on claude-code, and the team is moving to opencode
 
   # The question a migrating team asks first is not "will it work" but "what
   # do we give up". The new engine has no hook for the end of a session, and
   # the team built on that hook. Alice sees it before anything changes.
-  @pending
   Scenario: Before she switches, Alice sees what the team would give up
     # new: the engine-swap preview, the switch's confirmation
-    When Alice asks to switch the team's agent to the new engine, without confirming
+    When Alice asks to switch the team's agent to the new engine, without confirming:
+      """
+      ctxloom agent edit dev --engine opencode
+      """
     Then ctxloom shows what the new engine cannot carry that the old one did
     And the team's agent is still on the old engine
 
   # Once she confirms, the team's next session runs on the new engine and
   # starts with the same guidance, word for word. Its surfaces are in its own
   # session home; the project is left as it was.
-  @pending
   Scenario: The next session on the new engine starts with the same guidance
     # new: the switch, seen from the team's next session
     Given the team's last session on the old engine started with the team's guidance
-    When Alice switches the team's agent to the new engine, and confirms
-    And Alice starts a session with the team's agent
+    When Alice switches the team's agent to the new engine, and confirms, and starts a session with it:
+      """
+      ctxloom agent edit dev --engine opencode --yes
+      ctxloom run --agent dev
+      """
     Then the session runs on the new engine
     And it starts with the same guidance the old engine's session had, unchanged
     And the project holds nothing the session wrote
@@ -48,16 +53,26 @@ Feature: Engine switch day
   # History that dies with the engine that produced it is history rented
   # from a vendor. Nobody looks for an old session until they need one.
   Scenario: History recorded under the old engine survives the move
+    # substitution: Alice switches the agent with ctxloom agent edit, confirming.
     Given a session was recorded under the old engine before the switch
-    When Alice swaps the engine under the binding
+    When Alice switches the team's agent to the new engine, and confirms:
+      """
+      ctxloom agent edit dev --engine opencode --yes
+      """
     Then the sessions recorded under the old engine are still listed after the switch
 
   # Weeks later, a teammate wonders why something stopped happening at the
   # end of each session. Wherever they look, at the agent or at the project's
   # health, ctxloom names what the agent's engine cannot do.
-  @pending
   Scenario: After the switch, ctxloom names what the new engine cannot do
     # new: the capability-loss report, after the switch
-    When Alice switches the team's agent to the new engine, and confirms
-    And a teammate later checks the team's agent and the project's health
+    When Alice switches the team's agent to the new engine, and confirms:
+      """
+      ctxloom agent edit dev --engine opencode --yes
+      """
+    And a teammate later checks the team's agent and the project's health:
+      """
+      ctxloom agent show dev
+      ctxloom doctor
+      """
     Then each of them names the session-end hook the new engine cannot carry
